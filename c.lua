@@ -36,6 +36,9 @@ local replayActive = false
 local recordingStartClock = nil
 local recordedEvents = {}
 local lastEventId = 0
+local recentSummaries = {}
+local maxRecentVisible = 30
+local updateStatus -- forward declaration for linter and early references
 
 -- UI State
 local selectedFileName = ""
@@ -215,6 +218,26 @@ if not _G.__RemoteRecorder_Hooked then
                         event.args[i] = serializeValue(deepCopy(args[i]))
                     end
                     table.insert(recordedEvents, event)
+
+                    -- Keep a short, readable summary for UI
+                    local summary
+                    if self.Name == "PlaceUnit" then
+                        local unitName = typeof(args[1]) == "string" and args[1] or "?"
+                        summary = string.format("[#%d] t=%.2fs wave=%s PlaceUnit(%s)", event.id, event.t or 0, tostring(event.wave), unitName)
+                    elseif self.Name == "UpgradeUnit" then
+                        local unitId = args[1] ~= nil and tostring(args[1]) or "?"
+                        summary = string.format("[#%d] t=%.2fs wave=%s UpgradeUnit(%s)", event.id, event.t or 0, tostring(event.wave), unitId)
+                    else
+                        summary = string.format("[#%d] t=%.2fs wave=%s %s", event.id, event.t or 0, tostring(event.wave), tostring(self.Name))
+                    end
+                    table.insert(recentSummaries, summary)
+                    if #recentSummaries > maxRecentVisible then
+                        table.remove(recentSummaries, 1)
+                    end
+                    pcall(function()
+                        if type(updateStatus) == "function" then updateStatus() end
+                    end)
+                    if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
                 end
             end
         end
@@ -398,8 +421,61 @@ tabRecord:Button({
     Callback = function()
         recordedEvents = {}
         lastEventId = 0
+        recentSummaries = {}
         updateStatus()
         WindUI:Notify({ Title = "Cleared", Content = "Recording buffer emptied", Duration = 2 })
+    end
+})
+
+-- Record Tab: Live counters and recent actions
+local recordCountParagraph = tabRecord:Paragraph({
+    Title = "Captured Events",
+    Desc = "0",
+    Image = "hash",
+    Color = "Grey",
+})
+
+local recentParagraph = tabRecord:Paragraph({
+    Title = "Recent Actions",
+    Desc = "(none)",
+    Image = "list",
+    Color = "Blue",
+})
+
+-- Expose a small updater for the hook to call without tight coupling
+_G.__RR_updateRecordUI = function()
+    pcall(function()
+        recordCountParagraph:SetDesc(tostring(#recordedEvents))
+        if #recentSummaries > 0 then
+            local text = table.concat(recentSummaries, "\n")
+            recentParagraph:SetDesc(text)
+        else
+            recentParagraph:SetDesc("(none)")
+        end
+    end)
+end
+
+tabRecord:Button({
+    Title = "Copy Recent to Clipboard",
+    Callback = function()
+        local text = #recentSummaries > 0 and table.concat(recentSummaries, "\n") or "(none)"
+        if rawget(_G, "setclipboard") then
+            _G.setclipboard(text)
+            WindUI:Notify({ Title = "Copied", Content = "Recent actions copied", Duration = 2 })
+        else
+            WindUI:Notify({ Title = "Clipboard", Content = "Clipboard unsupported in this env", Duration = 3 })
+        end
+    end
+})
+
+tabRecord:Keybind({
+    Title = "Window Toggle Key",
+    Desc = "Hide/Show window quickly",
+    Value = "RightShift",
+    Callback = function(keyName)
+        local kc = Enum.KeyCode[keyName]
+        if kc then window:SetToggleKey(kc) end
+        WindUI:Notify({ Title = "Window", Content = "Toggle key set to " .. tostring(keyName), Duration = 2 })
     end
 })
 
