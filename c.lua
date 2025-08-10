@@ -37,8 +37,9 @@ local recordingStartClock = nil
 local recordedEvents = {}
 local lastEventId = 0
 local recentSummaries = {}
-local maxRecentVisible = 30
-local updateStatus -- forward declaration for linter and early references
+local maxRecentVisible = 40
+local macroStatusText = "None"
+local waitingForText = "-"
 
 -- UI State
 local selectedFileName = ""
@@ -202,42 +203,41 @@ if not _G.__RemoteRecorder_Hooked then
             local classMatch = self.ClassName
             if classMatch == "RemoteFunction" and method == "InvokeServer" then
                 if TARGETS.RemoteFunction.InvokeServer[self.Name] then
-                    local now = os.clock()
-                    local event = {
-                        id = nextEventId(),
-                        t = now - (recordingStartClock or now),
-                        wave = getCurrentRound(),
-                        remoteClass = classMatch,
-                        remoteName = self.Name,
-                        remotePath = remotePath(self),
-                        method = method,
-                        args = {},
-                    }
-                    -- Serialize arguments
-                    for i = 1, #args do
-                        event.args[i] = serializeValue(deepCopy(args[i]))
-                    end
-                    table.insert(recordedEvents, event)
+                    -- Do heavy work off the critical path
+                    task.spawn(function()
+                        local now = os.clock()
+                        local event = {
+                            id = nextEventId(),
+                            t = now - (recordingStartClock or now),
+                            wave = getCurrentRound(),
+                            remoteClass = classMatch,
+                            remoteName = self.Name,
+                            remotePath = remotePath(self),
+                            method = method,
+                            args = {},
+                        }
+                        -- Serialize arguments
+                        for i = 1, #args do
+                            event.args[i] = serializeValue(deepCopy(args[i]))
+                        end
+                        table.insert(recordedEvents, event)
 
-                    -- Keep a short, readable summary for UI
-                    local summary
-                    if self.Name == "PlaceUnit" then
-                        local unitName = typeof(args[1]) == "string" and args[1] or "?"
-                        summary = string.format("[#%d] t=%.2fs wave=%s PlaceUnit(%s)", event.id, event.t or 0, tostring(event.wave), unitName)
-                    elseif self.Name == "UpgradeUnit" then
-                        local unitId = args[1] ~= nil and tostring(args[1]) or "?"
-                        summary = string.format("[#%d] t=%.2fs wave=%s UpgradeUnit(%s)", event.id, event.t or 0, tostring(event.wave), unitId)
-                    else
-                        summary = string.format("[#%d] t=%.2fs wave=%s %s", event.id, event.t or 0, tostring(event.wave), tostring(self.Name))
-                    end
-                    table.insert(recentSummaries, summary)
-                    if #recentSummaries > maxRecentVisible then
-                        table.remove(recentSummaries, 1)
-                    end
-                    pcall(function()
-                        if type(updateStatus) == "function" then updateStatus() end
+                        -- Update recent summaries and macro/status
+                        local summary
+                        if self.Name == "PlaceUnit" then
+                            local unitName = typeof(args[1]) == "string" and args[1] or "?"
+                            summary = string.format("[#%d] t=%.2fs wave=%s PlaceUnit(%s)", event.id, event.t or 0, tostring(event.wave), unitName)
+                        elseif self.Name == "UpgradeUnit" then
+                            local unitId = args[1] ~= nil and tostring(args[1]) or "?"
+                            summary = string.format("[#%d] t=%.2fs wave=%s UpgradeUnit(%s)", event.id, event.t or 0, tostring(event.wave), unitId)
+                        else
+                            summary = string.format("[#%d] t=%.2fs wave=%s %s", event.id, event.t or 0, tostring(event.wave), tostring(self.Name))
+                        end
+                        table.insert(recentSummaries, summary)
+                        if #recentSummaries > maxRecentVisible then table.remove(recentSummaries, 1) end
+                        macroStatusText = "Recording"
+                        if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
                     end)
-                    if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
                 end
             end
         end
@@ -316,14 +316,19 @@ local function startReplay(data)
         return (a.t or 0) < (b.t or 0)
     end)
 
-    for _, event in ipairs(data.events) do
+    for idx, event in ipairs(data.events) do
         local token = newproxy(true)
         activeReplayTokens[token] = true
         task.spawn(function()
-            -- Time gate
+            -- Time gate + step delay (sequential-style extra spacing)
             local delaySeconds = math.max(0, (event.t or 0)) / (timeScale > 0 and timeScale or 1)
+            if _G.__RR_stepDelaySec and _G.__RR_stepDelaySec > 0 then
+                delaySeconds = delaySeconds + (_G.__RR_stepDelaySec * (idx - 1))
+            end
             local elapsed = os.clock() - startClock
             if delaySeconds > elapsed then
+                waitingForText = string.format("time: %.2fs", delaySeconds - elapsed)
+                if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
                 task.wait(delaySeconds - elapsed)
             end
 
@@ -333,6 +338,8 @@ local function startReplay(data)
             if gateReplayByWave then
                 local targetWave = tonumber(event.wave) or 0
                 while replayActive and activeReplayTokens[token] and (getCurrentRound() < targetWave) do
+                    waitingForText = string.format("wave >= %d", targetWave)
+                    if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
                     task.wait(0.1)
                 end
                 if not replayActive or not activeReplayTokens[token] then return end
@@ -341,6 +348,8 @@ local function startReplay(data)
             -- Resolve remote and args, then invoke
             local remote = resolveRemote(event)
             if remote and event.method == "InvokeServer" and remote.ClassName == "RemoteFunction" then
+                macroStatusText = "Executing: " .. tostring(event.remoteName)
+                if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
                 local args = {}
                 if typeof(event.args) == "table" then
                     for i = 1, #event.args do
@@ -352,6 +361,11 @@ local function startReplay(data)
                 end)
             end
             activeReplayTokens[token] = nil
+            if idx == #data.events then
+                macroStatusText = "Completed"
+                waitingForText = "-"
+                if _G.__RR_updateRecordUI then _G.__RR_updateRecordUI() end
+            end
         end)
     end
 
@@ -401,7 +415,7 @@ end
 
 -- Record controls
 local toggleRecord = tabRecord:Toggle({
-    Title = "Recording",
+    Title = "Record Macro",
     Desc = "Capture PlaceUnit and UpgradeUnit",
     Value = false,
     Callback = function(on)
@@ -427,55 +441,89 @@ tabRecord:Button({
     end
 })
 
--- Record Tab: Live counters and recent actions
-local recordCountParagraph = tabRecord:Paragraph({
-    Title = "Captured Events",
-    Desc = "0",
-    Image = "hash",
-    Color = "Grey",
-})
+-- Macro status & details
+local macroStatusPara = tabRecord:Paragraph({ Title = "Macro Status", Desc = macroStatusText })
+local actionPara = tabRecord:Paragraph({ Title = "Action", Desc = "-" })
+local typePara = tabRecord:Paragraph({ Title = "Type", Desc = "-" })
+local unitPara = tabRecord:Paragraph({ Title = "Unit", Desc = "-" })
+local waitingPara = tabRecord:Paragraph({ Title = "Waiting for", Desc = waitingForText })
 
-local recentParagraph = tabRecord:Paragraph({
-    Title = "Recent Actions",
-    Desc = "(none)",
-    Image = "list",
-    Color = "Blue",
-})
+-- Live counters and recent actions
+local recordCountParagraph = tabRecord:Paragraph({ Title = "Captured Steps", Desc = "0", Image = "hash", Color = "Grey" })
+local recentParagraph = tabRecord:Paragraph({ Title = "Recent Actions", Desc = "(none)", Image = "list", Color = "Blue" })
 
--- Expose a small updater for the hook to call without tight coupling
+-- Updater callable from hook/replay
+_G.__RR_stepDelaySec = 0.2
 _G.__RR_updateRecordUI = function()
     pcall(function()
+        macroStatusPara:SetDesc(macroStatusText)
+        waitingPara:SetDesc(waitingForText)
         recordCountParagraph:SetDesc(tostring(#recordedEvents))
+        if #recordedEvents > 0 then
+            local last = recordedEvents[#recordedEvents]
+            actionPara:SetDesc(tostring(last.remoteName))
+            typePara:SetDesc(tostring(last.method))
+            if last.remoteName == "PlaceUnit" then
+                local a1 = last.args and last.args[1]
+                if typeof(a1) == "table" and a1.__type == nil then
+                    unitPara:SetDesc(tostring(a1))
+                else
+                    unitPara:SetDesc(tostring(a1 and (a1.__type and "[serialized]" or a1) or "-"))
+                end
+            elseif last.remoteName == "UpgradeUnit" then
+                unitPara:SetDesc(tostring(last.args and last.args[1] or "-"))
+            else
+                unitPara:SetDesc("-")
+            end
+        else
+            actionPara:SetDesc("-")
+            typePara:SetDesc("-")
+            unitPara:SetDesc("-")
+        end
         if #recentSummaries > 0 then
-            local text = table.concat(recentSummaries, "\n")
-            recentParagraph:SetDesc(text)
+            recentParagraph:SetDesc(table.concat(recentSummaries, "\n"))
         else
             recentParagraph:SetDesc("(none)")
         end
     end)
 end
 
-tabRecord:Button({
-    Title = "Copy Recent to Clipboard",
-    Callback = function()
-        local text = #recentSummaries > 0 and table.concat(recentSummaries, "\n") or "(none)"
-        if rawget(_G, "setclipboard") then
-            _G.setclipboard(text)
-            WindUI:Notify({ Title = "Copied", Content = "Recent actions copied", Duration = 2 })
+tabRecord:Toggle({
+    Title = "Play Macro",
+    Value = false,
+    Callback = function(on)
+        if on then
+            local ok, err = startReplay({ events = recordedEvents })
+            if ok then
+                WindUI:Notify({ Title = "Replay", Content = "Started", Duration = 2 })
+            else
+                WindUI:Notify({ Title = "Replay error", Content = tostring(err), Duration = 4 })
+            end
         else
-            WindUI:Notify({ Title = "Clipboard", Content = "Clipboard unsupported in this env", Duration = 3 })
+            stopReplay()
+            WindUI:Notify({ Title = "Replay", Content = "Stopped", Duration = 2 })
+        end
+        updateStatus()
+    end
+})
+
+tabRecord:Toggle({
+    Title = "Auto Equip Macro Units",
+    Value = false,
+    Callback = function(on)
+        -- Placeholder: Implement per-game equip logic if needed
+        if on then
+            WindUI:Notify({ Title = "Auto Equip", Content = "Not configured for this game", Duration = 3 })
         end
     end
 })
 
-tabRecord:Keybind({
-    Title = "Window Toggle Key",
-    Desc = "Hide/Show window quickly",
-    Value = "RightShift",
-    Callback = function(keyName)
-        local kc = Enum.KeyCode[keyName]
-        if kc then window:SetToggleKey(kc) end
-        WindUI:Notify({ Title = "Window", Content = "Toggle key set to " .. tostring(keyName), Duration = 2 })
+tabRecord:Slider({
+    Title = "Step Delay",
+    Value = { Min = 0, Max = 2, Default = 0.2 },
+    Step = 0.05,
+    Callback = function(v)
+        _G.__RR_stepDelaySec = tonumber(v) or 0
     end
 })
 
