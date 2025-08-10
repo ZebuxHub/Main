@@ -1,530 +1,541 @@
--- Remote Recorder using WindUI
--- Records specific RemoteFunction calls (PlaceUnit, UpgradeUnit), captures time and wave, saves/loads JSON, and replays by time and/or wave.
+-- RemoteRecorder.lua
+-- Records and replays specific RemoteFunction calls (PlaceUnit, UpgradeUnit)
+-- with timing and wave (workspace Attribute "Round") metadata.
 
--- Load WindUI
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+-- Dependencies: WindUI (fetched via HTTP), exploit env with: hookmetamethod, getnamecallmethod, checkcaller,
+-- makefolder, writefile, readfile, isfile, listfiles.
+-- luacheck: globals makefolder writefile readfile isfile listfiles hookmetamethod getnamecallmethod checkcaller
 
--- Configurable targets
-local TARGET_REMOTES = {
-    ["PlaceUnit"] = true,
-    ["UpgradeUnit"] = true,
-}
+-- Access through _G to avoid undefined-global lints
+local makefolder = rawget(_G, "makefolder") or function(_) end
+local writefile = rawget(_G, "writefile") or function(_, _) end
+local readfile = rawget(_G, "readfile") or function(_) return nil end
+local isfile = rawget(_G, "isfile") or function(_) return false end
+local listfiles = rawget(_G, "listfiles") or function(_) return {} end
+local hookmetamethod = rawget(_G, "hookmetamethod") or function(_, _, fn) return fn end
+local getnamecallmethod = rawget(_G, "getnamecallmethod") or function() return nil end
+local checkcaller = rawget(_G, "checkcaller") or function() return false end
 
-local REC_FOLDER = "WindUI/Recordings"
+-- Configuration
+local RECORDINGS_FOLDER = "RemoteRecorder"
+local DEFAULT_WINDOW_SIZE = UDim2.fromOffset(560, 430)
+
+-- Services
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
 
--- Ensure folders
+-- Ensure folder exists
 pcall(function()
-    makefolder("WindUI")
-end)
-pcall(function()
-    makefolder(REC_FOLDER)
+    makefolder(RECORDINGS_FOLDER)
 end)
 
--- Utility: safe attribute read
-local function getCurrentWave()
-    local success, value = pcall(function()
-        return Workspace:GetAttribute("Round")
-    end)
-    if success and typeof(value) == "number" then
-        return value
+-- State
+local currentRoundNumber = tonumber(workspace:GetAttribute("Round")) or 0
+local recordingActive = false
+local replayActive = false
+local recordingStartClock = nil
+local recordedEvents = {}
+local lastEventId = 0
+
+-- UI State
+local selectedFileName = ""
+local gateReplayByWave = true
+local timeScale = 1.0
+
+-- Utility: Deep copy (for args capture safety)
+local function deepCopy(value, seen)
+    seen = seen or {}
+    local ty = typeof(value)
+    if ty == "table" then
+        if seen[value] then return seen[value] end
+        local t = {}
+        seen[value] = t
+        for k, v in pairs(value) do
+            t[deepCopy(k, seen)] = deepCopy(v, seen)
+        end
+        return t
     end
-    return nil
+    return value
 end
 
--- Serialization helpers
-local function serializeValue(value, visited)
-    visited = visited or {}
-
-    local vtype = typeof(value)
-    if vtype == "nil" or vtype == "boolean" or vtype == "number" or vtype == "string" then
-        return value
-    elseif vtype == "Vector3" then
+-- Serialization for JSON-safe persistence
+local function serializeValue(value)
+    local ty = typeof(value)
+    if ty == "CFrame" then
+        local components = { value:GetComponents() }
+        return { __type = "CFrame", components = components }
+    elseif ty == "Vector3" then
         return { __type = "Vector3", x = value.X, y = value.Y, z = value.Z }
-    elseif vtype == "CFrame" then
-        local c = { value:GetComponents() }
-        return { __type = "CFrame", components = c }
-    elseif vtype == "Color3" then
+    elseif ty == "Vector2" then
+        return { __type = "Vector2", x = value.X, y = value.Y }
+    elseif ty == "Color3" then
         return { __type = "Color3", r = value.R, g = value.G, b = value.B }
-    elseif vtype == "table" then
-        if visited[value] then
-            return { __type = "[Circular]" }
-        end
-        visited[value] = true
+    elseif ty == "EnumItem" then
+        return { __type = "EnumItem", enumType = tostring(value.EnumType), name = value.Name }
+    elseif ty == "Instance" then
+        return { __type = "Instance", path = value:GetFullName() }
+    elseif ty == "table" then
         local out = {}
-        for k, v in pairs(value) do
-            local sk = serializeValue(k, visited)
-            local sv = serializeValue(v, visited)
-            out[sk] = sv
+        for k,v in pairs(value) do
+            local key = typeof(k) == "string" and k or tostring(k)
+            out[key] = serializeValue(v)
         end
         return out
+    elseif ty == "function" or ty == "userdata" or ty == "thread" then
+        return { __type = ty }
     else
-        -- Attempt to detect vector-like tables (e.g., custom vector.create)
-        local ok, x = pcall(function() return value.X end)
-        if ok and typeof(x) == "number" then
-            local y = value.Y; local z = value.Z
-            if typeof(y) == "number" and typeof(z) == "number" then
-                return { __type = "Vector3", x = x, y = y, z = z }
-            end
-        end
-        -- Fallback to string
-        return tostring(value)
+        -- number, string, boolean, nil
+        return value
     end
 end
 
 local function deserializeValue(value)
-    if typeof(value) ~= "table" then
+    if typeof(value) ~= "table" or value.__type == nil then
         return value
     end
-    if value.__type == "Vector3" then
-        local ctor
-        local ok = pcall(function()
-            ctor = (getfenv and getfenv().vector and getfenv().vector.create) or nil
-        end)
-        if ok and ctor then
-            return ctor(value.x, value.y, value.z)
+    local t = value.__type
+    if t == "CFrame" then
+        return CFrame.new(table.unpack(value.components or {}))
+    elseif t == "Vector3" then
+        return Vector3.new(value.x or 0, value.y or 0, value.z or 0)
+    elseif t == "Vector2" then
+        return Vector2.new(value.x or 0, value.y or 0)
+    elseif t == "Color3" then
+        return Color3.new(value.r or 0, value.g or 0, value.b or 0)
+    elseif t == "EnumItem" then
+        local enumTypeStr, name = value.enumType, value.name
+        local enumTypeName = enumTypeStr and enumTypeStr:match("Enum%.(.+)$")
+        if enumTypeName and Enum[enumTypeName] and Enum[enumTypeName][name] then
+            return Enum[enumTypeName][name]
         end
-        return Vector3.new(value.x, value.y, value.z)
-    elseif value.__type == "CFrame" then
-        return CFrame.new(table.unpack(value.components))
-    elseif value.__type == "Color3" then
-        return Color3.new(value.r, value.g, value.b)
-    elseif value.__type == "[Circular]" then
         return nil
-    end
-    -- Generic table map
-    local out = {}
-    for k, v in pairs(value) do
-        out[deserializeValue(k)] = deserializeValue(v)
-    end
-    return out
-end
-
--- Recording state
-local isRecording = false
-local isReplaying = false
-local recordStartTime = 0
-local events = {}
-local statusLog = {}
-
-local function now()
-    return tick()
-end
-
-local function logStatus(msg)
-    table.insert(statusLog, os.date("!%H:%M:%S") .. " | " .. msg)
-    if #statusLog > 200 then
-        table.remove(statusLog, 1)
+    elseif t == "Instance" then
+        -- Try to resolve path; best-effort.
+        local ok, inst = pcall(function()
+            return game:GetService(value.path:split(".")[1])
+        end)
+        if ok and inst then return inst end
+        return nil
+    else
+        -- Recurse generic table
+        local out = {}
+        for k,v in pairs(value) do
+            if k ~= "__type" then
+                out[k] = deserializeValue(v)
+            end
+        end
+        return out
     end
 end
 
--- UI Setup
-local Window = WindUI:CreateWindow({
-    Title = "Remote Recorder",
-    Icon = "record",
-    Author = "Recorder",
-    Folder = "WindUI",
-    Size = UDim2.fromOffset(620, 480),
-    Transparent = true,
-    Theme = "Dark",
-})
-
-local Section = Window:Section({ Title = "Recorder", Opened = true })
-local RecordTab = Section:Tab({ Title = "Record", Icon = "circle" })
-local ReplayTab = Section:Tab({ Title = "Replay", Icon = "play" })
-local FilesTab  = Section:Tab({ Title = "Files", Icon = "file-cog" })
-local StatusTab = Section:Tab({ Title = "Status", Icon = "align-left", ShowTabTitle = true })
-
--- Status UI
-local statusParagraph = StatusTab:Paragraph({
-    Title = "Status",
-    Desc = "Idle",
-    Image = "info",
-    ImageSize = 22,
-})
-
-local function refreshStatus()
-    local wave = getCurrentWave()
-    local lines = {
-        "Recording: " .. tostring(isRecording),
-        "Replaying: " .. tostring(isReplaying),
-        "Events: " .. tostring(#events),
-        "Current Wave: " .. tostring(wave or "N/A"),
-    }
-    -- Append last ~6 log lines
-    local startIdx = math.max(1, #statusLog - 6)
-    for i = startIdx, #statusLog do
-        table.insert(lines, statusLog[i])
-    end
-    statusParagraph:SetDesc(table.concat(lines, "\n"))
-end
-
--- Periodic status updater
-task.spawn(function()
-    while true do
-        refreshStatus()
-        task.wait(0.5)
-    end
+-- Current wave tracking
+workspace:GetAttributeChangedSignal("Round"):Connect(function()
+    local newVal = tonumber(workspace:GetAttribute("Round")) or 0
+    currentRoundNumber = newVal
 end)
 
--- Recorder controls
-RecordTab:Button({
-    Title = "Start Recording",
-    Variant = "Primary",
-    Callback = function()
-        if isRecording then return end
-        events = {}
-        recordStartTime = now()
-        isRecording = true
-        logStatus("Recording started")
-        refreshStatus()
+local function getCurrentRound()
+    return currentRoundNumber
+end
+
+-- Recording controls
+local function startRecording()
+    recordedEvents = {}
+    lastEventId = 0
+    recordingStartClock = os.clock()
+    recordingActive = true
+end
+
+local function stopRecording()
+    recordingActive = false
+end
+
+local function nextEventId()
+    lastEventId += 1
+    return lastEventId
+end
+
+-- Safe remote path builder (for readability)
+local function remotePath(remote)
+    local ok, path = pcall(function()
+        return remote:GetFullName()
+    end)
+    if ok then return path end
+    -- fallback
+    local s = {}
+    local inst = remote
+    while inst and inst ~= game do
+        table.insert(s, 1, inst.Name)
+        inst = inst.Parent
     end
-})
+    return table.concat(s, "/")
+end
 
-RecordTab:Button({
-    Title = "Stop Recording",
-    Variant = "Secondary",
-    Callback = function()
-        if not isRecording then return end
-        isRecording = false
-        logStatus("Recording stopped (" .. tostring(#events) .. " events)")
-        refreshStatus()
-    end
-})
+-- Capture whitelist
+local TARGETS = {
+    RemoteFunction = {
+        InvokeServer = {
+            ["PlaceUnit"] = true,
+            ["UpgradeUnit"] = true,
+        }
+    }
+}
 
-RecordTab:Button({
-    Title = "Clear Events",
-    Variant = "Tertiary",
-    Callback = function()
-        events = {}
-        logStatus("Events cleared")
-        refreshStatus()
-    end
-})
+-- Hook once
+if not _G.__RemoteRecorder_Hooked then
+    _G.__RemoteRecorder_Hooked = true
+    local originalNamecall
+    originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod and getnamecallmethod() or nil
+        local args = { ... }
 
-local lastEventCode = RecordTab:Code({
-    Title = "Last Captured Event (JSON)",
-    Code = "{}",
-})
+        -- Avoid capturing our own calls
+        if checkcaller and checkcaller() then
+            return originalNamecall(self, ...)
+        end
 
--- Replay settings
-local replayMode = "Time" -- Time | Wave | Both
-local speedMultiplier = 1.0
+        -- Capture only if recording and target matches
+        if recordingActive and typeof(self) == "Instance" then
+            local classMatch = self.ClassName
+            if classMatch == "RemoteFunction" and method == "InvokeServer" then
+                if TARGETS.RemoteFunction.InvokeServer[self.Name] then
+                    local now = os.clock()
+                    local event = {
+                        id = nextEventId(),
+                        t = now - (recordingStartClock or now),
+                        wave = getCurrentRound(),
+                        remoteClass = classMatch,
+                        remoteName = self.Name,
+                        remotePath = remotePath(self),
+                        method = method,
+                        args = {},
+                    }
+                    -- Serialize arguments
+                    for i = 1, #args do
+                        event.args[i] = serializeValue(deepCopy(args[i]))
+                    end
+                    table.insert(recordedEvents, event)
+                end
+            end
+        end
 
-ReplayTab:Dropdown({
-    Title = "Replay Mode",
-    Values = { "Time", "Wave", "Both" },
-    Value = "Time",
-    Callback = function(v)
-        replayMode = v
-        logStatus("Replay mode set to " .. v)
-    end
-})
+        return originalNamecall(self, ...)
+    end)
+end
 
-ReplayTab:Slider({
-    Title = "Speed Multiplier (Time mode)",
-    Value = { Min = 0.1, Max = 5.0, Default = 1.0 },
-    Step = 0.1,
-    Callback = function(v)
-        speedMultiplier = v
-        logStatus("Speed multiplier set to " .. tostring(v))
-    end
-})
-
--- File helpers
+-- File operations
 local function listRecordingFiles()
     local files = {}
-    for _, path in ipairs(listfiles(REC_FOLDER)) do
-        if path:match("%.json$") then
-            table.insert(files, path:match("([^/\\]+)$"))
-        end
+    for _, file in ipairs(listfiles(RECORDINGS_FOLDER)) do
+        local name = file:match("([^/\\]+)%.json$")
+        if name then table.insert(files, name) end
     end
     table.sort(files)
     return files
 end
 
-local function saveToFile(fileName)
+local function saveRecording(fileName)
+    if not fileName or fileName == "" then return false, "Missing file name" end
     local payload = {
+        version = 1,
+        createdAt = os.time(),
         meta = {
-            createdAt = os.time(),
-            gameId = game.GameId,
-            placeId = game.PlaceId,
-            version = 1,
+            totalEvents = #recordedEvents,
         },
-        events = events,
+        events = recordedEvents,
     }
     local json = HttpService:JSONEncode(payload)
-    writefile(REC_FOLDER .. "/" .. fileName .. ".json", json)
-end
-
-local function loadFromFile(fileName)
-    local path = REC_FOLDER .. "/" .. fileName .. ".json"
-    if not isfile(path) then return false, "File not found" end
-    local ok, data = pcall(function()
-        return HttpService:JSONDecode(readfile(path))
-    end)
-    if not ok or typeof(data) ~= "table" then
-        return false, "Invalid JSON"
-    end
-    if typeof(data.events) ~= "table" then
-        return false, "Missing events"
-    end
-    events = data.events
+    writefile(RECORDINGS_FOLDER .. "/" .. fileName .. ".json", json)
     return true
 end
 
--- Files UI
-local fileNameInput = "session_" .. os.date("!%Y%m%d_%H%M%S")
-FilesTab:Input({
-    Title = "Recording Name",
-    Value = fileNameInput,
-    Placeholder = "file name",
-    Callback = function(v) fileNameInput = v end,
+local function loadRecording(fileName)
+    local path = RECORDINGS_FOLDER .. "/" .. fileName .. ".json"
+    if not isfile(path) then return nil, "File not found" end
+    local ok, data = pcall(function()
+        return HttpService:JSONDecode(readfile(path))
+    end)
+    if not ok then return nil, "Invalid JSON" end
+    return data
+end
+
+-- Replay
+local function resolveRemote(event)
+    -- Prefer strict path by navigating known tree for performance
+    -- For our targets, we know they live in ReplicatedStorage/RemoteFunctions
+    local ok, rf = pcall(function()
+        return ReplicatedStorage:WaitForChild("RemoteFunctions", 1):WaitForChild(event.remoteName, 1)
+    end)
+    if ok and rf then return rf end
+    -- Fallback: try generic lookup by name under ReplicatedStorage
+    local candidate = ReplicatedStorage:FindFirstChild(event.remoteName, true)
+    return candidate
+end
+
+local activeReplayTokens = {}
+
+local function stopReplay()
+    replayActive = false
+    -- invalidate tokens
+    for token in pairs(activeReplayTokens) do
+        activeReplayTokens[token] = nil
+    end
+end
+
+local function startReplay(data)
+    if not data or typeof(data) ~= "table" or typeof(data.events) ~= "table" then return false, "Invalid data" end
+    stopReplay()
+    replayActive = true
+    local startClock = os.clock()
+
+    -- Sort by time for predictable scheduling
+    table.sort(data.events, function(a,b)
+        return (a.t or 0) < (b.t or 0)
+    end)
+
+    for _, event in ipairs(data.events) do
+        local token = newproxy(true)
+        activeReplayTokens[token] = true
+        task.spawn(function()
+            -- Time gate
+            local delaySeconds = math.max(0, (event.t or 0)) / (timeScale > 0 and timeScale or 1)
+            local elapsed = os.clock() - startClock
+            if delaySeconds > elapsed then
+                task.wait(delaySeconds - elapsed)
+            end
+
+            if not replayActive or not activeReplayTokens[token] then return end
+
+            -- Wave gate
+            if gateReplayByWave then
+                local targetWave = tonumber(event.wave) or 0
+                while replayActive and activeReplayTokens[token] and (getCurrentRound() < targetWave) do
+                    task.wait(0.1)
+                end
+                if not replayActive or not activeReplayTokens[token] then return end
+            end
+
+            -- Resolve remote and args, then invoke
+            local remote = resolveRemote(event)
+            if remote and event.method == "InvokeServer" and remote.ClassName == "RemoteFunction" then
+                local args = {}
+                if typeof(event.args) == "table" then
+                    for i = 1, #event.args do
+                        args[i] = deserializeValue(event.args[i])
+                    end
+                end
+                pcall(function()
+                    remote:InvokeServer(table.unpack(args))
+                end)
+            end
+            activeReplayTokens[token] = nil
+        end)
+    end
+
+    return true
+end
+
+-- WindUI setup
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local window = WindUI:CreateWindow({
+    Title = "Remote Recorder",
+    Icon = "database",
+    Author = "Recorder",
+    Folder = "RemoteRecorder",
+    Size = DEFAULT_WINDOW_SIZE,
+    Transparent = true,
+    Theme = "Dark",
+    User = { Enabled = false },
+    KeySystem = nil,
 })
 
-FilesTab:Button({
-    Title = "Save JSON",
-    Variant = "Primary",
-    Callback = function()
-        if fileNameInput == "" then return end
-        local ok, err = pcall(function()
-            saveToFile(fileNameInput)
-        end)
-        if ok then
-            logStatus("Saved to " .. fileNameInput .. ".json")
+local sectionMain = window:Section({ Title = "Recorder", Opened = true })
+local sectionReplay = window:Section({ Title = "Replay", Opened = true })
+local sectionFiles = window:Section({ Title = "Files", Opened = true })
+local sectionStatus = window:Section({ Title = "Status", Opened = true })
+
+local tabRecord = sectionMain:Tab({ Title = "Record", Icon = "radio" })
+local tabReplay = sectionReplay:Tab({ Title = "Replay", Icon = "play" })
+local tabFiles = sectionFiles:Tab({ Title = "Files", Icon = "file-cog" })
+local tabStatus = sectionStatus:Tab({ Title = "Status", Icon = "list" })
+
+-- Status elements
+local statusParagraph = tabStatus:Paragraph({
+    Title = "Recorder Status",
+    Desc = "Idle",
+    Image = "info",
+    Color = "Grey",
+})
+
+local function updateStatus()
+    local desc = string.format(
+        "Recording: %s\nReplaying: %s\nEvents captured: %d\nCurrent wave: %d",
+        tostring(recordingActive), tostring(replayActive), #recordedEvents, getCurrentRound()
+    )
+    statusParagraph:SetDesc(desc)
+end
+
+-- Record controls
+local toggleRecord = tabRecord:Toggle({
+    Title = "Recording",
+    Desc = "Capture PlaceUnit and UpgradeUnit",
+    Value = false,
+    Callback = function(on)
+        if on then
+            startRecording()
+            WindUI:Notify({ Title = "Recording started", Content = "Capturing remotes", Duration = 3 })
         else
-            logStatus("Save failed: " .. tostring(err))
+            stopRecording()
+            WindUI:Notify({ Title = "Recording stopped", Content = ("%d events"):format(#recordedEvents), Duration = 3 })
         end
-        refreshStatus()
+        updateStatus()
     end
 })
 
-local filesDropdown = FilesTab:Dropdown({
-    Title = "Available Recordings",
-    Values = listRecordingFiles(),
-    AllowNone = true,
-    Callback = function() end
+tabRecord:Button({
+    Title = "Clear Recording",
+    Callback = function()
+        recordedEvents = {}
+        lastEventId = 0
+        updateStatus()
+        WindUI:Notify({ Title = "Cleared", Content = "Recording buffer emptied", Duration = 2 })
+    end
 })
 
-FilesTab:Button({
+tabRecord:Paragraph({
+    Title = "What is recorded?",
+    Desc = "RemoteFunction:InvokeServer calls on ReplicatedStorage/RemoteFunctions for PlaceUnit and UpgradeUnit. Each event stores time offset and wave (workspace Attribute 'Round').",
+    Image = "help-circle",
+    Color = "Blue",
+})
+
+-- Replay controls
+local toggleWaveGate = tabReplay:Toggle({
+    Title = "Gate by Wave (Round)",
+    Value = gateReplayByWave,
+    Callback = function(v)
+        gateReplayByWave = v
+    end
+})
+
+local timeScaleInput = tabReplay:Input({
+    Title = "Time Scale",
+    Value = tostring(timeScale),
+    Placeholder = "1.0",
+    Callback = function(txt)
+        local val = tonumber(txt)
+        if val and val > 0 then timeScale = val end
+    end
+})
+
+tabReplay:Button({
+    Title = "Start Replay (from memory)",
+    Callback = function()
+        local ok, err = startReplay({ events = recordedEvents })
+        if ok then
+            WindUI:Notify({ Title = "Replay", Content = "Started", Duration = 2 })
+        else
+            WindUI:Notify({ Title = "Replay error", Content = tostring(err), Duration = 4 })
+        end
+        updateStatus()
+    end
+})
+
+tabReplay:Button({
+    Title = "Stop Replay",
+    Callback = function()
+        stopReplay()
+        WindUI:Notify({ Title = "Replay", Content = "Stopped", Duration = 2 })
+        updateStatus()
+    end
+})
+
+-- Files
+local filesDropdown
+filesDropdown = tabFiles:Dropdown({
+    Title = "Saved Recordings",
+    Values = listRecordingFiles(),
+    Multi = false,
+    AllowNone = true,
+    Callback = function(name)
+        selectedFileName = name or ""
+    end
+})
+
+tabFiles:Button({
     Title = "Refresh List",
     Callback = function()
         filesDropdown:Refresh(listRecordingFiles())
     end
 })
 
-FilesTab:Button({
-    Title = "Load Selected",
-    Variant = "Secondary",
-    Callback = function()
-        local selected = filesDropdown:GetValue()
-        if not selected or selected == "" then return end
-        selected = selected:gsub("%.json$", "")
-        local ok, err = loadFromFile(selected)
-        if ok then
-            logStatus("Loaded " .. selected .. ".json (" .. tostring(#events) .. " events)")
-        else
-            logStatus("Load failed: " .. tostring(err))
-        end
-        refreshStatus()
+local fileNameText = ""
+tabFiles:Input({
+    Title = "File Name",
+    Placeholder = "my_run",
+    Callback = function(text)
+        fileNameText = text
+        selectedFileName = text
     end
 })
 
--- Hook remote calls
-local originalNamecall
-originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    if method == "InvokeServer" and isRecording and not isReplaying then
-        local remoteName = tostring(self.Name)
-        local parentName = self.Parent and self.Parent.Name or ""
-        local grandName = self.Parent and self.Parent.Parent and self.Parent.Parent.Name or ""
-
-        local shouldCapture = TARGET_REMOTES[remoteName] and parentName == "RemoteFunctions" and grandName == "ReplicatedStorage"
-        if shouldCapture then
-            local capturedArgs = { ... }
-
-            -- Serialize args
-            local serialArgs = {}
-            for i = 1, #capturedArgs do
-                serialArgs[i] = serializeValue(capturedArgs[i])
-            end
-
-            local event = {
-                t = now() - recordStartTime,
-                wave = getCurrentWave(),
-                remote = remoteName,
-                path = "ReplicatedStorage/RemoteFunctions/" .. remoteName,
-                method = method,
-                args = serialArgs,
-            }
-            table.insert(events, event)
-            local preview = HttpService:JSONEncode(event)
-            lastEventCode:SetCode(preview)
-            logStatus("Captured " .. remoteName)
-        end
-    end
-    return originalNamecall(self, ...)
-end)
-
--- Replay helpers
-local function resolveRemote(path)
-    -- path format: ReplicatedStorage/RemoteFunctions/Name
-    local parts = string.split(path, "/")
-    local node = game
-    for _, p in ipairs(parts) do
-        if p ~= "" and p ~= "game" then
-            node = node:FindFirstChild(p)
-            if not node then return nil end
-        end
-    end
-    return node
-end
-
-local function invokeEvent(ev)
-    local remote = resolveRemote(ev.path)
-    if not remote then
-        logStatus("Remote not found: " .. tostring(ev.path))
-        return
-    end
-    local args = {}
-    for i = 1, #ev.args do
-        args[i] = deserializeValue(ev.args[i])
-    end
-    local ok, err = pcall(function()
-        if ev.method == "InvokeServer" then
-            remote:InvokeServer(table.unpack(args))
-        else
-            -- extend if needed
-        end
-    end)
-    if not ok then
-        logStatus("Invoke failed: " .. tostring(err))
-    end
-end
-
-local function replayByTime()
-    if #events == 0 then
-        logStatus("No events to replay")
-        return
-    end
-    isReplaying = true
-    logStatus("Replay (Time) started")
-
-    -- Sort by time
-    local ordered = table.clone(events)
-    table.sort(ordered, function(a, b) return (a.t or 0) < (b.t or 0) end)
-
-    local t0 = now()
-    for idx, ev in ipairs(ordered) do
-        local delaySec = math.max(0, (ev.t or 0) / math.max(0.001, speedMultiplier))
-        task.delay(delaySec, function()
-            if isReplaying then
-                invokeEvent(ev)
-                if idx == #ordered then
-                    isReplaying = false
-                    logStatus("Replay (Time) finished in " .. string.format("%.2f", now() - t0) .. "s")
-                end
-            end
-        end)
-    end
-end
-
-local function replayByWave(matchAlsoTime)
-    if #events == 0 then
-        logStatus("No events to replay")
-        return
-    end
-    isReplaying = true
-    logStatus("Replay (Wave" .. (matchAlsoTime and "+Time" or "") .. ") armed")
-
-    -- Group events by wave
-    local byWave = {}
-    for _, ev in ipairs(events) do
-        local w = ev.wave or -1
-        byWave[w] = byWave[w] or {}
-        table.insert(byWave[w], ev)
-    end
-    for _, list in pairs(byWave) do
-        table.sort(list, function(a, b)
-            return (a.t or 0) < (b.t or 0)
-        end)
-    end
-
-    local connection
-    connection = Workspace:GetAttributeChangedSignal("Round"):Connect(function()
-        if not isReplaying then
-            if connection then connection:Disconnect() end
+tabFiles:Button({
+    Title = "Save Recording to JSON",
+    Callback = function()
+        if #recordedEvents == 0 then
+            WindUI:Notify({ Title = "Save", Content = "No events to save", Duration = 3 })
             return
         end
-        local cur = getCurrentWave()
-        if cur == nil then return end
-        local bucket = byWave[cur]
-        if bucket and #bucket > 0 then
-            logStatus("Wave " .. tostring(cur) .. " matched; replaying " .. tostring(#bucket) .. " events")
-            local startTime = now()
-            for idx, ev in ipairs(bucket) do
-                if matchAlsoTime then
-                    local delaySec = math.max(0, (ev.t or 0))
-                    task.delay(delaySec, function()
-                        if isReplaying then
-                            invokeEvent(ev)
-                        end
-                    end)
-                else
-                    task.spawn(function()
-                        if isReplaying then
-                            invokeEvent(ev)
-                        end
-                    end)
-                end
-            end
-            byWave[cur] = nil
-            -- If all buckets consumed, finish
-            local remaining = 0
-            for _, list in pairs(byWave) do
-                if list and #list > 0 then remaining += 1 end
-            end
-            if remaining == 0 then
-                isReplaying = false
-                if connection then connection:Disconnect() end
-                logStatus("Replay (Wave) finished")
-            end
+        local name = (fileNameText ~= "" and fileNameText) or selectedFileName
+        if not name or name == "" then
+            WindUI:Notify({ Title = "Save", Content = "Enter a file name", Duration = 3 })
+            return
         end
-    end)
-end
-
-ReplayTab:Button({
-    Title = "Start Replay",
-    Variant = "Primary",
-    Callback = function()
-        if isReplaying then return end
-        if replayMode == "Time" then
-            replayByTime()
-        elseif replayMode == "Wave" then
-            replayByWave(false)
-        else -- Both
-            replayByWave(true)
-        end
-        refreshStatus()
-    end
-})
-
-ReplayTab:Button({
-    Title = "Stop Replay",
-    Variant = "Secondary",
-    Callback = function()
-        if isReplaying then
-            isReplaying = false
-            logStatus("Replay stopped")
-            refreshStatus()
+        local ok, err = saveRecording(name)
+        if ok then
+            WindUI:Notify({ Title = "Saved", Content = name .. ".json", Duration = 3 })
+            filesDropdown:Refresh(listRecordingFiles())
+        else
+            WindUI:Notify({ Title = "Save error", Content = tostring(err), Duration = 4 })
         end
     end
 })
 
--- Initial status
-logStatus("Ready. Targeting: PlaceUnit, UpgradeUnit")
-refreshStatus()
+tabFiles:Button({
+    Title = "Load And Replay From File",
+    Callback = function()
+        local name = selectedFileName
+        if not name or name == "" then
+            WindUI:Notify({ Title = "Load", Content = "Select a file first", Duration = 3 })
+            return
+        end
+        local data, err = loadRecording(name)
+        if not data then
+            WindUI:Notify({ Title = "Load error", Content = tostring(err), Duration = 4 })
+            return
+        end
+        local ok2, err2 = startReplay(data)
+        if ok2 then
+            WindUI:Notify({ Title = "Replay", Content = "Started from file", Duration = 3 })
+        else
+            WindUI:Notify({ Title = "Replay error", Content = tostring(err2), Duration = 4 })
+        end
+        updateStatus()
+    end
+})
+
+-- Live status refresh
+task.spawn(function()
+    while true do
+        updateStatus()
+        task.wait(0.5)
+    end
+end)
+
+window:OnClose(function()
+    stopReplay()
+    stopRecording()
+end)
 
 
