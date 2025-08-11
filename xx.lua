@@ -683,7 +683,6 @@ Tabs.AutoTab:Toggle({
 -- Auto Place functionality
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
-local preferNearPlayer = false
 local placeAnchorPosition = nil
 local anchorRadiusStuds = 100
 
@@ -787,13 +786,10 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Find an available farm part near saved anchor (if present) or near player when toggle set
+            -- Find an available farm part near saved anchor (if present) or near player when toggled on
             local minSpacing = 8 -- studs between pets
             local chosenPart
-            local targetPos = placeAnchorPosition
-            if not targetPos and preferNearPlayer then
-                targetPos = getPlayerRootPosition()
-            end
+            local targetPos = placeAnchorPosition or getPlayerRootPosition()
             if targetPos then
                 -- Restrict to tiles within anchorRadiusStuds to keep placement localized
                 local nearby = {}
@@ -846,7 +842,7 @@ Tabs.PlaceTab:Toggle({
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
             -- Capture anchor when turning on if not set
-            if not placeAnchorPosition and preferNearPlayer then
+            if not placeAnchorPosition then
                 placeAnchorPosition = getPlayerRootPosition()
             end
             autoPlaceThread = task.spawn(function()
@@ -875,7 +871,6 @@ Tabs.PlaceTab:Button({
             return
         end
         placeAnchorPosition = pos
-        preferNearPlayer = true
         WindUI:Notify({ Title = "Auto Place", Content = string.format("Anchor saved r=%d", anchorRadiusStuds), Duration = 3 })
         placeStatusData.lastAction = "Anchor saved"
         updatePlaceStatusParagraph()
@@ -930,7 +925,13 @@ Tabs.PlaceTab:Button({
         
         -- Prefer an available tile using pivot occupancy checks
         local targetPos = placeAnchorPosition or getPlayerRootPosition()
-        local chosenPart = findAvailableFarmPartNearPosition(farmParts, 8, targetPos)
+        local nearby = {}
+        for _, part in ipairs(farmParts) do
+            if not targetPos or (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
+                table.insert(nearby, part)
+            end
+        end
+        local chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, 8, targetPos)
         if not chosenPart then
             WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
             placeStatusData.lastAction = "Manual place failed (occupied)"
@@ -986,6 +987,15 @@ Tabs.PlaceTab:Button({
     end
 })
 
+-- Optional helper to open the window
+Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
+
+-- Close callback
+Window:OnClose(function()
+    autoBuyEnabled = false
+    autoPlaceEnabled = false
+end)
+
 -- Auto Hatch functionality
 local autoHatchEnabled = false
 local autoHatchThread = nil
@@ -998,42 +1008,41 @@ local function playerOwnsInstance(inst)
     return lp and lp.UserId == uidAttr
 end
 
-local function findHatchablePetsForPlayer()
+local function fireHatchRemote()
+    -- Per spec: create RemoteFunction in nil and InvokeServer("Hatch")
+    local args = { "Hatch" }
+    local rf = Instance.new("RemoteFunction", nil)
+    local ok, res = pcall(function()
+        return rf:InvokeServer(table.unpack(args))
+    end)
+    if not ok then
+        warn("Hatch invoke failed: " .. tostring(res))
+    end
+    return ok
+end
+
+local function findHatchableModels()
     local results = {}
-    local built = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not built then return results end
-    for _, child in ipairs(built:GetDescendants()) do
+    local container = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if not container then return results end
+    for _, child in ipairs(container:GetDescendants()) do
         if child:IsA("Model") and playerOwnsInstance(child) then
-            table.insert(results, child.Name)
+            table.insert(results, child)
         end
     end
     return results
 end
 
-local function hatchPetByName(petName)
-    if type(petName) ~= "string" or petName == "" then return false end
-    local petsFolder = workspace:WaitForChild("Pets")
-    local petModel = petsFolder:FindFirstChild(petName)
-    if not petModel then return false end
-    local root = petModel:FindFirstChild("RootPart")
-    if not root then return false end
-    local re = root:FindFirstChild("RE")
-    if not re then return false end
-    local ok, err = pcall(function()
-        re:FireServer("Claim")
-    end)
-    return ok
-end
-
 local function runAutoHatch()
     while autoHatchEnabled do
         local ok, err = pcall(function()
-            local names = findHatchablePetsForPlayer()
-            for _, name in ipairs(names) do
-                hatchPetByName(name)
-                task.wait(0.1)
+            local models = findHatchableModels()
+            if #models == 0 then
+                task.wait(0.8)
+                return
             end
-            task.wait(0.5)
+            fireHatchRemote()
+            task.wait(0.3)
         end)
         if not ok then
             warn("Auto Hatch error: " .. tostring(err))
@@ -1044,7 +1053,7 @@ end
 
 Tabs.HatchTab:Toggle({
     Title = "Auto Hatch",
-    Desc = "Automatically claims hatchable pets you own",
+    Desc = "Automatically hatches eggs you own in PlayerBuiltBlocks",
     Value = false,
     Callback = function(state)
         autoHatchEnabled = state
@@ -1059,14 +1068,3 @@ Tabs.HatchTab:Toggle({
         end
     end
 })
-
--- Optional helper to open the window
-Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
-
--- Close callback
-Window:OnClose(function()
-    autoBuyEnabled = false
-    autoPlaceEnabled = false
-end)
-
-
