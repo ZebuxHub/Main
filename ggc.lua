@@ -538,8 +538,10 @@ local function getOwnerUserIdDeep(inst)
     while current and current ~= workspace do
         if current.GetAttribute then
             local uidAttr = current:GetAttribute("UserId")
-            if type(uidAttr) == "number" then
-                return uidAttr
+            if type(uidAttr) == "number" then return uidAttr end
+            if type(uidAttr) == "string" then
+                local n = tonumber(uidAttr)
+                if n then return n end
             end
         end
         current = current.Parent
@@ -581,18 +583,32 @@ local function isHatchReady(model)
     return false
 end
 
-local function findHatchableModels(readyOnly)
-    local results = {}
+local function collectOwnedEggs()
+    local owned = {}
     local container = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not container then return results end
-    for _, child in ipairs(container:GetDescendants()) do
+    if not container then return owned end
+    for _, child in ipairs(container:GetChildren()) do
         if child:IsA("Model") and playerOwnsInstance(child) then
-            if not readyOnly or isHatchReady(child) then
-                table.insert(results, child)
+            table.insert(owned, child)
+        end
+    end
+    -- also allow owned nested models (fallback)
+    if #owned == 0 then
+        for _, child in ipairs(container:GetDescendants()) do
+            if child:IsA("Model") and playerOwnsInstance(child) then
+                table.insert(owned, child)
             end
         end
     end
-    return results
+    return owned
+end
+
+local function filterReadyEggs(models)
+    local ready = {}
+    for _, m in ipairs(models or {}) do
+        if isHatchReady(m) then table.insert(ready, m) end
+    end
+    return ready
 end
 
 local function pressPromptE(prompt)
@@ -659,7 +675,9 @@ end
 local function runAutoHatch()
     while autoHatchEnabled do
         local ok, err = pcall(function()
-            local eggs = findHatchableModels(true)
+            local owned = collectOwnedEggs()
+            if #owned == 0 then task.wait(1.0) return end
+            local eggs = filterReadyEggs(owned)
             if #eggs == 0 then task.wait(0.8) return end
             -- Try nearest first
             local me = getPlayerRootPosition()
@@ -702,9 +720,14 @@ Tabs.HatchTab:Button({
     Title = "Hatch Nearest",
     Desc = "Hatch the nearest owned egg (E prompt)",
     Callback = function()
-        local eggs = findHatchableModels(true)
+        local owned = collectOwnedEggs()
+        if #owned == 0 then
+            WindUI:Notify({ Title = "Auto Hatch", Content = "No eggs owned", Duration = 3 })
+            return
+        end
+        local eggs = filterReadyEggs(owned)
         if #eggs == 0 then
-            WindUI:Notify({ Title = "Auto Hatch", Content = "No owned eggs found", Duration = 3 })
+            WindUI:Notify({ Title = "Auto Hatch", Content = "No eggs ready", Duration = 3 })
             return
         end
         local me = getPlayerRootPosition() or Vector3.new()
@@ -1525,4 +1548,6 @@ Tabs.ShopTab:Button({
         WindUI:Notify({ Title = "Shop", Content = "Upgrade memory cleared", Duration = 3 })
     end
 })
+
+
 
