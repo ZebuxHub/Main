@@ -1658,15 +1658,24 @@ end
 
 local function buildFruitList()
     local names = {}
+    local added = {}
     for key, val in pairs(petFoodConfig) do
-        local name
-        if type(val) == "table" then
-            name = val.Name or val.ID or val.Id or key
-        else
-            name = key
+        local keyStr = tostring(key)
+        local lower = string.lower(keyStr)
+        -- Skip meta keys like _index/__index or any leading underscore keys
+        if lower ~= "_index" and lower ~= "__index" and not keyStr:match("^_") then
+            local name
+            if type(val) == "table" then
+                name = val.Name or val.ID or val.Id or keyStr
+            else
+                name = keyStr
+            end
+            name = tostring(name)
+            if name and name ~= "" and not name:match("^_") and not added[name] then
+                table.insert(names, name)
+                added[name] = true
+            end
         end
-        name = tostring(name)
-        if name and name ~= "" then table.insert(names, name) end
     end
     table.sort(names)
     return names
@@ -1711,23 +1720,53 @@ Tabs.FruitTab:Button({
     end
 })
 
+Tabs.FruitTab:Button({
+    Title = "Select All Fruits",
+    Desc = "Quickly select every fruit in the list",
+    Callback = function()
+        local all = buildFruitList()
+        selectedFruitSet = {}
+        for _, n in ipairs(all) do selectedFruitSet[n] = true end
+        fruitStatus.selected = table.concat(all, ", ")
+        updateFruitStatus()
+        WindUI:Notify({ Title = "Fruit Market", Content = "All fruits selected", Duration = 3 })
+    end
+})
+
 
 -- ============ Auto Feed Pets ============
+-- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
 local function getFeedablePets()
     local feedable = {}
+    -- Try authoritative list from PlayerGui.Data.Pets (UIDs of player's pets)
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local petsData = data and data:FindFirstChild("Pets")
+    if petsData then
+        for _, petVal in ipairs(petsData:GetChildren()) do
+            local uid = petVal.Name
+            local hasBPV = petVal:GetAttribute("BPV") ~= nil
+            if hasBPV then
+                -- Map UID -> world model if present
+                local worldPets = workspace:FindFirstChild("Pets")
+                local model = worldPets and worldPets:FindFirstChild(uid)
+                if model and model:IsA("Model") then
+                    table.insert(feedable, model)
+                end
+            end
+        end
+        if #feedable > 0 then return feedable end
+    end
+    -- Fallback: scan world for BigPetGUI.Feed
     local petsFolder = workspace:FindFirstChild("Pets")
     if not petsFolder then return feedable end
     for _, pet in ipairs(petsFolder:GetChildren()) do
         if pet:IsA("Model") then
             local root = pet:FindFirstChild("RootPart")
-            if root then
-                local gui = root:FindFirstChild("GUI")
-                if gui then
-                    local big = gui:FindFirstChild("BigPetGUI")
-                    if big and big:FindFirstChild("Feed") then
-                        table.insert(feedable, pet)
-                    end
-                end
+            local gui = root and root:FindFirstChild("GUI")
+            local big = gui and gui:FindFirstChild("BigPetGUI")
+            if big and big:FindFirstChild("Feed") then
+                table.insert(feedable, pet)
             end
         end
     end
