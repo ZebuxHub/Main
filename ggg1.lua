@@ -80,8 +80,11 @@ local function buildEggIdList()
     local ids = {}
     for id, val in pairs(eggConfig) do
         local idStr = tostring(id)
-        table.insert(ids, idStr)
-        idToTypeMap[idStr] = getTypeFromConfig(id, val)
+        -- Filter out meta keys like _index, __index, and any leading underscore entries
+        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+            table.insert(ids, idStr)
+            idToTypeMap[idStr] = getTypeFromConfig(id, val)
+        end
     end
     table.sort(ids)
     return ids
@@ -530,12 +533,25 @@ Tabs.ClaimTab:Button({
 local autoHatchEnabled = false
 local autoHatchThread = nil
 
+local function getOwnerUserIdDeep(inst)
+    local current = inst
+    while current and current ~= workspace do
+        if current.GetAttribute then
+            local uidAttr = current:GetAttribute("UserId")
+            if type(uidAttr) == "number" then
+                return uidAttr
+            end
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
 local function playerOwnsInstance(inst)
-    if not inst or not inst.GetAttribute then return false end
-    local uidAttr = inst:GetAttribute("UserId")
-    if type(uidAttr) ~= "number" then return false end
+    if not inst then return false end
+    local ownerId = getOwnerUserIdDeep(inst)
     local lp = Players.LocalPlayer
-    return lp and lp.UserId == uidAttr
+    return ownerId ~= nil and lp and lp.UserId == ownerId
 end
 
 local function getModelPosition(model)
@@ -612,6 +628,10 @@ local function walkTo(position, timeout)
 end
 
 local function tryHatchModel(model)
+    -- Double-check ownership before proceeding
+    if not playerOwnsInstance(model) then
+        return false, "Not owner"
+    end
     -- Find a ProximityPrompt named "E" or any prompt on the model
     local prompt
     -- Prefer a prompt on a part named Prompt or with ActionText that implies hatch
@@ -745,7 +765,7 @@ local selectedTypeSet = {}
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
     Title = "Egg IDs",
-    Desc = "Select IDs; compared by Type attribute on belt models",
+    Desc = "Pick the eggs you want to buy.",
     Values = eggIdList,
     Value = {},
     Multi = true,
@@ -779,8 +799,8 @@ eggDropdown = Tabs.AutoTab:Dropdown({
 
 -- Simple search bar to filter egg list
 local eggSearchInput = tryCreateTextInput(Tabs.AutoTab, {
-    Title = "Search Eggs",
-    Placeholder = "Type to filter (e.g., Basic, Dino)...",
+    Title = "Search",
+    Placeholder = "Type name...",
     ClearOnFocus = false,
     Callback = function(text)
         local filtered = {}
@@ -798,7 +818,7 @@ local eggSearchInput = tryCreateTextInput(Tabs.AutoTab, {
 })
 
 Tabs.AutoTab:Button({
-    Title = "Refresh Egg List",
+    Title = "Reload Eggs",
     Callback = function()
         loadEggConfig()
         eggIdList = buildEggIdList()
@@ -826,7 +846,7 @@ statusData = {
 Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
 local statusParagraph = Tabs.AutoTab:Paragraph({
     Title = "Auto Buy",
-    Desc = "Ready",
+    Desc = "Turn on the switch and pick egg names.",
     Image = "shopping-bag",
     ImageSize = 18,
 })
@@ -1021,7 +1041,8 @@ Tabs.AutoTab:Toggle({
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local placeAnchorPosition = nil
-local anchorRadiusStuds = 100
+local anchorRadiusStuds = 300
+
 
 -- Auto Place status tracking
 local placeStatusData = {
@@ -1037,9 +1058,20 @@ local placeStatusData = {
 }
 
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
+Tabs.PlaceTab:Paragraph({
+    Title = "How to use",
+    Desc = table.concat({
+        "1) Stand where you want pets to appear.",
+        "2) Press 'Save Current Location'.",
+        "3) Turn on 'Auto Place'.",
+        "Tip: It will try free tiles within 300 studs of your saved spot.",
+    }, "\n"),
+    Image = "info",
+    ImageSize = 16,
+})
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place",
-    Desc = "Ready",
+    Desc = "Save your spot, then turn on.",
     Image = "map-pin",
     ImageSize = 18,
 })
