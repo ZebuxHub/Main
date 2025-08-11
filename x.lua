@@ -1084,3 +1084,48 @@ Tabs.HatchTab:Toggle({
         end
     end
 })
+
+-- One-time hatch nearest egg (owned) within radius
+local function getModelPosition(model)
+    if not model or not model.GetPivot then return nil end
+    local ok, cf = pcall(function() return model:GetPivot() end)
+    if ok and cf then return cf.Position end
+    local pp = model.PrimaryPart or model:FindFirstChild("RootPart")
+    return pp and pp.Position or nil
+end
+
+local function findNearestHatchableModel(maxRadius)
+    local models = findHatchableModels()
+    if #models == 0 then return nil end
+    local playerPos = getPlayerRootPosition()
+    if not playerPos then return nil end
+    local best, bestDist
+    for _, m in ipairs(models) do
+        local pos = getModelPosition(m)
+        if pos then
+            local d = (pos - playerPos).Magnitude
+            if (not maxRadius or d <= maxRadius) and (not bestDist or d < bestDist) then
+                best, bestDist = m, d
+            end
+        end
+    end
+    return best, bestDist
+end
+
+Tabs.HatchTab:Button({
+    Title = "Hatch Nearest",
+    Desc = "Hatch your nearest owned egg (<= 100 studs)",
+    Callback = function()
+        local model, dist = findNearestHatchableModel(100)
+        if not model then
+            WindUI:Notify({ Title = "Auto Hatch", Content = "No owned egg nearby", Duration = 3 })
+            return
+        end
+        local ok = fireHatchRemote(model)
+        if ok then
+            WindUI:Notify({ Title = "Auto Hatch", Content = string.format("Hatched %s (%.0f studs)", model.Name, dist or 0), Duration = 3 })
+        else
+            WindUI:Notify({ Title = "Auto Hatch", Content = "Hatch failed", Duration = 3 })
+        end
+    end
+})
