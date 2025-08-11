@@ -12,6 +12,12 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
+-- Remote caches
+local RS_Remote = ReplicatedStorage:WaitForChild("Remote")
+local REMOTE_CharacterRE = RS_Remote:WaitForChild("CharacterRE")
+local REMOTE_ConveyorRE = RS_Remote:WaitForChild("ConveyorRE")
+local REMOTE_DinoEventRE = RS_Remote:WaitForChild("DinoEventRE")
+
 -- Window
 local Window = WindUI:CreateWindow({
     Title = "Build A Zoo",
@@ -176,7 +182,7 @@ end
 local function fireConveyorUpgrade(index)
     local args = { "Upgrade", tonumber(index) or index }
     local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("ConveyorRE"):FireServer(table.unpack(args))
+        REMOTE_ConveyorRE:FireServer(table.unpack(args))
     end)
     if not ok then warn("Conveyor Upgrade fire failed: " .. tostring(err)) end
     return ok
@@ -241,15 +247,16 @@ local function getFarmParts(islandNumber)
     
     local farmParts = {}
     local function scanForFarmParts(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
-                -- Additional validation: check if part is valid for placement
-                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                    table.insert(farmParts, child)
-                end
+    local kids = parent:GetChildren()
+    for i = 1, #kids do
+        local child = kids[i]
+        if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
+            if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                farmParts[#farmParts+1] = child
             end
-            scanForFarmParts(child)
         end
+        scanForFarmParts(child)
+    end
     end
     
     scanForFarmParts(island)
@@ -287,7 +294,8 @@ local function getPetModelsOverlappingTile(farmPart)
     -- Search within whole workspace, we will filter to models
     local parts = workspace:GetPartBoundsInBox(centerCF, regionSize, params)
     local modelMap = {}
-    for _, part in ipairs(parts) do
+    for i = 1, #parts do
+        local part = parts[i]
         if part ~= farmPart then
             local model = part:FindFirstAncestorOfClass("Model")
             if model and not modelMap[model] and isPetLikeModel(model) then
@@ -535,7 +543,7 @@ local autoHatchThread = nil
 
 -- Hatch debug UI
 Tabs.HatchTab:Section({ Title = "Status", Icon = "info" })
-local hatchStatus = { last = "Idle", owned = 0, ready = 0, lastModel = nil }
+local hatchStatus = { last = "Idle", owned = 0, ready = 0, lastModel = nil, lastTarget = nil }
 local hatchParagraph = Tabs.HatchTab:Paragraph({
     Title = "Auto Hatch",
     Desc = "Scanner idle",
@@ -546,7 +554,10 @@ local function updateHatchStatus()
     if not hatchParagraph or not hatchParagraph.SetDesc then return end
     local lines = {}
     table.insert(lines, string.format("Owned: %d | Ready: %d", hatchStatus.owned or 0, hatchStatus.ready or 0))
-    if hatchStatus.lastModel then table.insert(lines, "Target: " .. tostring(hatchStatus.lastModel)) end
+    if hatchStatus.lastTarget or hatchStatus.lastModel then
+        local label = hatchStatus.lastTarget or hatchStatus.lastModel
+        table.insert(lines, "Target: " .. tostring(label))
+    end
     table.insert(lines, "Status: " .. tostring(hatchStatus.last or ""))
     hatchParagraph:SetDesc(table.concat(lines, "\n"))
 end
@@ -606,7 +617,9 @@ end
 
 local function isHatchReady(model)
     -- Look for TimeBar/TXT text being empty anywhere under the model
-    for _, d in ipairs(model:GetDescendants()) do
+    local desc = model:GetDescendants()
+    for i = 1, #desc do
+        local d = desc[i]
         if d:IsA("TextLabel") and d.Name == "TXT" then
             local parent = d.Parent
             if parent and parent.Name == "TimeBar" then
@@ -623,6 +636,20 @@ local function isHatchReady(model)
         end
     end
     return false
+end
+
+local function getEggTypeForModel(model)
+    if not model then return nil end
+    local rp = model:FindFirstChild("RootPart")
+    if rp and rp.GetAttribute then
+        local t = rp:GetAttribute("EggType")
+        if t ~= nil then return tostring(t) end
+    end
+    if model.GetAttribute then
+        local t2 = model:GetAttribute("EggType")
+        if t2 ~= nil then return tostring(t2) end
+    end
+    return nil
 end
 
 local function collectOwnedEggs()
@@ -750,6 +777,7 @@ local function runAutoHatch()
             end)
             for _, m in ipairs(eggs) do
                 hatchStatus.lastModel = m.Name
+                hatchStatus.lastTarget = getEggTypeForModel(m) or m.Name
                 hatchStatus.last = "Moving to hatch"
                 updateHatchStatus()
                 tryHatchModel(m)
@@ -812,6 +840,7 @@ Tabs.HatchTab:Button({
             return (pa - me).Magnitude < (pb - me).Magnitude
         end)
         hatchStatus.lastModel = eggs[1].Name
+        hatchStatus.lastTarget = getEggTypeForModel(eggs[1]) or eggs[1].Name
         hatchStatus.last = "Moving to hatch"
         updateHatchStatus()
         local ok = tryHatchModel(eggs[1])
@@ -841,12 +870,7 @@ local function placePetAtPart(farmPart, petUID)
     }
     
     local ok, err = pcall(function()
-        local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE")
-        if remote then
-            remote:FireServer(unpack(args))
-        else
-            error("CharacterRE remote not found")
-        end
+        REMOTE_CharacterRE:FireServer(unpack(args))
     end)
     
     if not ok then
@@ -1037,8 +1061,9 @@ local function runAutoBuy()
         -- Combine eggs from all belts (Conveyor1..n)
         local allChildren = {}
         for _, belt in ipairs(beltFolders) do
-            for _, child in ipairs(belt:GetChildren()) do
-                table.insert(allChildren, child)
+            local kids = belt:GetChildren()
+            for i = 1, #kids do
+                allChildren[#allChildren+1] = kids[i]
             end
         end
         local children = {}
@@ -1059,12 +1084,13 @@ local function runAutoBuy()
 
         local matching = {}
         local seen = {}
-        for _, child in ipairs(children) do
+        for i = 1, #children do
+            local child = children[i]
             local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
             local t = child:GetAttribute("Type") or child:GetAttribute("EggType") or child:GetAttribute("Name")
             if t ~= nil then seen[tostring(t)] = true end
             if ok then
-                table.insert(matching, { uid = uid, price = price })
+                matching[#matching+1] = { uid = uid, price = price }
             end
         end
         do
@@ -1475,7 +1501,7 @@ local lastPackAt = 0
 
 local function fireOnlinePack()
     local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer({ event = "onlinepack" })
+        REMOTE_DinoEventRE:FireServer({ event = "onlinepack" })
     end)
     if not ok then warn("OnlinePack fire failed: " .. tostring(err)) end
     return ok
