@@ -449,21 +449,31 @@ local function findIsland3FarmSplitTiles()
     return list
 end
 
-local function getInstancePosition(inst)
+local function getPlacementPosition(inst)
     if not inst then return nil end
+    local defaultHalfHeight = 4 -- fixed size 8 -> half = 4
     if inst:IsA("BasePart") then
-        return inst.Position
+        local pos = inst.CFrame.Position
+        local hh = (inst.Size and inst.Size.Y and (inst.Size.Y * 0.5)) or defaultHalfHeight
+        return Vector3.new(pos.X, pos.Y + hh, pos.Z)
     end
     if inst:IsA("Model") then
         local cf
+        local part
         if typeof(inst.GetPivot) == "function" then
             cf = inst:GetPivot()
         end
         if not cf then
-            local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+            part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
             cf = part and part.CFrame or nil
         end
-        return cf and cf.Position or nil
+        if not cf then return nil end
+        local pos = cf.Position
+        local hh = defaultHalfHeight
+        if part and part.Size then
+            hh = (part.Size.Y or 8) * 0.5
+        end
+        return Vector3.new(pos.X, pos.Y + hh, pos.Z)
     end
     return nil
 end
@@ -542,9 +552,12 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
+                    -- pick a random tile
                     local targetPos, targetName
-                    for _, tile in ipairs(tiles) do
-                        local pos = getInstancePosition(tile)
+                    local maxTry = math.min(#tiles, 5)
+                    for i = 1, maxTry do
+                        local tile = tiles[math.random(1, #tiles)]
+                        local pos = getPlacementPosition(tile)
                         if pos then
                             targetPos = pos
                             targetName = tile.Name
