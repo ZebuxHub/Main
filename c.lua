@@ -194,14 +194,13 @@ Tabs.AutoTab:Button({
 
 local autoBuyEnabled = false
 local autoBuyThread = nil
+local autoPlaceEnabled = false
 
 -- Status tracking
 local statusData = {
     eggsFound = 0,
-    matchingFound = 0,
-    affordableFound = 0,
     lastAction = "Idle",
-    lastUID = nil,
+    lastEggName = nil,
     totalBuys = 0,
     netWorth = 0,
     islandName = nil,
@@ -218,12 +217,11 @@ local statusParagraph = Tabs.AutoTab:Paragraph({
 local function formatStatusDesc()
     local lines = {}
     table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
-    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
+    table.insert(lines, "Money: " .. tostring(statusData.netWorth))
     table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
-    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
     table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
-    if statusData.lastUID then
-        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
+    if statusData.lastEggName then
+        table.insert(lines, "Last Egg: " .. tostring(statusData.lastEggName))
     end
     table.insert(lines, "Last: " .. tostring(statusData.lastAction))
     return table.concat(lines, "\n")
@@ -255,7 +253,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
     if playerMoney < price then return false, nil, nil end
-    return true, eggInstance.Name, price
+    return true, eggInstance.Name, price, eggType
 end
 
 local function buyEggByUID(eggUID)
@@ -268,7 +266,9 @@ local function buyEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+        return false
     end
+    return true
 end
 
 local function focusEggByUID(eggUID)
@@ -282,6 +282,56 @@ local function focusEggByUID(eggUID)
     if not ok then
         warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
     end
+end
+
+-- Auto Place Egg support
+local function createVector3(x, y, z)
+    local ok, vecLib = pcall(function()
+        return _G and _G.vector
+    end)
+    if ok and type(vecLib) == "table" and type(vecLib.create) == "function" then
+        return vecLib.create(x, y, z)
+    end
+    return Vector3.new(x, y, z)
+end
+
+local targetPlaceColor = Color3.fromRGB(145, 98, 44)
+local function colorsClose(a, b, tol)
+    tol = tol or 0.01
+    return math.abs(a.R - b.R) <= tol and math.abs(a.G - b.G) <= tol and math.abs(a.B - b.B) <= tol
+end
+
+local function findPlacementPosition(islandName)
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    local island = art:FindFirstChild(islandName or "")
+    if not island then return nil end
+    for _, inst in ipairs(island:GetDescendants()) do
+        if inst:IsA("BasePart") then
+            local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
+            if col and colorsClose(col, targetPlaceColor) then
+                return inst.Position
+            end
+        end
+    end
+    return nil
+end
+
+local function placeEggByUID(eggUID, dstPosition)
+    if not eggUID or not dstPosition then return false end
+    local payload = {
+        DST = createVector3(dstPosition.X, dstPosition.Y, dstPosition.Z),
+        ID = eggUID,
+    }
+    local args = { "Place", payload }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+        return false
+    end
+    return true
 end
 
 local function runAutoBuy()
@@ -299,8 +349,6 @@ local function runAutoBuy()
         local beltFolder = getIslandBeltFolder(islandName)
         if not beltFolder then
             statusData.eggsFound = 0
-            statusData.matchingFound = 0
-            statusData.affordableFound = 0
             statusData.lastAction = "Waiting for belt on island"
             updateStatusParagraph()
             task.wait(0.6)
@@ -316,8 +364,6 @@ local function runAutoBuy()
         statusData.netWorth = getPlayerNetWorth()
 
         if statusData.eggsFound == 0 then
-            statusData.matchingFound = 0
-            statusData.affordableFound = 0
             statusData.lastAction = "Waiting for eggs to spawn"
             updateStatusParagraph()
             task.wait(0.5)
@@ -326,15 +372,13 @@ local function runAutoBuy()
 
         local matching = {}
         for _, child in ipairs(children) do
-            local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
+            local ok, uid, price, eggType = shouldBuyEggInstance(child, statusData.netWorth)
             if ok then
-                table.insert(matching, { uid = uid, price = price })
+                table.insert(matching, { uid = uid, price = price, eggType = eggType })
             end
         end
-        statusData.matchingFound = #matching
 
-        if statusData.matchingFound == 0 then
-            statusData.affordableFound = 0
+        if #matching == 0 then
             statusData.lastAction = "No matching eggs on belt (adjust dropdown)"
             updateStatusParagraph()
             task.wait(0.5)
@@ -351,9 +395,8 @@ local function runAutoBuy()
                 table.insert(affordable, item)
             end
         end
-        statusData.affordableFound = #affordable
 
-        if statusData.affordableFound == 0 then
+        if #affordable == 0 then
             local cheapest = matching[1]
             statusData.lastAction = "Waiting for money (cheapest " .. tostring(cheapest and cheapest.price or "?") .. ", NetWorth " .. tostring(statusData.netWorth) .. ")"
             updateStatusParagraph()
@@ -362,13 +405,16 @@ local function runAutoBuy()
         end
 
         local chosen = affordable[1]
-        statusData.lastUID = chosen.uid
-        statusData.lastAction = "Buying UID " .. tostring(chosen.uid) .. " for " .. tostring(chosen.price)
+        statusData.lastEggName = chosen.eggType
+        statusData.lastAction = "Buying " .. tostring(chosen.eggType) .. " (UID " .. tostring(chosen.uid) .. ") for " .. tostring(chosen.price)
         updateStatusParagraph()
-        buyEggByUID(chosen.uid)
-        focusEggByUID(chosen.uid)
-        statusData.totalBuys = (statusData.totalBuys or 0) + 1
-        statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
+        local bought = buyEggByUID(chosen.uid)
+        if bought then
+            focusEggByUID(chosen.uid)
+            statusData.totalBuys = (statusData.totalBuys or 0) + 1
+        else
+            statusData.lastAction = "Buy failed"
+        end
         updateStatusParagraph()
         task.wait(0.25)
     end
@@ -393,6 +439,17 @@ Tabs.AutoTab:Toggle({
             statusData.lastAction = "Stopped"
             updateStatusParagraph()
         end
+    end
+})
+
+Tabs.AutoTab:Toggle({
+    Title = "Auto Place Egg",
+    Desc = "Place bought eggs at brown target on your island",
+    Value = false,
+    Callback = function(state)
+        autoPlaceEnabled = state
+        statusData.lastAction = state and "Auto Place enabled" or "Auto Place disabled"
+        updateStatusParagraph()
     end
 })
 
