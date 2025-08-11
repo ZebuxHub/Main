@@ -35,6 +35,7 @@ Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "Auto Pack", Icon = "gift" })
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "Fruit Market", Icon = "apple" })
 Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "Auto Feed", Icon = "utensils" })
+Tabs.DinoTab = Tabs.MainSection:Tab({ Title = "Dino Quest", Icon = "trophy" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -46,6 +47,7 @@ local autoFruitThread = nil
 local eggConfig = {}
 local conveyorConfig = {}
 local petFoodConfig = {}
+local dinoTaskConfig = {}
 
 local function loadEggConfig()
     local ok, cfg = pcall(function()
@@ -84,6 +86,19 @@ local function loadPetFoodConfig()
         petFoodConfig = cfg
     else
         petFoodConfig = {}
+    end
+end
+
+local function loadDinoTaskConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResDinoEventTask")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        dinoTaskConfig = cfg
+    else
+        dinoTaskConfig = {}
     end
 end
 local function getTypeFromConfig(key, val)
@@ -508,6 +523,7 @@ end
 -- ============ Auto Claim Money ============
 local autoClaimEnabled = false
 local autoClaimThread = nil
+local autoClaimDelay = 0.1 -- seconds between claims
 
 local function getOwnedPetNames()
     local names = {}
@@ -555,7 +571,7 @@ local function runAutoClaim()
             if #names == 0 then task.wait(0.8) return end
             for _, n in ipairs(names) do
                 claimMoneyForPet(n)
-                task.wait(0.1)
+                task.wait(autoClaimDelay)
             end
         end)
         if not ok then
@@ -580,6 +596,18 @@ Tabs.ClaimTab:Toggle({
         elseif (not state) and autoClaimThread then
             WindUI:Notify({ Title = "Auto Claim", Content = "Stopped", Duration = 3 })
         end
+    end
+})
+
+Tabs.ClaimTab:Slider({
+    Title = "Delay Between Claims",
+    Desc = "Time between each pet claim (ms)",
+    Default = 100,
+    Min = 0,
+    Max = 1000,
+    Rounding = 0,
+    Callback = function(value)
+        autoClaimDelay = math.clamp((tonumber(value) or 100) / 1000, 0, 2)
     end
 })
 
@@ -948,6 +976,7 @@ end
 loadEggConfig()
 loadConveyorConfig()
 loadPetFoodConfig()
+loadDinoTaskConfig()
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
 
@@ -1436,6 +1465,7 @@ Window:OnClose(function()
     autoPlaceEnabled = false
     autoFruitEnabled = false
     autoFeedEnabled = false
+    autoDinoEnabled = false
 end)
 
 
@@ -1841,6 +1871,13 @@ local function tryFeedFromEntry(petEntry)
     end
     local model = uidToWorldModel(uid)
     if not model then return false end
+    -- if we can infer a fruit name, focus it for UX; fallback to any owned fruit
+    local anyFruit
+    for _, n in ipairs(getAllFruitNames()) do
+        local c = getAssetCount(n)
+        if type(c) == "number" and c > 0 then anyFruit = n break end
+    end
+    if anyFruit then focusFruitName(anyFruit) end
     feedStatus.last = "Feeding " .. tostring(uid)
     updateFeedStatus()
     local ok = fireFeedPetByModel(model)
@@ -1918,6 +1955,116 @@ Tabs.FeedTab:Toggle({
             updateFeedStatus()
             WindUI:Notify({ Title = "Auto Feed", Content = "Stopped", Duration = 3 })
         end
+    end
+})
+
+-- ============ Dino Quest (Auto Claim Rewards) ============
+Tabs.DinoTab:Section({ Title = "Status", Icon = "info" })
+local dinoStatus = { last = "Idle", tasks = {}, claimed = 0 }
+local dinoParagraph = Tabs.DinoTab:Paragraph({ Title = "Dino Quests", Desc = "Waiting...", Image = "trophy", ImageSize = 18 })
+local function updateDinoStatus()
+    if dinoParagraph and dinoParagraph.SetDesc then
+        local lines = {}
+        local taskLines = {}
+        for i = 1, 3 do
+            local t = dinoStatus.tasks[i]
+            if t then
+                table.insert(taskLines, string.format("%d) %s | Id=%s", i, tostring(t.name or "Task"), tostring(t.id or "?")))
+            end
+        end
+        table.insert(lines, table.concat(taskLines, "\n"))
+        table.insert(lines, "Claimed: " .. tostring(dinoStatus.claimed))
+        table.insert(lines, "Status: " .. tostring(dinoStatus.last))
+        dinoParagraph:SetDesc(table.concat(lines, "\n"))
+    end
+end
+
+local function readDinoTasks()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local evt = data and data:FindFirstChild("DinoEventTaskData")
+    if not evt then return {} end
+    local tasksFolder = evt:FindFirstChild("Tasks") or evt
+    local tasks = {}
+    for i = 1, 3 do
+        local child = tasksFolder:FindFirstChild(tostring(i)) or tasksFolder:FindFirstChild("Task"..tostring(i)) or tasksFolder:FindFirstChild("s."..tostring(i))
+        if child then
+            local idAttr = child:GetAttribute("Id") or child:GetAttribute("ID") or child:GetAttribute("id")
+            local idStr = idAttr and tostring(idAttr) or nil
+            local def = idStr and dinoTaskConfig[idStr]
+            local name = (type(def) == "table" and (def.Name or def.CompleteType or def.ID)) or idStr
+            tasks[i] = { id = idStr, name = name, inst = child }
+        end
+    end
+    return tasks
+end
+
+local function fireDinoReward(idNumber)
+    local args = { { event = "exchange", id = "Reward_" .. tostring(idNumber) } }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+    end)
+    if not ok then warn("Dino exchange failed: " .. tostring(err)) end
+    return ok
+end
+
+local function claimAvailableRewards()
+    local tasks = readDinoTasks()
+    dinoStatus.tasks = tasks
+    local claimedNow = 0
+    for i = 1, 3 do
+        local t = tasks[i]
+        if t and t.id then
+            local num = tonumber(t.id:match("(%d+)$"))
+            if num then
+                if fireDinoReward(num) then claimedNow += 1 end
+            end
+        end
+    end
+    dinoStatus.claimed = (dinoStatus.claimed or 0) + claimedNow
+    dinoStatus.last = claimedNow > 0 and ("Claimed "..claimedNow) or "Nothing to claim"
+    updateDinoStatus()
+    return claimedNow
+end
+
+local autoDinoEnabled = false
+local autoDinoThread
+Tabs.DinoTab:Toggle({
+    Title = "Auto Claim Rewards",
+    Desc = "Claims Dino quest rewards (1..3) when present",
+    Value = false,
+    Callback = function(state)
+        autoDinoEnabled = state
+        if state and not autoDinoThread then
+            autoDinoThread = task.spawn(function()
+                while autoDinoEnabled do
+                    local ok, err = pcall(function()
+                        claimAvailableRewards()
+                    end)
+                    if not ok then
+                        dinoStatus.last = "Error: " .. tostring(err)
+                        updateDinoStatus()
+                        task.wait(1)
+                    else
+                        task.wait(2)
+                    end
+                end
+                autoDinoThread = nil
+            end)
+            dinoStatus.last = "Started"
+            updateDinoStatus()
+        elseif (not state) and autoDinoThread then
+            dinoStatus.last = "Stopped"
+            updateDinoStatus()
+        end
+    end
+})
+
+Tabs.DinoTab:Button({
+    Title = "Claim Now",
+    Desc = "Immediately checks tasks and claims rewards",
+    Callback = function()
+        claimAvailableRewards()
     end
 })
 
@@ -2156,6 +2303,13 @@ local function fireBuyFruit(fruitName)
     end)
     if not ok then warn("Food buy failed for " .. tostring(fruitName) .. ": " .. tostring(err)) end
     return ok
+end
+
+local function focusFruitName(fruitName)
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack({ "Focus", tostring(fruitName) }))
+    end)
+    if not ok then warn("Focus fruit failed: " .. tostring(err)) end
 end
 
 -- local autoFruitEnabled and autoFruitThread are declared near the top
