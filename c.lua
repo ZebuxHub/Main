@@ -534,10 +534,16 @@ function placeEggByUID(eggUID)
             return
         end
     end
-    -- Compute the top-center of the tile so the egg hatches on the surface
-    local center = part.CFrame.Position
-    local topY = center.Y + (part.Size and part.Size.Y or 0) * 0.5
-    local dst = createVector3(center.X, topY, center.Z)
+    -- Prefer grid center from attributes if available; fallback to top-center of the tile
+    local gridDst = getGridVectorFromPart(part)
+    local dst
+    if gridDst then
+        dst = gridDst
+    else
+        local center = part.CFrame.Position
+        local topY = center.Y + (part.Size and part.Size.Y or 0) * 0.5
+        dst = createVector3(center.X, topY, center.Z)
+    end
     local args = {
         "Place",
         {
@@ -605,6 +611,13 @@ Tabs.AutoTab:Toggle({
                         statusData.lastAction = "Auto Place: no tile found"
                         updateStatusParagraph()
                         task.wait(0.5)
+                        continue
+                    end
+                    -- Enforce same-island check here as well
+                    if not isPartInIsland(targetPart, islandName) then
+                        statusData.lastAction = "Auto Place: found tile not in my island"
+                        updateStatusParagraph()
+                        task.wait(0.4)
                         continue
                     end
 
