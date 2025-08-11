@@ -33,13 +33,19 @@ Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "Auto Hatch", Icon = "zap" })
 Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "Auto Claim", Icon = "dollar-sign" })
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "Auto Pack", Icon = "gift" })
+Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "Fruit Market", Icon = "apple" })
+Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "Auto Feed", Icon = "utensils" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
+-- Fruit auto-buy state (declared early so close handler can reference)
+local autoFruitEnabled = false
+local autoFruitThread = nil
 
 -- Egg config loader
 local eggConfig = {}
 local conveyorConfig = {}
+local petFoodConfig = {}
 
 local function loadEggConfig()
     local ok, cfg = pcall(function()
@@ -65,6 +71,19 @@ local function loadConveyorConfig()
         conveyorConfig = cfg
     else
         conveyorConfig = {}
+    end
+end
+
+local function loadPetFoodConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResPetFood")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        petFoodConfig = cfg
+    else
+        petFoodConfig = {}
     end
 end
 local function getTypeFromConfig(key, val)
@@ -203,6 +222,40 @@ local function getIslandBelts(islandName)
         end
     end
     return belts
+end
+
+-- Pick one "active" belt (with most eggs; tie -> nearest to player)
+local function getActiveBelt(islandName)
+    local belts = getIslandBelts(islandName)
+    if #belts == 0 then return nil end
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local hrpPos = hrp and hrp.Position or Vector3.new()
+    local bestBelt, bestScore, bestDist
+    for _, belt in ipairs(belts) do
+        local children = belt:GetChildren()
+        local eggs = 0
+        local samplePos
+        for _, ch in ipairs(children) do
+            if ch:IsA("Model") then
+                eggs += 1
+                if not samplePos then
+                    local ok, cf = pcall(function() return ch:GetPivot() end)
+                    if ok and cf then samplePos = cf.Position end
+                end
+            end
+        end
+        if not samplePos then
+            local p = belt.Parent and belt.Parent:FindFirstChildWhichIsA("BasePart", true)
+            samplePos = p and p.Position or hrpPos
+        end
+        local dist = (samplePos - hrpPos).Magnitude
+        -- Higher eggs preferred; for tie, closer belt preferred
+        local score = eggs * 100000 - dist
+        if not bestScore or score > bestScore then
+            bestScore, bestDist, bestBelt = score, dist, belt
+        end
+    end
+    return bestBelt
 end
 
 -- Auto Place helpers
@@ -894,6 +947,7 @@ end
 -- UI state
 loadEggConfig()
 loadConveyorConfig()
+loadPetFoodConfig()
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
 
@@ -1039,8 +1093,8 @@ local function runAutoBuy()
             continue
         end
 
-        local beltFolders = getIslandBelts(islandName)
-        if #beltFolders == 0 then
+        local activeBelt = getActiveBelt(islandName)
+        if not activeBelt then
             statusData.eggsFound = 0
             statusData.matchingFound = 0
             statusData.affordableFound = 0
@@ -1050,13 +1104,8 @@ local function runAutoBuy()
             continue
         end
 
-        -- Combine eggs from all belts (Conveyor1..n)
-        local allChildren = {}
-        for _, belt in ipairs(beltFolders) do
-            for _, child in ipairs(belt:GetChildren()) do
-                table.insert(allChildren, child)
-            end
-        end
+        -- Use only the active belt's eggs
+        local allChildren = activeBelt:GetChildren()
         local children = {}
         for _, inst in ipairs(allChildren) do
             if inst:IsA("Model") then table.insert(children, inst) end
@@ -1158,7 +1207,7 @@ Tabs.AutoTab:Toggle({
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local placeAnchorPosition = nil
-local anchorRadiusStuds = 300
+local anchorRadiusStuds = 50
 
 
 -- Auto Place status tracking
@@ -1378,108 +1427,6 @@ Tabs.PlaceTab:Button({
     end
 })
 
--- Manual place button for testing
-Tabs.PlaceTab:Button({
-    Title = "Place Pet Now",
-    Desc = "Manually place a pet at the nearest free farm location",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        if not islandName then
-            WindUI:Notify({ Title = "Error", Content = "No island assigned", Duration = 3 })
-            return
-        end
-        
-        local islandNumber = getIslandNumberFromName(islandName)
-        if not islandNumber then
-            WindUI:Notify({ Title = "Error", Content = "Could not determine island number", Duration = 3 })
-            return
-        end
-        
-        local farmParts = getFarmParts(islandNumber)
-        if #farmParts == 0 then
-            WindUI:Notify({ Title = "Error", Content = "No farm parts found", Duration = 3 })
-            return
-        end
-        
-        -- Determine available eggs for manual place
-        local availableUids = listAvailableEggUIDs()
-        if #availableUids == 0 then
-            WindUI:Notify({ Title = "Error", Content = "No available eggs to place", Duration = 3 })
-            return
-        end
-        local petUID = availableUids[1]
-        
-        -- Enhanced validation
-        local isValid, validationMsg = validatePetUID(petUID)
-        if not isValid then
-            WindUI:Notify({ Title = "Error", Content = "PET UID validation failed: " .. validationMsg, Duration = 3 })
-            return
-        end
-        
-        -- Prefer an available tile using pivot occupancy checks
-        local targetPos = placeAnchorPosition or getPlayerRootPosition()
-        local nearby = {}
-        for _, part in ipairs(farmParts) do
-            if not targetPos or (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
-                table.insert(nearby, part)
-            end
-        end
-        local chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, 8, targetPos)
-        if not chosenPart then
-            WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
-            placeStatusData.lastAction = "Manual place failed (occupied)"
-            updatePlaceStatusParagraph()
-            return
-        end
-        local success = placePetAtPart(chosenPart, petUID)
-        
-        if success then
-            WindUI:Notify({ Title = "Success", Content = "Pet placed at farm location", Duration = 3 })
-            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
-            placeStatusData.lastAction = "Manual place successful"
-            updatePlaceStatusParagraph()
-        else
-            WindUI:Notify({ Title = "Error", Content = "Failed to place pet", Duration = 3 })
-            placeStatusData.lastAction = "Manual place failed"
-            updatePlaceStatusParagraph()
-        end
-    end
-})
-
--- Pet validation test button
-Tabs.PlaceTab:Button({
-    Title = "Test Pet Validation",
-    Desc = "Check if current PET UID is valid",
-    Callback = function()
-        local petUID = getPetUID()
-        if not petUID then
-            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
-            return
-        end
-        
-        local isValid, validationMsg = validatePetUID(petUID)
-        local petInfo = getPetInfo(petUID)
-        
-        local message = "PET UID: " .. tostring(petUID) .. "\n"
-        message = message .. "Validation: " .. validationMsg .. "\n"
-        if petInfo and petInfo.Type then
-            message = message .. "Pet Type: " .. tostring(petInfo.Type)
-        end
-        
-        WindUI:Notify({ 
-            Title = isValid and "Valid PET" or "Invalid PET", 
-            Content = message, 
-            Duration = 5 
-        })
-        
-        -- Update status display
-        placeStatusData.petUID = petUID
-        placeStatusData.petInfo = petInfo
-        placeStatusData.validationStatus = validationMsg
-        updatePlaceStatusParagraph()
-    end
-})
-
 -- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
@@ -1487,6 +1434,8 @@ Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = tru
 Window:OnClose(function()
     autoBuyEnabled = false
     autoPlaceEnabled = false
+    autoFruitEnabled = false
+    autoFeedEnabled = false
 end)
 
 
@@ -1503,23 +1452,62 @@ local function fireOnlinePack()
     return ok
 end
 
+local function getOnlinePackText()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local gui = pg:FindFirstChild("ScreenDinoOnLinePack")
+    if not gui then return nil end
+    local root = gui:FindFirstChild("Root")
+    if not root then return nil end
+    local bar = root:FindFirstChild("ProgressBar")
+    if not bar then return nil end
+    local textHolder = bar:FindFirstChild("Text")
+    if not textHolder then return nil end
+    local label = textHolder:FindFirstChild("Text")
+    if label and label:IsA("TextLabel") then
+        return label.Text
+    end
+    return nil
+end
+
+local function parseMMSS(str)
+    if type(str) ~= "string" then return nil end
+    local m, s = str:match("^(%d+):(%d+)$")
+    if not m then return nil end
+    local mi = tonumber(m)
+    local si = tonumber(s)
+    if not mi or not si then return nil end
+    return mi * 60 + si
+end
+
+local function isPackReady()
+    local txt = getOnlinePackText()
+    if not txt then return false end
+    local secs = parseMMSS(txt)
+    if not secs then return false end
+    return secs >= 1800 -- 30:00
+end
+
 local function runAutoPack()
     while autoPackEnabled do
-        local now = os.clock()
-        local since = now - (lastPackAt or 0)
-        if since >= 600 then -- 10 minutes
-            if fireOnlinePack() then
-                lastPackAt = os.clock()
-                WindUI:Notify({ Title = "Auto Pack", Content = "Online pack claimed", Duration = 3 })
+        -- Only claim when UI shows 30:00 (or above)
+        if isPackReady() then
+            if os.clock() - (lastPackAt or 0) > 2 then -- small debounce window
+                if fireOnlinePack() then
+                    lastPackAt = os.clock()
+                    WindUI:Notify({ Title = "Auto Pack", Content = "Online pack claimed", Duration = 3 })
+                end
             end
+            task.wait(2)
+        else
+            task.wait(1)
         end
-        task.wait(5)
     end
 end
 
 Tabs.PackTab:Toggle({
     Title = "Auto Claim Pack",
-    Desc = "Claims online pack every 10 minutes",
+    Desc = "Claims when the timer shows 30:00",
     Value = false,
     Callback = function(state)
         autoPackEnabled = state
@@ -1652,4 +1640,493 @@ Tabs.ShopTab:Button({
 })
 
 
+
+-- ============ Fruit Market (Auto Buy Fruit) ============
+Tabs.FruitTab:Section({ Title = "Status", Icon = "info" })
+local fruitStatus = { last = "Idle", haveUI = false, haveData = false, selected = "" }
+local fruitParagraph = Tabs.FruitTab:Paragraph({ Title = "Fruit Market", Desc = "Pick fruits then turn on.", Image = "apple", ImageSize = 18 })
+local function updateFruitStatus()
+    if fruitParagraph and fruitParagraph.SetDesc then
+        local lines = {}
+        table.insert(lines, "Selected: " .. (fruitStatus.selected or ""))
+        table.insert(lines, "Store Data: " .. (fruitStatus.haveData and "Available" or "Not found"))
+        table.insert(lines, "Store UI: " .. (fruitStatus.haveUI and "Visible" or "Not found"))
+        table.insert(lines, "Status: " .. tostring(fruitStatus.last or ""))
+        fruitParagraph:SetDesc(table.concat(lines, "\n"))
+    end
+end
+
+local function buildFruitList()
+    local names = {}
+    for key, val in pairs(petFoodConfig) do
+        local name
+        if type(val) == "table" then
+            name = val.Name or val.ID or val.Id or key
+        else
+            name = key
+        end
+        name = tostring(name)
+        if name and name ~= "" then table.insert(names, name) end
+    end
+    table.sort(names)
+    return names
+end
+
+local selectedFruitSet = {}
+local fruitDropdown
+fruitDropdown = Tabs.FruitTab:Dropdown({
+    Title = "Fruits",
+    Desc = "Choose items to buy.",
+    Values = buildFruitList(),
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        selectedFruitSet = {}
+        local function add(name)
+            selectedFruitSet[tostring(name)] = true
+        end
+        if type(selection) == "table" then
+            for _, n in ipairs(selection) do add(n) end
+        elseif type(selection) == "string" then
+            add(selection)
+        end
+        local keys = {}
+        for k in pairs(selectedFruitSet) do table.insert(keys, k) end
+        table.sort(keys)
+        fruitStatus.selected = table.concat(keys, ", ")
+        updateFruitStatus()
+    end
+})
+
+-- ============ Auto Feed Pets ============
+local function getFeedablePets()
+    local feedable = {}
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then return feedable end
+    for _, pet in ipairs(petsFolder:GetChildren()) do
+        if pet:IsA("Model") then
+            local root = pet:FindFirstChild("RootPart")
+            if root then
+                -- Path: RootPart["GUI/BigPetGUI"].Feed
+                local gui = root:FindFirstChild("GUI")
+                if gui then
+                    local big = gui:FindFirstChild("BigPetGUI")
+                    if big and big:FindFirstChild("Feed") then
+                        table.insert(feedable, pet)
+                    end
+                end
+            end
+        end
+    end
+    return feedable
+end
+
+local function fireFeedPetByModel(petModel)
+    if not petModel then return false end
+    local args = { "Feed", petModel.Name }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
+    end)
+    if not ok then warn("Feed failed for pet " .. tostring(petModel.Name) .. ": " .. tostring(err)) end
+    return ok
+end
+
+local autoFeedEnabled = false
+local autoFeedThread = nil
+local feedStatus = { last = "Idle", fed = 0, found = 0 }
+Tabs.FeedTab:Section({ Title = "Status", Icon = "info" })
+local feedParagraph = Tabs.FeedTab:Paragraph({ Title = "Auto Feed", Desc = "Turn on to feed pets that show a Feed bar.", Image = "utensils", ImageSize = 18 })
+local function updateFeedStatus()
+    if feedParagraph and feedParagraph.SetDesc then
+        feedParagraph:SetDesc(string.format("Feedable: %d\nFed total: %d\nStatus: %s", feedStatus.found or 0, feedStatus.fed or 0, tostring(feedStatus.last or "")))
+    end
+end
+
+local function runAutoFeed()
+    while autoFeedEnabled do
+        local ok, err = pcall(function()
+            -- Stop if player has no fruit at all
+            if not hasAnyFruit() then
+                feedStatus.last = "No fruit you broke boy"
+                updateFeedStatus()
+                task.wait(1)
+                return
+            end
+            local list = getFeedablePets()
+            feedStatus.found = #list
+            if #list == 0 then
+                feedStatus.last = "No pets with Feed GUI"
+                updateFeedStatus()
+                task.wait(1)
+                return
+            end
+            local fedNow = 0
+            for _, pet in ipairs(list) do
+                feedStatus.last = "Feeding " .. tostring(pet.Name)
+                updateFeedStatus()
+                if fireFeedPetByModel(pet) then
+                    fedNow += 1
+                end
+                task.wait(0.15)
+            end
+            feedStatus.fed = (feedStatus.fed or 0) + fedNow
+            feedStatus.last = string.format("Fed %d this round", fedNow)
+            updateFeedStatus()
+            task.wait(1)
+        end)
+        if not ok then
+            feedStatus.last = "Error: " .. tostring(err)
+            updateFeedStatus()
+            task.wait(1)
+        end
+    end
+end
+
+Tabs.FeedTab:Toggle({
+    Title = "Auto Feed",
+    Desc = "Feeds only pets that have a Feed bar (workspace.Pets)",
+    Value = false,
+    Callback = function(state)
+        autoFeedEnabled = state
+        if state and not autoFeedThread then
+            autoFeedThread = task.spawn(function()
+                runAutoFeed()
+                autoFeedThread = nil
+            end)
+            feedStatus.last = "Started"
+            updateFeedStatus()
+            WindUI:Notify({ Title = "Auto Feed", Content = "Started", Duration = 3 })
+        elseif (not state) and autoFeedThread then
+            feedStatus.last = "Stopped"
+            updateFeedStatus()
+            WindUI:Notify({ Title = "Auto Feed", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.FeedTab:Button({
+    Title = "Feed All Now",
+    Desc = "Feeds each pet with a Feed bar once",
+    Callback = function()
+        local list = getFeedablePets()
+        feedStatus.found = #list
+        if #list == 0 then
+            WindUI:Notify({ Title = "Auto Feed", Content = "No feedable pets found", Duration = 3 })
+            feedStatus.last = "No feedable pets"
+            updateFeedStatus()
+            return
+        end
+        local count = 0
+        for _, pet in ipairs(list) do
+            if fireFeedPetByModel(pet) then count += 1 end
+            task.wait(0.1)
+        end
+        feedStatus.fed = (feedStatus.fed or 0) + count
+        feedStatus.last = string.format("Manual: fed %d", count)
+        updateFeedStatus()
+        WindUI:Notify({ Title = "Auto Feed", Content = string.format("Fed %d", count), Duration = 3 })
+    end
+})
+
+Tabs.FruitTab:Button({
+    Title = "Reload Fruits",
+    Desc = "Reload ResPetFood",
+    Callback = function()
+        loadPetFoodConfig()
+        if fruitDropdown and fruitDropdown.Refresh then
+            fruitDropdown:Refresh(buildFruitList())
+        end
+        updateFruitStatus()
+    end
+})
+
+local function getFoodStoreLST()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local data = pg:FindFirstChild("Data")
+    if not data then return nil end
+    local store = data:FindFirstChild("FoodStore")
+    if not store then return nil end
+    local lst = store:FindFirstChild("LST")
+    return lst
+end
+
+local function getAssetContainer()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Asset") or nil
+end
+
+local function getAssetCount(itemName)
+    local asset = getAssetContainer()
+    if not asset or not itemName then return nil end
+    local val = asset:GetAttribute(itemName)
+    if val == nil then
+        local child = asset:FindFirstChild(itemName)
+        if child and child:IsA("ValueBase") then val = child.Value end
+    end
+    local num = tonumber(val)
+    return num
+end
+
+local function hasAnyFruit()
+    -- Iterate known fruit names from petFoodConfig
+    for key, val in pairs(petFoodConfig) do
+        local name = (type(val) == "table" and (val.Name or val.ID or val.Id)) or key
+        name = tostring(name)
+        if name and name ~= "" then
+            local count = getAssetCount(name)
+            if type(count) == "number" and count > 0 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function getDeployContainer()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Deploy") or nil
+end
+
+local function readDeploySlots()
+    local deploy = getDeployContainer()
+    local map = {}
+    if not deploy then return map end
+    for i = 2, 8 do
+        local key = "S" .. tostring(i)
+        local value = deploy:GetAttribute(key)
+        if value == nil then
+            local child = deploy:FindFirstChild(key)
+            if child and child:IsA("ValueBase") then value = child.Value end
+        end
+        if value ~= nil then map[key] = tostring(value) end
+    end
+    return map
+end
+
+local function sanitizeKey(k)
+    if type(k) ~= "string" then return nil end
+    -- keep original; also provide simple variants
+    return k
+end
+
+local function candidateKeysForFruit(fruitName)
+    local keys = {}
+    local base = tostring(fruitName)
+    table.insert(keys, base)
+    table.insert(keys, string.upper(base))
+    table.insert(keys, string.lower(base))
+    table.insert(keys, base:gsub("%s+", ""))
+    -- try to find matching entry in petFoodConfig to harvest alternate identifiers
+    for k, v in pairs(petFoodConfig) do
+        local name = (type(v) == "table" and (v.Name or v.ID or v.Id)) or k
+        if tostring(name) == base then
+            if type(v) == "table" then
+                for _, alt in ipairs({ v.Name, v.ID, v.Id }) do
+                    if alt and not table.find(keys, tostring(alt)) then table.insert(keys, tostring(alt)) end
+                end
+            end
+            if not table.find(keys, tostring(k)) then table.insert(keys, tostring(k)) end
+            break
+        end
+    end
+    return keys
+end
+
+local function readStockFromLST(lst, fruitName)
+    if not lst then return nil end
+    local keys = candidateKeysForFruit(fruitName)
+    -- Prefer attributes
+    if lst.GetAttribute then
+        for _, key in ipairs(keys) do
+            local val = lst:GetAttribute(key)
+            if val ~= nil then
+                local num = tonumber(val)
+                if num ~= nil then return num end
+                -- sometimes boolean-like; treat true as 1
+                if type(val) == "boolean" then return val and 1 or 0 end
+            end
+        end
+    end
+    -- Fallback: child Value objects
+    for _, key in ipairs(keys) do
+        local child = lst:FindFirstChild(key)
+        if child and child:IsA("ValueBase") then
+            local num = tonumber(child.Value)
+            if num ~= nil then return num end
+        end
+    end
+    return nil
+end
+
+local function getFoodStoreUI()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local gui = pg:FindFirstChild("ScreenFoodStore")
+    if not gui then return nil end
+    return gui
+end
+
+local function isFruitInStock(fruitName)
+    -- First, try attribute-based stock via Data.FoodStore.LST
+    local lst = getFoodStoreLST()
+    fruitStatus.haveData = lst ~= nil
+    if lst then
+        local qty = readStockFromLST(lst, fruitName)
+        if qty ~= nil then return qty > 0 end
+    end
+    -- Fallback to UI if present
+    local gui = getFoodStoreUI()
+    fruitStatus.haveUI = gui ~= nil
+    if not gui then return false end
+    local root = gui:FindFirstChild("Root")
+    if not root then return false end
+    local frame = root:FindFirstChild("Frame")
+    if not frame then return false end
+    local scroller = frame:FindFirstChild("ScrollingFrame")
+    if not scroller then return false end
+    local item = scroller:FindFirstChild(fruitName)
+    if not item then return false end
+    local btn = item:FindFirstChild("ItemButton")
+    if not btn then return false end
+    local stock = btn:FindFirstChild("StockLabel")
+    if not stock or not stock:IsA("TextLabel") then return false end
+    local txt = tostring(stock.Text or "")
+    if txt == "" then return false end
+    local num = tonumber(txt)
+    if num ~= nil then return num > 0 end
+    return true
+end
+
+local function fireBuyFruit(fruitName)
+    local args = { fruitName }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+    end)
+    if not ok then warn("Food buy failed for " .. tostring(fruitName) .. ": " .. tostring(err)) end
+    return ok
+end
+
+-- local autoFruitEnabled and autoFruitThread are declared near the top
+local fruitOnlyIfZero = false
+
+local function runAutoFruit()
+    while autoFruitEnabled do
+        local ok, err = pcall(function()
+            -- build order list once per tick
+            local names = {}
+            for k in pairs(selectedFruitSet) do table.insert(names, k) end
+            table.sort(names)
+            if #names == 0 then
+                fruitStatus.last = "Pick fruits first"
+                updateFruitStatus()
+                task.wait(0.8)
+                return
+            end
+            local bought = 0
+            for _, name in ipairs(names) do
+                if fruitOnlyIfZero then
+                    local have = getAssetCount(name)
+                    if have ~= nil and have > 0 then
+                        fruitStatus.last = name .. " already owned (" .. tostring(have) .. ")"
+                        updateFruitStatus()
+                        task.wait(0.05)
+                        goto continue_loop
+                    end
+                end
+                if isFruitInStock(name) then
+                    fruitStatus.last = "Buying " .. name
+                    updateFruitStatus()
+                    fireBuyFruit(name)
+                    bought += 1
+                    task.wait(0.15)
+                else
+                    fruitStatus.last = name .. " out of stock"
+                    updateFruitStatus()
+                    task.wait(0.1)
+                end
+                ::continue_loop::
+            end
+            if bought == 0 then
+                fruitStatus.last = "Nothing available"
+            else
+                fruitStatus.last = "Bought " .. tostring(bought)
+            end
+            updateFruitStatus()
+            task.wait(0.6)
+        end)
+        if not ok then
+            fruitStatus.last = "Error: " .. tostring(err)
+            updateFruitStatus()
+            task.wait(1)
+        end
+    end
+end
+
+Tabs.FruitTab:Toggle({
+    Title = "Auto Buy Fruit",
+    Desc = "Buys selected fruits when in stock (requires Food Store UI open)",
+    Value = false,
+    Callback = function(state)
+        autoFruitEnabled = state
+        if state and not autoFruitThread then
+            autoFruitThread = task.spawn(function()
+                runAutoFruit()
+                autoFruitThread = nil
+            end)
+            fruitStatus.last = "Started"
+            updateFruitStatus()
+            WindUI:Notify({ Title = "Fruit Market", Content = "Auto buy started", Duration = 3 })
+        elseif (not state) and autoFruitThread then
+            fruitStatus.last = "Stopped"
+            updateFruitStatus()
+            WindUI:Notify({ Title = "Fruit Market", Content = "Auto buy stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.FruitTab:Toggle({
+    Title = "Only If None Owned",
+    Desc = "Check Data.Asset and only buy if owned count is 0",
+    Value = false,
+    Callback = function(state)
+        fruitOnlyIfZero = state
+    end
+})
+
+Tabs.FruitTab:Button({
+    Title = "Buy Selected Now",
+    Desc = "Attempts to buy each selected fruit once",
+    Callback = function()
+        local names = {}
+        for k in pairs(selectedFruitSet) do table.insert(names, k) end
+        table.sort(names)
+        if #names == 0 then
+            WindUI:Notify({ Title = "Fruit Market", Content = "Pick fruits first", Duration = 3 })
+            return
+        end
+        local gui = getFoodStoreUI()
+        fruitStatus.haveUI = gui ~= nil
+        if not gui then
+            WindUI:Notify({ Title = "Fruit Market", Content = "Open Food Store UI first", Duration = 3 })
+            fruitStatus.last = "Store UI not found"
+            updateFruitStatus()
+            return
+        end
+        local bought = 0
+        for _, n in ipairs(names) do
+            if isFruitInStock(n) then
+                fireBuyFruit(n)
+                bought += 1
+                task.wait(0.1)
+            end
+        end
+        WindUI:Notify({ Title = "Fruit Market", Content = string.format("Bought %d", bought), Duration = 3 })
+        fruitStatus.last = string.format("Manual: bought %d", bought)
+        updateFruitStatus()
+    end
+})
 
