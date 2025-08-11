@@ -533,6 +533,24 @@ Tabs.ClaimTab:Button({
 local autoHatchEnabled = false
 local autoHatchThread = nil
 
+-- Hatch debug UI
+Tabs.HatchTab:Section({ Title = "Status", Icon = "info" })
+local hatchStatus = { last = "Idle", owned = 0, ready = 0, lastModel = nil }
+local hatchParagraph = Tabs.HatchTab:Paragraph({
+    Title = "Auto Hatch",
+    Desc = "Scanner idle",
+    Image = "zap",
+    ImageSize = 18,
+})
+local function updateHatchStatus()
+    if not hatchParagraph or not hatchParagraph.SetDesc then return end
+    local lines = {}
+    table.insert(lines, string.format("Owned: %d | Ready: %d", hatchStatus.owned or 0, hatchStatus.ready or 0))
+    if hatchStatus.lastModel then table.insert(lines, "Target: " .. tostring(hatchStatus.lastModel)) end
+    table.insert(lines, "Status: " .. tostring(hatchStatus.last or ""))
+    hatchParagraph:SetDesc(table.concat(lines, "\n"))
+end
+
 local function getOwnerUserIdDeep(inst)
     local current = inst
     while current and current ~= workspace do
@@ -599,7 +617,13 @@ end
 local function collectOwnedEggs()
     local owned = {}
     local container = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not container then return owned end
+    if not container then
+        hatchStatus.owned = 0
+        hatchStatus.ready = 0
+        hatchStatus.last = "No PlayerBuiltBlocks found"
+        updateHatchStatus()
+        return owned
+    end
     for _, child in ipairs(container:GetChildren()) do
         if child:IsA("Model") and playerOwnsInstance(child) then
             table.insert(owned, child)
@@ -688,10 +712,24 @@ end
 local function runAutoHatch()
     while autoHatchEnabled do
         local ok, err = pcall(function()
+            hatchStatus.last = "Scanning"
+            updateHatchStatus()
             local owned = collectOwnedEggs()
-            if #owned == 0 then task.wait(1.0) return end
+            hatchStatus.owned = #owned
+            if #owned == 0 then
+                hatchStatus.last = "No owned eggs"
+                updateHatchStatus()
+                task.wait(1.0)
+                return
+            end
             local eggs = filterReadyEggs(owned)
-            if #eggs == 0 then task.wait(0.8) return end
+            hatchStatus.ready = #eggs
+            if #eggs == 0 then
+                hatchStatus.last = "Owned but not ready"
+                updateHatchStatus()
+                task.wait(0.8)
+                return
+            end
             -- Try nearest first
             local me = getPlayerRootPosition()
             table.sort(eggs, function(a, b)
@@ -700,12 +738,19 @@ local function runAutoHatch()
                 return (pa - me).Magnitude < (pb - me).Magnitude
             end)
             for _, m in ipairs(eggs) do
+                hatchStatus.lastModel = m.Name
+                hatchStatus.last = "Moving to hatch"
+                updateHatchStatus()
                 tryHatchModel(m)
                 task.wait(0.2)
             end
+            hatchStatus.last = "Done"
+            updateHatchStatus()
         end)
         if not ok then
             warn("Auto Hatch error: " .. tostring(err))
+            hatchStatus.last = "Error: " .. tostring(err)
+            updateHatchStatus()
             task.wait(1)
         end
     end
@@ -734,12 +779,18 @@ Tabs.HatchTab:Button({
     Desc = "Hatch the nearest owned egg (E prompt)",
     Callback = function()
         local owned = collectOwnedEggs()
+        hatchStatus.owned = #owned
         if #owned == 0 then
+            hatchStatus.last = "No owned eggs"
+            updateHatchStatus()
             WindUI:Notify({ Title = "Auto Hatch", Content = "No eggs owned", Duration = 3 })
             return
         end
         local eggs = filterReadyEggs(owned)
+        hatchStatus.ready = #eggs
         if #eggs == 0 then
+            hatchStatus.last = "Owned but not ready"
+            updateHatchStatus()
             WindUI:Notify({ Title = "Auto Hatch", Content = "No eggs ready", Duration = 3 })
             return
         end
@@ -749,6 +800,9 @@ Tabs.HatchTab:Button({
             local pb = getModelPosition(b) or Vector3.new()
             return (pa - me).Magnitude < (pb - me).Magnitude
         end)
+        hatchStatus.lastModel = eggs[1].Name
+        hatchStatus.last = "Moving to hatch"
+        updateHatchStatus()
         local ok = tryHatchModel(eggs[1])
         WindUI:Notify({ Title = ok and "Hatched" or "Hatch Failed", Content = eggs[1].Name, Duration = 3 })
     end
