@@ -416,7 +416,7 @@ Tabs.AutoTab:Toggle({
 -- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
--- ===== Auto Place Egg (Island_3 Farm_split models) =====
+-- ===== Auto Place Egg (Island_3 Farm_split_* models) =====
 
 local function vectorCreate(x, y, z)
     local vlib = rawget(_G, "vector") or _G.vector
@@ -427,42 +427,36 @@ local function vectorCreate(x, y, z)
 end
 
 local function getIsland3()
-    local art = workspace:WaitForChild("Art", 3)
+    local art = workspace:FindFirstChild("Art")
     if not art then return nil end
-    local island3 = art:FindFirstChild("Island_3") or art:WaitForChild("Island_3", 3)
-    return island3
+    return art:FindFirstChild("Island_3")
 end
 
-local function hasFarmSplitPrefix(nameStr)
-    local n = tostring(nameStr)
-    local lower = string.lower(n)
-    return string.sub(lower, 1, string.len("farm_split")) == "farm_split"
+local function isFarmSplitName(nameStr)
+    local n = tostring(nameStr or "")
+    return string.sub(n, 1, string.len("Farm_split_")) == "Farm_split_"
 end
 
-local function findFarmSplitTiles()
+local function findIsland3FarmSplitModels()
     local island3 = getIsland3()
     if not island3 then return {} end
     local list = {}
-    for _, inst in ipairs(island3:GetDescendants()) do
-        if (inst:IsA("Model") or inst:IsA("BasePart")) and hasFarmSplitPrefix(inst.Name) then
-            table.insert(list, inst)
+    for _, child in ipairs(island3:GetChildren()) do -- only direct children Models
+        if child:IsA("Model") and isFarmSplitName(child.Name) then
+            table.insert(list, child)
         end
     end
     return list
 end
 
-local function getModelPivotPosition(inst)
-    if not inst then return nil end
-    if inst:IsA("BasePart") then
-        return inst.Position
-    end
-    if not inst:IsA("Model") then return nil end
+local function getModelPosition(model)
+    if not model or not model:IsA("Model") then return nil end
     local cf
-    if typeof(inst.GetPivot) == "function" then
-        cf = inst:GetPivot()
+    if typeof(model.GetPivot) == "function" then
+        cf = model:GetPivot()
     end
     if not cf then
-        local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
         cf = part and part.CFrame or nil
     end
     return cf and cf.Position or nil
@@ -505,7 +499,7 @@ local autoPlaceThread = nil
 
 Tabs.AutoTab:Toggle({
     Title = "Auto Place Egg",
-    Desc = "Place PET eggs on Farm_split tiles in Island_3",
+    Desc = "Places PET eggs on Island_3 Farm_split_* tiles",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
@@ -521,15 +515,14 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    local tiles = findFarmSplitTiles()
+                    local tiles = findIsland3FarmSplitModels()
                     if #tiles == 0 then
-                        statusData.lastAction = "Auto Place: no Farm_split tiles in Island_3"
+                        statusData.lastAction = "Auto Place: no Farm_split_* models under Island_3"
                         updateStatusParagraph()
                         task.wait(0.6)
                         continue
                     end
 
-                    -- Choose first UID not tried recently
                     local chosenUid
                     for _, uid in ipairs(uids) do
                         local last = attemptedAt[uid]
@@ -543,10 +536,9 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    -- Choose first tile that has a CFrame
                     local targetPos, targetName
                     for _, tile in ipairs(tiles) do
-                        local pos = getModelPivotPosition(tile)
+                        local pos = getModelPosition(tile)
                         if pos then
                             targetPos = pos
                             targetName = tile.Name
@@ -554,7 +546,7 @@ Tabs.AutoTab:Toggle({
                         end
                     end
                     if not targetPos then
-                        statusData.lastAction = "Auto Place: no valid CFrame/position on tiles"
+                        statusData.lastAction = "Auto Place: tiles found, but no CFrame positions"
                         updateStatusParagraph()
                         task.wait(0.4)
                         continue
