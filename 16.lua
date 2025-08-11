@@ -1,3 +1,179 @@
+-- ============ Dino Quest (Auto Claim Rewards) ============
+Tabs.DinoTab:Section({ Title = "Status", Icon = "info" })
+local dinoStatus = { last = "Idle", tasks = {}, uiCounts = {} }
+local dinoParagraph = Tabs.DinoTab:Paragraph({ Title = "Dino Quest", Desc = "Waiting...", Image = "trophy", ImageSize = 18 })
+local function updateDinoStatus()
+    if dinoParagraph and dinoParagraph.SetDesc then
+        local lines = {}
+        for i = 1, 3 do
+            local t = dinoStatus.tasks[i]
+            local count = dinoStatus.uiCounts[i]
+            local desc = "?"
+            if t then
+                local cfg = dinoTaskConfig[t.Id] or dinoTaskConfig["Task_" .. tostring(t.Id)] or dinoTaskConfig[tostring(t.Id)]
+                local comp = (cfg and (cfg.CompeleteType or cfg.CompleteType or cfg.Type)) or "?"
+                desc = string.format("Id=%s (%s)", tostring(t.Id), tostring(comp))
+            end
+            local cntText = count and string.format(" %s", tostring(count)) or ""
+            table.insert(lines, string.format("Task %d: %s%s", i, desc, cntText))
+        end
+        table.insert(lines, "Status: " .. tostring(dinoStatus.last or ""))
+        dinoParagraph:SetDesc(table.concat(lines, "\n"))
+    end
+end
+
+local function getDinoTasksRoot()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local de = data and data:FindFirstChild("DinoEventTaskData")
+    return de and de:FindFirstChild("Tasks") or nil
+end
+
+local function readTaskByIndex(idx)
+    local root = getDinoTasksRoot()
+    if not root then return nil end
+    local node = root:FindFirstChild(tostring(idx))
+    if not node then return nil end
+    local idAttr = node:GetAttribute("Id") or node:GetAttribute("ID") or node:GetAttribute("id")
+    local idVal = idAttr or (node:FindFirstChild("Id") and node.Id.Value)
+    local idStr = idVal and tostring(idVal) or nil
+    if not idStr then return nil end
+    -- Normalize like "Task_2" or raw number 2
+    idStr = tostring(idStr)
+    if not idStr:match("Task_") and idStr:match("^%d+$") then
+        idStr = "Task_" .. idStr
+    end
+    return { Id = idStr }
+end
+
+local function getDinoQuestCountFromUI(idx)
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local gui = pg:FindFirstChild("ScreenDinoEvent")
+    if not gui then return nil end
+    local root = gui:FindFirstChild("Root")
+    local frame = root and root:FindFirstChild("Frame")
+    local scroll = frame and frame:FindFirstChild("ScrollingFrame")
+    if not scroll then return nil end
+    local item = scroll:FindFirstChild("TaskItem_" .. tostring(idx))
+    if not item then return nil end
+    local countLabel = item:FindFirstChild("Count")
+    if not (countLabel and countLabel:IsA("TextLabel")) then return nil end
+    return countLabel.Text
+end
+
+local function parseProgress10(text)
+    if type(text) ~= "string" then return 0, 10 end
+    local a, b = text:match("(%d+)%s*/%s*(%d+)")
+    local cur = tonumber(a) or 0
+    local maxv = tonumber(b) or 10
+    return cur, maxv
+end
+
+local function isQuestComplete10(text)
+    local cur, maxv = parseProgress10(text)
+    return maxv > 0 and cur >= maxv
+end
+
+local function fireDinoExchangeByTaskId(taskId)
+    -- taskId could be like "Task_8" or number 8
+    local num = tostring(taskId):match("(%d+)")
+    if not num then return false end
+    local args = { { event = "exchange", id = "Reward_" .. num } }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+    end)
+    if not ok then warn("Dino exchange failed: " .. tostring(err)) end
+    return ok
+end
+
+local autoDinoEnabled = false
+local autoDinoThread = nil
+
+local function runAutoDino()
+    while autoDinoEnabled do
+        local ok, err = pcall(function()
+            -- read tasks 1..3
+            dinoStatus.tasks = {}
+            for i = 1, 3 do
+                dinoStatus.tasks[i] = readTaskByIndex(i)
+                dinoStatus.uiCounts[i] = getDinoQuestCountFromUI(i)
+            end
+            updateDinoStatus()
+            -- attempt claims where UI shows 10/10
+            local anyClaim = false
+            for i = 1, 3 do
+                local t = dinoStatus.tasks[i]
+                local cnt = dinoStatus.uiCounts[i]
+                if t and cnt and isQuestComplete10(cnt) then
+                    dinoStatus.last = string.format("Claiming %s (slot %d)", tostring(t.Id), i)
+                    updateDinoStatus()
+                    if fireDinoExchangeByTaskId(t.Id) then anyClaim = true end
+                    task.wait(0.2)
+                end
+            end
+            if not anyClaim then
+                dinoStatus.last = "No complete quests (need 10/10)"
+                updateDinoStatus()
+                task.wait(1.2)
+            else
+                dinoStatus.last = "Claims attempted"
+                updateDinoStatus()
+                task.wait(0.8)
+            end
+        end)
+        if not ok then
+            dinoStatus.last = "Error: " .. tostring(err)
+            updateDinoStatus()
+            task.wait(1.2)
+        end
+    end
+end
+
+Tabs.DinoTab:Toggle({
+    Title = "Auto Claim Rewards",
+    Desc = "Claims quest rewards when progress is 10/10",
+    Value = false,
+    Callback = function(state)
+        autoDinoEnabled = state
+        if state and not autoDinoThread then
+            autoDinoThread = task.spawn(function()
+                runAutoDino()
+                autoDinoThread = nil
+            end)
+            dinoStatus.last = "Started"
+            updateDinoStatus()
+            WindUI:Notify({ Title = "Dino Quest", Content = "Auto claim started", Duration = 3 })
+        elseif (not state) and autoDinoThread then
+            dinoStatus.last = "Stopped"
+            updateDinoStatus()
+            WindUI:Notify({ Title = "Dino Quest", Content = "Auto claim stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.DinoTab:Button({
+    Title = "Claim Ready Now",
+    Desc = "Checks UI and claims all complete tasks",
+    Callback = function()
+        for i = 1, 3 do
+            dinoStatus.tasks[i] = readTaskByIndex(i)
+            dinoStatus.uiCounts[i] = getDinoQuestCountFromUI(i)
+        end
+        updateDinoStatus()
+        local claimed = 0
+        for i = 1, 3 do
+            local t = dinoStatus.tasks[i]
+            local cnt = dinoStatus.uiCounts[i]
+            if t and cnt and isQuestComplete10(cnt) then
+                if fireDinoExchangeByTaskId(t.Id) then claimed += 1 end
+                task.wait(0.15)
+            end
+        end
+        WindUI:Notify({ Title = "Dino Quest", Content = string.format("Claimed %d", claimed), Duration = 3 })
+    end
+})
+
 -- Build A Zoo: Auto Buy Egg using WindUI
 
 -- Load WindUI library (same as in Windui.lua)
@@ -35,6 +211,7 @@ Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "Auto Pack", Icon = "gift" })
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "Fruit Market", Icon = "apple" })
 Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "Auto Feed", Icon = "utensils" })
+Tabs.DinoTab = Tabs.MainSection:Tab({ Title = "Dino Quest", Icon = "trophy" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -46,6 +223,7 @@ local autoFruitThread = nil
 local eggConfig = {}
 local conveyorConfig = {}
 local petFoodConfig = {}
+local dinoTaskConfig = {}
 
 local function loadEggConfig()
     local ok, cfg = pcall(function()
@@ -57,6 +235,19 @@ local function loadEggConfig()
         eggConfig = cfg
     else
         eggConfig = {}
+    end
+end
+
+local function loadDinoTaskConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResDinoEventTask")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        dinoTaskConfig = cfg
+    else
+        dinoTaskConfig = {}
     end
 end
 
@@ -961,6 +1152,7 @@ end
 loadEggConfig()
 loadConveyorConfig()
 loadPetFoodConfig()
+loadDinoTaskConfig()
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
 
@@ -1449,6 +1641,7 @@ Window:OnClose(function()
     autoPlaceEnabled = false
     autoFruitEnabled = false
     autoFeedEnabled = false
+    autoDinoEnabled = false
 end)
 
 
