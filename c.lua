@@ -437,29 +437,35 @@ local function isFarmSplitName(nameStr)
     return string.sub(n, 1, string.len("Farm_split_")) == "Farm_split_"
 end
 
-local function findIsland3FarmSplitModels()
+local function findIsland3FarmSplitTiles()
     local island3 = getIsland3()
     if not island3 then return {} end
     local list = {}
-    for _, child in ipairs(island3:GetChildren()) do -- only direct children Models
-        if child:IsA("Model") and isFarmSplitName(child.Name) then
+    for _, child in ipairs(island3:GetChildren()) do -- only direct children Parts/Models
+        if (child:IsA("Model") or child:IsA("BasePart")) and isFarmSplitName(child.Name) then
             table.insert(list, child)
         end
     end
     return list
 end
 
-local function getModelPosition(model)
-    if not model or not model:IsA("Model") then return nil end
-    local cf
-    if typeof(model.GetPivot) == "function" then
-        cf = model:GetPivot()
+local function getInstancePosition(inst)
+    if not inst then return nil end
+    if inst:IsA("BasePart") then
+        return inst.Position
     end
-    if not cf then
-        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
-        cf = part and part.CFrame or nil
+    if inst:IsA("Model") then
+        local cf
+        if typeof(inst.GetPivot) == "function" then
+            cf = inst:GetPivot()
+        end
+        if not cf then
+            local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+            cf = part and part.CFrame or nil
+        end
+        return cf and cf.Position or nil
     end
-    return cf and cf.Position or nil
+    return nil
 end
 
 local function getInventoryEggUIDs()
@@ -515,7 +521,7 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    local tiles = findIsland3FarmSplitModels()
+                    local tiles = findIsland3FarmSplitTiles()
                     if #tiles == 0 then
                         statusData.lastAction = "Auto Place: no Farm_split_* models under Island_3"
                         updateStatusParagraph()
@@ -538,7 +544,7 @@ Tabs.AutoTab:Toggle({
 
                     local targetPos, targetName
                     for _, tile in ipairs(tiles) do
-                        local pos = getModelPosition(tile)
+                        local pos = getInstancePosition(tile)
                         if pos then
                             targetPos = pos
                             targetName = tile.Name
@@ -546,7 +552,7 @@ Tabs.AutoTab:Toggle({
                         end
                     end
                     if not targetPos then
-                        statusData.lastAction = "Auto Place: tiles found, but no CFrame positions"
+                        statusData.lastAction = "Auto Place: tiles found, but no positions"
                         updateStatusParagraph()
                         task.wait(0.4)
                         continue
