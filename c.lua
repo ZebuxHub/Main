@@ -201,7 +201,7 @@ local autoBuyThread = nil
 -- Auto Place variables
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
-local usedPartNames = {}
+local usedTileNames = {}
 
 -- Status tracking
 local statusData = {
@@ -249,107 +249,6 @@ local function updateStatusParagraph()
     end
 end
 
--- Auto Place functions
-local function vectorCreate(x, y, z)
-    local vlib = rawget(_G, "vector")
-    if type(vlib) == "table" and type(vlib.create) == "function" then
-        return vlib.create(x, y, z)
-    end
-    return Vector3.new(x, y, z)
-end
-
-local function getIsland3Parts()
-    local parts = {}
-    local art = workspace:FindFirstChild("Art")
-    if not art then return parts end
-    local island3 = art:FindFirstChild("Island_3")
-    if not island3 then return parts end
-    
-    for _, inst in ipairs(island3:GetChildren()) do
-        if inst:IsA("BasePart") and inst.Size == Vector3.new(8, 8, 8) then
-            table.insert(parts, inst)
-        end
-    end
-    table.sort(parts, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
-    return parts
-end
-
-local function getInventoryPetUIDs()
-    local list = {}
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    local eggFolder = data and data:FindFirstChild("Egg")
-    if eggFolder then
-        for _, ch in ipairs(eggFolder:GetChildren()) do
-            table.insert(list, tostring(ch.Name))
-        end
-    end
-    return list
-end
-
-local function placeUIDAtPartCenter(uid, part)
-    if not (uid and part and part:IsA("BasePart")) then return end
-    local pos = part.CFrame.Position
-    local dst = vectorCreate(pos.X, pos.Y, pos.Z)
-    local args = {
-        "Place",
-        {
-            DST = dst,
-            ID = uid,
-        }
-    }
-    pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-end
-
-local function runAutoPlace()
-    usedPartNames = {}
-    while autoPlaceEnabled do
-        local uids = getInventoryPetUIDs()
-        if #uids == 0 then
-            statusData.lastAction = "Auto Place: no pets in inventory"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local parts = getIsland3Parts()
-        if #parts == 0 then
-            statusData.lastAction = "Auto Place: no 8x8x8 parts in Island_3"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local available = {}
-        for _, p in ipairs(parts) do
-            if not usedPartNames[p.Name] then
-                table.insert(available, p)
-            end
-        end
-        if #available == 0 then
-            statusData.lastAction = "Auto Place: no unused parts"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local count = math.min(#uids, #available)
-        for i = 1, count do
-            local uid = uids[i]
-            local part = available[i]
-            usedPartNames[part.Name] = true
-            task.spawn(function()
-                placeUIDAtPartCenter(uid, part)
-            end)
-        end
-        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " pets"
-        updateStatusParagraph()
-        task.wait(0.3)
-    end
-end
-
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
     -- Read Type primarily; some games may store as EggType or Name
@@ -389,6 +288,110 @@ local function focusEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
+-- Auto Place functions
+local function vectorCreate(x, y, z)
+    local vlib = rawget(_G, "vector")
+    if type(vlib) == "table" and type(vlib.create) == "function" then
+        return vlib.create(x, y, z)
+    end
+    return Vector3.new(x, y, z)
+end
+
+local function getIsland3FarmTiles()
+    local tiles = {}
+    local art = workspace:FindFirstChild("Art")
+    if not art then return tiles end
+    local island3 = art:FindFirstChild("Island_3")
+    if not island3 then return tiles end
+    for _, inst in ipairs(island3:GetChildren()) do
+        if inst:IsA("BasePart") then
+            local n = tostring(inst.Name)
+            if string.sub(n, 1, 11) == "Farm_split_" then
+                table.insert(tiles, inst)
+            end
+        end
+    end
+    table.sort(tiles, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
+    return tiles
+end
+
+local function getInventoryEggUIDs()
+    local list = {}
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local eggFolder = data and data:FindFirstChild("Egg")
+    if eggFolder then
+        for _, ch in ipairs(eggFolder:GetChildren()) do
+            table.insert(list, tostring(ch.Name))
+        end
+    end
+    return list
+end
+
+local function placeUIDAtTileTopCenter(uid, tilePart)
+    if not (uid and tilePart and tilePart:IsA("BasePart")) then return end
+    local pos = tilePart.CFrame.Position
+    local topY = pos.Y + (tilePart.Size and tilePart.Size.Y or 0) * 0.5
+    local dst = vectorCreate(pos.X, topY, pos.Z)
+    local args = {
+        "Place",
+        {
+            DST = dst,
+            ID = uid,
+        }
+    }
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+end
+
+local function runAutoPlace()
+    usedTileNames = {}
+    while autoPlaceEnabled do
+        local uids = getInventoryEggUIDs()
+        if #uids == 0 then
+            statusData.lastAction = "Auto Place: no eggs in inventory"
+            updateStatusParagraph()
+            task.wait(0.5)
+            continue
+        end
+
+        local tiles = getIsland3FarmTiles()
+        if #tiles == 0 then
+            statusData.lastAction = "Auto Place: no Farm_split_* tiles in Island_3"
+            updateStatusParagraph()
+            task.wait(0.5)
+            continue
+        end
+
+        local available = {}
+        for _, t in ipairs(tiles) do
+            if not usedTileNames[t.Name] then
+                table.insert(available, t)
+            end
+        end
+        if #available == 0 then
+            statusData.lastAction = "Auto Place: no unused tiles"
+            updateStatusParagraph()
+            task.wait(0.5)
+            continue
+        end
+
+        local count = math.min(#uids, #available)
+        for i = 1, count do
+            local uid = uids[i]
+            local tile = available[i]
+            usedTileNames[tile.Name] = true
+            task.spawn(function()
+                placeUIDAtTileTopCenter(uid, tile)
+            end)
+        end
+        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " eggs"
+        updateStatusParagraph()
+        task.wait(0.3)
     end
 end
 
@@ -515,8 +518,8 @@ Tabs.AutoTab:Toggle({
 
 -- Auto Place UI toggle
 Tabs.AutoTab:Toggle({
-    Title = "Auto Place Pets (Island_3)",
-    Desc = "Places inventory pets on Island_3 8x8x8 parts (center)",
+    Title = "Auto Place Eggs (Island_3 Farm_split)",
+    Desc = "Places inventory eggs on Island_3 Farm_split_* tiles (top-center)",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
