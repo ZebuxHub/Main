@@ -24,6 +24,7 @@ local Window = WindUI:CreateWindow({
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
 
 -- Egg config loader
 local eggConfig = {}
@@ -144,6 +145,80 @@ local function getIslandBeltFolder(islandName)
     return belt
 end
 
+-- Auto Place helpers
+local function getIslandNumberFromName(islandName)
+    if not islandName then return nil end
+    -- Extract number from island name (e.g., "Island_3" -> 3)
+    local match = string.match(islandName, "Island_(%d+)")
+    if match then
+        return tonumber(match)
+    end
+    -- Try other patterns
+    match = string.match(islandName, "(%d+)")
+    if match then
+        return tonumber(match)
+    end
+    return nil
+end
+
+local function getFarmParts(islandNumber)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then return {} end
+    
+    local farmParts = {}
+    local function scanForFarmParts(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
+                table.insert(farmParts, child)
+            end
+            scanForFarmParts(child)
+        end
+    end
+    
+    scanForFarmParts(island)
+    return farmParts
+end
+
+local function getPetUID()
+    if not LocalPlayer then return nil end
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return nil end
+    local egg = data:FindFirstChild("Egg")
+    if not egg then return nil end
+    return egg.Value
+end
+
+local function placePetAtPart(farmPart, petUID)
+    if not farmPart or not petUID then return false end
+    
+    local position = farmPart.Position
+    local args = {
+        "Place",
+        {
+            DST = vector.create(position.X, position.Y, position.Z),
+            ID = petUID
+        }
+    }
+    
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    
+    if not ok then
+        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(position) .. ": " .. tostring(err))
+        return false
+    end
+    
+    return true
+end
+
 -- UI state
 loadEggConfig()
 local eggIdList = buildEggIdList()
@@ -197,11 +272,6 @@ Tabs.AutoTab:Button({
 
 local autoBuyEnabled = false
 local autoBuyThread = nil
-
--- Auto Place variables
-local autoPlaceEnabled = false
-local autoPlaceThread = nil
-local usedTileNames = {}
 
 -- Status tracking
 local statusData = {
@@ -288,110 +358,6 @@ local function focusEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-    end
-end
-
--- Auto Place functions
-local function vectorCreate(x, y, z)
-    local vlib = rawget(_G, "vector")
-    if type(vlib) == "table" and type(vlib.create) == "function" then
-        return vlib.create(x, y, z)
-    end
-    return Vector3.new(x, y, z)
-end
-
-local function getIsland3FarmTiles()
-    local tiles = {}
-    local art = workspace:FindFirstChild("Art")
-    if not art then return tiles end
-    local island3 = art:FindFirstChild("Island_3")
-    if not island3 then return tiles end
-    for _, inst in ipairs(island3:GetChildren()) do
-        if inst:IsA("BasePart") then
-            local n = tostring(inst.Name)
-            if string.sub(n, 1, 11) == "Farm_split_" then
-                table.insert(tiles, inst)
-            end
-        end
-    end
-    table.sort(tiles, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
-    return tiles
-end
-
-local function getInventoryEggUIDs()
-    local list = {}
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    local eggFolder = data and data:FindFirstChild("Egg")
-    if eggFolder then
-        for _, ch in ipairs(eggFolder:GetChildren()) do
-            table.insert(list, tostring(ch.Name))
-        end
-    end
-    return list
-end
-
-local function placeUIDAtTileTopCenter(uid, tilePart)
-    if not (uid and tilePart and tilePart:IsA("BasePart")) then return end
-    local pos = tilePart.CFrame.Position
-    local topY = pos.Y + (tilePart.Size and tilePart.Size.Y or 0) * 0.5
-    local dst = vectorCreate(pos.X, topY, pos.Z)
-    local args = {
-        "Place",
-        {
-            DST = dst,
-            ID = uid,
-        }
-    }
-    pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-end
-
-local function runAutoPlace()
-    usedTileNames = {}
-    while autoPlaceEnabled do
-        local uids = getInventoryEggUIDs()
-        if #uids == 0 then
-            statusData.lastAction = "Auto Place: no eggs in inventory"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local tiles = getIsland3FarmTiles()
-        if #tiles == 0 then
-            statusData.lastAction = "Auto Place: no Farm_split_* tiles in Island_3"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local available = {}
-        for _, t in ipairs(tiles) do
-            if not usedTileNames[t.Name] then
-                table.insert(available, t)
-            end
-        end
-        if #available == 0 then
-            statusData.lastAction = "Auto Place: no unused tiles"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local count = math.min(#uids, #available)
-        for i = 1, count do
-            local uid = uids[i]
-            local tile = available[i]
-            usedTileNames[tile.Name] = true
-            task.spawn(function()
-                placeUIDAtTileTopCenter(uid, tile)
-            end)
-        end
-        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " eggs"
-        updateStatusParagraph()
-        task.wait(0.3)
     end
 end
 
@@ -516,10 +482,114 @@ Tabs.AutoTab:Toggle({
     end
 })
 
--- Auto Place UI toggle
-Tabs.AutoTab:Toggle({
-    Title = "Auto Place Eggs (Island_3 Farm_split)",
-    Desc = "Places inventory eggs on Island_3 Farm_split_* tiles (top-center)",
+-- Auto Place functionality
+local autoPlaceEnabled = false
+local autoPlaceThread = nil
+
+-- Auto Place status tracking
+local placeStatusData = {
+    islandName = nil,
+    islandNumber = nil,
+    farmPartsFound = 0,
+    petUID = nil,
+    totalPlaces = 0,
+    lastAction = "Idle",
+    lastPosition = nil,
+}
+
+Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
+local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
+    Title = "Auto Place Status",
+    Desc = "Waiting...",
+    Image = "activity",
+    ImageSize = 22,
+})
+
+local function formatPlaceStatusDesc()
+    local lines = {}
+    table.insert(lines, "Island: " .. tostring(placeStatusData.islandName or "?"))
+    table.insert(lines, "Island Number: " .. tostring(placeStatusData.islandNumber or "?"))
+    table.insert(lines, "Farm Parts: " .. tostring(placeStatusData.farmPartsFound))
+    table.insert(lines, "PET UID: " .. tostring(placeStatusData.petUID or "?"))
+    table.insert(lines, "Places: " .. tostring(placeStatusData.totalPlaces))
+    if placeStatusData.lastPosition then
+        table.insert(lines, "Last Position: " .. tostring(placeStatusData.lastPosition))
+    end
+    table.insert(lines, "Last: " .. tostring(placeStatusData.lastAction))
+    return table.concat(lines, "\n")
+end
+
+local function updatePlaceStatusParagraph()
+    if placeStatusParagraph and placeStatusParagraph.SetDesc then
+        placeStatusParagraph:SetDesc(formatPlaceStatusDesc())
+    end
+end
+
+local function runAutoPlace()
+    while autoPlaceEnabled do
+        local islandName = getAssignedIslandName()
+        placeStatusData.islandName = islandName
+        
+        if not islandName or islandName == "" then
+            placeStatusData.lastAction = "Waiting for island assignment"
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            continue
+        end
+        
+        local islandNumber = getIslandNumberFromName(islandName)
+        placeStatusData.islandNumber = islandNumber
+        
+        if not islandNumber then
+            placeStatusData.lastAction = "Could not determine island number from: " .. tostring(islandName)
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            continue
+        end
+        
+        local farmParts = getFarmParts(islandNumber)
+        placeStatusData.farmPartsFound = #farmParts
+        
+        if placeStatusData.farmPartsFound == 0 then
+            placeStatusData.lastAction = "No farm parts found on Island_" .. tostring(islandNumber)
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            continue
+        end
+        
+        local petUID = getPetUID()
+        placeStatusData.petUID = petUID
+        
+        if not petUID then
+            placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg"
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            continue
+        end
+        
+        -- Place pet at a random farm part
+        local randomPart = farmParts[math.random(1, #farmParts)]
+        local position = randomPart.Position
+        placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", position.X, position.Y, position.Z)
+        placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at " .. placeStatusData.lastPosition
+        updatePlaceStatusParagraph()
+        
+        local success = placePetAtPart(randomPart, petUID)
+        if success then
+            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
+            placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
+        else
+            placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
+        end
+        updatePlaceStatusParagraph()
+        
+        task.wait(0.5)
+    end
+end
+
+Tabs.PlaceTab:Toggle({
+    Title = "Auto Place",
+    Desc = "Automatically places pets from your inventory at farm locations",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
@@ -529,12 +599,12 @@ Tabs.AutoTab:Toggle({
                 autoPlaceThread = nil
             end)
             WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
-            statusData.lastAction = "Auto Place Started"
-            updateStatusParagraph()
+            placeStatusData.lastAction = "Started"
+            updatePlaceStatusParagraph()
         elseif (not state) and autoPlaceThread then
             WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
-            statusData.lastAction = "Auto Place Stopped"
-            updateStatusParagraph()
+            placeStatusData.lastAction = "Stopped"
+            updatePlaceStatusParagraph()
         end
     end
 })
