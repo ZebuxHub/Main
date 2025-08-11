@@ -340,18 +340,32 @@ Tabs.AutoTab:Toggle({
                         task.wait(0.8)
                         continue
                     end
-                    -- Simple strategy: take first uid, find first tile, place
+                    -- Randomize tile order each cycle
+                    local indices = {}
+                    for i = 1, #tiles do indices[i] = i end
+                    for i = #indices, 2, -1 do
+                        local j = math.random(1, i)
+                        indices[i], indices[j] = indices[j], indices[i]
+                    end
+
+                    -- Place each UID on a random tile
                     for _, uid in ipairs(uids) do
                         if not autoPlaceEnabled then break end
                         if not alreadyTriedRecently(uid) then
-                            local placed = placeEggAtTile(uid, tiles[1])
-                            attemptedAt[uid] = os.clock()
-                            if placed then
-                                statusData.lastAction = "Auto Place: placed UID " .. uid .. " at tile " .. tostring(tiles[1].Name)
-                                updateStatusParagraph()
-                                task.wait(0.25)
-                                break
-                            else
+                            local placed = false
+                            for _, idx in ipairs(indices) do
+                                if not autoPlaceEnabled then break end
+                                placed = placeEggAtTile(uid, tiles[idx])
+                                attemptedAt[uid] = os.clock()
+                                if placed then
+                                    statusData.lastAction = "Auto Place: placed UID " .. uid .. " at tile " .. tostring(tiles[idx].Name)
+                                    updateStatusParagraph()
+                                    task.wait(0.25)
+                                    break
+                                end
+                                task.wait(0.05)
+                            end
+                            if not placed then
                                 statusData.lastAction = "Auto Place: failed placing UID " .. uid
                                 updateStatusParagraph()
                                 task.wait(0.2)
