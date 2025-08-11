@@ -544,4 +544,3 @@ Window:OnClose(function()
     autoPlaceEnabled = false
 end)
 
-
