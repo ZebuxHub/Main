@@ -453,25 +453,52 @@ local function findPlacementPart(islandName)
     -- 1) Any BasePart whose name matches "Farm_split_Island" and DOES NOT have the attribute LockCost (unlocked tile)
     -- 2) Any BasePart exposing GridCenterPos attribute
     -- 3) Fallback: Any BasePart with brown color ~= 145,98,44
-    local candidateUnlocked
-    local candidateByGrid
-    local candidateByColor
+    local candidateUnlocked, distUnlocked = nil, math.huge
+    local candidateByGrid, distGrid = nil, math.huge
+    local candidateByColor, distColor = nil, math.huge
+    local rootPos
+    do
+        local char = LocalPlayer and LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then rootPos = hrp.Position end
+    end
     for _, inst in ipairs(island:GetDescendants()) do
         if inst:IsA("BasePart") then
             local nameLower = string.lower(inst.Name)
             if string.find(nameLower, "farm_split", 1, true) and nameMatchesIsland(inst.Name) then
                 local hasLockCost = inst:GetAttribute("LockCost") ~= nil
                 if not hasLockCost then
-                    candidateUnlocked = candidateUnlocked or inst
+                    if rootPos then
+                        local d = (inst.Position - rootPos).Magnitude
+                        if d < distUnlocked then
+                            candidateUnlocked, distUnlocked = inst, d
+                        end
+                    else
+                        candidateUnlocked = candidateUnlocked or inst
+                    end
                 end
             end
             if inst:GetAttribute("GridCenterPos") ~= nil and nameMatchesIsland(inst.Name) then
-                candidateByGrid = candidateByGrid or inst
+                if rootPos then
+                    local d = (inst.Position - rootPos).Magnitude
+                    if d < distGrid then
+                        candidateByGrid, distGrid = inst, d
+                    end
+                else
+                    candidateByGrid = candidateByGrid or inst
+                end
             end
             local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
             if col and colorsClose(col, TARGET_COLOR, 0.02) then
                 if nameMatchesIsland(inst.Name) then
-                    candidateByColor = candidateByColor or inst
+                    if rootPos then
+                        local d = (inst.Position - rootPos).Magnitude
+                        if d < distColor then
+                            candidateByColor, distColor = inst, d
+                        end
+                    else
+                        candidateByColor = candidateByColor or inst
+                    end
                 end
             end
         end
@@ -616,6 +643,7 @@ Tabs.AutoTab:Toggle({
                     -- Enforce same-island check here as well
                     if not isPartInIsland(targetPart, islandName) then
                         statusData.lastAction = "Auto Place: found tile not in my island"
+                        statusData.lastAction = statusData.lastAction .. " (picked " .. targetPart:GetFullName() .. ")"
                         updateStatusParagraph()
                         task.wait(0.4)
                         continue
@@ -634,6 +662,7 @@ Tabs.AutoTab:Toggle({
                         if not attempted[e.uid] or (attempted[e.uid] and (tick() - attempted[e.uid]) > 3) then
                             if not isPlaced(e.uid) then
                                 statusData.lastAction = "Placing " .. (e.eggType or "Egg") .. " (" .. e.uid .. ")"
+                                statusData.lastAction = statusData.lastAction .. " at " .. tostring(targetPart.Position)
                                 updateStatusParagraph()
                                 placeEggByUID(e.uid)
                                 attempted[e.uid] = tick()
