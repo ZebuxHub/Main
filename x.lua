@@ -1008,17 +1008,30 @@ local function playerOwnsInstance(inst)
     return lp and lp.UserId == uidAttr
 end
 
-local function fireHatchRemote()
-    -- Per spec: create RemoteFunction in nil and InvokeServer("Hatch")
+local function fireHatchRemote(model)
+    -- Prefer the model's own RF:InvokeServer("Hatch") if present
     local args = { "Hatch" }
-    local rf = Instance.new("RemoteFunction", nil)
-    local ok, res = pcall(function()
-        return rf:InvokeServer(table.unpack(args))
-    end)
-    if not ok then
-        warn("Hatch invoke failed: " .. tostring(res))
+    if model and model.FindFirstChild then
+        local rf = model:FindFirstChild("RF")
+        if rf and rf.InvokeServer then
+            local ok, res = pcall(function()
+                return rf:InvokeServer(table.unpack(args))
+            end)
+            if not ok then
+                warn("Hatch (model RF) failed: " .. tostring(res))
+            end
+            return ok
+        end
     end
-    return ok
+    -- Fallback to nil RemoteFunction per provided spec
+    local rfFallback = Instance.new("RemoteFunction", nil)
+    local ok2, res2 = pcall(function()
+        return rfFallback:InvokeServer(table.unpack(args))
+    end)
+    if not ok2 then
+        warn("Hatch (nil RF) failed: " .. tostring(res2))
+    end
+    return ok2
 end
 
 local function findHatchableModels()
@@ -1041,8 +1054,11 @@ local function runAutoHatch()
                 task.wait(0.8)
                 return
             end
-            fireHatchRemote()
-            task.wait(0.3)
+            -- Try hatching each owned model this tick
+            for _, m in ipairs(models) do
+                fireHatchRemote(m)
+                task.wait(0.15)
+            end
         end)
         if not ok then
             warn("Auto Hatch error: " .. tostring(err))
