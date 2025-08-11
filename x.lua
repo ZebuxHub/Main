@@ -683,6 +683,8 @@ Tabs.AutoTab:Toggle({
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local preferNearPlayer = false
+local placeAnchorPosition = nil
+local anchorRadiusStuds = 100
 
 -- Auto Place status tracking
 local placeStatusData = {
@@ -708,26 +710,14 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
 local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, "Island: " .. tostring(placeStatusData.islandName or "?"))
-    table.insert(lines, "Island Number: " .. tostring(placeStatusData.islandNumber or "?"))
-    table.insert(lines, "Farm Parts: " .. tostring(placeStatusData.farmPartsFound))
-    table.insert(lines, "PET UID: " .. tostring(placeStatusData.petUID or "?"))
-    
-    -- Enhanced pet information display
-    if placeStatusData.petInfo then
-        if placeStatusData.petInfo.Type then
-            table.insert(lines, "Pet Type: " .. tostring(placeStatusData.petInfo.Type))
-        end
-        if placeStatusData.petInfo.Rarity then
-            table.insert(lines, "Rarity: " .. tostring(placeStatusData.petInfo.Rarity))
-        end
+    table.insert(lines, "Parts: " .. tostring(placeStatusData.farmPartsFound))
+    table.insert(lines, "Pet: " .. tostring(placeStatusData.petUID or "?"))
+    table.insert(lines, "Placed: " .. tostring(placeStatusData.totalPlaces))
+    if placeAnchorPosition then
+        table.insert(lines, string.format("Anchor: (%.0f, %.0f, %.0f) r=%d", placeAnchorPosition.X, placeAnchorPosition.Y, placeAnchorPosition.Z, anchorRadiusStuds))
     end
-    
-    table.insert(lines, "Places: " .. tostring(placeStatusData.totalPlaces))
     if placeStatusData.lastPosition then
-        table.insert(lines, "Last Position: " .. tostring(placeStatusData.lastPosition))
-    end
-    if placeStatusData.validationStatus then
-        table.insert(lines, "Validation: " .. tostring(placeStatusData.validationStatus))
+        table.insert(lines, "LastPos: " .. tostring(placeStatusData.lastPosition))
     end
     table.insert(lines, "Last: " .. tostring(placeStatusData.lastAction))
     return table.concat(lines, "\n")
@@ -797,12 +787,22 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Find an available farm part near the player (if enabled) and not occupied
+            -- Decide target position (anchor remembered when auto starts, else player if preferNearPlayer)
             local minSpacing = 8 -- studs between pets
             local chosenPart
-            if preferNearPlayer then
-                local playerPos = getPlayerRootPosition()
-                chosenPart = findAvailableFarmPartNearPosition(farmParts, minSpacing, playerPos)
+            local targetPos = placeAnchorPosition
+            if not targetPos and preferNearPlayer then
+                targetPos = getPlayerRootPosition()
+            end
+            if targetPos then
+                -- Restrict search to tiles within anchorRadiusStuds of anchor
+                local nearby = {}
+                for _, part in ipairs(farmParts) do
+                    if (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
+                        table.insert(nearby, part)
+                    end
+                end
+                chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, minSpacing, targetPos)
             else
                 chosenPart = findAvailableFarmPart(farmParts, minSpacing)
             end
@@ -844,6 +844,12 @@ Tabs.PlaceTab:Toggle({
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
+        if state then
+            -- Capture an anchor when turning on for consistent nearby placement
+            placeAnchorPosition = getPlayerRootPosition()
+        else
+            placeAnchorPosition = nil
+        end
         if state and not autoPlaceThread then
             autoPlaceThread = task.spawn(function()
                 runAutoPlace()
@@ -908,8 +914,8 @@ Tabs.PlaceTab:Button({
         end
         
         -- Prefer an available tile using pivot occupancy checks
-        local playerPos = getPlayerRootPosition()
-        local chosenPart = findAvailableFarmPartNearPosition(farmParts, 8, playerPos)
+        local targetPos = placeAnchorPosition or getPlayerRootPosition()
+        local chosenPart = findAvailableFarmPartNearPosition(farmParts, 8, targetPos)
         if not chosenPart then
             WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
             placeStatusData.lastAction = "Manual place failed (occupied)"
@@ -974,4 +980,82 @@ Window:OnClose(function()
     autoPlaceEnabled = false
 end)
 
+
+
+-- Auto Hatch functionality
+local autoHatchEnabled = false
+local autoHatchThread = nil
+
+local function playerOwnsInstance(inst)
+    if not inst or not inst.GetAttribute then return false end
+    local uidAttr = inst:GetAttribute("UserId")
+    if type(uidAttr) ~= "number" then return false end
+    local lp = Players.LocalPlayer
+    return lp and lp.UserId == uidAttr
+end
+
+local function findHatchablePetsForPlayer()
+    local results = {}
+    local built = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if not built then return results end
+    for _, child in ipairs(built:GetDescendants()) do
+        if child:IsA("Model") and playerOwnsInstance(child) then
+            -- Verify matching pet exists under workspace.Pets by name
+            local petFolder = workspace:FindFirstChild("Pets")
+            if petFolder and petFolder:FindFirstChild(child.Name) then
+                table.insert(results, child.Name)
+            end
+        end
+    end
+    return results
+end
+
+local function hatchPetByName(petName)
+    if type(petName) ~= "string" or petName == "" then return false end
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then return false end
+    local petModel = petsFolder:FindFirstChild(petName)
+    if not petModel then return false end
+    local re = petModel:FindFirstChild("RootPart") and petModel.RootPart:FindFirstChild("RE")
+    if not re then return false end
+    local ok, err = pcall(function()
+        re:FireServer("Claim")
+    end)
+    return ok
+end
+
+local function runAutoHatch()
+    while autoHatchEnabled do
+        local ok, err = pcall(function()
+            local names = findHatchablePetsForPlayer()
+            for _, name in ipairs(names) do
+                hatchPetByName(name)
+                task.wait(0.1)
+            end
+            task.wait(0.5)
+        end)
+        if not ok then
+            warn("Auto Hatch error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
+Tabs.PlaceTab:Toggle({
+    Title = "Auto Hatch",
+    Desc = "Automatically claims hatchable pets you own",
+    Value = false,
+    Callback = function(state)
+        autoHatchEnabled = state
+        if state and not autoHatchThread then
+            autoHatchThread = task.spawn(function()
+                runAutoHatch()
+                autoHatchThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Hatch", Content = "Started", Duration = 3 })
+        elseif (not state) and autoHatchThread then
+            WindUI:Notify({ Title = "Auto Hatch", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
 
