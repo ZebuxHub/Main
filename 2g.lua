@@ -96,6 +96,45 @@ local function buildEggIdList()
     return ids
 end
 
+-- Build display labels like "ID | Price"
+local eggSortMode = "Alphabet" -- or "Price"
+local eggLabelToId = {}
+local function formatPrice(p)
+    if type(p) == "number" then
+        if p >= 1e6 then return string.format("%.1fm", p/1e6) end
+        if p >= 1e3 then return string.format("%.1fk", p/1e3) end
+        return tostring(p)
+    end
+    return "?"
+end
+
+local function buildEggDisplayList()
+    eggLabelToId = {}
+    local items = {}
+    for _, id in ipairs(eggIdList or {}) do
+        local price = getEggPriceById(id)
+        table.insert(items, { id = id, price = price })
+    end
+    if eggSortMode == "Price" then
+        table.sort(items, function(a, b)
+            local pa = type(a.price) == "number" and a.price or math.huge
+            local pb = type(b.price) == "number" and b.price or math.huge
+            if pa == pb then return a.id < b.id end
+            return pa < pb
+        end)
+    else
+        table.sort(items, function(a, b) return a.id < b.id end)
+    end
+    local labels = {}
+    for i = 1, #items do
+        local it = items[i]
+        local label = string.format("%s | %s", it.id, formatPrice(it.price))
+        labels[i] = label
+        eggLabelToId[label] = it.id
+    end
+    return labels
+end
+
 -- UI helpers
 local function tryCreateTextInput(parent, opts)
     -- Tries common method names to create a textbox-like input in WindUI
@@ -891,29 +930,27 @@ local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
     Title = "Egg IDs",
     Desc = "Pick the eggs you want to buy.",
-    Values = eggIdList,
+    Values = buildEggDisplayList(),
     Value = {},
     Multi = true,
     AllowNone = true,
             Callback = function(selection)
             selectedTypeSet = {}
-            local function addTypeFor(idStr)
-                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+            local function addTypeForDisplay(label)
+                local idStr = eggLabelToId[label] or tostring(label)
                 selectedTypeSet[idStr] = true
-                -- Also include the mapped Type from config (if available and different)
                 local mappedType = idToTypeMap[idStr]
                 if mappedType and tostring(mappedType) ~= idStr then
                     selectedTypeSet[tostring(mappedType)] = true
                 end
             end
             if type(selection) == "table" then
-                for _, id in ipairs(selection) do
-                    addTypeFor(tostring(id))
+                for _, label in ipairs(selection) do
+                    addTypeForDisplay(label)
                 end
             elseif type(selection) == "string" then
-                addTypeFor(tostring(selection))
+                addTypeForDisplay(selection)
             end
-            -- update selected types display
             local keys = {}
             for k in pairs(selectedTypeSet) do table.insert(keys, k) end
             table.sort(keys)
@@ -923,21 +960,18 @@ eggDropdown = Tabs.AutoTab:Dropdown({
 })
 
 -- Simple search bar to filter egg list
-local eggSearchInput = tryCreateTextInput(Tabs.AutoTab, {
-    Title = "Search",
-    Placeholder = "Type name...",
-    ClearOnFocus = false,
-    Callback = function(text)
-        local filtered = {}
-        for _, id in ipairs(eggIdList) do
-            local mapped = idToTypeMap[id]
-            if text == nil or text == "" or caseInsensitiveContains(id, text) or caseInsensitiveContains(tostring(mapped), text) then
-                table.insert(filtered, id)
-            end
-        end
-        table.sort(filtered)
+-- Sort mode selector (Alphabet or Price)
+Tabs.AutoTab:Dropdown({
+    Title = "Sort by",
+    Desc = "Change egg list order.",
+    Values = { "Alphabet", "Price" },
+    Value = eggSortMode,
+    Multi = false,
+    AllowNone = false,
+    Callback = function(v)
+        eggSortMode = v
         if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(filtered)
+            eggDropdown:Refresh(buildEggDisplayList())
         end
     end
 })
@@ -948,7 +982,7 @@ Tabs.AutoTab:Button({
         loadEggConfig()
         eggIdList = buildEggIdList()
         if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(eggIdList)
+            eggDropdown:Refresh(buildEggDisplayList())
         end
     end
 })
