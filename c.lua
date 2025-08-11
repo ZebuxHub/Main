@@ -195,6 +195,7 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 local autoPlaceEnabled = false
+local findOwnedEggUIDByType -- forward declaration
 
 -- Status tracking
 local statusData = {
@@ -364,8 +365,9 @@ local function runAutoBuy()
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused " .. tostring(chosen.eggType)
         if autoPlaceEnabled then
-            placeEggByUID(chosen.uid)
-            statusData.lastAction = "Placed " .. tostring(chosen.eggType)
+            -- Some games replace the UID after purchase. Attempt to resolve a placeable model owned by the player.
+            local candidateUid = (findOwnedEggUIDByType and findOwnedEggUIDByType(chosen.eggType)) or chosen.uid
+            placeEggByUID(candidateUid)
         end
         updateStatusParagraph()
         task.wait(0.25)
@@ -394,6 +396,33 @@ Tabs.AutoTab:Toggle({
     end
 })
 
+-- Try to resolve the purchasd egg's UID after BuyEgg by scanning for a model owned by the player
+findOwnedEggUIDByType = function(preferredType)
+    local myUserId = LocalPlayer and LocalPlayer.UserId
+    if not myUserId then return nil end
+    local newestUid, newestTime = nil, -math.huge
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if inst:IsA("Model") then
+            local uid = inst.Name
+            local eggTypeAttr = inst:GetAttribute("EggType") or inst:GetAttribute("Type")
+            local ownerId = inst:GetAttribute("UserId") or inst:GetAttribute("OwnerId") or inst:GetAttribute("PlayerId")
+            local hasGrid = inst:GetAttribute("GridCenterPos") ~= nil
+            -- Prefer not-yet-placed eggs (no GridCenterPos)
+            if ownerId == myUserId and not hasGrid then
+                if not preferredType or toKey(tostring(eggTypeAttr or "")) == toKey(preferredType) then
+                    -- Favor most recent by STime timestamp if present
+                    local sTime = tonumber(inst:GetAttribute("STime")) or 0
+                    if sTime > newestTime then
+                        newestTime = sTime
+                        newestUid = uid
+                    end
+                end
+            end
+        end
+    end
+    return newestUid
+end
+
 -- Auto Place Egg
 local function createVector3(x, y, z)
     local vlib = rawget(_G, "vector")
@@ -414,19 +443,30 @@ local function findPlacementPart(islandName)
     if not art then return nil end
     local island = art:FindFirstChild(islandName or "")
     if not island then return nil end
+    -- Prefer parts that already expose GridCenterPos attribute, else fallback by color
+    local candidateByColor
     for _, inst in ipairs(island:GetDescendants()) do
         if inst:IsA("BasePart") then
+            if inst:GetAttribute("GridCenterPos") ~= nil then
+                return inst
+            end
             local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
             if col and colorsClose(col, TARGET_COLOR, 0.02) then
-                return inst
+                candidateByColor = candidateByColor or inst
             end
         end
     end
+    if candidateByColor then return candidateByColor end
     return nil
 end
 
 local function getGridVectorFromPart(part)
     if not part then return nil end
+    -- Some games store a packed vector attribute like GridCenterPos
+    local packed = part:GetAttribute("GridCenterPos")
+    if typeof(packed) == "Vector3" then
+        return createVector3(packed.X, packed.Y, packed.Z)
+    end
     local gx = part:GetAttribute("GridX") or part:GetAttribute("Grid X") or part:GetAttribute("gridX") or part:GetAttribute("gridx")
     local gy = part:GetAttribute("GridY") or part:GetAttribute("Grid Y") or part:GetAttribute("gridY") or part:GetAttribute("gridy")
     local gz = part:GetAttribute("GridZ") or part:GetAttribute("Grid Z") or part:GetAttribute("gridZ") or part:GetAttribute("gridz")
@@ -460,6 +500,9 @@ function placeEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    else
+        statusData.lastAction = string.format("Placed at (%.2f, %.2f, %.2f)", dst.X, dst.Y, dst.Z)
+        updateStatusParagraph()
     end
 end
 
