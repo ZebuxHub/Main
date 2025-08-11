@@ -6,6 +6,8 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
 -- Window
@@ -25,6 +27,9 @@ local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
 Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
+-- Forward declarations for status used by UI callbacks defined below
+local statusData
+local function updateStatusParagraph() end
 
 -- Egg config loader
 local eggConfig = {}
@@ -161,76 +166,6 @@ local function getIslandNumberFromName(islandName)
     return nil
 end
 
--- Get all placed pets to check for collisions
-local function getPlacedPets(islandNumber)
-    if not islandNumber then return {} end
-    local art = workspace:FindFirstChild("Art")
-    if not art then return {} end
-    
-    local islandName = "Island_" .. tostring(islandNumber)
-    local island = art:FindFirstChild(islandName)
-    if not island then 
-        -- Try alternative naming patterns
-        for _, child in ipairs(art:GetChildren()) do
-            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
-                island = child
-                break
-            end
-        end
-        if not island then return {} end
-    end
-    
-    local placedPets = {}
-    local function scanForPets(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            -- Look for pet models (they might have specific tags or attributes)
-            if child:IsA("Model") then
-                -- Check if it's a pet by looking for common pet attributes
-                local isPet = child:GetAttribute("IsPet") or 
-                             child:GetAttribute("PetType") or 
-                             child:GetAttribute("T") or
-                             child.Name:match("Pet") or
-                             child:HasTag("Pet")
-                
-                if isPet then
-                    table.insert(placedPets, child)
-                end
-            end
-            scanForPets(child)
-        end
-    end
-    
-    scanForPets(island)
-    return placedPets
-end
-
--- Check if a position is too close to existing pets
-local function isPositionOccupied(targetPosition, placedPets, minDistance)
-    minDistance = minDistance or 8 -- Default minimum distance between pets
-    
-    for _, pet in ipairs(placedPets) do
-        local petPosition = pet:GetPivot().Position
-        local distance = (targetPosition - petPosition).Magnitude
-        
-        if distance < minDistance then
-            return true, distance
-        end
-    end
-    
-    return false, 0
-end
-
--- Get center position of a farm part
-local function getFarmPartCenter(farmPart)
-    if not farmPart or not farmPart:IsA("BasePart") then
-        return nil
-    end
-    
-    -- Get the center of the farm part
-    local center = farmPart.Position
-    return center
-end
-
 local function getFarmParts(islandNumber)
     if not islandNumber then return {} end
     local art = workspace:FindFirstChild("Art")
@@ -264,6 +199,84 @@ local function getFarmParts(islandNumber)
     
     scanForFarmParts(island)
     return farmParts
+end
+
+-- Occupancy helpers (uses Model:GetPivot to detect nearby placed pets)
+local function isPetLikeModel(model)
+    if not model or not model:IsA("Model") then return false end
+    -- Common signals that a model is a pet or a placed unit
+    if model:FindFirstChildOfClass("Humanoid") then return true end
+    if model:FindFirstChild("AnimationController") then return true end
+    if model:GetAttribute("IsPet") or model:GetAttribute("PetType") or model:GetAttribute("T") then return true end
+    local lowerName = string.lower(model.Name)
+    if string.find(lowerName, "pet") or string.find(lowerName, "egg") then return true end
+    if CollectionService and (CollectionService:HasTag(model, "Pet") or CollectionService:HasTag(model, "IdleBigPet")) then
+        return true
+    end
+    return false
+end
+
+local function getTileCenterPosition(farmPart)
+    if not farmPart or not farmPart.IsA or not farmPart:IsA("BasePart") then return nil end
+    -- Middle of the farm tile (parts are 8x8x8)
+    return farmPart.Position
+end
+
+local function getPetModelsOverlappingTile(farmPart)
+    if not farmPart or not farmPart:IsA("BasePart") then return {} end
+    local centerCF = farmPart.CFrame
+    -- Slightly taller box to capture pets above the tile
+    local regionSize = Vector3.new(8, 14, 8)
+    local params = OverlapParams.new()
+    params.RespectCanCollide = false
+    -- Search within whole workspace, we will filter to models
+    local parts = workspace:GetPartBoundsInBox(centerCF, regionSize, params)
+    local modelMap = {}
+    for _, part in ipairs(parts) do
+        if part ~= farmPart then
+            local model = part:FindFirstAncestorOfClass("Model")
+            if model and not modelMap[model] and isPetLikeModel(model) then
+                modelMap[model] = true
+            end
+        end
+    end
+    local models = {}
+    for model in pairs(modelMap) do table.insert(models, model) end
+    return models
+end
+
+local function isFarmTileOccupied(farmPart, minDistance)
+    minDistance = minDistance or 6
+    local center = getTileCenterPosition(farmPart)
+    if not center then return true end
+    local models = getPetModelsOverlappingTile(farmPart)
+    if #models == 0 then return false end
+    -- If any pet pivot lies within minDistance of center, treat as occupied
+    for _, model in ipairs(models) do
+        local pivotPos = model:GetPivot().Position
+        if (pivotPos - center).Magnitude <= minDistance then
+            return true
+        end
+    end
+    return false
+end
+
+local function findAvailableFarmPart(farmParts, minDistance)
+    if not farmParts or #farmParts == 0 then return nil end
+    -- Shuffle to distribute placement
+    local indices = {}
+    for i = 1, #farmParts do indices[i] = i end
+    for i = #indices, 2, -1 do
+        local j = math.random(1, i)
+        indices[i], indices[j] = indices[j], indices[i]
+    end
+    for _, idx in ipairs(indices) do
+        local part = farmParts[idx]
+        if not isFarmTileOccupied(part, minDistance) then
+            return part
+        end
+    end
+    return nil
 end
 
 local function getPetUID()
@@ -340,7 +353,7 @@ local function getPetInfo(petUID)
     return petData
 end
 
-local function placePetAtPart(farmPart, petUID, placedPets, minDistance)
+local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
     
     -- Enhanced validation based on Pet module insights
@@ -352,26 +365,11 @@ local function placePetAtPart(farmPart, petUID, placedPets, minDistance)
         return false
     end
     
-    -- Get center position of the farm part
-    local centerPosition = getFarmPartCenter(farmPart)
-    if not centerPosition then
-        warn("Could not get center position for farm part")
-        return false
-    end
-    
-    -- Check if position is occupied by existing pets
-    if placedPets and #placedPets > 0 then
-        local isOccupied, distance = isPositionOccupied(centerPosition, placedPets, minDistance)
-        if isOccupied then
-            warn("Position occupied by existing pet at distance " .. tostring(distance))
-            return false, "Position occupied"
-        end
-    end
-    
+    local position = farmPart.Position
     local args = {
         "Place",
         {
-            DST = vector.create(centerPosition.X, centerPosition.Y, centerPosition.Z),
+            DST = vector.create(position.X, position.Y, position.Z),
             ID = petUID
         }
     }
@@ -386,7 +384,7 @@ local function placePetAtPart(farmPart, petUID, placedPets, minDistance)
     end)
     
     if not ok then
-        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(centerPosition) .. ": " .. tostring(err))
+        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(position) .. ": " .. tostring(err))
         return false
     end
     
@@ -673,24 +671,6 @@ local placeStatusData = {
     validationStatus = nil,
 }
 
--- Configuration for placement
-local placementConfig = {
-    minDistance = 8, -- Minimum distance between pets
-}
-
-Tabs.PlaceTab:Section({ Title = "Configuration", Icon = "settings" })
-
-Tabs.PlaceTab:Slider({
-    Title = "Minimum Distance",
-    Desc = "Minimum distance between placed pets (in studs)",
-    Value = placementConfig.minDistance,
-    Min = 4,
-    Max = 20,
-    Callback = function(value)
-        placementConfig.minDistance = value
-    end
-})
-
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place Status",
@@ -756,7 +736,7 @@ local function runAutoPlace()
                 return
             end
             
-                        local farmParts = getFarmParts(islandNumber)
+            local farmParts = getFarmParts(islandNumber)
             placeStatusData.farmPartsFound = #farmParts
             
             if placeStatusData.farmPartsFound == 0 then
@@ -766,20 +746,16 @@ local function runAutoPlace()
                 return
             end
             
-            -- Get existing placed pets for collision detection
-            local placedPets = getPlacedPets(islandNumber)
-            local minDistance = placementConfig.minDistance -- Use configurable distance
-            
             local petUID = getPetUID()
             placeStatusData.petUID = petUID
             
-            if not petUID then
-                placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg.Name"
-                placeStatusData.validationStatus = "No PET UID"
-                updatePlaceStatusParagraph()
-                task.wait(0.6)
-                return
-            end
+                    if not petUID then
+            placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg.Name"
+            placeStatusData.validationStatus = "No PET UID"
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            return
+        end
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -795,38 +771,26 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Try to find an available farm part (not occupied by existing pets)
-            local availableParts = {}
-            for _, part in ipairs(farmParts) do
-                local centerPosition = getFarmPartCenter(part)
-                if centerPosition then
-                    local isOccupied, distance = isPositionOccupied(centerPosition, placedPets, minDistance)
-                    if not isOccupied then
-                        table.insert(availableParts, part)
-                    end
-                end
-            end
-            
-            if #availableParts == 0 then
-                placeStatusData.lastAction = "No available farm parts (all occupied by existing pets)"
+            -- Find an available farm part near the middle and not occupied (check pivots)
+            local minSpacing = 8 -- studs between pets
+            local chosenPart = findAvailableFarmPart(farmParts, minSpacing)
+            if not chosenPart then
+                placeStatusData.lastAction = "All farm tiles occupied (min spacing " .. tostring(minSpacing) .. ")"
                 updatePlaceStatusParagraph()
                 task.wait(0.6)
                 return
             end
-            
-            -- Place pet at a random available farm part
-            local randomPart = availableParts[math.random(1, #availableParts)]
-            local centerPosition = getFarmPartCenter(randomPart)
-            placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", centerPosition.X, centerPosition.Y, centerPosition.Z)
-            placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at " .. placeStatusData.lastPosition
+            local position = chosenPart.Position
+            placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", position.X, position.Y, position.Z)
+            placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at center " .. placeStatusData.lastPosition
             updatePlaceStatusParagraph()
             
-            local success, errorMsg = placePetAtPart(randomPart, petUID, placedPets, minDistance)
+            local success = placePetAtPart(chosenPart, petUID)
             if success then
                 placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
                 placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
             else
-                placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID) .. (errorMsg and " (" .. errorMsg .. ")" or "")
+                placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
             end
             updatePlaceStatusParagraph()
             
@@ -887,10 +851,6 @@ Tabs.PlaceTab:Button({
             return
         end
         
-        -- Get existing placed pets for collision detection
-        local placedPets = getPlacedPets(islandNumber)
-        local minDistance = placementConfig.minDistance -- Use configurable distance
-        
         local petUID = getPetUID()
         if not petUID then
             WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
@@ -904,25 +864,15 @@ Tabs.PlaceTab:Button({
             return
         end
         
-        -- Try to find an available farm part
-        local availableParts = {}
-        for _, part in ipairs(farmParts) do
-            local centerPosition = getFarmPartCenter(part)
-            if centerPosition then
-                local isOccupied, distance = isPositionOccupied(centerPosition, placedPets, minDistance)
-                if not isOccupied then
-                    table.insert(availableParts, part)
-                end
-            end
-        end
-        
-        if #availableParts == 0 then
-            WindUI:Notify({ Title = "Error", Content = "No available farm parts (all occupied by existing pets)", Duration = 3 })
+        -- Prefer an available tile using pivot occupancy checks
+        local chosenPart = findAvailableFarmPart(farmParts, 8)
+        if not chosenPart then
+            WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
+            placeStatusData.lastAction = "Manual place failed (occupied)"
+            updatePlaceStatusParagraph()
             return
         end
-        
-        local randomPart = availableParts[math.random(1, #availableParts)]
-        local success, errorMsg = placePetAtPart(randomPart, petUID, placedPets, minDistance)
+        local success = placePetAtPart(chosenPart, petUID)
         
         if success then
             WindUI:Notify({ Title = "Success", Content = "Pet placed at farm location", Duration = 3 })
@@ -930,7 +880,7 @@ Tabs.PlaceTab:Button({
             placeStatusData.lastAction = "Manual place successful"
             updatePlaceStatusParagraph()
         else
-            WindUI:Notify({ Title = "Error", Content = "Failed to place pet" .. (errorMsg and " (" .. errorMsg .. ")" or ""), Duration = 3 })
+            WindUI:Notify({ Title = "Error", Content = "Failed to place pet", Duration = 3 })
             placeStatusData.lastAction = "Manual place failed"
             updatePlaceStatusParagraph()
         end
