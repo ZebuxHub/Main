@@ -192,29 +192,22 @@ local function getIslandBeltFolder(islandName)
     return belt
 end
 
--- Auto Place helpers
-local function vectorCreate(x, y, z)
-    local vlib = rawget(_G, "vector")
-    if type(vlib) == "table" and type(vlib.create) == "function" then
-        return vlib.create(x, y, z)
-    end
-    return Vector3.new(x, y, z)
-end
-
-local function getIsland3TileParts()
-    local art = workspace:FindFirstChild("Art")
-    if not art then return {} end
-    local island3 = art:FindFirstChild("Island_3")
-    if not island3 then return {} end
+-- Island_3 tile helpers (Farm_split_* parts under workspace.Art.Island_3)
+local function getIsland3Tiles()
     local tiles = {}
-    for _, inst in ipairs(island3:GetDescendants()) do
+    local art = workspace:FindFirstChild("Art")
+    if not art then return tiles end
+    local island3 = art:FindFirstChild("Island_3")
+    if not island3 then return tiles end
+    for _, inst in ipairs(island3:GetChildren()) do
         if inst:IsA("BasePart") then
             local n = tostring(inst.Name)
-            if string.sub(n, 1, 10) == "Farm_split" then
+            if string.sub(n, 1, 11) == "Farm_split_" then
                 table.insert(tiles, inst)
             end
         end
     end
+    table.sort(tiles, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
     return tiles
 end
 
@@ -231,15 +224,25 @@ local function getInventoryEggUIDs()
     return list
 end
 
-local function placeEggAtTile(uid, tilePart)
+local function getPlacedUIDSet()
+    local set = {}
+    local root = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if root then
+        for _, ch in ipairs(root:GetChildren()) do
+            set[tostring(ch.Name)] = true
+        end
+    end
+    return set
+end
+
+local function placeUIDAtTileCenter(uid, tilePart)
     if not (uid and tilePart and tilePart:IsA("BasePart")) then return false end
-    local pos = tilePart.Position
-    local topY = pos.Y + ((tilePart.Size and tilePart.Size.Y) or 0) * 0.5
-    local dst = vectorCreate(pos.X, topY, pos.Z)
+    local center = tilePart.CFrame.Position
+    local vec = Vector3.new(center.X, center.Y, center.Z)
     local args = {
         "Place",
         {
-            DST = dst,
+            DST = vec,
             ID = uid,
         }
     }
@@ -308,83 +311,108 @@ Tabs.AutoTab:Button({
     end
 })
 
--- Auto Place UI
-local autoPlaceEnabled = false
-local autoPlaceThread = nil
-
-Tabs.AutoTab:Toggle({
-    Title = "Auto Place Eggs (Island_3 Farm_split)",
-    Desc = "Scans Island_3 tiles and places inventory eggs on centers",
-    Value = false,
-    Callback = function(state)
-        autoPlaceEnabled = state
-        if state and not autoPlaceThread then
-            autoPlaceThread = task.spawn(function()
-                local attemptedAt = {}
-                local function alreadyTriedRecently(uid)
-                    local t = attemptedAt[uid]
-                    return t and (os.clock() - t < 2.0)
-                end
-                while autoPlaceEnabled do
-                    local uids = getInventoryEggUIDs()
-                    if #uids == 0 then
-                        statusData.lastAction = "Auto Place: no eggs in inventory"
-                        updateStatusParagraph()
-                        task.wait(0.6)
-                        continue
-                    end
-                    local tiles = getIsland3TileParts()
-                    if #tiles == 0 then
-                        statusData.lastAction = "Auto Place: no Farm_split tiles found in Island_3"
-                        updateStatusParagraph()
-                        task.wait(0.8)
-                        continue
-                    end
-                    -- Randomize tile order each cycle
-                    local indices = {}
-                    for i = 1, #tiles do indices[i] = i end
-                    for i = #indices, 2, -1 do
-                        local j = math.random(1, i)
-                        indices[i], indices[j] = indices[j], indices[i]
-                    end
-
-                    -- Place each UID on a random tile
-                    for _, uid in ipairs(uids) do
-                        if not autoPlaceEnabled then break end
-                        if not alreadyTriedRecently(uid) then
-                            local placed = false
-                            for _, idx in ipairs(indices) do
-                                if not autoPlaceEnabled then break end
-                                placed = placeEggAtTile(uid, tiles[idx])
-                                attemptedAt[uid] = os.clock()
-                                if placed then
-                                    statusData.lastAction = "Auto Place: placed UID " .. uid .. " at tile " .. tostring(tiles[idx].Name)
-                                    updateStatusParagraph()
-                                    task.wait(0.25)
-                                    break
-                                end
-                                task.wait(0.05)
-                            end
-                            if not placed then
-                                statusData.lastAction = "Auto Place: failed placing UID " .. uid
-                                updateStatusParagraph()
-                                task.wait(0.2)
-                            end
-                        end
-                    end
-                    task.wait(0.4)
-                end
-                autoPlaceThread = nil
-            end)
-            WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
-        elseif (not state) and autoPlaceThread then
-            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
-        end
-    end
-})
-
 local autoBuyEnabled = false
 local autoBuyThread = nil
+
+-- Auto Place state
+local autoPlaceEnabled = false
+local autoPlaceThread = nil
+local usedTileNames = {}
+
+local function runAutoPlace()
+    usedTileNames = {}
+    while autoPlaceEnabled do
+        local uids = getInventoryEggUIDs()
+        local placedSet = getPlacedUIDSet()
+        -- filter out already placed
+        local pending = {}
+        for _, uid in ipairs(uids) do
+            if not placedSet[uid] then
+                table.insert(pending, uid)
+            end
+        end
+
+        if #pending == 0 then
+            statusData.lastAction = "Auto Place: no unplaced eggs in inventory"
+            updateStatusParagraph()
+            task.wait(0.7)
+            continue
+        end
+
+        local tiles = getIsland3Tiles()
+        if #tiles == 0 then
+            statusData.lastAction = "Auto Place: no Farm_split_* tiles found in Island_3"
+            updateStatusParagraph()
+            task.wait(0.8)
+            continue
+        end
+
+        -- map of available (unused this session) tiles
+        local available = {}
+        for _, t in ipairs(tiles) do
+            if not usedTileNames[t.Name] then
+                table.insert(available, t)
+            end
+        end
+
+        if #available == 0 then
+            statusData.lastAction = "Auto Place: no unused tiles available"
+            updateStatusParagraph()
+            task.wait(0.8)
+            continue
+        end
+
+        local tileIndex = 1
+        for _, uid in ipairs(pending) do
+            if not autoPlaceEnabled then break end
+
+            -- Skip if already placed since last fetch
+            if getPlacedUIDSet()[uid] then
+                continue
+            end
+
+            -- Find next available tile
+            local tile = available[tileIndex]
+            if not tile then
+                statusData.lastAction = "Auto Place: ran out of tiles"
+                updateStatusParagraph()
+                break
+            end
+
+            statusData.lastAction = "Auto Place: placing UID " .. uid .. " at tile " .. tostring(tile.Name)
+            updateStatusParagraph()
+
+            local sent = placeUIDAtTileCenter(uid, tile)
+            if sent then
+                -- Wait and verify placement via PlayerBuiltBlocks
+                local success = false
+                for i = 1, 20 do -- up to ~2s with 0.1s step
+                    if getPlacedUIDSet()[uid] then
+                        success = true
+                        break
+                    end
+                    task.wait(0.1)
+                end
+                if success then
+                    usedTileNames[tile.Name] = true
+                    statusData.lastAction = "Auto Place: placed UID " .. uid .. " on " .. tostring(tile.Name)
+                    updateStatusParagraph()
+                else
+                    statusData.lastAction = "Auto Place: not confirmed for UID " .. uid .. ", trying next tile"
+                    updateStatusParagraph()
+                end
+            else
+                statusData.lastAction = "Auto Place: failed remote for UID " .. uid
+                updateStatusParagraph()
+            end
+
+            tileIndex = tileIndex + 1
+            task.wait(0.2)
+        end
+
+        task.wait(0.4)
+    end
+end
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
@@ -545,6 +573,25 @@ Tabs.AutoTab:Toggle({
             WindUI:Notify({ Title = "Auto Buy", Content = "Stopped", Duration = 3 })
             statusData.lastAction = "Stopped"
             updateStatusParagraph()
+        end
+    end
+})
+
+-- Auto Place UI toggle
+Tabs.AutoTab:Toggle({
+    Title = "Auto Place Eggs (Island_3 Farm_split)",
+    Desc = "Places inventory eggs on Island_3 Farm_split_* tile centers",
+    Value = false,
+    Callback = function(state)
+        autoPlaceEnabled = state
+        if state and not autoPlaceThread then
+            autoPlaceThread = task.spawn(function()
+                runAutoPlace()
+                autoPlaceThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
+        elseif (not state) and autoPlaceThread then
+            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
         end
     end
 })
