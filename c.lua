@@ -427,33 +427,42 @@ local function vectorCreate(x, y, z)
 end
 
 local function getIsland3()
-    local art = workspace:FindFirstChild("Art")
-    return art and art:FindFirstChild("Island_3") or nil
+    local art = workspace:WaitForChild("Art", 3)
+    if not art then return nil end
+    local island3 = art:FindFirstChild("Island_3") or art:WaitForChild("Island_3", 3)
+    return island3
 end
 
-local function findFarmSplitModels()
+local function hasFarmSplitPrefix(nameStr)
+    local n = tostring(nameStr)
+    local lower = string.lower(n)
+    return string.sub(lower, 1, string.len("farm_split")) == "farm_split"
+end
+
+local function findFarmSplitTiles()
     local island3 = getIsland3()
     if not island3 then return {} end
     local list = {}
     for _, inst in ipairs(island3:GetDescendants()) do
-        if inst:IsA("Model") then
-            local n = tostring(inst.Name)
-            if string.find(n, "Farm_split", 1, true) == 1 then
-                table.insert(list, inst)
-            end
+        if (inst:IsA("Model") or inst:IsA("BasePart")) and hasFarmSplitPrefix(inst.Name) then
+            table.insert(list, inst)
         end
     end
     return list
 end
 
-local function getModelPivotPosition(model)
-    if not model or not model:IsA("Model") then return nil end
+local function getModelPivotPosition(inst)
+    if not inst then return nil end
+    if inst:IsA("BasePart") then
+        return inst.Position
+    end
+    if not inst:IsA("Model") then return nil end
     local cf
-    if typeof(model.GetPivot) == "function" then
-        cf = model:GetPivot()
+    if typeof(inst.GetPivot) == "function" then
+        cf = inst:GetPivot()
     end
     if not cf then
-        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+        local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
         cf = part and part.CFrame or nil
     end
     return cf and cf.Position or nil
@@ -512,9 +521,9 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    local tiles = findFarmSplitModels()
+                    local tiles = findFarmSplitTiles()
                     if #tiles == 0 then
-                        statusData.lastAction = "Auto Place: no Farm_split models in Island_3"
+                        statusData.lastAction = "Auto Place: no Farm_split tiles in Island_3"
                         updateStatusParagraph()
                         task.wait(0.6)
                         continue
@@ -545,7 +554,7 @@ Tabs.AutoTab:Toggle({
                         end
                     end
                     if not targetPos then
-                        statusData.lastAction = "Auto Place: no valid CFrame on tiles"
+                        statusData.lastAction = "Auto Place: no valid CFrame/position on tiles"
                         updateStatusParagraph()
                         task.wait(0.4)
                         continue
