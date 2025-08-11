@@ -96,59 +96,7 @@ local function buildEggIdList()
     return ids
 end
 
--- Build display labels like "ID | Price" and sort by price (lowest first)
-local eggLabelToId = {}
-local function formatPrice(p)
-    if type(p) == "number" then
-        if p >= 1e9 then return string.format("%.2fb", p/1e9) end
-        if p >= 1e6 then return string.format("%.2fm", p/1e6) end
-        if p >= 1e3 then return string.format("%.1fk", p/1e3) end
-        return tostring(p)
-    end
-    return "?"
-end
-
-local function buildEggDisplayList()
-    eggLabelToId = {}
-    local items = {}
-    for i = 1, #(eggIdList or {}) do
-        local id = eggIdList[i]
-        local price = getEggPriceById(id)
-        items[#items+1] = { id = id, price = price }
-    end
-    table.sort(items, function(a, b)
-        local pa = type(a.price) == "number" and a.price or math.huge
-        local pb = type(b.price) == "number" and b.price or math.huge
-        if pa == pb then return a.id < b.id end
-        return pa < pb
-    end)
-    local labels = {}
-    for i = 1, #items do
-        local it = items[i]
-        local label = string.format("%s | %s", it.id, formatPrice(it.price))
-        labels[i] = label
-        eggLabelToId[label] = it.id
-    end
-    return labels
-end
-
--- UI helpers
-local function tryCreateTextInput(parent, opts)
-    -- Tries common method names to create a textbox-like input in WindUI
-    local created
-    for _, method in ipairs({"Textbox", "Input", "TextBox"}) do
-        local ok, res = pcall(function()
-            return parent[method](parent, opts)
-        end)
-        if ok and res then created = res break end
-    end
-    return created
-end
-
-local function caseInsensitiveContains(hay, needle)
-    if type(hay) ~= "string" or type(needle) ~= "string" then return false end
-    return string.find(string.lower(hay), string.lower(needle), 1, true) ~= nil
-end
+-- UI helpers (kept minimal to reduce overhead)
 
 local function getEggPriceById(eggId)
     local entry = eggConfig[eggId] or eggConfig[tonumber(eggId)]
@@ -926,15 +874,14 @@ local selectedTypeSet = {}
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
     Title = "Egg IDs",
-    Desc = "Pick the eggs you want to buy. (sorted by price)",
-    Values = buildEggDisplayList(),
+    Desc = "Pick the eggs you want to buy.",
+    Values = eggIdList,
     Value = {},
     Multi = true,
     AllowNone = true,
             Callback = function(selection)
             selectedTypeSet = {}
-            local function addTypeForDisplay(label)
-                local idStr = eggLabelToId[label] or tostring(label)
+            local function addTypeFor(idStr)
                 -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
                 selectedTypeSet[idStr] = true
                 -- Also include the mapped Type from config (if available and different)
@@ -944,11 +891,11 @@ eggDropdown = Tabs.AutoTab:Dropdown({
                 end
             end
             if type(selection) == "table" then
-                for _, label in ipairs(selection) do
-                    addTypeForDisplay(label)
+                for _, id in ipairs(selection) do
+                    addTypeFor(tostring(id))
                 end
             elseif type(selection) == "string" then
-                addTypeForDisplay(selection)
+                addTypeFor(tostring(selection))
             end
             -- update selected types display
             local keys = {}
@@ -959,15 +906,13 @@ eggDropdown = Tabs.AutoTab:Dropdown({
         end
 })
 
--- Sort is by price by default; no search bar (for performance + simplicity)
-
 Tabs.AutoTab:Button({
     Title = "Reload Eggs",
     Callback = function()
         loadEggConfig()
         eggIdList = buildEggIdList()
         if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(buildEggDisplayList())
+            eggDropdown:Refresh(eggIdList)
         end
     end
 })
@@ -1078,16 +1023,14 @@ local function runAutoBuy()
         end
 
         -- Combine eggs from all belts (Conveyor1..n)
-        local allChildren = {}
-        for _, belt in ipairs(beltFolders) do
-            local kids = belt:GetChildren()
-            for i = 1, #kids do
-                allChildren[#allChildren+1] = kids[i]
-            end
-        end
         local children = {}
-        for _, inst in ipairs(allChildren) do
-            if inst:IsA("Model") then table.insert(children, inst) end
+        -- Collect models with minimal allocations
+        for b = 1, #beltFolders do
+            local kids = beltFolders[b]:GetChildren()
+            for i = 1, #kids do
+                local inst = kids[i]
+                if inst:IsA("Model") then children[#children+1] = inst end
+            end
         end
         statusData.eggsFound = #children
         statusData.netWorth = getPlayerNetWorth()
@@ -1106,11 +1049,9 @@ local function runAutoBuy()
         for i = 1, #children do
             local child = children[i]
             local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
+            if ok then matching[#matching+1] = { uid = uid, price = price } end
             local t = child:GetAttribute("Type") or child:GetAttribute("EggType") or child:GetAttribute("Name")
             if t ~= nil then seen[tostring(t)] = true end
-            if ok then
-                matching[#matching+1] = { uid = uid, price = price }
-            end
         end
         do
             local list = {}
@@ -1133,9 +1074,10 @@ local function runAutoBuy()
         end)
 
         local affordable = {}
-        for _, item in ipairs(matching) do
+        for i = 1, #matching do
+            local item = matching[i]
             if statusData.netWorth >= (item.price or math.huge) then
-                table.insert(affordable, item)
+                affordable[#affordable+1] = item
             end
         end
         statusData.affordableFound = #affordable
