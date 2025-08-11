@@ -377,20 +377,30 @@ local function getPetUID()
         if not data then return nil end
     end
     
-    -- Wait for Egg object to exist
+    -- Wait for Egg container/object to exist
     local egg = data:FindFirstChild("Egg")
     if not egg then
         egg = data:WaitForChild("Egg", 2)
         if not egg then return nil end
     end
     
-    -- The PET UID is the NAME of the egg object, not its Value
-    local eggName = egg.Name
-    if not eggName or eggName == "" then
-        return nil
+    -- If Egg is a folder, use first child name; if ValueBase, use its Value; else fallback to its Name
+    if egg:IsA("Folder") then
+        local children = egg:GetChildren()
+        if #children > 0 then
+            return tostring(children[1].Name)
+        else
+            return nil
+        end
+    elseif egg:IsA("ValueBase") then
+        local v = egg.Value
+        if v == nil or tostring(v) == "" then return nil end
+        return tostring(v)
+    else
+        local eggName = egg.Name
+        if not eggName or eggName == "" then return nil end
+        return eggName
     end
-    
-    return eggName
 end
 
 -- Enhanced pet validation based on the Pet module
@@ -431,6 +441,41 @@ local function getPetInfo(petUID)
     end
     
     return petData
+end
+
+-- Inventory egg count helpers (stop auto-place if none)
+local eggInventoryCount = 0
+local function refreshEggInventoryCount()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local container = data and data:FindFirstChild("Egg")
+    if not container then eggInventoryCount = 0 return 0 end
+    if container:IsA("Folder") then
+        eggInventoryCount = #container:GetChildren()
+    elseif container:IsA("ValueBase") then
+        eggInventoryCount = (container.Value ~= nil and tostring(container.Value) ~= "") and 1 or 0
+    else
+        eggInventoryCount = 0
+    end
+    return eggInventoryCount
+end
+
+local function attachEggContainerWatchers()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return end
+    local data = pg:FindFirstChild("Data")
+    if not data then return end
+    local container = data:FindFirstChild("Egg")
+    if not container then return end
+    refreshEggInventoryCount()
+    if container:IsA("Folder") then
+        container.ChildAdded:Connect(function() refreshEggInventoryCount() end)
+        container.ChildRemoved:Connect(function() refreshEggInventoryCount() end)
+    elseif container:IsA("ValueBase") then
+        container.Changed:Connect(function(prop)
+            if prop == "Value" then refreshEggInventoryCount() end
+        end)
+    end
 end
 
 -- ============ Auto Claim Money ============
@@ -875,6 +920,7 @@ end
 -- UI state
 loadEggConfig()
 loadConveyorConfig()
+pcall(attachEggContainerWatchers)
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
 
