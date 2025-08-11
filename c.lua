@@ -41,10 +41,22 @@ local function loadEggConfig()
     end
 end
 
+local idToTypeMap = {}
+local function getTypeFromConfig(key, val)
+    if type(val) == "table" then
+        local t = val.Type or val.Name or val.type or val.name
+        if t ~= nil then return tostring(t) end
+    end
+    return tostring(key)
+end
+
 local function buildEggIdList()
+    idToTypeMap = {}
     local ids = {}
-    for id, _ in pairs(eggConfig) do
-        table.insert(ids, tostring(id))
+    for id, val in pairs(eggConfig) do
+        local idStr = tostring(id)
+        table.insert(ids, idStr)
+        idToTypeMap[idStr] = getTypeFromConfig(id, val)
     end
     table.sort(ids)
     return ids
@@ -70,6 +82,27 @@ local function getEggPriceById(eggId)
         local price = entry.Price or entry.price or entry.Cost or entry.cost
         if type(price) == "number" then return price end
         if type(entry.Base) == "table" and type(entry.Base.Price) == "number" then return entry.Base.Price end
+    end
+    return nil
+end
+
+local function getEggPriceByType(eggType)
+    local target = tostring(eggType)
+    for key, value in pairs(eggConfig) do
+        if type(value) == "table" then
+            local t = value.Type or value.Name or value.type or value.name or tostring(key)
+            if tostring(t) == target then
+                local price = value.Price or value.price or value.Cost or value.cost
+                if type(price) == "number" then return price end
+                if type(value.Base) == "table" and type(value.Base.Price) == "number" then return value.Base.Price end
+            end
+        else
+            if tostring(key) == target then
+                -- primitive mapping, try id-based
+                local price = getEggPriceById(key)
+                if type(price) == "number" then return price end
+            end
+        end
     end
     return nil
 end
@@ -114,25 +147,33 @@ end
 -- UI state
 loadEggConfig()
 local eggIdList = buildEggIdList()
-local selectedEggIdSet = {}
+local selectedTypeSet = {}
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
     Title = "Egg IDs",
-    Desc = "Select egg types to auto-buy (from ResEgg)",
+    Desc = "Select IDs; compared by Type attribute on belt models",
     Values = eggIdList,
     Value = {},
     Multi = true,
     AllowNone = true,
     Callback = function(selection)
-        selectedEggIdSet = {}
+        selectedTypeSet = {}
+        local function addTypeFor(idStr)
+            local mappedType = idToTypeMap[idStr]
+            if mappedType then
+                selectedTypeSet[tostring(mappedType)] = true
+            else
+                -- fallback: treat selection as direct Type name
+                selectedTypeSet[idStr] = true
+            end
+        end
         if type(selection) == "table" then
-            -- Multi selection
             for _, id in ipairs(selection) do
-                selectedEggIdSet[tostring(id)] = true
+                addTypeFor(tostring(id))
             end
         elseif type(selection) == "string" then
-            selectedEggIdSet[tostring(selection)] = true
+            addTypeFor(tostring(selection))
         end
     end
 })
@@ -192,13 +233,13 @@ local function updateStatusParagraph()
 end
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
-    if not eggInstance then return false, nil, nil end
-    local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
+    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
+    local eggType = eggInstance:GetAttribute("Type")
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
-    if not selectedEggIdSet[eggType] then return false, nil, nil end
+    if not selectedTypeSet[eggType] then return false, nil, nil end
 
-    local price = eggInstance:GetAttribute("Price") or getEggPriceById(eggType)
+    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
     if playerMoney < price then return false, nil, nil end
     return true, eggInstance.Name, price
@@ -253,7 +294,11 @@ local function runAutoBuy()
             continue
         end
 
-        local children = beltFolder:GetChildren()
+        local allChildren = beltFolder:GetChildren()
+        local children = {}
+        for _, inst in ipairs(allChildren) do
+            if inst:IsA("Model") then table.insert(children, inst) end
+        end
         statusData.eggsFound = #children
         statusData.netWorth = getPlayerNetWorth()
 
@@ -309,7 +354,7 @@ local function runAutoBuy()
         updateStatusParagraph()
         buyEggByUID(chosen.uid)
         focusEggByUID(chosen.uid)
-        statusData.totalBuys += 1
+        statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
         updateStatusParagraph()
         task.wait(0.25)
@@ -345,3 +390,5 @@ Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = tru
 Window:OnClose(function()
     autoBuyEnabled = false
 end)
+
+
