@@ -32,6 +32,7 @@ Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
 Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "Auto Hatch", Icon = "zap" })
 Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "Auto Claim", Icon = "dollar-sign" })
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
+Tabs.PackTab = Tabs.MainSection:Tab({ Title = "Auto Pack", Icon = "gift" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -84,6 +85,24 @@ local function buildEggIdList()
     end
     table.sort(ids)
     return ids
+end
+
+-- UI helpers
+local function tryCreateTextInput(parent, opts)
+    -- Tries common method names to create a textbox-like input in WindUI
+    local created
+    for _, method in ipairs({"Textbox", "Input", "TextBox"}) do
+        local ok, res = pcall(function()
+            return parent[method](parent, opts)
+        end)
+        if ok and res then created = res break end
+    end
+    return created
+end
+
+local function caseInsensitiveContains(hay, needle)
+    if type(hay) ~= "string" or type(needle) ~= "string" then return false end
+    return string.find(string.lower(hay), string.lower(needle), 1, true) ~= nil
 end
 
 local function getEggPriceById(eggId)
@@ -521,13 +540,34 @@ local function getModelPosition(model)
     return pp and pp.Position or nil
 end
 
-local function findHatchableModels()
+local function isStringEmpty(s)
+    return type(s) == "string" and (s == "" or s:match("^%s*$") ~= nil)
+end
+
+local function isHatchReady(model)
+    -- Look for TimeBar/TXT text being empty anywhere under the model
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("TextLabel") and d.Name == "TXT" then
+            local parent = d.Parent
+            if parent and parent.Name == "TimeBar" then
+                if isStringEmpty(d.Text) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function findHatchableModels(readyOnly)
     local results = {}
     local container = workspace:FindFirstChild("PlayerBuiltBlocks")
     if not container then return results end
     for _, child in ipairs(container:GetDescendants()) do
         if child:IsA("Model") and playerOwnsInstance(child) then
-            table.insert(results, child)
+            if not readyOnly or isHatchReady(child) then
+                table.insert(results, child)
+            end
         end
     end
     return results
@@ -593,7 +633,7 @@ end
 local function runAutoHatch()
     while autoHatchEnabled do
         local ok, err = pcall(function()
-            local eggs = findHatchableModels()
+            local eggs = findHatchableModels(true)
             if #eggs == 0 then task.wait(0.8) return end
             -- Try nearest first
             local me = getPlayerRootPosition()
@@ -636,7 +676,7 @@ Tabs.HatchTab:Button({
     Title = "Hatch Nearest",
     Desc = "Hatch the nearest owned egg (E prompt)",
     Callback = function()
-        local eggs = findHatchableModels()
+        local eggs = findHatchableModels(true)
         if #eggs == 0 then
             WindUI:Notify({ Title = "Auto Hatch", Content = "No owned eggs found", Duration = 3 })
             return
@@ -731,6 +771,26 @@ eggDropdown = Tabs.AutoTab:Dropdown({
         end
 })
 
+-- Simple search bar to filter egg list
+local eggSearchInput = tryCreateTextInput(Tabs.AutoTab, {
+    Title = "Search Eggs",
+    Placeholder = "Type to filter (e.g., Basic, Dino)...",
+    ClearOnFocus = false,
+    Callback = function(text)
+        local filtered = {}
+        for _, id in ipairs(eggIdList) do
+            local mapped = idToTypeMap[id]
+            if text == nil or text == "" or caseInsensitiveContains(id, text) or caseInsensitiveContains(tostring(mapped), text) then
+                table.insert(filtered, id)
+            end
+        end
+        table.sort(filtered)
+        if eggDropdown and eggDropdown.Refresh then
+            eggDropdown:Refresh(filtered)
+        end
+    end
+})
+
 Tabs.AutoTab:Button({
     Title = "Refresh Egg List",
     Callback = function()
@@ -746,7 +806,7 @@ local autoBuyEnabled = false
 local autoBuyThread = nil
 
 -- Status tracking
-local statusData = {
+statusData = {
     eggsFound = 0,
     matchingFound = 0,
     affordableFound = 0,
@@ -759,33 +819,24 @@ local statusData = {
 
 Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
 local statusParagraph = Tabs.AutoTab:Paragraph({
-    Title = "Auto Buy Status",
-    Desc = "Waiting...",
-    Image = "activity",
-    ImageSize = 22,
+    Title = "Auto Buy",
+    Desc = "Ready",
+    Image = "shopping-bag",
+    ImageSize = 18,
 })
 
 local function formatStatusDesc()
     local lines = {}
-    table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
-    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
-    table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
-    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
-    table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
-    if statusData.selectedTypes then
-        table.insert(lines, "Selected: " .. statusData.selectedTypes)
-    end
-    if statusData.seenTypes then
-        table.insert(lines, "Seen: " .. statusData.seenTypes)
-    end
-    if statusData.lastUID then
-        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
-    end
-    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
+    table.insert(lines, string.format("Island: %s", tostring(statusData.islandName or "?")))
+    table.insert(lines, string.format("NetWorth: %s", tostring(statusData.netWorth)))
+    table.insert(lines, string.format("Belt: %d eggs | Match %d | Can buy %d", statusData.eggsFound or 0, statusData.matchingFound or 0, statusData.affordableFound or 0))
+    if statusData.selectedTypes then table.insert(lines, "Selected: " .. statusData.selectedTypes) end
+    if statusData.lastUID then table.insert(lines, "Last Buy: " .. tostring(statusData.lastUID)) end
+    table.insert(lines, "Status: " .. tostring(statusData.lastAction))
     return table.concat(lines, "\n")
 end
 
-local function updateStatusParagraph()
+function updateStatusParagraph()
     if statusParagraph and statusParagraph.SetDesc then
         statusParagraph:SetDesc(formatStatusDesc())
     end
@@ -975,24 +1026,23 @@ local placeStatusData = {
 
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
-    Title = "Auto Place Status",
-    Desc = "Waiting...",
-    Image = "activity",
-    ImageSize = 22,
+    Title = "Auto Place",
+    Desc = "Ready",
+    Image = "map-pin",
+    ImageSize = 18,
 })
 
 local function formatPlaceStatusDesc()
     local lines = {}
-    table.insert(lines, "Island: " .. tostring(placeStatusData.islandName or "?"))
-    table.insert(lines, "Parts: " .. tostring(placeStatusData.farmPartsFound))
-    table.insert(lines, "Placed: " .. tostring(placeStatusData.totalPlaces))
+    table.insert(lines, string.format("Island: %s", tostring(placeStatusData.islandName or "?")))
+    table.insert(lines, string.format("Tiles: %d | Placed: %d", placeStatusData.farmPartsFound or 0, placeStatusData.totalPlaces or 0))
     if placeAnchorPosition then
-        table.insert(lines, string.format("Anchor r=%d: (%.0f, %.0f, %.0f)", anchorRadiusStuds, placeAnchorPosition.X, placeAnchorPosition.Y, placeAnchorPosition.Z))
+        table.insert(lines, string.format("Anchor: r=%d (%.0f, %.0f, %.0f)", anchorRadiusStuds, placeAnchorPosition.X, placeAnchorPosition.Y, placeAnchorPosition.Z))
     end
     if placeStatusData.lastPosition then
-        table.insert(lines, "LastPos: " .. tostring(placeStatusData.lastPosition))
+        table.insert(lines, "Last: " .. tostring(placeStatusData.lastPosition))
     end
-    table.insert(lines, "Last: " .. tostring(placeStatusData.lastAction))
+    table.insert(lines, "Status: " .. tostring(placeStatusData.lastAction))
     return table.concat(lines, "\n")
 end
 
@@ -1271,6 +1321,62 @@ Window:OnClose(function()
 end)
 
 
+-- ============ Auto Claim Pack (every 10 minutes) ============
+local autoPackEnabled = false
+local autoPackThread = nil
+local lastPackAt = 0
+
+local function fireOnlinePack()
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer({ event = "onlinepack" })
+    end)
+    if not ok then warn("OnlinePack fire failed: " .. tostring(err)) end
+    return ok
+end
+
+local function runAutoPack()
+    while autoPackEnabled do
+        local now = os.clock()
+        local since = now - (lastPackAt or 0)
+        if since >= 600 then -- 10 minutes
+            if fireOnlinePack() then
+                lastPackAt = os.clock()
+                WindUI:Notify({ Title = "Auto Pack", Content = "Online pack claimed", Duration = 3 })
+            end
+        end
+        task.wait(5)
+    end
+end
+
+Tabs.PackTab:Toggle({
+    Title = "Auto Claim Pack",
+    Desc = "Claims online pack every 10 minutes",
+    Value = false,
+    Callback = function(state)
+        autoPackEnabled = state
+        if state and not autoPackThread then
+            autoPackThread = task.spawn(function()
+                runAutoPack()
+                autoPackThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Pack", Content = "Started", Duration = 3 })
+        elseif (not state) and autoPackThread then
+            WindUI:Notify({ Title = "Auto Pack", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.PackTab:Button({
+    Title = "Claim Now",
+    Desc = "Fire online pack immediately then start cooldown",
+    Callback = function()
+        if fireOnlinePack() then
+            lastPackAt = os.clock()
+            WindUI:Notify({ Title = "Auto Pack", Content = "Claimed", Duration = 3 })
+        end
+    end
+})
+
 -- ============ Shop / Auto Upgrade ============
 Tabs.ShopTab:Section({ Title = "Auto Upgrade Conveyor", Icon = "arrow-up" })
 local shopStatus = { lastAction = "Idle", upgradesTried = 0, upgradesDone = 0 }
@@ -1287,6 +1393,9 @@ local function parseConveyorIndexFromId(idStr)
     return n and tonumber(n) or nil
 end
 
+-- Remember upgrades we have already bought in this session
+local purchasedUpgrades = {}
+
 local function chooseAffordableUpgrades(netWorth)
     local actions = {}
     for key, entry in pairs(conveyorConfig) do
@@ -1294,7 +1403,7 @@ local function chooseAffordableUpgrades(netWorth)
             local cost = entry.Cost or entry.Price or (entry.Base and entry.Base.Price)
             local idLike = entry.ID or entry.Id or entry.Name or key
             local idx = parseConveyorIndexFromId(idLike)
-            if idx and type(cost) == "number" and netWorth >= cost and idx >= 1 and idx <= 9 then
+            if idx and type(cost) == "number" and netWorth >= cost and idx >= 1 and idx <= 9 and not purchasedUpgrades[idx] then
                 table.insert(actions, { idx = idx, cost = cost })
             end
         end
@@ -1324,6 +1433,7 @@ Tabs.ShopTab:Toggle({
                             setShopStatus(string.format("Upgrading %d (cost %s)", a.idx, tostring(a.cost)))
                             if fireConveyorUpgrade(a.idx) then
                                 shopStatus.upgradesDone += 1
+                                purchasedUpgrades[a.idx] = true
                             end
                             shopStatus.upgradesTried += 1
                             task.wait(0.2)
@@ -1353,11 +1463,22 @@ Tabs.ShopTab:Button({
         for _, a in ipairs(actions) do
             if fireConveyorUpgrade(a.idx) then
                 shopStatus.upgradesDone += 1
+                purchasedUpgrades[a.idx] = true
             end
             shopStatus.upgradesTried += 1
             task.wait(0.1)
         end
         setShopStatus("Manual upgrade fired for " .. tostring(#actions) .. " items")
+    end
+})
+
+Tabs.ShopTab:Button({
+    Title = "Reset Remembered Upgrades",
+    Desc = "Clear the one-time memory if you want to attempt again",
+    Callback = function()
+        purchasedUpgrades = {}
+        setShopStatus("Memory reset")
+        WindUI:Notify({ Title = "Shop", Content = "Upgrade memory cleared", Duration = 3 })
     end
 })
 
