@@ -377,30 +377,39 @@ local function getPetUID()
         if not data then return nil end
     end
     
-    -- Wait for Egg container/object to exist
+    -- Wait for Egg object to exist
     local egg = data:FindFirstChild("Egg")
     if not egg then
         egg = data:WaitForChild("Egg", 2)
         if not egg then return nil end
     end
     
-    -- If Egg is a folder, use first child name; if ValueBase, use its Value; else fallback to its Name
-    if egg:IsA("Folder") then
-        local children = egg:GetChildren()
-        if #children > 0 then
-            return tostring(children[1].Name)
-        else
-            return nil
-        end
-    elseif egg:IsA("ValueBase") then
-        local v = egg.Value
-        if v == nil or tostring(v) == "" then return nil end
-        return tostring(v)
-    else
-        local eggName = egg.Name
-        if not eggName or eggName == "" then return nil end
-        return eggName
+    -- The PET UID is the NAME of the egg object, not its Value
+    local eggName = egg.Name
+    if not eggName or eggName == "" then
+        return nil
     end
+    
+    return eggName
+end
+
+-- Available Egg helpers (Auto Place)
+local function getEggContainer()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Egg") or nil
+end
+
+local function listAvailableEggUIDs()
+    local eg = getEggContainer()
+    local uids = {}
+    if not eg then return uids end
+    for _, child in ipairs(eg:GetChildren()) do
+        if #child:GetChildren() == 0 then -- no subfolder => available
+            table.insert(uids, child.Name)
+        end
+    end
+    return uids
 end
 
 -- Enhanced pet validation based on the Pet module
@@ -441,41 +450,6 @@ local function getPetInfo(petUID)
     end
     
     return petData
-end
-
--- Inventory egg count helpers (stop auto-place if none)
-local eggInventoryCount = 0
-local function refreshEggInventoryCount()
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    local container = data and data:FindFirstChild("Egg")
-    if not container then eggInventoryCount = 0 return 0 end
-    if container:IsA("Folder") then
-        eggInventoryCount = #container:GetChildren()
-    elseif container:IsA("ValueBase") then
-        eggInventoryCount = (container.Value ~= nil and tostring(container.Value) ~= "") and 1 or 0
-    else
-        eggInventoryCount = 0
-    end
-    return eggInventoryCount
-end
-
-local function attachEggContainerWatchers()
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return end
-    local data = pg:FindFirstChild("Data")
-    if not data then return end
-    local container = data:FindFirstChild("Egg")
-    if not container then return end
-    refreshEggInventoryCount()
-    if container:IsA("Folder") then
-        container.ChildAdded:Connect(function() refreshEggInventoryCount() end)
-        container.ChildRemoved:Connect(function() refreshEggInventoryCount() end)
-    elseif container:IsA("ValueBase") then
-        container.Changed:Connect(function(prop)
-            if prop == "Value" then refreshEggInventoryCount() end
-        end)
-    end
 end
 
 -- ============ Auto Claim Money ============
@@ -920,7 +894,6 @@ end
 -- UI state
 loadEggConfig()
 loadConveyorConfig()
-pcall(attachEggContainerWatchers)
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
 
@@ -1273,16 +1246,17 @@ local function runAutoPlace()
                 return
             end
             
-            local petUID = getPetUID()
+            -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
+            local availableUids = listAvailableEggUIDs()
+            if #availableUids == 0 then
+                placeStatusData.lastAction = "No available eggs to place"
+                updatePlaceStatusParagraph()
+                task.wait(0.8)
+                return
+            end
+            -- Use the first available UID for placement
+            local petUID = availableUids[1]
             placeStatusData.petUID = petUID
-            
-                    if not petUID then
-            placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg.Name"
-            placeStatusData.validationStatus = "No PET UID"
-            updatePlaceStatusParagraph()
-            task.wait(0.6)
-            return
-        end
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -1427,11 +1401,13 @@ Tabs.PlaceTab:Button({
             return
         end
         
-        local petUID = getPetUID()
-        if not petUID then
-            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
+        -- Determine available eggs for manual place
+        local availableUids = listAvailableEggUIDs()
+        if #availableUids == 0 then
+            WindUI:Notify({ Title = "Error", Content = "No available eggs to place", Duration = 3 })
             return
         end
+        local petUID = availableUids[1]
         
         -- Enhanced validation
         local isValid, validationMsg = validatePetUID(petUID)
