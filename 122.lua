@@ -1751,6 +1751,7 @@ Tabs.FruitTab:Button({
 -- Forward declare helpers used below
 local getAllFruitNames
 local hasAnyFruitOwned
+local setDeploySlotS3
 -- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
 local function getFeedablePets()
     local feedable = {}
