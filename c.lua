@@ -418,7 +418,7 @@ Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = tru
 
 -- ===== Auto Place Egg (Island_3 Farm_split tiles) =====
 
-local function createVector(x, y, z)
+local function vectorCreate(x, y, z)
     local vlib = rawget(_G, "vector") or _G.vector
     if type(vlib) == "table" and type(vlib.create) == "function" then
         return vlib.create(x, y, z)
@@ -431,13 +431,12 @@ local function getIsland3()
     return art and art:FindFirstChild("Island_3") or nil
 end
 
-local function modelHasLockCostAttribute(model)
+local function modelHasAnyLockCostAttribute(model)
     if not model or not model:IsA("Model") then return false end
+    if model:GetAttribute("LockCost") ~= nil then return true end
     for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") then
-            if d:GetAttribute("LockCost") ~= nil then
-                return true
-            end
+        if d:IsA("Instance") and d.GetAttribute and d:GetAttribute("LockCost") ~= nil then
+            return true
         end
     end
     return false
@@ -451,8 +450,7 @@ local function findUnlockedFarmSplitModels()
         if inst:IsA("Model") then
             local n = tostring(inst.Name)
             if string.find(n, "Farm_split", 1, true) == 1 then
-                -- Only consider unlocked tiles (no part inside has LockCost attribute)
-                if not modelHasLockCostAttribute(inst) then
+                if not modelHasAnyLockCostAttribute(inst) then
                     table.insert(list, inst)
                 end
             end
@@ -461,10 +459,10 @@ local function findUnlockedFarmSplitModels()
     return list
 end
 
-local function getModelCFramePosition(model)
+local function getModelPivotPosition(model)
     if not model or not model:IsA("Model") then return nil end
     local cf
-    if model.GetPivot then
+    if typeof(model.GetPivot) == "function" then
         cf = model:GetPivot()
     end
     if not cf then
@@ -487,20 +485,20 @@ local function getInventoryEggUIDs()
     return list
 end
 
-local function placeEggAt(uid, position)
-    if not uid or not position then return false end
+local function placeEggUIDAt(eggUID, position)
+    if not eggUID or not position then return false end
     local args = {
         "Place",
         {
-            DST = createVector(position.X, position.Y, position.Z),
-            ID = uid,
+            DST = vectorCreate(position.X, position.Y, position.Z),
+            ID = eggUID,
         }
     }
     local ok, err = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     if not ok then
-        warn("Failed to fire Place for UID " .. tostring(uid) .. ": " .. tostring(err))
+        warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
         return false
     end
     return true
@@ -517,11 +515,11 @@ Tabs.AutoTab:Toggle({
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
             autoPlaceThread = task.spawn(function()
-                local attempted = {}
+                local attemptedAt = {}
                 while autoPlaceEnabled do
                     local uids = getInventoryEggUIDs()
                     if #uids == 0 then
-                        statusData.lastAction = "Auto Place: no PET eggs in GUI"
+                        statusData.lastAction = "Auto Place: no eggs in PlayerGui.Data.Egg"
                         updateStatusParagraph()
                         task.wait(0.6)
                         continue
@@ -535,32 +533,30 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    -- Pick first available UID not attempted recently
+                    -- Choose first UID not tried recently
                     local chosenUid
                     for _, uid in ipairs(uids) do
-                        local last = attempted[uid]
-                        if not last or (os.clock() - last) > 2.5 then
+                        local last = attemptedAt[uid]
+                        if not last or (os.clock() - last) > 2.0 then
                             chosenUid = uid
                             break
                         end
                     end
                     if not chosenUid then
-                        task.wait(0.3)
+                        task.wait(0.25)
                         continue
                     end
 
-                    -- Pick first tile with a valid CFrame position
-                    local targetPos
-                    local targetName
+                    -- Choose first valid tile position
+                    local targetPos, targetName
                     for _, tile in ipairs(tiles) do
-                        local pos = getModelCFramePosition(tile)
+                        local pos = getModelPivotPosition(tile)
                         if pos then
                             targetPos = pos
                             targetName = tile.Name
                             break
                         end
                     end
-
                     if not targetPos then
                         statusData.lastAction = "Auto Place: no valid CFrame on tiles"
                         updateStatusParagraph()
@@ -570,13 +566,13 @@ Tabs.AutoTab:Toggle({
 
                     statusData.lastAction = "Auto Place: placing UID " .. tostring(chosenUid) .. " at " .. tostring(targetName)
                     updateStatusParagraph()
-                    if placeEggAt(chosenUid, targetPos) then
+                    if placeEggUIDAt(chosenUid, targetPos) then
                         statusData.lastAction = string.format("Auto Place: placed UID %s at %s", tostring(chosenUid), tostring(targetName))
                         updateStatusParagraph()
-                        attempted[chosenUid] = os.clock()
+                        attemptedAt[chosenUid] = os.clock()
                         task.wait(0.3)
                     else
-                        attempted[chosenUid] = os.clock()
+                        attemptedAt[chosenUid] = os.clock()
                         task.wait(0.3)
                     end
                 end
@@ -596,6 +592,7 @@ Tabs.AutoTab:Toggle({
 -- Close callback
 Window:OnClose(function()
     autoBuyEnabled = false
+    autoPlaceEnabled = false
 end)
 
 
