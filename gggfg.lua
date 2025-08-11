@@ -30,6 +30,7 @@ Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
 Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
 Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "Auto Hatch", Icon = "zap" })
+Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "Auto Claim", Icon = "dollar-sign" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -380,6 +381,102 @@ local function getPetInfo(petUID)
     
     return petData
 end
+
+-- ============ Auto Claim Money ============
+local autoClaimEnabled = false
+local autoClaimThread = nil
+
+local function getOwnedPetNames()
+    local names = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = playerGui and playerGui:FindFirstChild("Data")
+    local petsContainer = data and data:FindFirstChild("Pets")
+    if petsContainer then
+        for _, child in ipairs(petsContainer:GetChildren()) do
+            -- Assume children under Data.Pets are ValueBase instances or folders named as pet names
+            local n
+            if child:IsA("ValueBase") then
+                n = tostring(child.Value)
+            else
+                n = tostring(child.Name)
+            end
+            if n and n ~= "" then
+                table.insert(names, n)
+            end
+        end
+    end
+    return names
+end
+
+local function claimMoneyForPet(petName)
+    if not petName or petName == "" then return false end
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then return false end
+    local petModel = petsFolder:FindFirstChild(petName)
+    if not petModel then return false end
+    local root = petModel:FindFirstChild("RootPart")
+    if not root then return false end
+    local re = root:FindFirstChild("RE")
+    if not re or not re.FireServer then return false end
+    local ok, err = pcall(function()
+        re:FireServer("Claim")
+    end)
+    if not ok then warn("Claim failed for pet " .. tostring(petName) .. ": " .. tostring(err)) end
+    return ok
+end
+
+local function runAutoClaim()
+    while autoClaimEnabled do
+        local ok, err = pcall(function()
+            local names = getOwnedPetNames()
+            if #names == 0 then task.wait(0.8) return end
+            for _, n in ipairs(names) do
+                claimMoneyForPet(n)
+                task.wait(0.1)
+            end
+        end)
+        if not ok then
+            warn("Auto Claim error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
+Tabs.ClaimTab:Toggle({
+    Title = "Auto Claim Money",
+    Desc = "Claims from each of your placed pets (workspace.Pets)",
+    Value = false,
+    Callback = function(state)
+        autoClaimEnabled = state
+        if state and not autoClaimThread then
+            autoClaimThread = task.spawn(function()
+                runAutoClaim()
+                autoClaimThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Claim", Content = "Started", Duration = 3 })
+        elseif (not state) and autoClaimThread then
+            WindUI:Notify({ Title = "Auto Claim", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.ClaimTab:Button({
+    Title = "Claim All Now",
+    Desc = "Immediately claims from all your pets",
+    Callback = function()
+        local names = getOwnedPetNames()
+        if #names == 0 then
+            WindUI:Notify({ Title = "Auto Claim", Content = "No pets found in Data.Pets", Duration = 3 })
+            return
+        end
+        local count = 0
+        for _, n in ipairs(names) do
+            if claimMoneyForPet(n) then count += 1 end
+            task.wait(0.05)
+        end
+        WindUI:Notify({ Title = "Auto Claim", Content = string.format("Claimed from %d pets", count), Duration = 3 })
+    end
+})
 
 -- ============ Auto Hatch ============
 local autoHatchEnabled = false
