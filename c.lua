@@ -485,9 +485,15 @@ function placeEggByUID(eggUID)
         updateStatusParagraph()
         return
     end
-    -- Place at the middle of the part's CFrame
-    local center = part.CFrame.Position
-    local dst = createVector3(center.X, center.Y, center.Z)
+    -- Prefer exact grid/world center if provided by the tile; fallback to part center
+    local gridDst = getGridVectorFromPart(part)
+    local dst
+    if gridDst then
+        dst = gridDst
+    else
+        local center = part.CFrame.Position
+        dst = createVector3(center.X, center.Y, center.Z)
+    end
     local args = {
         "Place",
         {
