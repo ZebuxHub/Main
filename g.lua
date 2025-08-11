@@ -1190,22 +1190,24 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Find an available farm part near saved anchor (if present) or near player when toggled on
+            -- Only place around the saved anchor spot
+            if not placeAnchorPosition then
+                placeStatusData.lastAction = "Save a spot first (Press 'Save Current Location')"
+                updatePlaceStatusParagraph()
+                task.wait(0.8)
+                return
+            end
             local minSpacing = 8 -- studs between pets
             local chosenPart
-            local targetPos = placeAnchorPosition or getPlayerRootPosition()
-            if targetPos then
-                -- Restrict to tiles within anchorRadiusStuds to keep placement localized
-                local nearby = {}
-                for _, part in ipairs(farmParts) do
-                    if (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
-                        table.insert(nearby, part)
-                    end
+            local targetPos = placeAnchorPosition
+            -- Restrict to tiles within anchorRadiusStuds to keep placement localized
+            local nearby = {}
+            for _, part in ipairs(farmParts) do
+                if (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
+                    table.insert(nearby, part)
                 end
-                chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, minSpacing, targetPos)
-            else
-                chosenPart = findAvailableFarmPart(farmParts, minSpacing)
             end
+            chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, minSpacing, targetPos)
             if not chosenPart then
                 placeStatusData.lastAction = "All farm tiles occupied (min spacing " .. tostring(minSpacing) .. ")"
                 updatePlaceStatusParagraph()
