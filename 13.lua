@@ -1790,7 +1790,7 @@ local function equipFruitInS3(fruitName)
     local deploy = data and data:FindFirstChild("Deploy")
     if deploy then
         local value = "PetFood_" .. tostring(fruitName)
-        pcall(function() deploy:SetAttribute("S3", value) end)
+        if deploy.SetAttribute then pcall(function() deploy:SetAttribute("S3", value) end) end
         local s3 = deploy:FindFirstChild("S3")
         if s3 and s3:IsA("ValueBase") then pcall(function() s3.Value = value end) end
     end
@@ -1881,15 +1881,18 @@ local feedFruitDropdown = Tabs.FeedTab:Dropdown({
     Multi = true,
     AllowNone = true,
     Callback = function(selection)
-        feedSelectedFruit = {}
-        local function selectOne(name)
-            name = tostring(name)
-            if name ~= "" then feedSelectedFruit[name] = true end
-        end
+        -- Some WindUI Dropdowns pass selection as a string even in Multi mode; normalize
+        local selTable = {}
         if type(selection) == "table" then
-            for _, n in ipairs(selection) do selectOne(n) end
+            for _, n in ipairs(selection) do table.insert(selTable, tostring(n)) end
         elseif type(selection) == "string" then
-            selectOne(selection)
+            table.insert(selTable, selection)
+        else
+            selTable = {}
+        end
+        feedSelectedFruit = {}
+        for _, n in ipairs(selTable) do
+            if n and n ~= "" then feedSelectedFruit[tostring(n)] = true end
         end
         rebuildFeedFruitOrder()
         feedStatus.fruit = feedSelectedFruitOrder[1]
@@ -1981,8 +1984,12 @@ local function tryFeedFromEntry(petEntry)
         end
     end
     if chosen then
-        equipFruitInS3(chosen)
+        local ok = pcall(function() equipFruitInS3(chosen) end)
         feedStatus.fruit = chosen
+        if not ok then
+            feedStatus.last = "Equip failed for " .. tostring(chosen)
+            updateFeedStatus()
+        end
     end
     feedStatus.last = "Feeding " .. tostring(uid)
     updateFeedStatus()
