@@ -42,6 +42,9 @@ local function loadEggConfig()
 end
 
 local idToTypeMap = {}
+local function toKey(v)
+    return string.lower(tostring(v))
+end
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
         local t = val.Type or val.Name or val.type or val.name
@@ -87,17 +90,17 @@ local function getEggPriceById(eggId)
 end
 
 local function getEggPriceByType(eggType)
-    local target = tostring(eggType)
+    local target = toKey(eggType)
     for key, value in pairs(eggConfig) do
         if type(value) == "table" then
             local t = value.Type or value.Name or value.type or value.name or tostring(key)
-            if tostring(t) == target then
+            if toKey(t) == target then
                 local price = value.Price or value.price or value.Cost or value.cost
                 if type(price) == "number" then return price end
                 if type(value.Base) == "table" and type(value.Base.Price) == "number" then return value.Base.Price end
             end
         else
-            if tostring(key) == target then
+            if toKey(key) == target then
                 -- primitive mapping, try id-based
                 local price = getEggPriceById(key)
                 if type(price) == "number" then return price end
@@ -160,12 +163,12 @@ eggDropdown = Tabs.AutoTab:Dropdown({
     Callback = function(selection)
         selectedTypeSet = {}
         local function addTypeFor(idStr)
+            -- Always include the ID itself (in case ID equals belt Type)
+            selectedTypeSet[toKey(idStr)] = true
+            -- Also include the mapped Type from config (if available)
             local mappedType = idToTypeMap[idStr]
             if mappedType then
-                selectedTypeSet[tostring(mappedType)] = true
-            else
-                -- fallback: treat selection as direct Type name
-                selectedTypeSet[idStr] = true
+                selectedTypeSet[toKey(mappedType)] = true
             end
         end
         if type(selection) == "table" then
@@ -232,12 +235,22 @@ local function updateStatusParagraph()
     end
 end
 
+local function resolveEggType(model)
+    local t = model:GetAttribute("Type") or model:GetAttribute("EggType") or model:GetAttribute("Name")
+    if t ~= nil then return tostring(t) end
+    for _, d in ipairs(model:GetDescendants()) do
+        local dt = d:GetAttribute("Type") or d:GetAttribute("EggType") or d:GetAttribute("Name")
+        if dt ~= nil then return tostring(dt) end
+    end
+    return nil
+end
+
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
-    local eggType = eggInstance:GetAttribute("Type")
+    local eggType = resolveEggType(eggInstance)
     if not eggType then return false, nil, nil end
-    eggType = tostring(eggType)
-    if not selectedTypeSet[eggType] then return false, nil, nil end
+    local key = toKey(eggType)
+    if not selectedTypeSet[key] then return false, nil, nil end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
