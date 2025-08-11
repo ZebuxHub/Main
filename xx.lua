@@ -279,6 +279,31 @@ local function findAvailableFarmPart(farmParts, minDistance)
     return nil
 end
 
+-- Player helpers for proximity-based placement
+local function getPlayerRootPosition()
+    local character = LocalPlayer and LocalPlayer.Character
+    if not character then return nil end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    return hrp.Position
+end
+
+local function findAvailableFarmPartNearPosition(farmParts, minDistance, targetPosition)
+    if not targetPosition then return findAvailableFarmPart(farmParts, minDistance) end
+    if not farmParts or #farmParts == 0 then return nil end
+    -- Sort farm parts by distance to targetPosition and pick first unoccupied
+    local sorted = table.clone(farmParts)
+    table.sort(sorted, function(a, b)
+        return (a.Position - targetPosition).Magnitude < (b.Position - targetPosition).Magnitude
+    end)
+    for _, part in ipairs(sorted) do
+        if not isFarmTileOccupied(part, minDistance) then
+            return part
+        end
+    end
+    return nil
+end
+
 local function getPetUID()
     if not LocalPlayer then return nil end
     
@@ -657,6 +682,7 @@ Tabs.AutoTab:Toggle({
 -- Auto Place functionality
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
+local preferNearPlayer = false
 
 -- Auto Place status tracking
 local placeStatusData = {
@@ -771,9 +797,15 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Find an available farm part near the middle and not occupied (check pivots)
+            -- Find an available farm part near the player (if enabled) and not occupied
             local minSpacing = 8 -- studs between pets
-            local chosenPart = findAvailableFarmPart(farmParts, minSpacing)
+            local chosenPart
+            if preferNearPlayer then
+                local playerPos = getPlayerRootPosition()
+                chosenPart = findAvailableFarmPartNearPosition(farmParts, minSpacing, playerPos)
+            else
+                chosenPart = findAvailableFarmPart(farmParts, minSpacing)
+            end
             if not chosenPart then
                 placeStatusData.lastAction = "All farm tiles occupied (min spacing " .. tostring(minSpacing) .. ")"
                 updatePlaceStatusParagraph()
@@ -828,10 +860,21 @@ Tabs.PlaceTab:Toggle({
     end
 })
 
+-- Preference: place near the player's current location
+Tabs.PlaceTab:Toggle({
+    Title = "Prefer Near Player",
+    Desc = "When enabled, choose the closest free farm tile to your character",
+    Value = preferNearPlayer,
+    Callback = function(state)
+        preferNearPlayer = state
+        WindUI:Notify({ Title = "Auto Place", Content = state and "Will place near player" or "Will place by any free tile", Duration = 3 })
+    end
+})
+
 -- Manual place button for testing
 Tabs.PlaceTab:Button({
     Title = "Place Pet Now",
-    Desc = "Manually place a pet at a random farm location",
+    Desc = "Manually place a pet at the nearest free farm location",
     Callback = function()
         local islandName = getAssignedIslandName()
         if not islandName then
@@ -865,7 +908,8 @@ Tabs.PlaceTab:Button({
         end
         
         -- Prefer an available tile using pivot occupancy checks
-        local chosenPart = findAvailableFarmPart(farmParts, 8)
+        local playerPos = getPlayerRootPosition()
+        local chosenPart = findAvailableFarmPartNearPosition(farmParts, 8, playerPos)
         if not chosenPart then
             WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
             placeStatusData.lastAction = "Manual place failed (occupied)"
