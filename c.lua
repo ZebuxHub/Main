@@ -482,6 +482,23 @@ local function findPlacementPart(islandName)
     return nil
 end
 
+-- Verify a part actually belongs to the player's island to prevent cross-island placement
+local function isPartInIsland(part, islandName)
+    if not part or not islandName then return false end
+    local current = part
+    while current and current ~= workspace do
+        if current.Parent == workspace and current.Name == "Art" then
+            -- reached Art root without finding island container
+            break
+        end
+        if current.Parent and current.Parent.Name == "Art" then
+            return current.Name == islandName
+        end
+        current = current.Parent
+    end
+    return false
+end
+
 local function getGridVectorFromPart(part)
     if not part then return nil end
     -- Some games store a packed vector attribute like GridCenterPos
@@ -506,6 +523,16 @@ function placeEggByUID(eggUID)
         statusData.lastAction = "No placement part found"
         updateStatusParagraph()
         return
+    end
+    -- Safety check: ensure part belongs to our island
+    if not isPartInIsland(part, islandName) then
+        -- Try to re-find; if still not valid, abort
+        part = findPlacementPart(islandName)
+        if not part or not isPartInIsland(part, islandName) then
+            statusData.lastAction = "Placement tile not in my island; skipping"
+            updateStatusParagraph()
+            return
+        end
     end
     -- Compute the top-center of the tile so the egg hatches on the surface
     local center = part.CFrame.Position
