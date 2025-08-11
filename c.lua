@@ -543,5 +543,3 @@ Window:OnClose(function()
     autoBuyEnabled = false
     autoPlaceEnabled = false
 end)
-
-
