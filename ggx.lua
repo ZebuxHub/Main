@@ -568,13 +568,26 @@ local function isStringEmpty(s)
     return type(s) == "string" and (s == "" or s:match("^%s*$") ~= nil)
 end
 
+local function isReadyText(text)
+    if type(text) ~= "string" then return false end
+    -- Empty or whitespace means ready
+    if isStringEmpty(text) then return true end
+    -- Percent text like "100%", "100.0%", "100.00%" also counts as ready
+    local num = text:match("^%s*(%d+%.?%d*)%%%s*$")
+    if num then
+        local n = tonumber(num)
+        if n and n >= 100 then return true end
+    end
+    return false
+end
+
 local function isHatchReady(model)
     -- Look for TimeBar/TXT text being empty anywhere under the model
     for _, d in ipairs(model:GetDescendants()) do
         if d:IsA("TextLabel") and d.Name == "TXT" then
             local parent = d.Parent
             if parent and parent.Name == "TimeBar" then
-                if isStringEmpty(d.Text) then
+                if isReadyText(d.Text) then
                     return true
                 end
             end
