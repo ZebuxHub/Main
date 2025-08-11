@@ -7,6 +7,7 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
@@ -378,6 +379,139 @@ local function getPetInfo(petUID)
     
     return petData
 end
+
+-- ============ Auto Hatch ============
+local autoHatchEnabled = false
+local autoHatchThread = nil
+
+local function playerOwnsInstance(inst)
+    if not inst or not inst.GetAttribute then return false end
+    local uidAttr = inst:GetAttribute("UserId")
+    if type(uidAttr) ~= "number" then return false end
+    local lp = Players.LocalPlayer
+    return lp and lp.UserId == uidAttr
+end
+
+local function getModelPosition(model)
+    if not model or not model.GetPivot then return nil end
+    local ok, cf = pcall(function() return model:GetPivot() end)
+    if ok and cf then return cf.Position end
+    local pp = model.PrimaryPart or model:FindFirstChild("RootPart")
+    return pp and pp.Position or nil
+end
+
+local function findHatchableModels()
+    local results = {}
+    local container = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if not container then return results end
+    for _, child in ipairs(container:GetDescendants()) do
+        if child:IsA("Model") and playerOwnsInstance(child) then
+            table.insert(results, child)
+        end
+    end
+    return results
+end
+
+local function pressPromptE(prompt)
+    -- Client-side hold simulation
+    if typeof(prompt) == "Instance" and prompt:IsA("ProximityPrompt") then
+        local hold = prompt.HoldDuration or 0
+        ProximityPromptService:InputHoldBegin(prompt)
+        if hold > 0 then task.wait(hold + 0.05) end
+        ProximityPromptService:InputHoldEnd(prompt)
+        return true
+    end
+    return false
+end
+
+local function walkTo(position, timeout)
+    local char = Players.LocalPlayer and Players.LocalPlayer.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    hum:MoveTo(position)
+    local reached = hum.MoveToFinished:Wait(timeout or 5)
+    return reached
+end
+
+local function tryHatchModel(model)
+    -- Find a ProximityPrompt named "E" or any prompt on the model
+    local prompt
+    for _, inst in ipairs(model:GetDescendants()) do
+        if inst:IsA("ProximityPrompt") then
+            prompt = inst
+            break
+        end
+    end
+    if not prompt then return false, "No prompt" end
+    local pos = getModelPosition(model)
+    if not pos then return false, "No position" end
+    walkTo(pos, 6)
+    local ok = pressPromptE(prompt)
+    return ok
+end
+
+local function runAutoHatch()
+    while autoHatchEnabled do
+        local ok, err = pcall(function()
+            local eggs = findHatchableModels()
+            if #eggs == 0 then task.wait(0.8) return end
+            -- Try nearest first
+            local me = getPlayerRootPosition()
+            table.sort(eggs, function(a, b)
+                local pa = getModelPosition(a) or Vector3.new()
+                local pb = getModelPosition(b) or Vector3.new()
+                return (pa - me).Magnitude < (pb - me).Magnitude
+            end)
+            for _, m in ipairs(eggs) do
+                tryHatchModel(m)
+                task.wait(0.2)
+            end
+        end)
+        if not ok then
+            warn("Auto Hatch error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
+Tabs.HatchTab:Toggle({
+    Title = "Auto Hatch",
+    Desc = "Walk to your eggs in workspace.PlayerBuiltBlocks and press E",
+    Value = false,
+    Callback = function(state)
+        autoHatchEnabled = state
+        if state and not autoHatchThread then
+            autoHatchThread = task.spawn(function()
+                runAutoHatch()
+                autoHatchThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Hatch", Content = "Started", Duration = 3 })
+        elseif (not state) and autoHatchThread then
+            WindUI:Notify({ Title = "Auto Hatch", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.HatchTab:Button({
+    Title = "Hatch Nearest",
+    Desc = "Hatch the nearest owned egg (E prompt)",
+    Callback = function()
+        local eggs = findHatchableModels()
+        if #eggs == 0 then
+            WindUI:Notify({ Title = "Auto Hatch", Content = "No owned eggs found", Duration = 3 })
+            return
+        end
+        local me = getPlayerRootPosition() or Vector3.new()
+        table.sort(eggs, function(a, b)
+            local pa = getModelPosition(a) or Vector3.new()
+            local pb = getModelPosition(b) or Vector3.new()
+            return (pa - me).Magnitude < (pb - me).Magnitude
+        end)
+        local ok = tryHatchModel(eggs[1])
+        WindUI:Notify({ Title = ok and "Hatched" or "Hatch Failed", Content = eggs[1].Name, Duration = 3 })
+    end
+})
 
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
@@ -996,136 +1130,4 @@ Window:OnClose(function()
     autoPlaceEnabled = false
 end)
 
--- Auto Hatch functionality
-local autoHatchEnabled = false
-local autoHatchThread = nil
 
-local function playerOwnsInstance(inst)
-    if not inst or not inst.GetAttribute then return false end
-    local uidAttr = inst:GetAttribute("UserId")
-    if type(uidAttr) ~= "number" then return false end
-    local lp = Players.LocalPlayer
-    return lp and lp.UserId == uidAttr
-end
-
-local function fireHatchRemote(model)
-    -- Prefer the model's own RF:InvokeServer("Hatch") if present
-    local args = { "Hatch" }
-    if model and model.FindFirstChild then
-        local rf = model:FindFirstChild("RF")
-        if rf and rf.InvokeServer then
-            local ok, res = pcall(function()
-                return rf:InvokeServer(table.unpack(args))
-            end)
-            if not ok then
-                warn("Hatch (model RF) failed: " .. tostring(res))
-            end
-            return ok
-        end
-    end
-    -- Fallback to nil RemoteFunction per provided spec
-    local rfFallback = Instance.new("RemoteFunction", nil)
-    local ok2, res2 = pcall(function()
-        return rfFallback:InvokeServer(table.unpack(args))
-    end)
-    if not ok2 then
-        warn("Hatch (nil RF) failed: " .. tostring(res2))
-    end
-    return ok2
-end
-
-local function findHatchableModels()
-    local results = {}
-    local container = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not container then return results end
-    for _, child in ipairs(container:GetDescendants()) do
-        if child:IsA("Model") and playerOwnsInstance(child) then
-            table.insert(results, child)
-        end
-    end
-    return results
-end
-
-local function runAutoHatch()
-    while autoHatchEnabled do
-        local ok, err = pcall(function()
-            local models = findHatchableModels()
-            if #models == 0 then
-                task.wait(0.8)
-                return
-            end
-            -- Try hatching each owned model this tick
-            for _, m in ipairs(models) do
-                fireHatchRemote(m)
-                task.wait(0.15)
-            end
-        end)
-        if not ok then
-            warn("Auto Hatch error: " .. tostring(err))
-            task.wait(1)
-        end
-    end
-end
-
-Tabs.HatchTab:Toggle({
-    Title = "Auto Hatch",
-    Desc = "Automatically hatches eggs you own in PlayerBuiltBlocks",
-    Value = false,
-    Callback = function(state)
-        autoHatchEnabled = state
-        if state and not autoHatchThread then
-            autoHatchThread = task.spawn(function()
-                runAutoHatch()
-                autoHatchThread = nil
-            end)
-            WindUI:Notify({ Title = "Auto Hatch", Content = "Started", Duration = 3 })
-        elseif (not state) and autoHatchThread then
-            WindUI:Notify({ Title = "Auto Hatch", Content = "Stopped", Duration = 3 })
-        end
-    end
-})
-
--- One-time hatch nearest egg (owned) within radius
-local function getModelPosition(model)
-    if not model or not model.GetPivot then return nil end
-    local ok, cf = pcall(function() return model:GetPivot() end)
-    if ok and cf then return cf.Position end
-    local pp = model.PrimaryPart or model:FindFirstChild("RootPart")
-    return pp and pp.Position or nil
-end
-
-local function findNearestHatchableModel(maxRadius)
-    local models = findHatchableModels()
-    if #models == 0 then return nil end
-    local playerPos = getPlayerRootPosition()
-    if not playerPos then return nil end
-    local best, bestDist
-    for _, m in ipairs(models) do
-        local pos = getModelPosition(m)
-        if pos then
-            local d = (pos - playerPos).Magnitude
-            if (not maxRadius or d <= maxRadius) and (not bestDist or d < bestDist) then
-                best, bestDist = m, d
-            end
-        end
-    end
-    return best, bestDist
-end
-
-Tabs.HatchTab:Button({
-    Title = "Hatch Nearest",
-    Desc = "Hatch your nearest owned egg (<= 100 studs)",
-    Callback = function()
-        local model, dist = findNearestHatchableModel(100)
-        if not model then
-            WindUI:Notify({ Title = "Auto Hatch", Content = "No owned egg nearby", Duration = 3 })
-            return
-        end
-        local ok = fireHatchRemote(model)
-        if ok then
-            WindUI:Notify({ Title = "Auto Hatch", Content = string.format("Hatched %s (%.0f studs)", model.Name, dist or 0), Duration = 3 })
-        else
-            WindUI:Notify({ Title = "Auto Hatch", Content = "Hatch failed", Duration = 3 })
-        end
-    end
-})
