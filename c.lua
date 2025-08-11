@@ -24,6 +24,7 @@ local Window = WindUI:CreateWindow({
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map" })
 
 -- Egg config loader
 local eggConfig = {}
@@ -227,6 +228,46 @@ local function formatStatusDesc()
     return table.concat(lines, "\n")
 end
 
+-- Auto Place Status (separate tab)
+local placeStatus = {
+    islandName = nil,
+    tileFound = false,
+    grid = nil,
+    totalPlaced = 0,
+    lastEggName = nil,
+    lastAction = "Idle",
+}
+
+Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
+local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
+    Title = "Auto Place Status",
+    Desc = "Waiting...",
+    Image = "map-pin",
+    ImageSize = 22,
+})
+
+local function formatPlaceStatus()
+    local lines = {}
+    table.insert(lines, "Island: " .. tostring(placeStatus.islandName or "?"))
+    table.insert(lines, "Tile: " .. (placeStatus.tileFound and "Found" or "Not found"))
+    if placeStatus.grid then
+        local g = placeStatus.grid
+        table.insert(lines, string.format("Grid: (%.2f, %.2f, %.2f)", g.X, g.Y, g.Z))
+    end
+    table.insert(lines, "Placed: " .. tostring(placeStatus.totalPlaced))
+    if placeStatus.lastEggName then
+        table.insert(lines, "Last Egg: " .. tostring(placeStatus.lastEggName))
+    end
+    table.insert(lines, "Last: " .. tostring(placeStatus.lastAction))
+    return table.concat(lines, "\n")
+end
+
+local function updatePlaceStatus()
+    if placeStatusParagraph and placeStatusParagraph.SetDesc then
+        placeStatusParagraph:SetDesc(formatPlaceStatus())
+    end
+end
+
 local function updateStatusParagraph()
     if statusParagraph and statusParagraph.SetDesc then
         statusParagraph:SetDesc(formatStatusDesc())
@@ -364,8 +405,9 @@ local function runAutoBuy()
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused " .. tostring(chosen.eggType)
         if autoPlaceEnabled then
+            placeStatus.lastEggName = chosen.eggType
+            updatePlaceStatus()
             placeEggByUID(chosen.uid)
-            statusData.lastAction = "Placed " .. tostring(chosen.eggType)
         end
         updateStatusParagraph()
         task.wait(0.25)
@@ -438,18 +480,26 @@ end
 
 function placeEggByUID(eggUID)
     local islandName = getAssignedIslandName()
-    if not islandName then return end
-    local part = findPlacementPart(islandName)
-    if not part then
-        statusData.lastAction = "No placement part found"
-        updateStatusParagraph()
+    placeStatus.islandName = islandName
+    if not islandName then
+        placeStatus.lastAction = "Waiting for island assignment"
+        updatePlaceStatus()
         return
     end
+    local part = findPlacementPart(islandName)
+    if not part then
+        placeStatus.tileFound = false
+        placeStatus.lastAction = "No placement part found"
+        updatePlaceStatus()
+        return
+    end
+    placeStatus.tileFound = true
     local dst = getGridVectorFromPart(part)
     if not dst then
         local p = part.Position
         dst = createVector3(p.X, p.Y, p.Z)
     end
+    placeStatus.grid = dst
     local args = {
         "Place",
         {
@@ -462,17 +512,22 @@ function placeEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+        placeStatus.lastAction = "Place failed"
+    else
+        placeStatus.totalPlaced = (placeStatus.totalPlaced or 0) + 1
+        placeStatus.lastAction = "Placed"
     end
+    updatePlaceStatus()
 end
 
-Tabs.AutoTab:Toggle({
+Tabs.PlaceTab:Toggle({
     Title = "Auto Place Egg",
     Desc = "Place bought eggs on brown tiles in your island",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
-        statusData.lastAction = state and "Auto Place enabled" or "Auto Place disabled"
-        updateStatusParagraph()
+        placeStatus.lastAction = state and "Auto Place enabled" or "Auto Place disabled"
+        updatePlaceStatus()
     end
 })
 
