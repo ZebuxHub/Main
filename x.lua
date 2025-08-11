@@ -27,6 +27,7 @@ local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
 Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
+Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "Auto Hatch", Icon = "zap" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -711,10 +712,9 @@ local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, "Island: " .. tostring(placeStatusData.islandName or "?"))
     table.insert(lines, "Parts: " .. tostring(placeStatusData.farmPartsFound))
-    table.insert(lines, "Pet: " .. tostring(placeStatusData.petUID or "?"))
     table.insert(lines, "Placed: " .. tostring(placeStatusData.totalPlaces))
     if placeAnchorPosition then
-        table.insert(lines, string.format("Anchor: (%.0f, %.0f, %.0f) r=%d", placeAnchorPosition.X, placeAnchorPosition.Y, placeAnchorPosition.Z, anchorRadiusStuds))
+        table.insert(lines, string.format("Anchor r=%d: (%.0f, %.0f, %.0f)", anchorRadiusStuds, placeAnchorPosition.X, placeAnchorPosition.Y, placeAnchorPosition.Z))
     end
     if placeStatusData.lastPosition then
         table.insert(lines, "LastPos: " .. tostring(placeStatusData.lastPosition))
@@ -787,7 +787,7 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Decide target position (anchor remembered when auto starts, else player if preferNearPlayer)
+            -- Find an available farm part near saved anchor (if present) or near player when toggle set
             local minSpacing = 8 -- studs between pets
             local chosenPart
             local targetPos = placeAnchorPosition
@@ -795,7 +795,7 @@ local function runAutoPlace()
                 targetPos = getPlayerRootPosition()
             end
             if targetPos then
-                -- Restrict search to tiles within anchorRadiusStuds of anchor
+                -- Restrict to tiles within anchorRadiusStuds to keep placement localized
                 local nearby = {}
                 for _, part in ipairs(farmParts) do
                     if (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
@@ -844,13 +844,11 @@ Tabs.PlaceTab:Toggle({
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
-        if state then
-            -- Capture an anchor when turning on for consistent nearby placement
-            placeAnchorPosition = getPlayerRootPosition()
-        else
-            placeAnchorPosition = nil
-        end
         if state and not autoPlaceThread then
+            -- Capture anchor when turning on if not set
+            if not placeAnchorPosition and preferNearPlayer then
+                placeAnchorPosition = getPlayerRootPosition()
+            end
             autoPlaceThread = task.spawn(function()
                 runAutoPlace()
                 autoPlaceThread = nil
@@ -866,14 +864,31 @@ Tabs.PlaceTab:Toggle({
     end
 })
 
--- Preference: place near the player's current location
-Tabs.PlaceTab:Toggle({
-    Title = "Prefer Near Player",
-    Desc = "When enabled, choose the closest free farm tile to your character",
-    Value = preferNearPlayer,
-    Callback = function(state)
-        preferNearPlayer = state
-        WindUI:Notify({ Title = "Auto Place", Content = state and "Will place near player" or "Will place by any free tile", Duration = 3 })
+-- Anchoring tools
+Tabs.PlaceTab:Button({
+    Title = "Save Current Location",
+    Desc = "Use your current position as an anchor (100 studs radius)",
+    Callback = function()
+        local pos = getPlayerRootPosition()
+        if not pos then
+            WindUI:Notify({ Title = "Auto Place", Content = "Could not read player position", Duration = 3 })
+            return
+        end
+        placeAnchorPosition = pos
+        preferNearPlayer = true
+        WindUI:Notify({ Title = "Auto Place", Content = string.format("Anchor saved r=%d", anchorRadiusStuds), Duration = 3 })
+        placeStatusData.lastAction = "Anchor saved"
+        updatePlaceStatusParagraph()
+    end
+})
+Tabs.PlaceTab:Button({
+    Title = "Clear Anchor",
+    Desc = "Forget saved anchor; place anywhere",
+    Callback = function()
+        placeAnchorPosition = nil
+        WindUI:Notify({ Title = "Auto Place", Content = "Anchor cleared", Duration = 3 })
+        placeStatusData.lastAction = "Anchor cleared"
+        updatePlaceStatusParagraph()
     end
 })
 
@@ -971,17 +986,6 @@ Tabs.PlaceTab:Button({
     end
 })
 
--- Optional helper to open the window
-Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
-
--- Close callback
-Window:OnClose(function()
-    autoBuyEnabled = false
-    autoPlaceEnabled = false
-end)
-
-
-
 -- Auto Hatch functionality
 local autoHatchEnabled = false
 local autoHatchThread = nil
@@ -1000,11 +1004,7 @@ local function findHatchablePetsForPlayer()
     if not built then return results end
     for _, child in ipairs(built:GetDescendants()) do
         if child:IsA("Model") and playerOwnsInstance(child) then
-            -- Verify matching pet exists under workspace.Pets by name
-            local petFolder = workspace:FindFirstChild("Pets")
-            if petFolder and petFolder:FindFirstChild(child.Name) then
-                table.insert(results, child.Name)
-            end
+            table.insert(results, child.Name)
         end
     end
     return results
@@ -1012,11 +1012,12 @@ end
 
 local function hatchPetByName(petName)
     if type(petName) ~= "string" or petName == "" then return false end
-    local petsFolder = workspace:FindFirstChild("Pets")
-    if not petsFolder then return false end
+    local petsFolder = workspace:WaitForChild("Pets")
     local petModel = petsFolder:FindFirstChild(petName)
     if not petModel then return false end
-    local re = petModel:FindFirstChild("RootPart") and petModel.RootPart:FindFirstChild("RE")
+    local root = petModel:FindFirstChild("RootPart")
+    if not root then return false end
+    local re = root:FindFirstChild("RE")
     if not re then return false end
     local ok, err = pcall(function()
         re:FireServer("Claim")
@@ -1041,7 +1042,7 @@ local function runAutoHatch()
     end
 end
 
-Tabs.PlaceTab:Toggle({
+Tabs.HatchTab:Toggle({
     Title = "Auto Hatch",
     Desc = "Automatically claims hatchable pets you own",
     Value = false,
@@ -1058,4 +1059,14 @@ Tabs.PlaceTab:Toggle({
         end
     end
 })
+
+-- Optional helper to open the window
+Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
+
+-- Close callback
+Window:OnClose(function()
+    autoBuyEnabled = false
+    autoPlaceEnabled = false
+end)
+
 
