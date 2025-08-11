@@ -216,55 +216,6 @@ local statusParagraph = Tabs.AutoTab:Paragraph({
     ImageSize = 22,
 })
 
--- Auto Place Debug UI
-local autoPlaceDebug = false
-local autoPlaceLogs = {}
-local autoPlaceLogParagraph
-
-local function setAutoPlaceLog(text)
-    if autoPlaceLogParagraph and autoPlaceLogParagraph.SetDesc then
-        autoPlaceLogParagraph:SetDesc(text ~= "" and text or "(empty)")
-    end
-end
-
-local function logAutoPlace(message)
-    if not autoPlaceDebug then return end
-    local ts = os.date("%X")
-    table.insert(autoPlaceLogs, string.format("[%s] %s", ts, tostring(message)))
-    -- keep last 30 lines
-    if #autoPlaceLogs > 30 then
-        table.remove(autoPlaceLogs, 1)
-    end
-    setAutoPlaceLog(table.concat(autoPlaceLogs, "\n"))
-end
-
-Tabs.AutoTab:Section({ Title = "Auto Place Debug", Icon = "bug" })
-Tabs.AutoTab:Toggle({
-    Title = "Debug Auto Place",
-    Value = false,
-    Callback = function(v)
-        autoPlaceDebug = v
-        if v then
-            logAutoPlace("Debug enabled")
-        else
-            setAutoPlaceLog("(debug off)")
-        end
-    end
-})
-autoPlaceLogParagraph = Tabs.AutoTab:Paragraph({
-    Title = "Logs",
-    Desc = "(empty)",
-    Image = "clipboard-list",
-    ImageSize = 20,
-})
-Tabs.AutoTab:Button({
-    Title = "Clear Logs",
-    Callback = function()
-        autoPlaceLogs = {}
-        setAutoPlaceLog("(empty)")
-    end
-})
-
 local function formatStatusDesc()
     local lines = {}
     table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
@@ -489,23 +440,24 @@ local function findPlacementPart(islandName)
     if not art then return nil end
     local island = art:FindFirstChild(islandName or "")
     if not island then return nil end
-    -- Prefer explicit farm tiles that are unlocked (no LockCost attribute)
+    -- New priority:
+    -- 1) Any BasePart whose name matches "Farm_split_Island" and DOES NOT have the attribute LockCost (unlocked tile)
+    -- 2) Any BasePart exposing GridCenterPos attribute
+    -- 3) Fallback: Any BasePart with brown color ~= 145,98,44
     local candidateUnlocked
-    local candidateByGridCenter
+    local candidateByGrid
     local candidateByColor
     for _, inst in ipairs(island:GetDescendants()) do
         if inst:IsA("BasePart") then
             local nameLower = string.lower(inst.Name)
-            if string.find(nameLower, "farm_split", 1, true) then
-                local lockCost = inst:GetAttribute("LockCost")
-                if lockCost == nil then
-                    -- Unlocked farm tile: select immediately
+            if string.find(nameLower, "farm_split_island", 1, true) then
+                local hasLockCost = inst:GetAttribute("LockCost") ~= nil
+                if not hasLockCost then
                     candidateUnlocked = candidateUnlocked or inst
                 end
             end
-            -- Secondary: parts exposing GridCenterPos can be used too
             if inst:GetAttribute("GridCenterPos") ~= nil then
-                candidateByGridCenter = candidateByGridCenter or inst
+                candidateByGrid = candidateByGrid or inst
             end
             local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
             if col and colorsClose(col, TARGET_COLOR, 0.02) then
@@ -514,7 +466,7 @@ local function findPlacementPart(islandName)
         end
     end
     if candidateUnlocked then return candidateUnlocked end
-    if candidateByGridCenter then return candidateByGridCenter end
+    if candidateByGrid then return candidateByGrid end
     if candidateByColor then return candidateByColor end
     return nil
 end
@@ -542,14 +494,12 @@ function placeEggByUID(eggUID)
     if not part then
         statusData.lastAction = "No placement part found"
         updateStatusParagraph()
-        logAutoPlace("No placement part found on island " .. tostring(islandName))
         return
     end
     -- Compute the top-center of the tile so the egg hatches on the surface
     local center = part.CFrame.Position
     local topY = center.Y + (part.Size and part.Size.Y or 0) * 0.5
     local dst = createVector3(center.X, topY, center.Z)
-    logAutoPlace(string.format("Placing UID %s at (%.2f, %.2f, %.2f) on part %s", tostring(eggUID), dst.X, dst.Y, dst.Z, part.Name))
     local args = {
         "Place",
         {
@@ -562,11 +512,9 @@ function placeEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-        logAutoPlace("Place failed: " .. tostring(err))
     else
         statusData.lastAction = string.format("Placed at (%.2f, %.2f, %.2f)", dst.X, dst.Y, dst.Z)
         updateStatusParagraph()
-        logAutoPlace("Place fired successfully")
     end
 end
 
@@ -610,7 +558,6 @@ Tabs.AutoTab:Toggle({
                     if not islandName or islandName == "" then
                         statusData.lastAction = "Auto Place: waiting for island"
                         updateStatusParagraph()
-                        logAutoPlace("Waiting for island assignment")
                         task.wait(0.5)
                         continue
                     end
@@ -619,7 +566,6 @@ Tabs.AutoTab:Toggle({
                     if not targetPart then
                         statusData.lastAction = "Auto Place: no tile found"
                         updateStatusParagraph()
-                        logAutoPlace("No tile found on island " .. tostring(islandName))
                         task.wait(0.5)
                         continue
                     end
@@ -628,7 +574,6 @@ Tabs.AutoTab:Toggle({
                     if #eggs == 0 then
                         statusData.lastAction = "Auto Place: no eggs in inventory"
                         updateStatusParagraph()
-                        logAutoPlace("Inventory has no eggs")
                         task.wait(0.6)
                         continue
                     end
@@ -639,12 +584,9 @@ Tabs.AutoTab:Toggle({
                             if not isPlaced(e.uid) then
                                 statusData.lastAction = "Placing " .. (e.eggType or "Egg") .. " (" .. e.uid .. ")"
                                 updateStatusParagraph()
-                                logAutoPlace("Attempting place for UID " .. e.uid .. " type " .. tostring(e.eggType or "?"))
                                 placeEggByUID(e.uid)
                                 attempted[e.uid] = tick()
                                 task.wait(0.2)
-                            else
-                                logAutoPlace("UID " .. e.uid .. " already placed; skipping")
                             end
                         end
                     end
@@ -656,12 +598,10 @@ Tabs.AutoTab:Toggle({
             WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
             statusData.lastAction = "Auto Place enabled"
             updateStatusParagraph()
-            logAutoPlace("Auto Place loop started")
         elseif (not state) and autoPlaceThread then
             WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
             statusData.lastAction = "Auto Place disabled"
             updateStatusParagraph()
-            logAutoPlace("Auto Place loop stopped")
         end
     end
 })
