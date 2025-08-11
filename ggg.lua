@@ -415,32 +415,24 @@ end
 
 local function pressPromptE(prompt)
     if typeof(prompt) ~= "Instance" or not prompt:IsA("ProximityPrompt") then return false end
+    -- Try executor helper first
+    if _G and typeof(_G.fireproximityprompt) == "function" then
+        local s = pcall(function() _G.fireproximityprompt(prompt, prompt.HoldDuration or 0) end)
+        if s then return true end
+    end
+    -- Pure client fallback: simulate the prompt key with VirtualInput
+    local key = prompt.KeyboardKeyCode
+    if key == Enum.KeyCode.Unknown or key == nil then key = Enum.KeyCode.E end
+    -- LoS and distance flexibility
+    pcall(function()
+        prompt.RequiresLineOfSight = false
+        prompt.Enabled = true
+    end)
     local hold = prompt.HoldDuration or 0
-    -- Prefer engine API if available
-    local ok = false
-    if typeof(ProximityPromptService.InputHoldBegin) == "function" and typeof(ProximityPromptService.InputHoldEnd) == "function" then
-        local s1 = pcall(function() ProximityPromptService:InputHoldBegin(prompt) end)
-        if s1 then
-            if hold > 0 then task.wait(hold + 0.05) end
-            pcall(function() ProximityPromptService:InputHoldEnd(prompt) end)
-            ok = true
-        end
-    end
-    -- Executor fallback if available
-    if not ok and _G and typeof(_G.fireproximityprompt) == "function" then
-        local s2 = pcall(function() _G.fireproximityprompt(prompt, hold) end)
-        ok = s2 and true or false
-    end
-    -- Keyboard fallback (works if within range and default key is E)
-    if not ok and VirtualInputManager then
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-            if hold > 0 then task.wait(hold + 0.05) end
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        end)
-        ok = true
-    end
-    return ok
+    VirtualInputManager:SendKeyEvent(true, key, false, game)
+    if hold > 0 then task.wait(hold + 0.05) end
+    VirtualInputManager:SendKeyEvent(false, key, false, game)
+    return true
 end
 
 local function walkTo(position, timeout)
@@ -456,16 +448,24 @@ end
 local function tryHatchModel(model)
     -- Find a ProximityPrompt named "E" or any prompt on the model
     local prompt
+    -- Prefer a prompt on a part named Prompt or with ActionText that implies hatch
     for _, inst in ipairs(model:GetDescendants()) do
         if inst:IsA("ProximityPrompt") then
             prompt = inst
-            break
+            if inst.ActionText and string.len(inst.ActionText) > 0 then break end
         end
     end
     if not prompt then return false, "No prompt" end
     local pos = getModelPosition(model)
     if not pos then return false, "No position" end
     walkTo(pos, 6)
+    -- Ensure we are within MaxActivationDistance by nudging forward if necessary
+    local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and (hrp.Position - pos).Magnitude > (prompt.MaxActivationDistance or 10) - 1 then
+        local dir = (pos - hrp.Position).Unit
+        hrp.CFrame = CFrame.new(pos - dir * 1.5, pos)
+        task.wait(0.1)
+    end
     local ok = pressPromptE(prompt)
     return ok
 end
