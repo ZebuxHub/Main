@@ -440,6 +440,15 @@ local function findPlacementPart(islandName)
     if not art then return nil end
     local island = art:FindFirstChild(islandName or "")
     if not island then return nil end
+    local islandIndex = tostring((islandName or ""):match("Island[_%s]*(%d+)") or "")
+    local function nameMatchesIsland(instName)
+        if islandIndex == "" then return true end
+        local n = string.lower(instName)
+        return n:find("island%f[%s_]?" .. islandIndex, 1) ~= nil
+            or n:find("island_" .. islandIndex, 1, true) ~= nil
+            or n:find("island " .. islandIndex, 1, true) ~= nil
+            or n:find("_" .. islandIndex .. "_", 1, true) ~= nil
+    end
     -- New priority:
     -- 1) Any BasePart whose name matches "Farm_split_Island" and DOES NOT have the attribute LockCost (unlocked tile)
     -- 2) Any BasePart exposing GridCenterPos attribute
@@ -450,18 +459,20 @@ local function findPlacementPart(islandName)
     for _, inst in ipairs(island:GetDescendants()) do
         if inst:IsA("BasePart") then
             local nameLower = string.lower(inst.Name)
-            if string.find(nameLower, "farm_split_island", 1, true) then
+            if string.find(nameLower, "farm_split", 1, true) and nameMatchesIsland(inst.Name) then
                 local hasLockCost = inst:GetAttribute("LockCost") ~= nil
                 if not hasLockCost then
                     candidateUnlocked = candidateUnlocked or inst
                 end
             end
-            if inst:GetAttribute("GridCenterPos") ~= nil then
+            if inst:GetAttribute("GridCenterPos") ~= nil and nameMatchesIsland(inst.Name) then
                 candidateByGrid = candidateByGrid or inst
             end
             local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
             if col and colorsClose(col, TARGET_COLOR, 0.02) then
-                candidateByColor = candidateByColor or inst
+                if nameMatchesIsland(inst.Name) then
+                    candidateByColor = candidateByColor or inst
+                end
             end
         end
     end
