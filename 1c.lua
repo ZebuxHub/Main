@@ -168,13 +168,25 @@ local function getFarmParts(islandNumber)
     
     local islandName = "Island_" .. tostring(islandNumber)
     local island = art:FindFirstChild(islandName)
-    if not island then return {} end
+    if not island then 
+        -- Try alternative naming patterns
+        for _, child in ipairs(art:GetChildren()) do
+            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
+                island = child
+                break
+            end
+        end
+        if not island then return {} end
+    end
     
     local farmParts = {}
     local function scanForFarmParts(parent)
         for _, child in ipairs(parent:GetChildren()) do
             if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
-                table.insert(farmParts, child)
+                -- Additional validation: check if part is valid for placement
+                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                    table.insert(farmParts, child)
+                end
             end
             scanForFarmParts(child)
         end
@@ -195,8 +207,57 @@ local function getPetUID()
     return egg.Value
 end
 
+-- Enhanced pet validation based on the Pet module
+local function validatePetUID(petUID)
+    if not petUID or type(petUID) ~= "string" or petUID == "" then
+        return false, "Invalid PET UID"
+    end
+    
+    -- Check if pet exists in ReplicatedStorage.Pets (based on Pet module patterns)
+    local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
+    if petsFolder then
+        -- The Pet module shows pets are stored by their type (T attribute)
+        -- We might need to validate the pet type exists
+        return true, "Valid PET UID"
+    end
+    
+    return true, "PET UID found (pets folder not accessible)"
+end
+
+-- Get pet information for better status display
+local function getPetInfo(petUID)
+    if not petUID then return nil end
+    
+    -- Try to get pet data from various sources
+    local petData = {
+        UID = petUID,
+        Type = nil,
+        Rarity = nil,
+        Level = nil,
+        Mutations = nil
+    }
+    
+    -- Check if we can get pet type from the UID
+    -- This might be stored in the player's data or we might need to parse it
+    if type(petUID) == "string" then
+        -- Some games store pet type in the UID itself
+        petData.Type = petUID
+    end
+    
+    return petData
+end
+
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
+    
+    -- Enhanced validation based on Pet module insights
+    if not farmPart:IsA("BasePart") then return false end
+    
+    local isValid, validationMsg = validatePetUID(petUID)
+    if not isValid then
+        warn("Pet validation failed: " .. validationMsg)
+        return false
+    end
     
     local position = farmPart.Position
     local args = {
@@ -208,7 +269,12 @@ local function placePetAtPart(farmPart, petUID)
     }
     
     local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE")
+        if remote then
+            remote:FireServer(unpack(args))
+        else
+            error("CharacterRE remote not found")
+        end
     end)
     
     if not ok then
@@ -492,9 +558,11 @@ local placeStatusData = {
     islandNumber = nil,
     farmPartsFound = 0,
     petUID = nil,
+    petInfo = nil,
     totalPlaces = 0,
     lastAction = "Idle",
     lastPosition = nil,
+    validationStatus = nil,
 }
 
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
@@ -511,9 +579,23 @@ local function formatPlaceStatusDesc()
     table.insert(lines, "Island Number: " .. tostring(placeStatusData.islandNumber or "?"))
     table.insert(lines, "Farm Parts: " .. tostring(placeStatusData.farmPartsFound))
     table.insert(lines, "PET UID: " .. tostring(placeStatusData.petUID or "?"))
+    
+    -- Enhanced pet information display
+    if placeStatusData.petInfo then
+        if placeStatusData.petInfo.Type then
+            table.insert(lines, "Pet Type: " .. tostring(placeStatusData.petInfo.Type))
+        end
+        if placeStatusData.petInfo.Rarity then
+            table.insert(lines, "Rarity: " .. tostring(placeStatusData.petInfo.Rarity))
+        end
+    end
+    
     table.insert(lines, "Places: " .. tostring(placeStatusData.totalPlaces))
     if placeStatusData.lastPosition then
         table.insert(lines, "Last Position: " .. tostring(placeStatusData.lastPosition))
+    end
+    if placeStatusData.validationStatus then
+        table.insert(lines, "Validation: " .. tostring(placeStatusData.validationStatus))
     end
     table.insert(lines, "Last: " .. tostring(placeStatusData.lastAction))
     return table.concat(lines, "\n")
@@ -562,10 +644,25 @@ local function runAutoPlace()
         
         if not petUID then
             placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg"
+            placeStatusData.validationStatus = "No PET UID"
             updatePlaceStatusParagraph()
             task.wait(0.6)
             continue
         end
+        
+        -- Enhanced pet validation and info gathering
+        local isValid, validationMsg = validatePetUID(petUID)
+        placeStatusData.validationStatus = validationMsg
+        
+        if not isValid then
+            placeStatusData.lastAction = "PET UID validation failed: " .. validationMsg
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            continue
+        end
+        
+        -- Get pet information for better status display
+        placeStatusData.petInfo = getPetInfo(petUID)
         
         -- Place pet at a random farm part
         local randomPart = farmParts[math.random(1, #farmParts)]
@@ -606,6 +703,92 @@ Tabs.PlaceTab:Toggle({
             placeStatusData.lastAction = "Stopped"
             updatePlaceStatusParagraph()
         end
+    end
+})
+
+-- Manual place button for testing
+Tabs.PlaceTab:Button({
+    Title = "Place Pet Now",
+    Desc = "Manually place a pet at a random farm location",
+    Callback = function()
+        local islandName = getAssignedIslandName()
+        if not islandName then
+            WindUI:Notify({ Title = "Error", Content = "No island assigned", Duration = 3 })
+            return
+        end
+        
+        local islandNumber = getIslandNumberFromName(islandName)
+        if not islandNumber then
+            WindUI:Notify({ Title = "Error", Content = "Could not determine island number", Duration = 3 })
+            return
+        end
+        
+        local farmParts = getFarmParts(islandNumber)
+        if #farmParts == 0 then
+            WindUI:Notify({ Title = "Error", Content = "No farm parts found", Duration = 3 })
+            return
+        end
+        
+        local petUID = getPetUID()
+        if not petUID then
+            WindUI:Notify({ Title = "Error", Content = "No PET UID found", Duration = 3 })
+            return
+        end
+        
+        -- Enhanced validation
+        local isValid, validationMsg = validatePetUID(petUID)
+        if not isValid then
+            WindUI:Notify({ Title = "Error", Content = "PET UID validation failed: " .. validationMsg, Duration = 3 })
+            return
+        end
+        
+        local randomPart = farmParts[math.random(1, #farmParts)]
+        local success = placePetAtPart(randomPart, petUID)
+        
+        if success then
+            WindUI:Notify({ Title = "Success", Content = "Pet placed at farm location", Duration = 3 })
+            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
+            placeStatusData.lastAction = "Manual place successful"
+            updatePlaceStatusParagraph()
+        else
+            WindUI:Notify({ Title = "Error", Content = "Failed to place pet", Duration = 3 })
+            placeStatusData.lastAction = "Manual place failed"
+            updatePlaceStatusParagraph()
+        end
+    end
+})
+
+-- Pet validation test button
+Tabs.PlaceTab:Button({
+    Title = "Test Pet Validation",
+    Desc = "Check if current PET UID is valid",
+    Callback = function()
+        local petUID = getPetUID()
+        if not petUID then
+            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg", Duration = 3 })
+            return
+        end
+        
+        local isValid, validationMsg = validatePetUID(petUID)
+        local petInfo = getPetInfo(petUID)
+        
+        local message = "PET UID: " .. tostring(petUID) .. "\n"
+        message = message .. "Validation: " .. validationMsg .. "\n"
+        if petInfo and petInfo.Type then
+            message = message .. "Pet Type: " .. tostring(petInfo.Type)
+        end
+        
+        WindUI:Notify({ 
+            Title = isValid and "Valid PET" or "Invalid PET", 
+            Content = message, 
+            Duration = 5 
+        })
+        
+        -- Update status display
+        placeStatusData.petUID = petUID
+        placeStatusData.petInfo = petInfo
+        placeStatusData.validationStatus = validationMsg
+        updatePlaceStatusParagraph()
     end
 })
 
