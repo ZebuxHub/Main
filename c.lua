@@ -192,70 +192,6 @@ local function getIslandBeltFolder(islandName)
     return belt
 end
 
--- Island_3 tile helpers (Farm_split_* parts under workspace.Art.Island_3)
-local function getIsland3Tiles()
-    local tiles = {}
-    local art = workspace:FindFirstChild("Art")
-    if not art then return tiles end
-    local island3 = art:FindFirstChild("Island_3")
-    if not island3 then return tiles end
-    for _, inst in ipairs(island3:GetChildren()) do
-        if inst:IsA("BasePart") then
-            local n = tostring(inst.Name)
-            if string.sub(n, 1, 11) == "Farm_split_" then
-                table.insert(tiles, inst)
-            end
-        end
-    end
-    table.sort(tiles, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
-    return tiles
-end
-
-local function getInventoryEggUIDs()
-    local list = {}
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    local eggFolder = data and data:FindFirstChild("Egg")
-    if eggFolder then
-        for _, ch in ipairs(eggFolder:GetChildren()) do
-            table.insert(list, tostring(ch.Name))
-        end
-    end
-    return list
-end
-
-local function getPlacedUIDSet()
-    local set = {}
-    local root = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if root then
-        for _, ch in ipairs(root:GetChildren()) do
-            set[tostring(ch.Name)] = true
-        end
-    end
-    return set
-end
-
-local function placeUIDAtTileCenter(uid, tilePart)
-    if not (uid and tilePart and tilePart:IsA("BasePart")) then return false end
-    local center = tilePart.CFrame.Position
-    local vec = Vector3.new(center.X, center.Y, center.Z)
-    local args = {
-        "Place",
-        {
-            DST = vec,
-            ID = uid,
-        }
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to Place UID " .. tostring(uid) .. ": " .. tostring(err))
-        return false
-    end
-    return true
-end
-
 -- UI state
 loadEggConfig()
 local eggIdList = buildEggIdList()
@@ -314,33 +250,86 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
--- Auto Place state
+-- ===== Auto Place (Island_3 Farm_split_* parts) =====
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local usedTileNames = {}
 
+local function vectorCreate(x, y, z)
+    local vlib = rawget(_G, "vector")
+    if type(vlib) == "table" and type(vlib.create) == "function" then
+        return vlib.create(x, y, z)
+    end
+    return Vector3.new(x, y, z)
+end
+
+local function getIsland3FarmTiles()
+    local tiles = {}
+    local art = workspace:FindFirstChild("Art")
+    if not art then return tiles end
+    local island3 = art:FindFirstChild("Island_3")
+    if not island3 then return tiles end
+    for _, inst in ipairs(island3:GetChildren()) do
+        if inst:IsA("BasePart") then
+            local n = tostring(inst.Name)
+            if string.sub(n, 1, 11) == "Farm_split_" then
+                table.insert(tiles, inst)
+            end
+        end
+    end
+    table.sort(tiles, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
+    return tiles
+end
+
+local function getInventoryEggUIDs()
+    local list = {}
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local eggFolder = data and data:FindFirstChild("Egg")
+    if eggFolder then
+        for _, ch in ipairs(eggFolder:GetChildren()) do
+            table.insert(list, tostring(ch.Name))
+        end
+    end
+    return list
+end
+
+local function placeUIDAtTileTopCenter(uid, tilePart)
+    if not (uid and tilePart and tilePart:IsA("BasePart")) then return end
+    local pos = tilePart.CFrame.Position
+    local topY = pos.Y + (tilePart.Size and tilePart.Size.Y or 0) * 0.5
+    local dst = vectorCreate(pos.X, topY, pos.Z)
+    local args = {
+        "Place",
+        {
+            DST = dst,
+            ID = uid,
+        }
+    }
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+end
+
 local function runAutoPlace()
     usedTileNames = {}
     while autoPlaceEnabled do
-        -- Snapshot eggs in inventory (fast path; no confirmation loop)
         local uids = getInventoryEggUIDs()
         if #uids == 0 then
             statusData.lastAction = "Auto Place: no eggs in inventory"
             updateStatusParagraph()
-            task.wait(0.15)
+            task.wait(0.05)
             continue
         end
 
-        -- Snapshot tiles
-        local tiles = getIsland3Tiles()
+        local tiles = getIsland3FarmTiles()
         if #tiles == 0 then
-            statusData.lastAction = "Auto Place: no Farm_split_* tiles found in Island_3"
+            statusData.lastAction = "Auto Place: no Farm_split_* tiles in Island_3"
             updateStatusParagraph()
-            task.wait(0.15)
+            task.wait(0.05)
             continue
         end
 
-        -- Build available tiles (exclude those we already used this session)
         local available = {}
         for _, t in ipairs(tiles) do
             if not usedTileNames[t.Name] then
@@ -348,24 +337,23 @@ local function runAutoPlace()
             end
         end
         if #available == 0 then
-            statusData.lastAction = "Auto Place: no unused tiles available"
+            statusData.lastAction = "Auto Place: no unused tiles"
             updateStatusParagraph()
-            task.wait(0.15)
+            task.wait(0.05)
             continue
         end
 
         local count = math.min(#uids, #available)
         for i = 1, count do
-            if not autoPlaceEnabled then break end
             local uid = uids[i]
             local tile = available[i]
-            placeUIDAtTileCenter(uid, tile)
             usedTileNames[tile.Name] = true
+            task.spawn(function()
+                placeUIDAtTileTopCenter(uid, tile)
+            end)
         end
-
-        statusData.lastAction = "Auto Place: burst placed " .. tostring(count) .. " eggs"
+        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " eggs"
         updateStatusParagraph()
-        -- ultra fast loop; small delay to yield
         task.wait(0.03)
     end
 end
@@ -536,7 +524,7 @@ Tabs.AutoTab:Toggle({
 -- Auto Place UI toggle
 Tabs.AutoTab:Toggle({
     Title = "Auto Place Eggs (Island_3 Farm_split)",
-    Desc = "Places inventory eggs on Island_3 Farm_split_* tile centers",
+    Desc = "Places inventory eggs on Island_3 Farm_split_* tiles (top-center)",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
@@ -559,3 +547,5 @@ Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = tru
 Window:OnClose(function()
     autoBuyEnabled = false
 end)
+
+
