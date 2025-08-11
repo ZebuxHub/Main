@@ -416,7 +416,7 @@ Tabs.AutoTab:Toggle({
 -- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
--- ===== Auto Place Egg (Island_3 Farm_split tiles) =====
+-- ===== Auto Place Egg (Island_3 Farm_split models) =====
 
 local function vectorCreate(x, y, z)
     local vlib = rawget(_G, "vector") or _G.vector
@@ -431,18 +431,7 @@ local function getIsland3()
     return art and art:FindFirstChild("Island_3") or nil
 end
 
-local function modelHasAnyLockCostAttribute(model)
-    if not model or not model:IsA("Model") then return false end
-    if model:GetAttribute("LockCost") ~= nil then return true end
-    for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("Instance") and d.GetAttribute and d:GetAttribute("LockCost") ~= nil then
-            return true
-        end
-    end
-    return false
-end
-
-local function findUnlockedFarmSplitModels()
+local function findFarmSplitModels()
     local island3 = getIsland3()
     if not island3 then return {} end
     local list = {}
@@ -450,9 +439,7 @@ local function findUnlockedFarmSplitModels()
         if inst:IsA("Model") then
             local n = tostring(inst.Name)
             if string.find(n, "Farm_split", 1, true) == 1 then
-                if not modelHasAnyLockCostAttribute(inst) then
-                    table.insert(list, inst)
-                end
+                table.insert(list, inst)
             end
         end
     end
@@ -509,7 +496,7 @@ local autoPlaceThread = nil
 
 Tabs.AutoTab:Toggle({
     Title = "Auto Place Egg",
-    Desc = "Place PET eggs on unlocked Farm_split tiles in Island_3",
+    Desc = "Place PET eggs on Farm_split tiles in Island_3",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
@@ -525,9 +512,9 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    local tiles = findUnlockedFarmSplitModels()
+                    local tiles = findFarmSplitModels()
                     if #tiles == 0 then
-                        statusData.lastAction = "Auto Place: no unlocked Farm_split tiles in Island_3"
+                        statusData.lastAction = "Auto Place: no Farm_split models in Island_3"
                         updateStatusParagraph()
                         task.wait(0.6)
                         continue
@@ -547,7 +534,7 @@ Tabs.AutoTab:Toggle({
                         continue
                     end
 
-                    -- Choose first valid tile position
+                    -- Choose first tile that has a CFrame
                     local targetPos, targetName
                     for _, tile in ipairs(tiles) do
                         local pos = getModelPivotPosition(tile)
@@ -567,7 +554,7 @@ Tabs.AutoTab:Toggle({
                     statusData.lastAction = "Auto Place: placing UID " .. tostring(chosenUid) .. " at " .. tostring(targetName)
                     updateStatusParagraph()
                     if placeEggUIDAt(chosenUid, targetPos) then
-                        statusData.lastAction = string.format("Auto Place: placed UID %s at %s", tostring(chosenUid), tostring(targetName))
+                        statusData.lastAction = string.format("Auto Place: placed %s at %s", tostring(chosenUid), tostring(targetName))
                         updateStatusParagraph()
                         attemptedAt[chosenUid] = os.clock()
                         task.wait(0.3)
