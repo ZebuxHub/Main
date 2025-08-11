@@ -11,15 +11,6 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
--- Key helpers
-local function pressNumberTwo()
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-        task.wait(0.05)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    end)
-end
-
 
 -- Remote caches
 local RS_Remote = ReplicatedStorage:WaitForChild("Remote")
@@ -245,16 +236,7 @@ local function getFarmParts(islandNumber)
         local child = kids[i]
         if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
             if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                -- Constrain to not go far from base group if present
-                local base = island:FindFirstChild("ENV") and island.ENV:FindFirstChild("Group") and island.ENV.Group:FindFirstChild("Base")
-                if base then
-                    -- Only include tiles within 350 studs of Base
-                    if (child.Position - base.Position).Magnitude <= 350 then
-                        farmParts[#farmParts+1] = child
-                    end
-                else
-                    farmParts[#farmParts+1] = child
-                end
+                farmParts[#farmParts+1] = child
             end
         end
         scanForFarmParts(child)
@@ -387,10 +369,16 @@ local function getPetUID()
         if not data then return nil end
     end
     
-    -- Wait for Egg object to exist
+    -- Wait for Egg object to exist (use Waiting pattern with descendant signal)
     local egg = data:FindFirstChild("Egg")
     if not egg then
-        egg = data:WaitForChild("Egg", 2)
+        local t0 = os.clock()
+        repeat
+            egg = data:FindFirstChild("Egg")
+            if egg then break end
+            local ev = data.ChildAdded:Wait()
+            if ev and ev.Name == "Egg" then egg = ev end
+        until (os.clock() - t0) > 2
         if not egg then return nil end
     end
     
@@ -725,6 +713,12 @@ local function tryHatchModel(model)
     if not playerOwnsInstance(model) then
         return false, "Not owner"
     end
+    -- Ensure we are holding an egg (press number 2 once)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+        task.wait(0.05)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    end)
     -- Find a ProximityPrompt named "E" or any prompt on the model
     local prompt
     -- Prefer a prompt on a part named Prompt or with ActionText that implies hatch
@@ -985,9 +979,15 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     eggType = tostring(eggType)
     if not selectedTypeSet[eggType] then return false, nil, nil end
 
-    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-    if type(price) ~= "number" then return false, nil, nil end
-    if playerMoney < price then return false, nil, nil end
+    local price = eggInstance:GetAttribute("Price")
+    if type(price) ~= "number" then
+        price = getEggPriceByType(eggType)
+    end
+    if type(price) ~= "number" then
+        -- If we cannot read price, assume 0 to avoid stalling (server will reject if not affordable)
+        price = 0
+    end
+    if (playerMoney or 0) < price then return false, nil, nil end
     return true, eggInstance.Name, price
 end
 
@@ -997,7 +997,7 @@ local function buyEggByUID(eggUID)
         eggUID
     }
     local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        REMOTE_CharacterRE:FireServer(unpack(args))
     end)
     if not ok then
         warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
@@ -1010,7 +1010,7 @@ local function focusEggByUID(eggUID)
         eggUID
     }
     local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        REMOTE_CharacterRE:FireServer(unpack(args))
     end)
     if not ok then
         warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
@@ -1019,6 +1019,8 @@ end
 
 local function runAutoBuy()
     while autoBuyEnabled do
+        -- Continuously refresh NetWorth each loop
+        statusData.netWorth = getPlayerNetWorth()
         local islandName = getAssignedIslandName()
         statusData.islandName = islandName
 
@@ -1051,8 +1053,7 @@ local function runAutoBuy()
             end
         end
         statusData.eggsFound = #children
-        -- Refresh NetWorth each tick; ensure attribute has time to propagate
-        statusData.netWorth = LocalPlayer:GetAttribute("NetWorth") or getPlayerNetWorth()
+        -- NetWorth already updated at top of loop
 
         if statusData.eggsFound == 0 then
             statusData.matchingFound = 0
@@ -1118,7 +1119,7 @@ local function runAutoBuy()
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
         updateStatusParagraph()
-        task.wait(0.15)
+        task.wait(0.25)
     end
 end
 
@@ -1195,8 +1196,6 @@ end
 local function runAutoPlace()
     while autoPlaceEnabled do
         local ok, err = pcall(function()
-            -- Always try to equip/hold egg slot 2 before placing
-            pressNumberTwo()
             local islandName = getAssignedIslandName()
             placeStatusData.islandName = islandName
             
@@ -1313,6 +1312,12 @@ Tabs.PlaceTab:Toggle({
             if not placeAnchorPosition then
                 placeAnchorPosition = getPlayerRootPosition()
             end
+            -- Ensure we are holding an egg (hotkey 2) when starting Auto Place
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+                task.wait(0.05)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+            end)
             autoPlaceThread = task.spawn(function()
                 runAutoPlace()
                 autoPlaceThread = nil
