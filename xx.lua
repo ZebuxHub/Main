@@ -221,18 +221,13 @@ local function getPetUID()
         if not egg then return nil end
     end
     
-    -- Check if Egg has a Value property
-    if not egg:IsA("ValueBase") then
-        warn("Egg object exists but is not a ValueBase: " .. tostring(egg.ClassName))
+    -- The PET UID is the NAME of the egg object, not its Value
+    local eggName = egg.Name
+    if not eggName or eggName == "" then
         return nil
     end
     
-    local eggValue = egg.Value
-    if not eggValue or eggValue == "" then
-        return nil
-    end
-    
-    return eggValue
+    return eggName
 end
 
 -- Enhanced pet validation based on the Pet module
@@ -671,13 +666,13 @@ local function runAutoPlace()
             local petUID = getPetUID()
             placeStatusData.petUID = petUID
             
-            if not petUID then
-                placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg"
-                placeStatusData.validationStatus = "No PET UID"
-                updatePlaceStatusParagraph()
-                task.wait(0.6)
-                return
-            end
+                    if not petUID then
+            placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg.Name"
+            placeStatusData.validationStatus = "No PET UID"
+            updatePlaceStatusParagraph()
+            task.wait(0.6)
+            return
+        end
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -768,7 +763,7 @@ Tabs.PlaceTab:Button({
         
         local petUID = getPetUID()
         if not petUID then
-            WindUI:Notify({ Title = "Error", Content = "No PET UID found", Duration = 3 })
+            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
             return
         end
         
@@ -802,7 +797,7 @@ Tabs.PlaceTab:Button({
     Callback = function()
         local petUID = getPetUID()
         if not petUID then
-            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg", Duration = 3 })
+            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
             return
         end
         
