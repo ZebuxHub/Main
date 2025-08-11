@@ -198,13 +198,41 @@ end
 
 local function getPetUID()
     if not LocalPlayer then return nil end
+    
+    -- Wait for PlayerGui to exist
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return nil end
+    if not playerGui then
+        -- Try to wait for it briefly
+        playerGui = LocalPlayer:WaitForChild("PlayerGui", 2)
+        if not playerGui then return nil end
+    end
+    
+    -- Wait for Data folder to exist
     local data = playerGui:FindFirstChild("Data")
-    if not data then return nil end
+    if not data then
+        data = playerGui:WaitForChild("Data", 2)
+        if not data then return nil end
+    end
+    
+    -- Wait for Egg object to exist
     local egg = data:FindFirstChild("Egg")
-    if not egg then return nil end
-    return egg.Value
+    if not egg then
+        egg = data:WaitForChild("Egg", 2)
+        if not egg then return nil end
+    end
+    
+    -- Check if Egg has a Value property
+    if not egg:IsA("ValueBase") then
+        warn("Egg object exists but is not a ValueBase: " .. tostring(egg.ClassName))
+        return nil
+    end
+    
+    local eggValue = egg.Value
+    if not eggValue or eggValue == "" then
+        return nil
+    end
+    
+    return eggValue
 end
 
 -- Enhanced pet validation based on the Pet module
@@ -609,78 +637,87 @@ end
 
 local function runAutoPlace()
     while autoPlaceEnabled do
-        local islandName = getAssignedIslandName()
-        placeStatusData.islandName = islandName
-        
-        if not islandName or islandName == "" then
-            placeStatusData.lastAction = "Waiting for island assignment"
+        local ok, err = pcall(function()
+            local islandName = getAssignedIslandName()
+            placeStatusData.islandName = islandName
+            
+            if not islandName or islandName == "" then
+                placeStatusData.lastAction = "Waiting for island assignment"
+                updatePlaceStatusParagraph()
+                task.wait(0.6)
+                return
+            end
+            
+            local islandNumber = getIslandNumberFromName(islandName)
+            placeStatusData.islandNumber = islandNumber
+            
+            if not islandNumber then
+                placeStatusData.lastAction = "Could not determine island number from: " .. tostring(islandName)
+                updatePlaceStatusParagraph()
+                task.wait(0.6)
+                return
+            end
+            
+            local farmParts = getFarmParts(islandNumber)
+            placeStatusData.farmPartsFound = #farmParts
+            
+            if placeStatusData.farmPartsFound == 0 then
+                placeStatusData.lastAction = "No farm parts found on Island_" .. tostring(islandNumber)
+                updatePlaceStatusParagraph()
+                task.wait(0.6)
+                return
+            end
+            
+            local petUID = getPetUID()
+            placeStatusData.petUID = petUID
+            
+            if not petUID then
+                placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg"
+                placeStatusData.validationStatus = "No PET UID"
+                updatePlaceStatusParagraph()
+                task.wait(0.6)
+                return
+            end
+            
+            -- Enhanced pet validation and info gathering
+            local isValid, validationMsg = validatePetUID(petUID)
+            placeStatusData.validationStatus = validationMsg
+            
+            if not isValid then
+                placeStatusData.lastAction = "PET UID validation failed: " .. validationMsg
+                updatePlaceStatusParagraph()
+                task.wait(0.6)
+                return
+            end
+            
+            -- Get pet information for better status display
+            placeStatusData.petInfo = getPetInfo(petUID)
+            
+            -- Place pet at a random farm part
+            local randomPart = farmParts[math.random(1, #farmParts)]
+            local position = randomPart.Position
+            placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", position.X, position.Y, position.Z)
+            placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at " .. placeStatusData.lastPosition
             updatePlaceStatusParagraph()
-            task.wait(0.6)
-            continue
-        end
-        
-        local islandNumber = getIslandNumberFromName(islandName)
-        placeStatusData.islandNumber = islandNumber
-        
-        if not islandNumber then
-            placeStatusData.lastAction = "Could not determine island number from: " .. tostring(islandName)
+            
+            local success = placePetAtPart(randomPart, petUID)
+            if success then
+                placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
+                placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
+            else
+                placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
+            end
             updatePlaceStatusParagraph()
-            task.wait(0.6)
-            continue
-        end
+            
+            task.wait(0.5)
+        end)
         
-        local farmParts = getFarmParts(islandNumber)
-        placeStatusData.farmPartsFound = #farmParts
-        
-        if placeStatusData.farmPartsFound == 0 then
-            placeStatusData.lastAction = "No farm parts found on Island_" .. tostring(islandNumber)
+        if not ok then
+            warn("Auto Place error: " .. tostring(err))
+            placeStatusData.lastAction = "Error: " .. tostring(err)
             updatePlaceStatusParagraph()
-            task.wait(0.6)
-            continue
+            task.wait(1) -- Wait longer on error
         end
-        
-        local petUID = getPetUID()
-        placeStatusData.petUID = petUID
-        
-        if not petUID then
-            placeStatusData.lastAction = "No PET UID found in PlayerGui.Data.Egg"
-            placeStatusData.validationStatus = "No PET UID"
-            updatePlaceStatusParagraph()
-            task.wait(0.6)
-            continue
-        end
-        
-        -- Enhanced pet validation and info gathering
-        local isValid, validationMsg = validatePetUID(petUID)
-        placeStatusData.validationStatus = validationMsg
-        
-        if not isValid then
-            placeStatusData.lastAction = "PET UID validation failed: " .. validationMsg
-            updatePlaceStatusParagraph()
-            task.wait(0.6)
-            continue
-        end
-        
-        -- Get pet information for better status display
-        placeStatusData.petInfo = getPetInfo(petUID)
-        
-        -- Place pet at a random farm part
-        local randomPart = farmParts[math.random(1, #farmParts)]
-        local position = randomPart.Position
-        placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", position.X, position.Y, position.Z)
-        placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at " .. placeStatusData.lastPosition
-        updatePlaceStatusParagraph()
-        
-        local success = placePetAtPart(randomPart, petUID)
-        if success then
-            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
-            placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
-        else
-            placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
-        end
-        updatePlaceStatusParagraph()
-        
-        task.wait(0.5)
     end
 end
 
