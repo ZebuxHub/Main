@@ -198,111 +198,6 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
--- ===== Auto Place (Island_3 parts) =====
-local autoPlaceEnabled = false
-local autoPlaceThread = nil
-local usedPartNames = {}
-
-local function vectorCreate(x, y, z)
-    local vlib = rawget(_G, "vector")
-    if type(vlib) == "table" and type(vlib.create) == "function" then
-        return vlib.create(x, y, z)
-    end
-    return Vector3.new(x, y, z)
-end
-
-local function getIsland3Parts()
-    local parts = {}
-    local art = workspace:FindFirstChild("Art")
-    if not art then return parts end
-    local island3 = art:FindFirstChild("Island_3")
-    if not island3 then return parts end
-    
-    for _, inst in ipairs(island3:GetChildren()) do
-        if inst:IsA("BasePart") and inst.Size == Vector3.new(8, 8, 8) then
-            table.insert(parts, inst)
-        end
-    end
-    table.sort(parts, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
-    return parts
-end
-
-local function getInventoryPetUIDs()
-    local list = {}
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    local eggFolder = data and data:FindFirstChild("Egg")
-    if eggFolder then
-        for _, ch in ipairs(eggFolder:GetChildren()) do
-            table.insert(list, tostring(ch.Name))
-        end
-    end
-    return list
-end
-
-local function placeUIDAtPartCenter(uid, part)
-    if not (uid and part and part:IsA("BasePart")) then return end
-    local pos = part.CFrame.Position
-    local dst = vectorCreate(pos.X, pos.Y, pos.Z)
-    local args = {
-        "Place",
-        {
-            DST = dst,
-            ID = uid,
-        }
-    }
-    pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-end
-
-local function runAutoPlace()
-    usedPartNames = {}
-    while autoPlaceEnabled do
-        local uids = getInventoryPetUIDs()
-        if #uids == 0 then
-            statusData.lastAction = "Auto Place: no pets in inventory"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local parts = getIsland3Parts()
-        if #parts == 0 then
-            statusData.lastAction = "Auto Place: no 8x8x8 parts in Island_3"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local available = {}
-        for _, p in ipairs(parts) do
-            if not usedPartNames[p.Name] then
-                table.insert(available, p)
-            end
-        end
-        if #available == 0 then
-            statusData.lastAction = "Auto Place: no unused parts"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local count = math.min(#uids, #available)
-        for i = 1, count do
-            local uid = uids[i]
-            local part = available[i]
-            usedPartNames[part.Name] = true
-            task.spawn(function()
-                placeUIDAtPartCenter(uid, part)
-            end)
-        end
-        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " pets"
-        updateStatusParagraph()
-        task.wait(0.3)
-    end
-end
-
 -- Status tracking
 local statusData = {
     eggsFound = 0,
@@ -512,34 +407,12 @@ Tabs.AutoTab:Toggle({
     end
 })
 
--- Auto Place UI toggle
-Tabs.AutoTab:Toggle({
-    Title = "Auto Place Pets (Island_3)",
-    Desc = "Places inventory pets on Island_3 8x8x8 parts (center)",
-    Value = false,
-    Callback = function(state)
-        autoPlaceEnabled = state
-        if state and not autoPlaceThread then
-            autoPlaceThread = task.spawn(function()
-                runAutoPlace()
-                autoPlaceThread = nil
-            end)
-            WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
-            statusData.lastAction = "Auto Place Started"
-            updateStatusParagraph()
-        elseif (not state) and autoPlaceThread then
-            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
-            statusData.lastAction = "Auto Place Stopped"
-            updateStatusParagraph()
-        end
-    end
-})
-
 -- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
 -- Close callback
 Window:OnClose(function()
     autoBuyEnabled = false
-    autoPlaceEnabled = false
 end)
+
+
