@@ -1768,6 +1768,8 @@ Tabs.FruitTab:Button({
 -- Forward declare helpers used below
 local getAllFruitNames
 local hasAnyFruitOwned
+local getAssetCount
+local focusFruitName
 -- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
 local function getFeedablePets()
     local feedable = {}
@@ -1894,7 +1896,12 @@ local function attachEntryWatch(petEntry)
     local conns = {}
     local function onAttr()
         -- When Feed changes or BPV appears/disappears, re-evaluate
-        tryFeedFromEntry(petEntry)
+        local ok = pcall(function()
+            tryFeedFromEntry(petEntry)
+        end)
+        if not ok then
+            -- ignore transient attribute state
+        end
     end
     table.insert(conns, petEntry:GetAttributeChangedSignal("Feed"):Connect(onAttr))
     table.insert(conns, petEntry:GetAttributeChangedSignal("BPV"):Connect(onAttr))
@@ -1960,7 +1967,7 @@ Tabs.FeedTab:Toggle({
 
 -- ============ Dino Quest (Auto Claim Rewards) ============
 Tabs.DinoTab:Section({ Title = "Status", Icon = "info" })
-local dinoStatus = { last = "Idle", tasks = {}, claimed = 0 }
+local dinoStatus = { last = "Idle", tasks = {}, progress = {}, claimed = 0 }
 local dinoParagraph = Tabs.DinoTab:Paragraph({ Title = "Dino Quests", Desc = "Waiting...", Image = "trophy", ImageSize = 18 })
 local function updateDinoStatus()
     if dinoParagraph and dinoParagraph.SetDesc then
@@ -1968,8 +1975,11 @@ local function updateDinoStatus()
         local taskLines = {}
         for i = 1, 3 do
             local t = dinoStatus.tasks[i]
+            local p = dinoStatus.progress[i]
             if t then
-                table.insert(taskLines, string.format("%d) %s | Id=%s", i, tostring(t.name or "Task"), tostring(t.id or "?")))
+                local prog = p and (string.format(" %s/%s", tostring(p.cur or "?"), tostring(p.total or "?"))) or ""
+                local extra = p and p.desc and (" - " .. tostring(p.desc)) or ""
+                table.insert(taskLines, string.format("%d) %s | Id=%s%s%s", i, tostring(t.name or "Task"), tostring(t.id or "?"), prog, extra))
             end
         end
         table.insert(lines, table.concat(taskLines, "\n"))
@@ -1999,6 +2009,43 @@ local function readDinoTasks()
     return tasks
 end
 
+local function getDinoUI()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    return pg and pg:FindFirstChild("ScreenDinoEvent") or nil
+end
+
+local function readTaskProgressFromUI(index)
+    local gui = getDinoUI()
+    if not gui then return nil end
+    local root = gui:FindFirstChild("Root")
+    local frame = root and root:FindFirstChild("Frame")
+    local scroller = frame and frame:FindFirstChild("ScrollingFrame")
+    local item = scroller and scroller:FindFirstChild("TaskItem_" .. tostring(index))
+    if not item then return nil end
+    -- capture description too for clarity
+    local desc = item:FindFirstChild("Desc")
+    local count = item:FindFirstChild("Count")
+    if not count then return nil end
+    local text
+    pcall(function() text = count.Text end)
+    if type(text) ~= "string" or text == "" then return nil end
+    local cur, tot = text:match("%s*(%d+)%s*/%s*(%d+)%s*")
+    cur, tot = tonumber(cur), tonumber(tot)
+    if not (cur and tot) then return nil end
+    local descText = nil
+    pcall(function() descText = desc and desc.Text end)
+    return { cur = cur, total = tot, ready = (cur >= tot and tot > 0), desc = descText }
+end
+
+local function readAllProgress()
+    local prog = {}
+    for i = 1, 3 do
+        prog[i] = readTaskProgressFromUI(i)
+    end
+    dinoStatus.progress = prog
+    return prog
+end
+
 local function fireDinoReward(idNumber)
     local args = { { event = "exchange", id = "Reward_" .. tostring(idNumber) } }
     local ok, err = pcall(function()
@@ -2011,10 +2058,12 @@ end
 local function claimAvailableRewards()
     local tasks = readDinoTasks()
     dinoStatus.tasks = tasks
+    local prog = readAllProgress()
     local claimedNow = 0
     for i = 1, 3 do
         local t = tasks[i]
-        if t and t.id then
+        local pr = prog and prog[i]
+        if t and t.id and pr and pr.ready == true then
             local num = tonumber(t.id:match("(%d+)$"))
             if num then
                 if fireDinoReward(num) then claimedNow += 1 end
