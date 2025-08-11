@@ -196,7 +196,6 @@ local autoBuyEnabled = false
 local autoBuyThread = nil
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
-local findOwnedEggUIDByType -- forward declaration
 
 -- Status tracking
 local statusData = {
@@ -225,7 +224,7 @@ local function formatStatusDesc()
     if statusData.lastEggName then
         table.insert(lines, "Last Egg: " .. tostring(statusData.lastEggName))
     end
-    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
+    table.insert(lines, tostring(statusData.lastAction))
     return table.concat(lines, "\n")
 end
 
@@ -255,7 +254,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
     if playerMoney < price then return false, nil, nil end
-    return true, eggInstance.Name, price, eggType
+    return true, eggInstance.Name, price
 end
 
 local function buyEggByUID(eggUID)
@@ -284,9 +283,210 @@ local function focusEggByUID(eggUID)
     end
 end
 
-local function placeEggByUID(eggUID)
-    -- forward declaration patch (actual implementation is below); filled by second definition
+-- ===== Auto Place (independent toggle) =====
+local function createVector3(x, y, z)
+    local vlib = rawget(_G, "vector")
+    if type(vlib) == "table" and type(vlib.create) == "function" then
+        return vlib.create(x, y, z)
+    end
+    return Vector3.new(x, y, z)
 end
+
+local TARGET_COLOR = Color3.fromRGB(145, 98, 44)
+local function colorsClose(a, b, tol)
+    tol = tol or 0.02
+    return math.abs(a.R - b.R) <= tol and math.abs(a.G - b.G) <= tol and math.abs(a.B - b.B) <= tol
+end
+
+local function isUnderIsland(root, islandName)
+    if not root or not islandName then return false end
+    local current = root
+    while current and current ~= workspace do
+        if current.Name == islandName and current.Parent and current.Parent.Name == "Art" then
+            return true
+        end
+        current = current.Parent
+    end
+    return false
+end
+
+local function findPlacementPart(islandName)
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    local island = art:FindFirstChild(islandName or "")
+    if not island then return nil end
+
+    local char = LocalPlayer and LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local rootPos = hrp and hrp.Position
+
+    local bestUnlocked, bestUnlockedDist = nil, math.huge
+    local bestGrid, bestGridDist = nil, math.huge
+    local bestColor, bestColorDist = nil, math.huge
+
+    for _, inst in ipairs(island:GetDescendants()) do
+        if inst:IsA("BasePart") then
+            if isUnderIsland(inst, islandName) then
+                local dist = rootPos and (inst.Position - rootPos).Magnitude or math.huge
+                -- 1) unlocked Farm_split
+                local n = string.lower(inst.Name)
+                if string.find(n, "farm_split", 1, true) and inst:GetAttribute("LockCost") == nil then
+                    if dist < bestUnlockedDist then
+                        bestUnlocked, bestUnlockedDist = inst, dist
+                    end
+                end
+                -- 2) has GridCenterPos
+                if inst:GetAttribute("GridCenterPos") ~= nil then
+                    if dist < bestGridDist then
+                        bestGrid, bestGridDist = inst, dist
+                    end
+                end
+                -- 3) color close to target
+                local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
+                if col and colorsClose(col, TARGET_COLOR, 0.02) then
+                    if dist < bestColorDist then
+                        bestColor, bestColorDist = inst, dist
+                    end
+                end
+            end
+        end
+    end
+    return bestUnlocked or bestGrid or bestColor
+end
+
+local function getGridVectorFromPart(part)
+    if not part then return nil end
+    local packed = part:GetAttribute("GridCenterPos")
+    if typeof(packed) == "Vector3" then
+        return createVector3(packed.X, packed.Y, packed.Z)
+    end
+    local gx = part:GetAttribute("GridX") or part:GetAttribute("Grid X") or part:GetAttribute("gridX") or part:GetAttribute("gridx")
+    local gy = part:GetAttribute("GridY") or part:GetAttribute("Grid Y") or part:GetAttribute("gridY") or part:GetAttribute("gridy")
+    local gz = part:GetAttribute("GridZ") or part:GetAttribute("Grid Z") or part:GetAttribute("gridZ") or part:GetAttribute("gridz")
+    if type(gx) == "number" and type(gy) == "number" and type(gz) == "number" then
+        return createVector3(gx, gy, gz)
+    end
+    return nil
+end
+
+local function placeEggByUID(eggUID)
+    local islandName = getAssignedIslandName()
+    if not islandName then
+        statusData.lastAction = "Auto Place: waiting for island"
+        updateStatusParagraph()
+        return
+    end
+    local part = findPlacementPart(islandName)
+    if not part then
+        statusData.lastAction = "Auto Place: no tile found"
+        updateStatusParagraph()
+        return
+    end
+    if not isUnderIsland(part, islandName) then
+        statusData.lastAction = "Auto Place: tile not in my island"
+        updateStatusParagraph()
+        return
+    end
+
+    local dst = getGridVectorFromPart(part)
+    if not dst then
+        local center = part.CFrame.Position
+        local topY = center.Y + (part.Size and part.Size.Y or 0) * 0.5
+        dst = createVector3(center.X, topY, center.Z)
+    end
+
+    local args = {
+        "Place",
+        {
+            DST = dst,
+            ID = eggUID,
+        }
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    else
+        statusData.lastAction = string.format("Auto Place: placed at (%.2f, %.2f, %.2f)", dst.X, dst.Y, dst.Z)
+        updateStatusParagraph()
+    end
+end
+
+Tabs.AutoTab:Toggle({
+    Title = "Auto Place Egg",
+    Desc = "Place eggs in your island tiles",
+    Value = false,
+    Callback = function(state)
+        autoPlaceEnabled = state
+        if state and not autoPlaceThread then
+            autoPlaceThread = task.spawn(function()
+                local attempted = {}
+                local function isPlaced(uid)
+                    for _, inst in ipairs(workspace:GetDescendants()) do
+                        if inst:IsA("Model") and inst.Name == uid then
+                            if inst:GetAttribute("GridCenterPos") ~= nil then
+                                return true
+                            end
+                        end
+                    end
+                    return false
+                end
+                local function getInventoryEggs()
+                    local list = {}
+                    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+                    local data = pg and pg:FindFirstChild("Data")
+                    local eggFolder = data and data:FindFirstChild("Egg")
+                    if eggFolder then
+                        for _, ch in ipairs(eggFolder:GetChildren()) do
+                            local uid = tostring(ch.Name)
+                            table.insert(list, uid)
+                        end
+                    end
+                    return list
+                end
+                while autoPlaceEnabled do
+                    local islandName = getAssignedIslandName()
+                    if not islandName or islandName == "" then
+                        statusData.lastAction = "Auto Place: waiting for island"
+                        updateStatusParagraph()
+                        task.wait(0.5)
+                        continue
+                    end
+                    local eggs = getInventoryEggs()
+                    if #eggs == 0 then
+                        statusData.lastAction = "Auto Place: no eggs in inventory"
+                        updateStatusParagraph()
+                        task.wait(0.6)
+                        continue
+                    end
+                    for _, uid in ipairs(eggs) do
+                        if not autoPlaceEnabled then break end
+                        local lastAttempt = attempted[uid]
+                        if not lastAttempt or (tick() - lastAttempt) > 3 then
+                            if not isPlaced(uid) then
+                                statusData.lastAction = "Auto Place: placing " .. uid
+                                updateStatusParagraph()
+                                placeEggByUID(uid)
+                                attempted[uid] = tick()
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                    task.wait(0.4)
+                end
+                autoPlaceThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
+            statusData.lastAction = "Auto Place enabled"
+            updateStatusParagraph()
+        elseif (not state) and autoPlaceThread then
+            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
+            statusData.lastAction = "Auto Place disabled"
+            updateStatusParagraph()
+        end
+    end
+})
 
 local function runAutoBuy()
     while autoBuyEnabled do
@@ -326,9 +526,9 @@ local function runAutoBuy()
 
         local matching = {}
         for _, child in ipairs(children) do
-            local ok, uid, price, eggType = shouldBuyEggInstance(child, statusData.netWorth)
+            local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
             if ok then
-                table.insert(matching, { uid = uid, price = price, eggType = eggType })
+                table.insert(matching, { uid = uid, price = price })
             end
         end
         if #matching == 0 then
@@ -348,7 +548,6 @@ local function runAutoBuy()
                 table.insert(affordable, item)
             end
         end
-
         if #affordable == 0 then
             local cheapest = matching[1]
             statusData.lastAction = "Waiting for money (cheapest " .. tostring(cheapest and cheapest.price or "?") .. ", NetWorth " .. tostring(statusData.netWorth) .. ")"
@@ -358,14 +557,14 @@ local function runAutoBuy()
         end
 
         local chosen = affordable[1]
-        statusData.lastEggName = chosen.eggType
-        statusData.lastAction = "Buying " .. tostring(chosen.eggType) .. " (UID " .. tostring(chosen.uid) .. ") for " .. tostring(chosen.price)
+        local chosenModel = beltFolder:FindFirstChild(chosen.uid)
+        statusData.lastEggName = (chosenModel and resolveEggType(chosenModel)) or tostring(chosen.uid)
+        statusData.lastAction = "Buying " .. tostring(statusData.lastEggName) .. " (UID " .. tostring(chosen.uid) .. ") for " .. tostring(chosen.price)
         updateStatusParagraph()
         buyEggByUID(chosen.uid)
         focusEggByUID(chosen.uid)
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
-        statusData.lastAction = "Bought + Focused " .. tostring(chosen.eggType)
-        -- Auto placing is handled by a separate loop now
+        statusData.lastAction = "Bought + Focused " .. tostring(statusData.lastEggName)
         updateStatusParagraph()
         task.wait(0.25)
     end
@@ -383,304 +582,11 @@ Tabs.AutoTab:Toggle({
                 autoBuyThread = nil
             end)
             WindUI:Notify({ Title = "Auto Buy", Content = "Started", Duration = 3 })
-            statusData.lastAction = "Started"
+            statusData.lastAction = "Auto Buy enabled"
             updateStatusParagraph()
         elseif (not state) and autoBuyThread then
             WindUI:Notify({ Title = "Auto Buy", Content = "Stopped", Duration = 3 })
-            statusData.lastAction = "Stopped"
-            updateStatusParagraph()
-        end
-    end
-})
-
--- Try to resolve the purchasd egg's UID after BuyEgg by scanning for a model owned by the player
-findOwnedEggUIDByType = function(preferredType)
-    local myUserId = LocalPlayer and LocalPlayer.UserId
-    if not myUserId then return nil end
-    local newestUid, newestTime = nil, -math.huge
-    for _, inst in ipairs(workspace:GetDescendants()) do
-        if inst:IsA("Model") then
-            local uid = inst.Name
-            local eggTypeAttr = inst:GetAttribute("EggType") or inst:GetAttribute("Type")
-            local ownerId = inst:GetAttribute("UserId") or inst:GetAttribute("OwnerId") or inst:GetAttribute("PlayerId")
-            local hasGrid = inst:GetAttribute("GridCenterPos") ~= nil
-            -- Prefer not-yet-placed eggs (no GridCenterPos)
-            if ownerId == myUserId and not hasGrid then
-                if not preferredType or toKey(tostring(eggTypeAttr or "")) == toKey(preferredType) then
-                    -- Favor most recent by STime timestamp if present
-                    local sTime = tonumber(inst:GetAttribute("STime")) or 0
-                    if sTime > newestTime then
-                        newestTime = sTime
-                        newestUid = uid
-                    end
-                end
-            end
-        end
-    end
-    return newestUid
-end
-
--- Auto Place Egg
-local function createVector3(x, y, z)
-    local vlib = rawget(_G, "vector")
-    if type(vlib) == "table" and type(vlib.create) == "function" then
-        return vlib.create(x, y, z)
-    end
-    return Vector3.new(x, y, z)
-end
-
-local TARGET_COLOR = Color3.fromRGB(145, 98, 44)
-local function colorsClose(a, b, tol)
-    tol = tol or 0.01
-    return math.abs(a.R - b.R) <= tol and math.abs(a.G - b.G) <= tol and math.abs(a.B - b.B) <= tol
-end
-
-local function findPlacementPart(islandName)
-    local art = workspace:FindFirstChild("Art")
-    if not art then return nil end
-    local island = art:FindFirstChild(islandName or "")
-    if not island then return nil end
-    local islandIndex = tostring((islandName or ""):match("Island[_%s]*(%d+)") or "")
-    local function nameMatchesIsland(instName)
-        if islandIndex == "" then return true end
-        local n = string.lower(instName)
-        return n:find("island%f[%s_]?" .. islandIndex, 1) ~= nil
-            or n:find("island_" .. islandIndex, 1, true) ~= nil
-            or n:find("island " .. islandIndex, 1, true) ~= nil
-            or n:find("_" .. islandIndex .. "_", 1, true) ~= nil
-    end
-    -- New priority:
-    -- 1) Any BasePart whose name matches "Farm_split_Island" and DOES NOT have the attribute LockCost (unlocked tile)
-    -- 2) Any BasePart exposing GridCenterPos attribute
-    -- 3) Fallback: Any BasePart with brown color ~= 145,98,44
-    local candidateUnlocked, distUnlocked = nil, math.huge
-    local candidateByGrid, distGrid = nil, math.huge
-    local candidateByColor, distColor = nil, math.huge
-    local rootPos
-    do
-        local char = LocalPlayer and LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp then rootPos = hrp.Position end
-    end
-    for _, inst in ipairs(island:GetDescendants()) do
-        if inst:IsA("BasePart") then
-            local nameLower = string.lower(inst.Name)
-            if string.find(nameLower, "farm_split", 1, true) and nameMatchesIsland(inst.Name) then
-                local hasLockCost = inst:GetAttribute("LockCost") ~= nil
-                if not hasLockCost then
-                    if rootPos then
-                        local d = (inst.Position - rootPos).Magnitude
-                        if d < distUnlocked then
-                            candidateUnlocked, distUnlocked = inst, d
-                        end
-                    else
-                        candidateUnlocked = candidateUnlocked or inst
-                    end
-                end
-            end
-            if inst:GetAttribute("GridCenterPos") ~= nil and nameMatchesIsland(inst.Name) then
-                if rootPos then
-                    local d = (inst.Position - rootPos).Magnitude
-                    if d < distGrid then
-                        candidateByGrid, distGrid = inst, d
-                    end
-                else
-                    candidateByGrid = candidateByGrid or inst
-                end
-            end
-            local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
-            if col and colorsClose(col, TARGET_COLOR, 0.02) then
-                if nameMatchesIsland(inst.Name) then
-                    if rootPos then
-                        local d = (inst.Position - rootPos).Magnitude
-                        if d < distColor then
-                            candidateByColor, distColor = inst, d
-                        end
-                    else
-                        candidateByColor = candidateByColor or inst
-                    end
-                end
-            end
-        end
-    end
-    if candidateUnlocked then return candidateUnlocked end
-    if candidateByGrid then return candidateByGrid end
-    if candidateByColor then return candidateByColor end
-    return nil
-end
-
--- Verify a part actually belongs to the player's island to prevent cross-island placement
-local function isPartInIsland(part, islandName)
-    if not part or not islandName then return false end
-    local current = part
-    while current and current ~= workspace do
-        if current.Parent == workspace and current.Name == "Art" then
-            -- reached Art root without finding island container
-            break
-        end
-        if current.Parent and current.Parent.Name == "Art" then
-            return current.Name == islandName
-        end
-        current = current.Parent
-    end
-    return false
-end
-
-local function getGridVectorFromPart(part)
-    if not part then return nil end
-    -- Some games store a packed vector attribute like GridCenterPos
-    local packed = part:GetAttribute("GridCenterPos")
-    if typeof(packed) == "Vector3" then
-        return createVector3(packed.X, packed.Y, packed.Z)
-    end
-    local gx = part:GetAttribute("GridX") or part:GetAttribute("Grid X") or part:GetAttribute("gridX") or part:GetAttribute("gridx")
-    local gy = part:GetAttribute("GridY") or part:GetAttribute("Grid Y") or part:GetAttribute("gridY") or part:GetAttribute("gridy")
-    local gz = part:GetAttribute("GridZ") or part:GetAttribute("Grid Z") or part:GetAttribute("gridZ") or part:GetAttribute("gridz")
-    if type(gx) == "number" and type(gy) == "number" and type(gz) == "number" then
-        return createVector3(gx, gy, gz)
-    end
-    return nil
-end
-
-function placeEggByUID(eggUID)
-    local islandName = getAssignedIslandName()
-    if not islandName then return end
-    local part = findPlacementPart(islandName)
-    if not part then
-        statusData.lastAction = "No placement part found"
-        updateStatusParagraph()
-        return
-    end
-    -- Safety check: ensure part belongs to our island
-    if not isPartInIsland(part, islandName) then
-        -- Try to re-find; if still not valid, abort
-        part = findPlacementPart(islandName)
-        if not part or not isPartInIsland(part, islandName) then
-            statusData.lastAction = "Placement tile not in my island; skipping"
-            updateStatusParagraph()
-            return
-        end
-    end
-    -- Prefer grid center from attributes if available; fallback to top-center of the tile
-    local gridDst = getGridVectorFromPart(part)
-    local dst
-    if gridDst then
-        dst = gridDst
-    else
-        local center = part.CFrame.Position
-        local topY = center.Y + (part.Size and part.Size.Y or 0) * 0.5
-        dst = createVector3(center.X, topY, center.Z)
-    end
-    local args = {
-        "Place",
-        {
-            DST = dst,
-            ID = eggUID,
-        }
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-    else
-        statusData.lastAction = string.format("Placed at (%.2f, %.2f, %.2f)", dst.X, dst.Y, dst.Z)
-        updateStatusParagraph()
-    end
-end
-
-Tabs.AutoTab:Toggle({
-    Title = "Auto Place Egg",
-    Desc = "Place bought eggs on brown tiles in your island",
-    Value = false,
-    Callback = function(state)
-        autoPlaceEnabled = state
-        if state and not autoPlaceThread then
-            autoPlaceThread = task.spawn(function()
-                -- separate auto place loop
-                local attempted = {}
-                local function isPlaced(uid)
-                    for _, inst in ipairs(workspace:GetDescendants()) do
-                        if inst:IsA("Model") and inst.Name == uid then
-                            if inst:GetAttribute("GridCenterPos") ~= nil then
-                                return true
-                            end
-                        end
-                    end
-                    return false
-                end
-                local function getInventoryEggs()
-                    local list = {}
-                    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-                    local data = pg and pg:FindFirstChild("Data")
-                    local eggFolder = data and data:FindFirstChild("Egg")
-                    if eggFolder then
-                        for _, ch in ipairs(eggFolder:GetChildren()) do
-                            local uid = tostring(ch.Name)
-                            local eggType = ch:GetAttribute("EggType") or ch:GetAttribute("Type")
-                            table.insert(list, { uid = uid, eggType = eggType and tostring(eggType) or nil })
-                        end
-                    end
-                    return list
-                end
-
-                while autoPlaceEnabled do
-                    local islandName = getAssignedIslandName()
-                    if not islandName or islandName == "" then
-                        statusData.lastAction = "Auto Place: waiting for island"
-                        updateStatusParagraph()
-                        task.wait(0.5)
-                        continue
-                    end
-
-                    local targetPart = findPlacementPart(islandName)
-                    if not targetPart then
-                        statusData.lastAction = "Auto Place: no tile found"
-                        updateStatusParagraph()
-                        task.wait(0.5)
-                        continue
-                    end
-                    -- Enforce same-island check here as well
-                    if not isPartInIsland(targetPart, islandName) then
-                        statusData.lastAction = "Auto Place: found tile not in my island"
-                        statusData.lastAction = statusData.lastAction .. " (picked " .. targetPart:GetFullName() .. ")"
-                        updateStatusParagraph()
-                        task.wait(0.4)
-                        continue
-                    end
-
-                    local eggs = getInventoryEggs()
-                    if #eggs == 0 then
-                        statusData.lastAction = "Auto Place: no eggs in inventory"
-                        updateStatusParagraph()
-                        task.wait(0.6)
-                        continue
-                    end
-
-                    for _, e in ipairs(eggs) do
-                        if not autoPlaceEnabled then break end
-                        if not attempted[e.uid] or (attempted[e.uid] and (tick() - attempted[e.uid]) > 3) then
-                            if not isPlaced(e.uid) then
-                                statusData.lastAction = "Placing " .. (e.eggType or "Egg") .. " (" .. e.uid .. ")"
-                                statusData.lastAction = statusData.lastAction .. " at " .. tostring(targetPart.Position)
-                                updateStatusParagraph()
-                                placeEggByUID(e.uid)
-                                attempted[e.uid] = tick()
-                                task.wait(0.2)
-                            end
-                        end
-                    end
-
-                    task.wait(0.4)
-                end
-                autoPlaceThread = nil
-            end)
-            WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
-            statusData.lastAction = "Auto Place enabled"
-            updateStatusParagraph()
-        elseif (not state) and autoPlaceThread then
-            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
-            statusData.lastAction = "Auto Place disabled"
+            statusData.lastAction = "Auto Buy disabled"
             updateStatusParagraph()
         end
     end
