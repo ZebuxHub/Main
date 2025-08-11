@@ -1926,23 +1926,56 @@ function getAllFruitNames()
     for key, val in pairs(petFoodConfig) do
         local keyStr = tostring(key)
         local lower = string.lower(keyStr)
-        if lower ~= "_index" and lower ~= "__index" and not keyStr:match("^") then
-            local name = type(val) == "table" and (val.Name or val.ID or val.Id or keyStr) or keyStr
-            name = tostring(name)
-            if name and name ~= "" and not name:match("^") and not seen[name] then
-                table.insert(list, name)
-                seen[name] = true
+        if lower ~= "_index" and lower ~= "__index" and not keyStr:match("^_") then
+            local function addName(candidate)
+                local n = candidate and tostring(candidate) or ""
+                if n == "" then return end
+                if n:match("^_") then return end
+                -- Support PetFood_ prefix and plain names
+                local stripped = n:gsub("^PetFood_", "")
+                for _, choice in ipairs({ n, stripped }) do
+                    if choice ~= "" and not seen[choice] then
+                        table.insert(list, choice)
+                        seen[choice] = true
+                    end
+                end
             end
+            if type(val) == "table" then
+                addName(val.Name)
+                addName(val.ID)
+                addName(val.Id)
+            end
+            addName(keyStr)
         end
     end
     return list
 end
 
 function hasAnyFruitOwned()
-    for _, name in ipairs(getAllFruitNames()) do
-        local count = getAssetCount(name)
-        if type(count) == "number" and count > 0 then
-            return true
+    local asset = getAssetContainer()
+    if not asset then return false end
+    -- Build a set of fruit names from config for quick checks
+    local fruits = {}
+    for _, n in ipairs(getAllFruitNames()) do fruits[n] = true end
+    -- Check attributes first
+    local attrs = asset:GetAttributes()
+    for k, v in pairs(attrs) do
+        local key = tostring(k)
+        local stripped = key:gsub("^PetFood_", "")
+        if fruits[key] or fruits[stripped] then
+            local num = tonumber(v)
+            if num and num > 0 then return true end
+        end
+    end
+    -- Fallback: check child ValueBase objects
+    for _, child in ipairs(asset:GetChildren()) do
+        if child:IsA("ValueBase") then
+            local key = tostring(child.Name)
+            local stripped = key:gsub("^PetFood_", "")
+            if fruits[key] or fruits[stripped] then
+                local num = tonumber(child.Value)
+                if num and num > 0 then return true end
+            end
         end
     end
     return false
