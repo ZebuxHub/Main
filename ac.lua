@@ -249,48 +249,6 @@ local function updateStatusParagraph()
     end
 end
 
-local function shouldBuyEggInstance(eggInstance, playerMoney)
-    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
-    -- Read Type primarily; some games may store as EggType or Name
-    local eggType = eggInstance:GetAttribute("Type")
-        or eggInstance:GetAttribute("EggType")
-        or eggInstance:GetAttribute("Name")
-    if not eggType then return false, nil, nil end
-    eggType = tostring(eggType)
-    if not selectedTypeSet[eggType] then return false, nil, nil end
-
-    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-    if type(price) ~= "number" then return false, nil, nil end
-    if playerMoney < price then return false, nil, nil end
-    return true, eggInstance.Name, price
-end
-
-local function buyEggByUID(eggUID)
-    local args = {
-        "BuyEgg",
-        eggUID
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-    end
-end
-
-local function focusEggByUID(eggUID)
-    local args = {
-        "Focus",
-        eggUID
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-    end
-end
-
 -- Auto Place functions
 local function vectorCreate(x, y, z)
     local vlib = rawget(_G, "vector")
@@ -389,6 +347,48 @@ local function runAutoPlace()
         statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " pets"
         updateStatusParagraph()
         task.wait(0.3)
+    end
+end
+
+local function shouldBuyEggInstance(eggInstance, playerMoney)
+    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
+    -- Read Type primarily; some games may store as EggType or Name
+    local eggType = eggInstance:GetAttribute("Type")
+        or eggInstance:GetAttribute("EggType")
+        or eggInstance:GetAttribute("Name")
+    if not eggType then return false, nil, nil end
+    eggType = tostring(eggType)
+    if not selectedTypeSet[eggType] then return false, nil, nil end
+
+    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    if type(price) ~= "number" then return false, nil, nil end
+    if playerMoney < price then return false, nil, nil end
+    return true, eggInstance.Name, price
+end
+
+local function buyEggByUID(eggUID)
+    local args = {
+        "BuyEgg",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
+local function focusEggByUID(eggUID)
+    local args = {
+        "Focus",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
     end
 end
 
