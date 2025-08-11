@@ -1699,6 +1699,19 @@ fruitDropdown = Tabs.FruitTab:Dropdown({
     end
 })
 
+Tabs.FruitTab:Button({
+    Title = "Reload Fruits",
+    Desc = "Reload ResPetFood",
+    Callback = function()
+        loadPetFoodConfig()
+        if fruitDropdown and fruitDropdown.Refresh then
+            fruitDropdown:Refresh(buildFruitList())
+        end
+        updateFruitStatus()
+    end
+})
+
+
 -- ============ Auto Feed Pets ============
 local function getFeedablePets()
     local feedable = {}
@@ -1708,7 +1721,6 @@ local function getFeedablePets()
         if pet:IsA("Model") then
             local root = pet:FindFirstChild("RootPart")
             if root then
-                -- Path: RootPart["GUI/BigPetGUI"].Feed
                 local gui = root:FindFirstChild("GUI")
                 if gui then
                     local big = gui:FindFirstChild("BigPetGUI")
@@ -1746,13 +1758,6 @@ end
 local function runAutoFeed()
     while autoFeedEnabled do
         local ok, err = pcall(function()
-            -- Stop if player has no fruit at all
-            if not hasAnyFruit() then
-                feedStatus.last = "No fruit you broke boy"
-                updateFeedStatus()
-                task.wait(1)
-                return
-            end
             local list = getFeedablePets()
             feedStatus.found = #list
             if #list == 0 then
@@ -1829,17 +1834,13 @@ Tabs.FeedTab:Button({
     end
 })
 
-Tabs.FruitTab:Button({
-    Title = "Reload Fruits",
-    Desc = "Reload ResPetFood",
-    Callback = function()
-        loadPetFoodConfig()
-        if fruitDropdown and fruitDropdown.Refresh then
-            fruitDropdown:Refresh(buildFruitList())
-        end
-        updateFruitStatus()
-    end
-})
+local function getFoodStoreUI()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local gui = pg:FindFirstChild("ScreenFoodStore")
+    if not gui then return nil end
+    return gui
+end
 
 local function getFoodStoreLST()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
@@ -1870,21 +1871,6 @@ local function getAssetCount(itemName)
     return num
 end
 
-local function hasAnyFruit()
-    -- Iterate known fruit names from petFoodConfig
-    for key, val in pairs(petFoodConfig) do
-        local name = (type(val) == "table" and (val.Name or val.ID or val.Id)) or key
-        name = tostring(name)
-        if name and name ~= "" then
-            local count = getAssetCount(name)
-            if type(count) == "number" and count > 0 then
-                return true
-            end
-        end
-    end
-    return false
-end
-
 local function getDeployContainer()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
@@ -1905,12 +1891,6 @@ local function readDeploySlots()
         if value ~= nil then map[key] = tostring(value) end
     end
     return map
-end
-
-local function sanitizeKey(k)
-    if type(k) ~= "string" then return nil end
-    -- keep original; also provide simple variants
-    return k
 end
 
 local function candidateKeysForFruit(fruitName)
@@ -1962,14 +1942,6 @@ local function readStockFromLST(lst, fruitName)
     return nil
 end
 
-local function getFoodStoreUI()
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    local gui = pg:FindFirstChild("ScreenFoodStore")
-    if not gui then return nil end
-    return gui
-end
-
 local function isFruitInStock(fruitName)
     -- First, try attribute-based stock via Data.FoodStore.LST
     local lst = getFoodStoreLST()
@@ -1996,6 +1968,7 @@ local function isFruitInStock(fruitName)
     if not stock or not stock:IsA("TextLabel") then return false end
     local txt = tostring(stock.Text or "")
     if txt == "" then return false end
+    -- Consider out-of-stock texts like "0" or words; treat any non-empty as available unless it matches 0
     local num = tonumber(txt)
     if num ~= nil then return num > 0 end
     return true
@@ -2028,27 +2001,29 @@ local function runAutoFruit()
             end
             local bought = 0
             for _, name in ipairs(names) do
+                local skip = false
                 if fruitOnlyIfZero then
                     local have = getAssetCount(name)
                     if have ~= nil and have > 0 then
                         fruitStatus.last = name .. " already owned (" .. tostring(have) .. ")"
                         updateFruitStatus()
                         task.wait(0.05)
-                        goto continue_loop
+                        skip = true
                     end
                 end
-                if isFruitInStock(name) then
-                    fruitStatus.last = "Buying " .. name
-                    updateFruitStatus()
-                    fireBuyFruit(name)
-                    bought += 1
-                    task.wait(0.15)
-                else
-                    fruitStatus.last = name .. " out of stock"
-                    updateFruitStatus()
-                    task.wait(0.1)
+                if not skip then
+                    if isFruitInStock(name) then
+                        fruitStatus.last = "Buying " .. name
+                        updateFruitStatus()
+                        fireBuyFruit(name)
+                        bought += 1
+                        task.wait(0.15)
+                    else
+                        fruitStatus.last = name .. " out of stock"
+                        updateFruitStatus()
+                        task.wait(0.1)
+                    end
                 end
-                ::continue_loop::
             end
             if bought == 0 then
                 fruitStatus.last = "Nothing available"
@@ -2088,15 +2063,6 @@ Tabs.FruitTab:Toggle({
     end
 })
 
-Tabs.FruitTab:Toggle({
-    Title = "Only If None Owned",
-    Desc = "Check Data.Asset and only buy if owned count is 0",
-    Value = false,
-    Callback = function(state)
-        fruitOnlyIfZero = state
-    end
-})
-
 Tabs.FruitTab:Button({
     Title = "Buy Selected Now",
     Desc = "Attempts to buy each selected fruit once",
@@ -2127,6 +2093,15 @@ Tabs.FruitTab:Button({
         WindUI:Notify({ Title = "Fruit Market", Content = string.format("Bought %d", bought), Duration = 3 })
         fruitStatus.last = string.format("Manual: bought %d", bought)
         updateFruitStatus()
+    end
+})
+
+Tabs.FruitTab:Toggle({
+    Title = "Only If None Owned",
+    Desc = "Check Data.Asset and only buy if owned count is 0",
+    Value = false,
+    Callback = function(state)
+        fruitOnlyIfZero = state
     end
 })
 
