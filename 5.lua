@@ -1735,6 +1735,9 @@ Tabs.FruitTab:Button({
 
 
 -- ============ Auto Feed Pets ============
+-- Forward declare helpers used below
+local getAllFruitNames
+local hasAnyFruitOwned
 -- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
 local function getFeedablePets()
     local feedable = {}
@@ -1917,7 +1920,7 @@ local function getAssetCount(itemName)
     return num
 end
 
-local function getAllFruitNames()
+function getAllFruitNames()
     local list = {}
     local seen = {}
     for key, val in pairs(petFoodConfig) do
@@ -1935,7 +1938,7 @@ local function getAllFruitNames()
     return list
 end
 
-local function hasAnyFruitOwned()
+function hasAnyFruitOwned()
     for _, name in ipairs(getAllFruitNames()) do
         local count = getAssetCount(name)
         if type(count) == "number" and count > 0 then
