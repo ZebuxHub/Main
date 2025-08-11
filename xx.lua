@@ -930,7 +930,7 @@ Tabs.PlaceTab:Button({
             placeStatusData.lastAction = "Manual place successful"
             updatePlaceStatusParagraph()
         else
-            WindUI:Notify({ Title = "Error", Content = "Failed to place pet", Duration = 3 })
+            WindUI:Notify({ Title = "Error", Content = "Failed to place pet" .. (errorMsg and " (" .. errorMsg .. ")" or ""), Duration = 3 })
             placeStatusData.lastAction = "Manual place failed"
             updatePlaceStatusParagraph()
         end
