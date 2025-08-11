@@ -1797,44 +1797,108 @@ local function updateFeedStatus()
     end
 end
 
-local function runAutoFeed()
-    while autoFeedEnabled do
-        local ok, err = pcall(function()
-            -- Require that player has at least one fruit item
-            if not hasAnyFruitOwned() then
-                feedStatus.last = "No fruit owned"
-                updateFeedStatus()
-                task.wait(1)
-                return
-            end
-            local list = getFeedablePets()
-            feedStatus.found = #list
-            if #list == 0 then
-                feedStatus.last = "No pets with Feed GUI"
-                updateFeedStatus()
-                task.wait(1)
-                return
-            end
-            local fedNow = 0
-            for _, pet in ipairs(list) do
-                feedStatus.last = "Feeding " .. tostring(pet.Name)
-                updateFeedStatus()
-                if fireFeedPetByModel(pet) then
-                    fedNow += 1
-                end
-                task.wait(0.15)
-            end
-            feedStatus.fed = (feedStatus.fed or 0) + fedNow
-            feedStatus.last = string.format("Fed %d this round", fedNow)
-            updateFeedStatus()
-            task.wait(1)
-        end)
-        if not ok then
-            feedStatus.last = "Error: " .. tostring(err)
-            updateFeedStatus()
-            task.wait(1)
-        end
+-- Event-driven auto feed: watch PlayerGui.Data.Pets entries and fire when Feed attribute disappears
+local feedWatchStarted = false
+local feedRootConns = {}
+local feedEntryConns = {}
+local feedCooldownByUid = {}
+local function disconnectAllFeedConns()
+    for _, c in ipairs(feedRootConns) do pcall(function() c:Disconnect() end) end
+    feedRootConns = {}
+    for inst, arr in pairs(feedEntryConns) do
+        for _, c in ipairs(arr) do pcall(function() c:Disconnect() end) end
+        feedEntryConns[inst] = nil
     end
+end
+
+local function getPetsDataFolder()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Pets") or nil
+end
+
+local function uidToWorldModel(uid)
+    local petsFolder = workspace:FindFirstChild("Pets")
+    return petsFolder and petsFolder:FindFirstChild(uid) or nil
+end
+
+local function tryFeedFromEntry(petEntry)
+    if not autoFeedEnabled then return false end
+    if not petEntry or not petEntry.GetAttribute then return false end
+    local uid = petEntry.Name
+    -- requires BPV to be present per user logic
+    if petEntry:GetAttribute("BPV") == nil then return false end
+    -- fire only when Feed attribute is missing
+    local feedAttr = petEntry:GetAttribute("Feed")
+    if feedAttr ~= nil then return false end
+    -- simple cooldown to avoid bursts
+    local now = os.clock()
+    if feedCooldownByUid[uid] and now - feedCooldownByUid[uid] < 2 then return false end
+    if not hasAnyFruitOwned() then
+        feedStatus.last = "No fruit owned"
+        updateFeedStatus()
+        return false
+    end
+    local model = uidToWorldModel(uid)
+    if not model then return false end
+    feedStatus.last = "Feeding " .. tostring(uid)
+    updateFeedStatus()
+    local ok = fireFeedPetByModel(model)
+    if ok then
+        feedCooldownByUid[uid] = now
+        feedStatus.fed = (feedStatus.fed or 0) + 1
+        updateFeedStatus()
+    end
+    return ok
+end
+
+local function attachEntryWatch(petEntry)
+    if feedEntryConns[petEntry] then return end
+    local conns = {}
+    local function onAttr()
+        -- When Feed changes or BPV appears/disappears, re-evaluate
+        tryFeedFromEntry(petEntry)
+    end
+    table.insert(conns, petEntry:GetAttributeChangedSignal("Feed"):Connect(onAttr))
+    table.insert(conns, petEntry:GetAttributeChangedSignal("BPV"):Connect(onAttr))
+    feedEntryConns[petEntry] = conns
+    -- initial evaluation
+    task.spawn(onAttr)
+end
+
+local function startFeedWatch()
+    if feedWatchStarted then return end
+    feedWatchStarted = true
+    disconnectAllFeedConns()
+    local pets = getPetsDataFolder()
+    if not pets then
+        feedStatus.last = "Waiting for Data.Pets"
+        updateFeedStatus()
+        return
+    end
+    -- attach to existing entries
+    for _, child in ipairs(pets:GetChildren()) do
+        attachEntryWatch(child)
+    end
+    -- watch for child add/remove
+    table.insert(feedRootConns, pets.ChildAdded:Connect(function(ch)
+        attachEntryWatch(ch)
+    end))
+    table.insert(feedRootConns, pets.ChildRemoved:Connect(function(ch)
+        local arr = feedEntryConns[ch]
+        if arr then
+            for _, c in ipairs(arr) do pcall(function() c:Disconnect() end) end
+            feedEntryConns[ch] = nil
+        end
+    end))
+    feedStatus.last = "Watching Feed attributes"
+    updateFeedStatus()
+end
+
+local function stopFeedWatch()
+    if not feedWatchStarted then return end
+    feedWatchStarted = false
+    disconnectAllFeedConns()
 end
 
 Tabs.FeedTab:Toggle({
@@ -1843,15 +1907,13 @@ Tabs.FeedTab:Toggle({
     Value = false,
     Callback = function(state)
         autoFeedEnabled = state
-        if state and not autoFeedThread then
-            autoFeedThread = task.spawn(function()
-                runAutoFeed()
-                autoFeedThread = nil
-            end)
+        if state then
+            startFeedWatch()
             feedStatus.last = "Started"
             updateFeedStatus()
             WindUI:Notify({ Title = "Auto Feed", Content = "Started", Duration = 3 })
-        elseif (not state) and autoFeedThread then
+        else
+            stopFeedWatch()
             feedStatus.last = "Stopped"
             updateFeedStatus()
             WindUI:Notify({ Title = "Auto Feed", Content = "Stopped", Duration = 3 })
@@ -2099,6 +2161,82 @@ end
 -- local autoFruitEnabled and autoFruitThread are declared near the top
 local fruitOnlyIfZero = false
 
+-- Try to buy selected fruits once; returns number bought
+local function attemptBuySelected(names)
+    local bought = 0
+    for _, name in ipairs(names) do
+        local skip = false
+        if fruitOnlyIfZero then
+            local have = getAssetCount(name)
+            if have ~= nil and have > 0 then
+                fruitStatus.last = name .. " already owned (" .. tostring(have) .. ")"
+                updateFruitStatus()
+                task.wait(0.05)
+                skip = true
+            end
+        end
+        if not skip and isFruitInStock(name) then
+            fruitStatus.last = "Buying " .. name
+            updateFruitStatus()
+            fireBuyFruit(name)
+            bought += 1
+            task.wait(0.1)
+        end
+    end
+    return bought
+end
+
+-- Event-based waiting: listen for LST attribute or UI stock text changes for selected fruits
+local function waitForFruitAvailability(names, timeout)
+    local evt = Instance.new("BindableEvent")
+    local conns = {}
+    local function add(conn)
+        if conn then table.insert(conns, conn) end
+    end
+    local function cleanup()
+        for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    end
+    local lst = getFoodStoreLST()
+    if lst then
+        for _, n in ipairs(names) do
+            local keys = candidateKeysForFruit(n)
+            for _, k in ipairs(keys) do
+                local sig = lst:GetAttributeChangedSignal(k)
+                add(sig:Connect(function() evt:Fire() end))
+            end
+        end
+    end
+    -- UI fallback: hook StockLabel text changes if UI open
+    local gui = getFoodStoreUI()
+    if gui then
+        local root = gui:FindFirstChild("Root")
+        local frame = root and root:FindFirstChild("Frame")
+        local scroller = frame and frame:FindFirstChild("ScrollingFrame")
+        if scroller then
+            for _, n in ipairs(names) do
+                local item = scroller:FindFirstChild(n)
+                local stock = item and item:FindFirstChild("ItemButton") and item.ItemButton:FindFirstChild("StockLabel")
+                if stock then add(stock:GetPropertyChangedSignal("Text"):Connect(function() evt:Fire() end)) end
+            end
+        end
+        -- If the store opens later, listen for it
+    else
+        local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then add(pg.ChildAdded:Connect(function(child)
+            if child.Name == "ScreenFoodStore" then evt:Fire() end
+        end)) end
+    end
+    -- Wait for first trigger or timeout
+    local waited = false
+    task.spawn(function()
+        task.wait(timeout or 30)
+        if not waited then evt:Fire() end
+    end)
+    evt.Event:Wait()
+    waited = true
+    cleanup()
+end
+
 local function runAutoFruit()
     while autoFruitEnabled do
         local ok, err = pcall(function()
@@ -2112,39 +2250,16 @@ local function runAutoFruit()
                 task.wait(0.8)
                 return
             end
-            local bought = 0
-            for _, name in ipairs(names) do
-                local skip = false
-                if fruitOnlyIfZero then
-                    local have = getAssetCount(name)
-                    if have ~= nil and have > 0 then
-                        fruitStatus.last = name .. " already owned (" .. tostring(have) .. ")"
-                        updateFruitStatus()
-                        task.wait(0.05)
-                        skip = true
-                    end
-                end
-                if not skip then
-                    if isFruitInStock(name) then
-                        fruitStatus.last = "Buying " .. name
-                        updateFruitStatus()
-                        fireBuyFruit(name)
-                        bought += 1
-                        task.wait(0.15)
-                    else
-                        fruitStatus.last = name .. " out of stock"
-                        updateFruitStatus()
-                        task.wait(0.1)
-                    end
-                end
-            end
+            -- Try once now
+            local bought = attemptBuySelected(names)
             if bought == 0 then
-                fruitStatus.last = "Nothing available"
+                fruitStatus.last = "Waiting for stock changes"
+                updateFruitStatus()
+                waitForFruitAvailability(names, 30)
             else
                 fruitStatus.last = "Bought " .. tostring(bought)
             end
             updateFruitStatus()
-            task.wait(0.6)
         end)
         if not ok then
             fruitStatus.last = "Error: " .. tostring(err)
