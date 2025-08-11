@@ -485,15 +485,10 @@ function placeEggByUID(eggUID)
         updateStatusParagraph()
         return
     end
-    -- Prefer exact grid/world center if provided by the tile; fallback to part center
-    local gridDst = getGridVectorFromPart(part)
-    local dst
-    if gridDst then
-        dst = gridDst
-    else
-        local center = part.CFrame.Position
-        dst = createVector3(center.X, center.Y, center.Z)
-    end
+    -- Compute the top-center of the tile so the egg hatches on the surface
+    local center = part.CFrame.Position
+    local topY = center.Y + (part.Size and part.Size.Y or 0) * 0.5
+    local dst = createVector3(center.X, topY, center.Z)
     local args = {
         "Place",
         {
