@@ -11,6 +11,15 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
+-- Key helpers
+local function pressNumberTwo()
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+        task.wait(0.05)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    end)
+end
+
 
 -- Remote caches
 local RS_Remote = ReplicatedStorage:WaitForChild("Remote")
@@ -236,7 +245,16 @@ local function getFarmParts(islandNumber)
         local child = kids[i]
         if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
             if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                farmParts[#farmParts+1] = child
+                -- Constrain to not go far from base group if present
+                local base = island:FindFirstChild("ENV") and island.ENV:FindFirstChild("Group") and island.ENV.Group:FindFirstChild("Base")
+                if base then
+                    -- Only include tiles within 350 studs of Base
+                    if (child.Position - base.Position).Magnitude <= 350 then
+                        farmParts[#farmParts+1] = child
+                    end
+                else
+                    farmParts[#farmParts+1] = child
+                end
             end
         end
         scanForFarmParts(child)
@@ -1033,7 +1051,8 @@ local function runAutoBuy()
             end
         end
         statusData.eggsFound = #children
-        statusData.netWorth = getPlayerNetWorth()
+        -- Refresh NetWorth each tick; ensure attribute has time to propagate
+        statusData.netWorth = LocalPlayer:GetAttribute("NetWorth") or getPlayerNetWorth()
 
         if statusData.eggsFound == 0 then
             statusData.matchingFound = 0
@@ -1099,7 +1118,7 @@ local function runAutoBuy()
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
         updateStatusParagraph()
-        task.wait(0.25)
+        task.wait(0.15)
     end
 end
 
@@ -1145,18 +1164,7 @@ local placeStatusData = {
     validationStatus = nil,
 }
 
-Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
-Tabs.PlaceTab:Paragraph({
-    Title = "How to use",
-    Desc = table.concat({
-        "1) Stand where you want pets to appear.",
-        "2) Press 'Save Current Location'.",
-        "3) Turn on 'Auto Place'.",
-        "Tip: It will try free tiles within 300 studs of your saved spot.",
-    }, "\n"),
-    Image = "info",
-    ImageSize = 16,
-})
+
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place",
     Desc = "Save your spot, then turn on.",
@@ -1187,6 +1195,8 @@ end
 local function runAutoPlace()
     while autoPlaceEnabled do
         local ok, err = pcall(function()
+            -- Always try to equip/hold egg slot 2 before placing
+            pressNumberTwo()
             local islandName = getAssignedIslandName()
             placeStatusData.islandName = islandName
             
@@ -1318,133 +1328,6 @@ Tabs.PlaceTab:Toggle({
     end
 })
 
--- Anchoring tools
-Tabs.PlaceTab:Button({
-    Title = "Save Current Location",
-    Desc = "Use your current position as an anchor (100 studs radius)",
-    Callback = function()
-        local pos = getPlayerRootPosition()
-        if not pos then
-            WindUI:Notify({ Title = "Auto Place", Content = "Could not read player position", Duration = 3 })
-            return
-        end
-        placeAnchorPosition = pos
-        WindUI:Notify({ Title = "Auto Place", Content = string.format("Anchor saved r=%d", anchorRadiusStuds), Duration = 3 })
-        placeStatusData.lastAction = "Anchor saved"
-        updatePlaceStatusParagraph()
-    end
-})
-Tabs.PlaceTab:Button({
-    Title = "Clear Anchor",
-    Desc = "Forget saved anchor; place anywhere",
-    Callback = function()
-        placeAnchorPosition = nil
-        WindUI:Notify({ Title = "Auto Place", Content = "Anchor cleared", Duration = 3 })
-        placeStatusData.lastAction = "Anchor cleared"
-        updatePlaceStatusParagraph()
-    end
-})
-
--- Manual place button for testing
-Tabs.PlaceTab:Button({
-    Title = "Place Pet Now",
-    Desc = "Manually place a pet at the nearest free farm location",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        if not islandName then
-            WindUI:Notify({ Title = "Error", Content = "No island assigned", Duration = 3 })
-            return
-        end
-        
-        local islandNumber = getIslandNumberFromName(islandName)
-        if not islandNumber then
-            WindUI:Notify({ Title = "Error", Content = "Could not determine island number", Duration = 3 })
-            return
-        end
-        
-        local farmParts = getFarmParts(islandNumber)
-        if #farmParts == 0 then
-            WindUI:Notify({ Title = "Error", Content = "No farm parts found", Duration = 3 })
-            return
-        end
-        
-        local petUID = getPetUID()
-        if not petUID then
-            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
-            return
-        end
-        
-        -- Enhanced validation
-        local isValid, validationMsg = validatePetUID(petUID)
-        if not isValid then
-            WindUI:Notify({ Title = "Error", Content = "PET UID validation failed: " .. validationMsg, Duration = 3 })
-            return
-        end
-        
-        -- Prefer an available tile using pivot occupancy checks
-        local targetPos = placeAnchorPosition or getPlayerRootPosition()
-        local nearby = {}
-        for _, part in ipairs(farmParts) do
-            if not targetPos or (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
-                table.insert(nearby, part)
-            end
-        end
-        local chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, 8, targetPos)
-        if not chosenPart then
-            WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
-            placeStatusData.lastAction = "Manual place failed (occupied)"
-            updatePlaceStatusParagraph()
-            return
-        end
-        local success = placePetAtPart(chosenPart, petUID)
-        
-        if success then
-            WindUI:Notify({ Title = "Success", Content = "Pet placed at farm location", Duration = 3 })
-            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
-            placeStatusData.lastAction = "Manual place successful"
-            updatePlaceStatusParagraph()
-        else
-            WindUI:Notify({ Title = "Error", Content = "Failed to place pet", Duration = 3 })
-            placeStatusData.lastAction = "Manual place failed"
-            updatePlaceStatusParagraph()
-        end
-    end
-})
-
--- Pet validation test button
-Tabs.PlaceTab:Button({
-    Title = "Test Pet Validation",
-    Desc = "Check if current PET UID is valid",
-    Callback = function()
-        local petUID = getPetUID()
-        if not petUID then
-            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
-            return
-        end
-        
-        local isValid, validationMsg = validatePetUID(petUID)
-        local petInfo = getPetInfo(petUID)
-        
-        local message = "PET UID: " .. tostring(petUID) .. "\n"
-        message = message .. "Validation: " .. validationMsg .. "\n"
-        if petInfo and petInfo.Type then
-            message = message .. "Pet Type: " .. tostring(petInfo.Type)
-        end
-        
-        WindUI:Notify({ 
-            Title = isValid and "Valid PET" or "Invalid PET", 
-            Content = message, 
-            Duration = 5 
-        })
-        
-        -- Update status display
-        placeStatusData.petUID = petUID
-        placeStatusData.petInfo = petInfo
-        placeStatusData.validationStatus = validationMsg
-        updatePlaceStatusParagraph()
-    end
-})
-
 -- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
@@ -1496,17 +1379,6 @@ Tabs.PackTab:Toggle({
             WindUI:Notify({ Title = "Auto Pack", Content = "Started", Duration = 3 })
         elseif (not state) and autoPackThread then
             WindUI:Notify({ Title = "Auto Pack", Content = "Stopped", Duration = 3 })
-        end
-    end
-})
-
-Tabs.PackTab:Button({
-    Title = "Claim Now",
-    Desc = "Fire online pack immediately then start cooldown",
-    Callback = function()
-        if fireOnlinePack() then
-            lastPackAt = os.clock()
-            WindUI:Notify({ Title = "Auto Pack", Content = "Claimed", Duration = 3 })
         end
     end
 })
@@ -1581,38 +1453,6 @@ Tabs.ShopTab:Toggle({
             WindUI:Notify({ Title = "Shop", Content = "Auto Upgrade stopped", Duration = 3 })
             setShopStatus("Stopped")
         end
-    end
-})
-
-Tabs.ShopTab:Button({
-    Title = "Upgrade All Affordable Now",
-    Desc = "Checks ResConveyor and fires upgrades 1..9 you can afford",
-    Callback = function()
-        local net = getPlayerNetWorth()
-        local actions = chooseAffordableUpgrades(net)
-        if #actions == 0 then
-            setShopStatus("No affordable upgrades (NetWorth " .. tostring(net) .. ")")
-            return
-        end
-        for _, a in ipairs(actions) do
-            if fireConveyorUpgrade(a.idx) then
-                shopStatus.upgradesDone += 1
-                purchasedUpgrades[a.idx] = true
-            end
-            shopStatus.upgradesTried += 1
-            task.wait(0.1)
-        end
-        setShopStatus("Manual upgrade fired for " .. tostring(#actions) .. " items")
-    end
-})
-
-Tabs.ShopTab:Button({
-    Title = "Reset Remembered Upgrades",
-    Desc = "Clear the one-time memory if you want to attempt again",
-    Callback = function()
-        purchasedUpgrades = {}
-        setShopStatus("Memory reset")
-        WindUI:Notify({ Title = "Shop", Content = "Upgrade memory cleared", Duration = 3 })
     end
 })
 
