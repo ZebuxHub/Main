@@ -1797,6 +1797,13 @@ end
 local function runAutoFeed()
     while autoFeedEnabled do
         local ok, err = pcall(function()
+            -- Require that player has at least one fruit item
+            if not hasAnyFruitOwned() then
+                feedStatus.last = "No fruit owned"
+                updateFeedStatus()
+                task.wait(1)
+                return
+            end
             local list = getFeedablePets()
             feedStatus.found = #list
             if #list == 0 then
@@ -1910,6 +1917,34 @@ local function getAssetCount(itemName)
     return num
 end
 
+local function getAllFruitNames()
+    local list = {}
+    local seen = {}
+    for key, val in pairs(petFoodConfig) do
+        local keyStr = tostring(key)
+        local lower = string.lower(keyStr)
+        if lower ~= "_index" and lower ~= "__index" and not keyStr:match("^") then
+            local name = type(val) == "table" and (val.Name or val.ID or val.Id or keyStr) or keyStr
+            name = tostring(name)
+            if name and name ~= "" and not name:match("^") and not seen[name] then
+                table.insert(list, name)
+                seen[name] = true
+            end
+        end
+    end
+    return list
+end
+
+local function hasAnyFruitOwned()
+    for _, name in ipairs(getAllFruitNames()) do
+        local count = getAssetCount(name)
+        if type(count) == "number" and count > 0 then
+            return true
+        end
+    end
+    return false
+end
+
 local function getDeployContainer()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
@@ -1938,7 +1973,10 @@ local function candidateKeysForFruit(fruitName)
     table.insert(keys, base)
     table.insert(keys, string.upper(base))
     table.insert(keys, string.lower(base))
-    table.insert(keys, base:gsub("%s+", ""))
+    do
+        local cleaned = base:gsub("%s+", "")
+        table.insert(keys, cleaned)
+    end
     -- try to find matching entry in petFoodConfig to harvest alternate identifiers
     for k, v in pairs(petFoodConfig) do
         local name = (type(v) == "table" and (v.Name or v.ID or v.Id)) or k
