@@ -198,11 +198,100 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
--- ===== Auto Place (Island_3 parts) =====
+-- Auto Place variables
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local usedPartNames = {}
 
+-- Status tracking
+local statusData = {
+    eggsFound = 0,
+    matchingFound = 0,
+    affordableFound = 0,
+    lastAction = "Idle",
+    lastUID = nil,
+    totalBuys = 0,
+    netWorth = 0,
+    islandName = nil,
+}
+
+Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
+local statusParagraph = Tabs.AutoTab:Paragraph({
+    Title = "Auto Buy Status",
+    Desc = "Waiting...",
+    Image = "activity",
+    ImageSize = 22,
+})
+
+local function formatStatusDesc()
+    local lines = {}
+    table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
+    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
+    table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
+    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
+    table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
+    if statusData.selectedTypes then
+        table.insert(lines, "Selected: " .. statusData.selectedTypes)
+    end
+    if statusData.seenTypes then
+        table.insert(lines, "Seen: " .. statusData.seenTypes)
+    end
+    if statusData.lastUID then
+        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
+    end
+    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
+    return table.concat(lines, "\n")
+end
+
+local function updateStatusParagraph()
+    if statusParagraph and statusParagraph.SetDesc then
+        statusParagraph:SetDesc(formatStatusDesc())
+    end
+end
+
+local function shouldBuyEggInstance(eggInstance, playerMoney)
+    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
+    -- Read Type primarily; some games may store as EggType or Name
+    local eggType = eggInstance:GetAttribute("Type")
+        or eggInstance:GetAttribute("EggType")
+        or eggInstance:GetAttribute("Name")
+    if not eggType then return false, nil, nil end
+    eggType = tostring(eggType)
+    if not selectedTypeSet[eggType] then return false, nil, nil end
+
+    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    if type(price) ~= "number" then return false, nil, nil end
+    if playerMoney < price then return false, nil, nil end
+    return true, eggInstance.Name, price
+end
+
+local function buyEggByUID(eggUID)
+    local args = {
+        "BuyEgg",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
+local function focusEggByUID(eggUID)
+    local args = {
+        "Focus",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
+-- Auto Place functions
 local function vectorCreate(x, y, z)
     local vlib = rawget(_G, "vector")
     if type(vlib) == "table" and type(vlib.create) == "function" then
@@ -300,94 +389,6 @@ local function runAutoPlace()
         statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " pets"
         updateStatusParagraph()
         task.wait(0.3)
-    end
-end
-
--- Status tracking
-local statusData = {
-    eggsFound = 0,
-    matchingFound = 0,
-    affordableFound = 0,
-    lastAction = "Idle",
-    lastUID = nil,
-    totalBuys = 0,
-    netWorth = 0,
-    islandName = nil,
-}
-
-Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
-local statusParagraph = Tabs.AutoTab:Paragraph({
-    Title = "Auto Buy Status",
-    Desc = "Waiting...",
-    Image = "activity",
-    ImageSize = 22,
-})
-
-local function formatStatusDesc()
-    local lines = {}
-    table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
-    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
-    table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
-    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
-    table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
-    if statusData.selectedTypes then
-        table.insert(lines, "Selected: " .. statusData.selectedTypes)
-    end
-    if statusData.seenTypes then
-        table.insert(lines, "Seen: " .. statusData.seenTypes)
-    end
-    if statusData.lastUID then
-        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
-    end
-    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
-    return table.concat(lines, "\n")
-end
-
-local function updateStatusParagraph()
-    if statusParagraph and statusParagraph.SetDesc then
-        statusParagraph:SetDesc(formatStatusDesc())
-    end
-end
-
-local function shouldBuyEggInstance(eggInstance, playerMoney)
-    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
-    -- Read Type primarily; some games may store as EggType or Name
-    local eggType = eggInstance:GetAttribute("Type")
-        or eggInstance:GetAttribute("EggType")
-        or eggInstance:GetAttribute("Name")
-    if not eggType then return false, nil, nil end
-    eggType = tostring(eggType)
-    if not selectedTypeSet[eggType] then return false, nil, nil end
-
-    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-    if type(price) ~= "number" then return false, nil, nil end
-    if playerMoney < price then return false, nil, nil end
-    return true, eggInstance.Name, price
-end
-
-local function buyEggByUID(eggUID)
-    local args = {
-        "BuyEgg",
-        eggUID
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-    end
-end
-
-local function focusEggByUID(eggUID)
-    local args = {
-        "Focus",
-        eggUID
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
     end
 end
 
@@ -543,4 +544,5 @@ Window:OnClose(function()
     autoBuyEnabled = false
     autoPlaceEnabled = false
 end)
+
 
