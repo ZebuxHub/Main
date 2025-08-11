@@ -322,95 +322,51 @@ local usedTileNames = {}
 local function runAutoPlace()
     usedTileNames = {}
     while autoPlaceEnabled do
+        -- Snapshot eggs in inventory (fast path; no confirmation loop)
         local uids = getInventoryEggUIDs()
-        local placedSet = getPlacedUIDSet()
-        -- filter out already placed
-        local pending = {}
-        for _, uid in ipairs(uids) do
-            if not placedSet[uid] then
-                table.insert(pending, uid)
-            end
-        end
-
-        if #pending == 0 then
-            statusData.lastAction = "Auto Place: no unplaced eggs in inventory"
+        if #uids == 0 then
+            statusData.lastAction = "Auto Place: no eggs in inventory"
             updateStatusParagraph()
-            task.wait(0.7)
+            task.wait(0.15)
             continue
         end
 
+        -- Snapshot tiles
         local tiles = getIsland3Tiles()
         if #tiles == 0 then
             statusData.lastAction = "Auto Place: no Farm_split_* tiles found in Island_3"
             updateStatusParagraph()
-            task.wait(0.8)
+            task.wait(0.15)
             continue
         end
 
-        -- map of available (unused this session) tiles
+        -- Build available tiles (exclude those we already used this session)
         local available = {}
         for _, t in ipairs(tiles) do
             if not usedTileNames[t.Name] then
                 table.insert(available, t)
             end
         end
-
         if #available == 0 then
             statusData.lastAction = "Auto Place: no unused tiles available"
             updateStatusParagraph()
-            task.wait(0.8)
+            task.wait(0.15)
             continue
         end
 
-        local tileIndex = 1
-        for _, uid in ipairs(pending) do
+        local count = math.min(#uids, #available)
+        for i = 1, count do
             if not autoPlaceEnabled then break end
-
-            -- Skip if already placed since last fetch
-            if getPlacedUIDSet()[uid] then
-                continue
-            end
-
-            -- Find next available tile
-            local tile = available[tileIndex]
-            if not tile then
-                statusData.lastAction = "Auto Place: ran out of tiles"
-                updateStatusParagraph()
-                break
-            end
-
-            statusData.lastAction = "Auto Place: placing UID " .. uid .. " at tile " .. tostring(tile.Name)
-            updateStatusParagraph()
-
-            local sent = placeUIDAtTileCenter(uid, tile)
-            if sent then
-                -- Wait and verify placement via PlayerBuiltBlocks
-                local success = false
-                for i = 1, 20 do -- up to ~2s with 0.1s step
-                    if getPlacedUIDSet()[uid] then
-                        success = true
-                        break
-                    end
-                    task.wait(0.1)
-                end
-                if success then
-                    usedTileNames[tile.Name] = true
-                    statusData.lastAction = "Auto Place: placed UID " .. uid .. " on " .. tostring(tile.Name)
-                    updateStatusParagraph()
-                else
-                    statusData.lastAction = "Auto Place: not confirmed for UID " .. uid .. ", trying next tile"
-                    updateStatusParagraph()
-                end
-            else
-                statusData.lastAction = "Auto Place: failed remote for UID " .. uid
-                updateStatusParagraph()
-            end
-
-            tileIndex = tileIndex + 1
-            task.wait(0.2)
+            local uid = uids[i]
+            local tile = available[i]
+            placeUIDAtTileCenter(uid, tile)
+            usedTileNames[tile.Name] = true
         end
 
-        task.wait(0.4)
+        statusData.lastAction = "Auto Place: burst placed " .. tostring(count) .. " eggs"
+        updateStatusParagraph()
+        -- ultra fast loop; small delay to yield
+        task.wait(0.03)
     end
 end
 
