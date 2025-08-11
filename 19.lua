@@ -1751,14 +1751,6 @@ Tabs.FruitTab:Button({
 -- Forward declare helpers used below
 local getAllFruitNames
 local hasAnyFruitOwned
-local function getSelectedFruitNames()
-    local names = {}
-    for k, v in pairs(selectedFruitSet) do
-        if v then table.insert(names, tostring(k)) end
-    end
-    table.sort(names)
-    return names
-end
 -- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
 local function getFeedablePets()
     local feedable = {}
@@ -1818,6 +1810,56 @@ local function updateFeedStatus()
     end
 end
 
+-- Fruit filter for Auto Feed (uses ResPetFood like Fruit Market)
+local selectedFeedFruitSet = {}
+local feedFruitDropdown
+feedFruitDropdown = Tabs.FeedTab:Dropdown({
+    Title = "Fruits For Feeding",
+    Desc = "Choose which fruits to use for feeding (leave empty = any)",
+    Values = buildFruitList(),
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        selectedFeedFruitSet = {}
+        local function add(name) selectedFeedFruitSet[tostring(name)] = true end
+        if type(selection) == "table" then for _, n in ipairs(selection) do add(n) end
+        elseif type(selection) == "string" then add(selection) end
+    end
+})
+
+Tabs.FeedTab:Button({
+    Title = "Select All Fruits",
+    Desc = "Select every fruit for feeding",
+    Callback = function()
+        local all = buildFruitList()
+        selectedFeedFruitSet = {}
+        for _, n in ipairs(all) do selectedFeedFruitSet[n] = true end
+        if feedFruitDropdown and feedFruitDropdown.SetValue then pcall(function() feedFruitDropdown:SetValue(all) end) end
+        WindUI:Notify({ Title = "Auto Feed", Content = "All fruits selected", Duration = 3 })
+    end
+})
+
+local function getAssetCountForFruit(name)
+    if not name or name == "" then return 0 end
+    local count = getAssetCount(name)
+    if count == nil then count = getAssetCount("PetFood_" .. tostring(name)) end
+    if count == nil and tostring(name):sub(1,9) == "PetFood_" then
+        count = getAssetCount(tostring(name):sub(10))
+    end
+    return tonumber(count) or 0
+end
+
+local function hasAnySelectedFruitOwned()
+    if not selectedFeedFruitSet or next(selectedFeedFruitSet) == nil then
+        return hasAnyFruitOwned()
+    end
+    for fruitName, _ in pairs(selectedFeedFruitSet) do
+        if getAssetCountForFruit(fruitName) > 0 then return true end
+    end
+    return false
+end
+
 -- Event-driven auto feed: watch PlayerGui.Data.Pets entries and fire when Feed attribute disappears
 local feedWatchStarted = false
 local feedRootConns = {}
@@ -1855,19 +1897,8 @@ local function tryFeedFromEntry(petEntry)
     -- simple cooldown to avoid bursts
     local now = os.clock()
     if feedCooldownByUid[uid] and now - feedCooldownByUid[uid] < 2 then return false end
-    -- If user selected specific fruits, ensure at least one of those is owned
-    local selected = getSelectedFruitNames()
-    local ownsAnySelected = false
-    if #selected > 0 then
-        for _, fname in ipairs(selected) do
-            local cnt = getAssetCount(fname)
-            if type(cnt) == "number" and cnt > 0 then ownsAnySelected = true break end
-        end
-    else
-        ownsAnySelected = hasAnyFruitOwned()
-    end
-    if not ownsAnySelected then
-        feedStatus.last = "No fruit owned"
+    if not hasAnySelectedFruitOwned() then
+        feedStatus.last = "No selected fruit owned"
         updateFeedStatus()
         return false
     end
@@ -2005,25 +2036,10 @@ end
 local function getAssetCount(itemName)
     local asset = getAssetContainer()
     if not asset or not itemName then return nil end
-    -- Try exact name
     local val = asset:GetAttribute(itemName)
     if val == nil then
         local child = asset:FindFirstChild(itemName)
         if child and child:IsA("ValueBase") then val = child.Value end
-    end
-    -- Try with/without PetFood_ prefix
-    if val == nil then
-        local alt
-        if tostring(itemName):match("^PetFood_") then
-            alt = tostring(itemName):gsub("^PetFood_", "")
-        else
-            alt = "PetFood_" .. tostring(itemName)
-        end
-        val = asset:GetAttribute(alt)
-        if val == nil then
-            local c2 = asset:FindFirstChild(alt)
-            if c2 and c2:IsA("ValueBase") then val = c2.Value end
-        end
     end
     local num = tonumber(val)
     return num
