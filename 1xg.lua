@@ -591,10 +591,15 @@ local function isReadyText(text)
     -- Empty or whitespace means ready
     if isStringEmpty(text) then return true end
     -- Percent text like "100%", "100.0%", "100.00%" also counts as ready
-    local num = text:match("^%s*(%d+%.?%d*)%%%s*$")
+    local num = text:match("^%s*(%d+%.?%d*)%s*%%%s*$")
     if num then
         local n = tonumber(num)
         if n and n >= 100 then return true end
+    end
+    -- Words that often mean ready
+    local lower = string.lower(text)
+    if string.find(lower, "hatch", 1, true) or string.find(lower, "ready", 1, true) then
+        return true
     end
     return false
 end
@@ -608,6 +613,12 @@ local function isHatchReady(model)
                 if isReadyText(d.Text) then
                     return true
                 end
+            end
+        end
+        if d:IsA("ProximityPrompt") and type(d.ActionText) == "string" then
+            local at = string.lower(d.ActionText)
+            if string.find(at, "hatch", 1, true) then
+                return true
             end
         end
     end
