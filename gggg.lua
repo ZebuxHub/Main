@@ -31,12 +31,14 @@ Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
 Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
 Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "Auto Hatch", Icon = "zap" })
 Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "Auto Claim", Icon = "dollar-sign" })
+Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
 
 -- Egg config loader
 local eggConfig = {}
+local conveyorConfig = {}
 
 local function loadEggConfig()
     local ok, cfg = pcall(function()
@@ -52,6 +54,18 @@ local function loadEggConfig()
 end
 
 local idToTypeMap = {}
+local function loadConveyorConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResConveyor")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        conveyorConfig = cfg
+    else
+        conveyorConfig = {}
+    end
+end
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
         local t = val.Type or val.Name or val.type or val.name
@@ -135,6 +149,15 @@ local function getPlayerNetWorth()
         end
     end
     return 0
+end
+
+local function fireConveyorUpgrade(index)
+    local args = { "Upgrade", tonumber(index) or index }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("ConveyorRE"):FireServer(table.unpack(args))
+    end)
+    if not ok then warn("Conveyor Upgrade fire failed: " .. tostring(err)) end
+    return ok
 end
 
 -- World helpers
@@ -669,6 +692,7 @@ end
 
 -- UI state
 loadEggConfig()
+loadConveyorConfig()
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
 
@@ -1246,4 +1270,94 @@ Window:OnClose(function()
     autoPlaceEnabled = false
 end)
 
+
+-- ============ Shop / Auto Upgrade ============
+Tabs.ShopTab:Section({ Title = "Auto Upgrade Conveyor", Icon = "arrow-up" })
+local shopStatus = { lastAction = "Idle", upgradesTried = 0, upgradesDone = 0 }
+local shopParagraph = Tabs.ShopTab:Paragraph({ Title = "Shop Status", Desc = "Waiting...", Image = "activity", ImageSize = 22 })
+local function setShopStatus(msg)
+    shopStatus.lastAction = msg
+    if shopParagraph and shopParagraph.SetDesc then
+        shopParagraph:SetDesc(string.format("Upgrades: %d done\nLast: %s", shopStatus.upgradesDone, shopStatus.lastAction))
+    end
+end
+
+local function parseConveyorIndexFromId(idStr)
+    local n = tostring(idStr):match("(%d+)")
+    return n and tonumber(n) or nil
+end
+
+local function chooseAffordableUpgrades(netWorth)
+    local actions = {}
+    for key, entry in pairs(conveyorConfig) do
+        if type(entry) == "table" then
+            local cost = entry.Cost or entry.Price or (entry.Base and entry.Base.Price)
+            local idLike = entry.ID or entry.Id or entry.Name or key
+            local idx = parseConveyorIndexFromId(idLike)
+            if idx and type(cost) == "number" and netWorth >= cost and idx >= 1 and idx <= 9 then
+                table.insert(actions, { idx = idx, cost = cost })
+            end
+        end
+    end
+    table.sort(actions, function(a, b) return a.idx < b.idx end)
+    return actions
+end
+
+local autoUpgradeEnabled = false
+local autoUpgradeThread = nil
+Tabs.ShopTab:Toggle({
+    Title = "Auto Upgrade",
+    Desc = "Auto-upgrades conveyor 1..9 when NetWorth >= Cost (ResConveyor)",
+    Value = false,
+    Callback = function(state)
+        autoUpgradeEnabled = state
+        if state and not autoUpgradeThread then
+            autoUpgradeThread = task.spawn(function()
+                while autoUpgradeEnabled do
+                    local net = getPlayerNetWorth()
+                    local actions = chooseAffordableUpgrades(net)
+                    if #actions == 0 then
+                        setShopStatus("Waiting (NetWorth " .. tostring(net) .. ")")
+                        task.wait(0.8)
+                    else
+                        for _, a in ipairs(actions) do
+                            setShopStatus(string.format("Upgrading %d (cost %s)", a.idx, tostring(a.cost)))
+                            if fireConveyorUpgrade(a.idx) then
+                                shopStatus.upgradesDone += 1
+                            end
+                            shopStatus.upgradesTried += 1
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end)
+            setShopStatus("Started")
+            WindUI:Notify({ Title = "Shop", Content = "Auto Upgrade started", Duration = 3 })
+        elseif (not state) and autoUpgradeThread then
+            WindUI:Notify({ Title = "Shop", Content = "Auto Upgrade stopped", Duration = 3 })
+            setShopStatus("Stopped")
+        end
+    end
+})
+
+Tabs.ShopTab:Button({
+    Title = "Upgrade All Affordable Now",
+    Desc = "Checks ResConveyor and fires upgrades 1..9 you can afford",
+    Callback = function()
+        local net = getPlayerNetWorth()
+        local actions = chooseAffordableUpgrades(net)
+        if #actions == 0 then
+            setShopStatus("No affordable upgrades (NetWorth " .. tostring(net) .. ")")
+            return
+        end
+        for _, a in ipairs(actions) do
+            if fireConveyorUpgrade(a.idx) then
+                shopStatus.upgradesDone += 1
+            end
+            shopStatus.upgradesTried += 1
+            task.wait(0.1)
+        end
+        setShopStatus("Manual upgrade fired for " .. tostring(#actions) .. " items")
+    end
+})
 
