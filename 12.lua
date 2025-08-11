@@ -1770,6 +1770,38 @@ local getAllFruitNames
 local hasAnyFruitOwned
 local getAssetCount
 local focusFruitName
+
+-- Selected fruits for feeding (ordered preference)
+local feedSelectedFruit = {}
+local feedSelectedFruitOrder = {}
+
+local function rebuildFeedFruitOrder()
+    feedSelectedFruitOrder = {}
+    for name, selected in pairs(feedSelectedFruit) do
+        if selected then table.insert(feedSelectedFruitOrder, name) end
+    end
+    table.sort(feedSelectedFruitOrder) -- keep deterministic
+end
+
+local function equipFruitInS3(fruitName)
+    -- Write target into Deploy.S3 as PetFood_<name> and press '3'
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local deploy = data and data:FindFirstChild("Deploy")
+    if deploy then
+        local value = "PetFood_" .. tostring(fruitName)
+        pcall(function() deploy:SetAttribute("S3", value) end)
+        local s3 = deploy:FindFirstChild("S3")
+        if s3 and s3:IsA("ValueBase") then pcall(function() s3.Value = value end) end
+    end
+    -- Simulate holding slot 3
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Three, false, game)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Three, false, game)
+    end)
+    -- Focus for good measure
+    focusFruitName(fruitName)
+end
 -- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
 local function getFeedablePets()
     local feedable = {}
@@ -1820,12 +1852,73 @@ end
 
 local autoFeedEnabled = false
 local autoFeedThread = nil
-local feedStatus = { last = "Idle", fed = 0, found = 0 }
+local feedStatus = { last = "Idle", fed = 0, found = 0, fruit = nil }
 Tabs.FeedTab:Section({ Title = "Status", Icon = "info" })
+-- Fruit selection UI
+local function buildFeedFruitList()
+    local list = {}
+    local seen = {}
+    for key, val in pairs(petFoodConfig) do
+        local k = tostring(key)
+        if not k:match("^_") and string.lower(k) ~= "_index" and string.lower(k) ~= "__index" then
+            local name = type(val) == "table" and (val.Name or val.ID or val.Id or k) or k
+            name = tostring(name)
+            if name ~= "" and not name:match("^_") and not seen[name] then
+                table.insert(list, name)
+                seen[name] = true
+            end
+        end
+    end
+    table.sort(list)
+    return list
+end
+
+local feedFruitDropdown = Tabs.FeedTab:Dropdown({
+    Title = "Fruits to use",
+    Desc = "Choose which fruits Auto Feed will equip (priority order)",
+    Values = buildFeedFruitList(),
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        feedSelectedFruit = {}
+        local function selectOne(name)
+            name = tostring(name)
+            if name ~= "" then feedSelectedFruit[name] = true end
+        end
+        if type(selection) == "table" then
+            for _, n in ipairs(selection) do selectOne(n) end
+        elseif type(selection) == "string" then
+            selectOne(selection)
+        end
+        rebuildFeedFruitOrder()
+        feedStatus.fruit = feedSelectedFruitOrder[1]
+        updateFeedStatus()
+    end
+})
+
+Tabs.FeedTab:Button({
+    Title = "Select All Fruits",
+    Desc = "Use any fruit you own (alphabetical order)",
+    Callback = function()
+        local all = buildFeedFruitList()
+        feedSelectedFruit = {}
+        for _, n in ipairs(all) do feedSelectedFruit[n] = true end
+        rebuildFeedFruitOrder()
+        feedStatus.fruit = feedSelectedFruitOrder[1]
+        if feedFruitDropdown and feedFruitDropdown.Refresh then
+            feedFruitDropdown:Refresh(buildFeedFruitList())
+        end
+        updateFeedStatus()
+        WindUI:Notify({ Title = "Auto Feed", Content = "All fruits selected", Duration = 3 })
+    end
+})
+
 local feedParagraph = Tabs.FeedTab:Paragraph({ Title = "Auto Feed", Desc = "Turn on to feed pets that show a Feed bar.", Image = "utensils", ImageSize = 18 })
 local function updateFeedStatus()
     if feedParagraph and feedParagraph.SetDesc then
-        feedParagraph:SetDesc(string.format("Feedable: %d\nFed total: %d\nStatus: %s", feedStatus.found or 0, feedStatus.fed or 0, tostring(feedStatus.last or "")))
+        local fruitLine = feedStatus.fruit and ("\nFruit: " .. tostring(feedStatus.fruit)) or ""
+        feedParagraph:SetDesc(string.format("Feedable: %d\nFed total: %d%s\nStatus: %s", feedStatus.found or 0, feedStatus.fed or 0, fruitLine, tostring(feedStatus.last or "")))
     end
 end
 
@@ -1873,13 +1966,24 @@ local function tryFeedFromEntry(petEntry)
     end
     local model = uidToWorldModel(uid)
     if not model then return false end
-    -- if we can infer a fruit name, focus it for UX; fallback to any owned fruit
-    local anyFruit
-    for _, n in ipairs(getAllFruitNames()) do
-        local c = getAssetCount(n)
-        if type(c) == "number" and c > 0 then anyFruit = n break end
+    -- Select fruit to use: prefer user's chosen list; fall back to any owned
+    local chosen
+    if next(feedSelectedFruitOrder or {}) then
+        for _, n in ipairs(feedSelectedFruitOrder) do
+            local c = getAssetCount and getAssetCount(n)
+            if type(c) == "number" and c > 0 then chosen = n break end
+        end
     end
-    if anyFruit then focusFruitName(anyFruit) end
+    if not chosen then
+        for _, n in ipairs(getAllFruitNames()) do
+            local c = getAssetCount and getAssetCount(n)
+            if type(c) == "number" and c > 0 then chosen = n break end
+        end
+    end
+    if chosen then
+        equipFruitInS3(chosen)
+        feedStatus.fruit = chosen
+    end
     feedStatus.last = "Feeding " .. tostring(uid)
     updateFeedStatus()
     local ok = fireFeedPetByModel(model)
@@ -2131,6 +2235,15 @@ Tabs.FeedTab:Button({
         end
         local count = 0
         for _, pet in ipairs(list) do
+            -- Equip chosen fruit (if any) before manual feed
+            local chosen = nil
+            if next(feedSelectedFruitOrder or {}) then
+                for _, n in ipairs(feedSelectedFruitOrder) do
+                    local c = (type(getAssetCount) == "function") and getAssetCount(n) or nil
+                    if type(c) == "number" and c > 0 then chosen = n break end
+                end
+            end
+            if chosen then equipFruitInS3(chosen) end
             if fireFeedPetByModel(pet) then count += 1 end
             task.wait(0.1)
         end
