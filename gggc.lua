@@ -180,20 +180,26 @@ local function fireConveyorUpgrade(index)
 end
 
 -- World helpers
-local function getIslandBeltFolder(islandName)
-    if type(islandName) ~= "string" or islandName == "" then return nil end
+local function getIslandBelts(islandName)
+    if type(islandName) ~= "string" or islandName == "" then return {} end
     local art = workspace:FindFirstChild("Art")
-    if not art then return nil end
+    if not art then return {} end
     local island = art:FindFirstChild(islandName)
-    if not island then return nil end
+    if not island then return {} end
     local env = island:FindFirstChild("ENV")
-    if not env then return nil end
-    local conveyor = env:FindFirstChild("Conveyor")
-    if not conveyor then return nil end
-    local conveyor1 = conveyor:FindFirstChild("Conveyor1")
-    if not conveyor1 then return nil end
-    local belt = conveyor1:FindFirstChild("Belt")
-    return belt
+    if not env then return {} end
+    local conveyorRoot = env:FindFirstChild("Conveyor")
+    if not conveyorRoot then return {} end
+    local belts = {}
+    -- Strictly look for Conveyor1..Conveyor9 in order
+    for i = 1, 9 do
+        local c = conveyorRoot:FindFirstChild("Conveyor" .. i)
+        if c then
+            local b = c:FindFirstChild("Belt")
+            if b then table.insert(belts, b) end
+        end
+    end
+    return belts
 end
 
 -- Auto Place helpers
@@ -896,8 +902,8 @@ local function runAutoBuy()
             continue
         end
 
-        local beltFolder = getIslandBeltFolder(islandName)
-        if not beltFolder then
+        local beltFolders = getIslandBelts(islandName)
+        if #beltFolders == 0 then
             statusData.eggsFound = 0
             statusData.matchingFound = 0
             statusData.affordableFound = 0
@@ -907,7 +913,13 @@ local function runAutoBuy()
             continue
         end
 
-        local allChildren = beltFolder:GetChildren()
+        -- Combine eggs from all belts (Conveyor1..n)
+        local allChildren = {}
+        for _, belt in ipairs(beltFolders) do
+            for _, child in ipairs(belt:GetChildren()) do
+                table.insert(allChildren, child)
+            end
+        end
         local children = {}
         for _, inst in ipairs(allChildren) do
             if inst:IsA("Model") then table.insert(children, inst) end
