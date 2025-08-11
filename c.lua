@@ -151,6 +151,46 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
+-- Status tracking
+local statusData = {
+    eggsFound = 0,
+    matchingFound = 0,
+    affordableFound = 0,
+    lastAction = "Idle",
+    lastUID = nil,
+    totalBuys = 0,
+    netWorth = 0,
+    islandName = nil,
+}
+
+Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
+local statusParagraph = Tabs.AutoTab:Paragraph({
+    Title = "Auto Buy Status",
+    Desc = "Waiting...",
+    Image = "activity",
+    ImageSize = 22,
+})
+
+local function formatStatusDesc()
+    local lines = {}
+    table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
+    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
+    table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
+    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
+    table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
+    if statusData.lastUID then
+        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
+    end
+    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
+    return table.concat(lines, "\n")
+end
+
+local function updateStatusParagraph()
+    if statusParagraph and statusParagraph.SetDesc then
+        statusParagraph:SetDesc(formatStatusDesc())
+    end
+end
+
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance then return false, nil, nil end
     local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
@@ -177,31 +217,102 @@ local function buyEggByUID(eggUID)
     end
 end
 
+local function focusEggByUID(eggUID)
+    local args = {
+        "Focus",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
 local function runAutoBuy()
     while autoBuyEnabled do
         local islandName = getAssignedIslandName()
-        local beltFolder = getIslandBeltFolder(islandName)
-        if beltFolder and #beltFolder:GetChildren() > 0 then
-            local playerMoney = getPlayerNetWorth()
-            local affordable = {}
-            for _, child in ipairs(beltFolder:GetChildren()) do
-                local ok, uid, price = shouldBuyEggInstance(child, playerMoney)
-                if ok then
-                    table.insert(affordable, { uid = uid, price = price })
-                end
-            end
-            table.sort(affordable, function(a, b)
-                return (a.price or math.huge) < (b.price or math.huge)
-            end)
-            if #affordable > 0 then
-                buyEggByUID(affordable[1].uid)
-                task.wait(0.25)
-            else
-                task.wait(0.4)
-            end
-        else
+        statusData.islandName = islandName
+
+        if not islandName or islandName == "" then
+            statusData.lastAction = "Waiting for island assignment (AssignedIslandName)"
+            updateStatusParagraph()
             task.wait(0.6)
+            continue
         end
+
+        local beltFolder = getIslandBeltFolder(islandName)
+        if not beltFolder then
+            statusData.eggsFound = 0
+            statusData.matchingFound = 0
+            statusData.affordableFound = 0
+            statusData.lastAction = "Waiting for belt on island"
+            updateStatusParagraph()
+            task.wait(0.6)
+            continue
+        end
+
+        local children = beltFolder:GetChildren()
+        statusData.eggsFound = #children
+        statusData.netWorth = getPlayerNetWorth()
+
+        if statusData.eggsFound == 0 then
+            statusData.matchingFound = 0
+            statusData.affordableFound = 0
+            statusData.lastAction = "Waiting for eggs to spawn"
+            updateStatusParagraph()
+            task.wait(0.5)
+            continue
+        end
+
+        local matching = {}
+        for _, child in ipairs(children) do
+            local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
+            if ok then
+                table.insert(matching, { uid = uid, price = price })
+            end
+        end
+        statusData.matchingFound = #matching
+
+        if statusData.matchingFound == 0 then
+            statusData.affordableFound = 0
+            statusData.lastAction = "No matching eggs on belt (adjust dropdown)"
+            updateStatusParagraph()
+            task.wait(0.5)
+            continue
+        end
+
+        table.sort(matching, function(a, b)
+            return (a.price or math.huge) < (b.price or math.huge)
+        end)
+
+        local affordable = {}
+        for _, item in ipairs(matching) do
+            if statusData.netWorth >= (item.price or math.huge) then
+                table.insert(affordable, item)
+            end
+        end
+        statusData.affordableFound = #affordable
+
+        if statusData.affordableFound == 0 then
+            local cheapest = matching[1]
+            statusData.lastAction = "Waiting for money (cheapest " .. tostring(cheapest and cheapest.price or "?") .. ", NetWorth " .. tostring(statusData.netWorth) .. ")"
+            updateStatusParagraph()
+            task.wait(0.4)
+            continue
+        end
+
+        local chosen = affordable[1]
+        statusData.lastUID = chosen.uid
+        statusData.lastAction = "Buying UID " .. tostring(chosen.uid) .. " for " .. tostring(chosen.price)
+        updateStatusParagraph()
+        buyEggByUID(chosen.uid)
+        focusEggByUID(chosen.uid)
+        statusData.totalBuys += 1
+        statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
+        updateStatusParagraph()
+        task.wait(0.25)
     end
 end
 
@@ -217,8 +328,12 @@ Tabs.AutoTab:Toggle({
                 autoBuyThread = nil
             end)
             WindUI:Notify({ Title = "Auto Buy", Content = "Started", Duration = 3 })
+            statusData.lastAction = "Started"
+            updateStatusParagraph()
         elseif (not state) and autoBuyThread then
             WindUI:Notify({ Title = "Auto Buy", Content = "Stopped", Duration = 3 })
+            statusData.lastAction = "Stopped"
+            updateStatusParagraph()
         end
     end
 })
