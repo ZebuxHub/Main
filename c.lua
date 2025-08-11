@@ -195,6 +195,7 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 local autoPlaceEnabled = false
+local autoPlaceThread = nil
 local findOwnedEggUIDByType -- forward declaration
 
 -- Status tracking
@@ -364,11 +365,7 @@ local function runAutoBuy()
         focusEggByUID(chosen.uid)
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused " .. tostring(chosen.eggType)
-        if autoPlaceEnabled then
-            -- Some games replace the UID after purchase. Attempt to resolve a placeable model owned by the player.
-            local candidateUid = (findOwnedEggUIDByType and findOwnedEggUIDByType(chosen.eggType)) or chosen.uid
-            placeEggByUID(candidateUid)
-        end
+        -- Auto placing is handled by a separate loop now
         updateStatusParagraph()
         task.wait(0.25)
     end
@@ -513,8 +510,85 @@ Tabs.AutoTab:Toggle({
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
-        statusData.lastAction = state and "Auto Place enabled" or "Auto Place disabled"
-        updateStatusParagraph()
+        if state and not autoPlaceThread then
+            autoPlaceThread = task.spawn(function()
+                -- separate auto place loop
+                local attempted = {}
+                local function isPlaced(uid)
+                    for _, inst in ipairs(workspace:GetDescendants()) do
+                        if inst:IsA("Model") and inst.Name == uid then
+                            if inst:GetAttribute("GridCenterPos") ~= nil then
+                                return true
+                            end
+                        end
+                    end
+                    return false
+                end
+                local function getInventoryEggs()
+                    local list = {}
+                    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+                    local data = pg and pg:FindFirstChild("Data")
+                    local eggFolder = data and data:FindFirstChild("Egg")
+                    if eggFolder then
+                        for _, ch in ipairs(eggFolder:GetChildren()) do
+                            local uid = tostring(ch.Name)
+                            local eggType = ch:GetAttribute("EggType") or ch:GetAttribute("Type")
+                            table.insert(list, { uid = uid, eggType = eggType and tostring(eggType) or nil })
+                        end
+                    end
+                    return list
+                end
+
+                while autoPlaceEnabled do
+                    local islandName = getAssignedIslandName()
+                    if not islandName or islandName == "" then
+                        statusData.lastAction = "Auto Place: waiting for island"
+                        updateStatusParagraph()
+                        task.wait(0.5)
+                        continue
+                    end
+
+                    local targetPart = findPlacementPart(islandName)
+                    if not targetPart then
+                        statusData.lastAction = "Auto Place: no tile found"
+                        updateStatusParagraph()
+                        task.wait(0.5)
+                        continue
+                    end
+
+                    local eggs = getInventoryEggs()
+                    if #eggs == 0 then
+                        statusData.lastAction = "Auto Place: no eggs in inventory"
+                        updateStatusParagraph()
+                        task.wait(0.6)
+                        continue
+                    end
+
+                    for _, e in ipairs(eggs) do
+                        if not autoPlaceEnabled then break end
+                        if not attempted[e.uid] or (attempted[e.uid] and (tick() - attempted[e.uid]) > 3) then
+                            if not isPlaced(e.uid) then
+                                statusData.lastAction = "Placing " .. (e.eggType or "Egg") .. " (" .. e.uid .. ")"
+                                updateStatusParagraph()
+                                placeEggByUID(e.uid)
+                                attempted[e.uid] = tick()
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+
+                    task.wait(0.4)
+                end
+                autoPlaceThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
+            statusData.lastAction = "Auto Place enabled"
+            updateStatusParagraph()
+        elseif (not state) and autoPlaceThread then
+            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
+            statusData.lastAction = "Auto Place disabled"
+            updateStatusParagraph()
+        end
     end
 })
 
