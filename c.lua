@@ -345,5 +345,3 @@ Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = tru
 Window:OnClose(function()
     autoBuyEnabled = false
 end)
-
-
