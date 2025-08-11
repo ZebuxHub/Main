@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
@@ -413,15 +414,33 @@ local function findHatchableModels()
 end
 
 local function pressPromptE(prompt)
-    -- Client-side hold simulation
-    if typeof(prompt) == "Instance" and prompt:IsA("ProximityPrompt") then
-        local hold = prompt.HoldDuration or 0
-        ProximityPromptService:InputHoldBegin(prompt)
-        if hold > 0 then task.wait(hold + 0.05) end
-        ProximityPromptService:InputHoldEnd(prompt)
-        return true
+    if typeof(prompt) ~= "Instance" or not prompt:IsA("ProximityPrompt") then return false end
+    local hold = prompt.HoldDuration or 0
+    -- Prefer engine API if available
+    local ok = false
+    if typeof(ProximityPromptService.InputHoldBegin) == "function" and typeof(ProximityPromptService.InputHoldEnd) == "function" then
+        local s1 = pcall(function() ProximityPromptService:InputHoldBegin(prompt) end)
+        if s1 then
+            if hold > 0 then task.wait(hold + 0.05) end
+            pcall(function() ProximityPromptService:InputHoldEnd(prompt) end)
+            ok = true
+        end
     end
-    return false
+    -- Executor fallback if available
+    if not ok and _G and typeof(_G.fireproximityprompt) == "function" then
+        local s2 = pcall(function() _G.fireproximityprompt(prompt, hold) end)
+        ok = s2 and true or false
+    end
+    -- Keyboard fallback (works if within range and default key is E)
+    if not ok and VirtualInputManager then
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            if hold > 0 then task.wait(hold + 0.05) end
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        end)
+        ok = true
+    end
+    return ok
 end
 
 local function walkTo(position, timeout)
