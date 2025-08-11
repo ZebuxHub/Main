@@ -431,6 +431,18 @@ local function getIsland3()
     return art and art:FindFirstChild("Island_3") or nil
 end
 
+local function modelHasLockCostAttribute(model)
+    if not model or not model:IsA("Model") then return false end
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") then
+            if d:GetAttribute("LockCost") ~= nil then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function findUnlockedFarmSplitModels()
     local island3 = getIsland3()
     if not island3 then return {} end
@@ -439,8 +451,8 @@ local function findUnlockedFarmSplitModels()
         if inst:IsA("Model") then
             local n = tostring(inst.Name)
             if string.find(n, "Farm_split", 1, true) == 1 then
-                -- Only consider unlocked tiles (LockCost not present)
-                if inst:GetAttribute("LockCost") == nil then
+                -- Only consider unlocked tiles (no part inside has LockCost attribute)
+                if not modelHasLockCostAttribute(inst) then
                     table.insert(list, inst)
                 end
             end
