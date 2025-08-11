@@ -25,54 +25,6 @@ local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
 
--- Status tracking and UI (define early so callbacks can use them)
-local statusData = {
-    eggsFound = 0,
-    matchingFound = 0,
-    affordableFound = 0,
-    lastAction = "Idle",
-    lastUID = nil,
-    totalBuys = 0,
-    netWorth = 0,
-    islandName = nil,
-    seenTypes = nil,
-    selectedTypes = nil,
-}
-
-Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
-local statusParagraph = Tabs.AutoTab:Paragraph({
-    Title = "Auto Buy Status",
-    Desc = "Waiting...",
-    Image = "activity",
-    ImageSize = 22,
-})
-
-local function formatStatusDesc()
-    local lines = {}
-    table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
-    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
-    table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
-    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
-    table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
-    if statusData.selectedTypes then
-        table.insert(lines, "Selected: " .. statusData.selectedTypes)
-    end
-    if statusData.seenTypes then
-        table.insert(lines, "Seen: " .. statusData.seenTypes)
-    end
-    if statusData.lastUID then
-        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
-    end
-    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
-    return table.concat(lines, "\n")
-end
-
-local function updateStatusParagraph()
-    if statusParagraph and statusParagraph.SetDesc then
-        statusParagraph:SetDesc(formatStatusDesc())
-    end
-end
-
 -- Egg config loader
 local eggConfig = {}
 
@@ -196,7 +148,6 @@ end
 loadEggConfig()
 local eggIdList = buildEggIdList()
 local selectedTypeSet = {}
-local selectedTypeSetLower = {}
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
@@ -206,34 +157,31 @@ eggDropdown = Tabs.AutoTab:Dropdown({
     Value = {},
     Multi = true,
     AllowNone = true,
-    Callback = function(selection)
-        selectedTypeSet = {}
-        selectedTypeSetLower = {}
-        local function addTypeFor(idStr)
-            -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
-            selectedTypeSet[idStr] = true
-            selectedTypeSetLower[string.lower(idStr)] = true
-            -- Also include the mapped Type from config (if available and different)
-            local mappedType = idToTypeMap[idStr]
-            if mappedType and tostring(mappedType) ~= idStr then
-                selectedTypeSet[tostring(mappedType)] = true
-                selectedTypeSetLower[string.lower(tostring(mappedType))] = true
+            Callback = function(selection)
+            selectedTypeSet = {}
+            local function addTypeFor(idStr)
+                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+                selectedTypeSet[idStr] = true
+                -- Also include the mapped Type from config (if available and different)
+                local mappedType = idToTypeMap[idStr]
+                if mappedType and tostring(mappedType) ~= idStr then
+                    selectedTypeSet[tostring(mappedType)] = true
+                end
             end
-        end
-        if type(selection) == "table" then
-            for _, id in ipairs(selection) do
-                addTypeFor(tostring(id))
+            if type(selection) == "table" then
+                for _, id in ipairs(selection) do
+                    addTypeFor(tostring(id))
+                end
+            elseif type(selection) == "string" then
+                addTypeFor(tostring(selection))
             end
-        elseif type(selection) == "string" then
-            addTypeFor(tostring(selection))
+            -- update selected types display
+            local keys = {}
+            for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+            table.sort(keys)
+            statusData.selectedTypes = table.concat(keys, ", ")
+            updateStatusParagraph()
         end
-        -- update selected types display
-        local keys = {}
-        for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-        table.sort(keys)
-        statusData.selectedTypes = table.concat(keys, ", ")
-        updateStatusParagraph()
-    end
 })
 
 Tabs.AutoTab:Button({
@@ -250,10 +198,10 @@ Tabs.AutoTab:Button({
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
--- ===== Auto Place (Island_3 Farm_split_* parts) =====
+-- ===== Auto Place (Island_3 parts) =====
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
-local usedTileNames = {}
+local usedPartNames = {}
 
 local function vectorCreate(x, y, z)
     local vlib = rawget(_G, "vector")
@@ -263,25 +211,23 @@ local function vectorCreate(x, y, z)
     return Vector3.new(x, y, z)
 end
 
-local function getIsland3FarmTiles()
-    local tiles = {}
+local function getIsland3Parts()
+    local parts = {}
     local art = workspace:FindFirstChild("Art")
-    if not art then return tiles end
+    if not art then return parts end
     local island3 = art:FindFirstChild("Island_3")
-    if not island3 then return tiles end
+    if not island3 then return parts end
+    
     for _, inst in ipairs(island3:GetChildren()) do
-        if inst:IsA("BasePart") then
-            local n = tostring(inst.Name)
-            if string.sub(n, 1, 11) == "Farm_split_" then
-                table.insert(tiles, inst)
-            end
+        if inst:IsA("BasePart") and inst.Size == Vector3.new(8, 8, 8) then
+            table.insert(parts, inst)
         end
     end
-    table.sort(tiles, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
-    return tiles
+    table.sort(parts, function(a, b) return tostring(a.Name) < tostring(b.Name) end)
+    return parts
 end
 
-local function getInventoryEggUIDs()
+local function getInventoryPetUIDs()
     local list = {}
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
@@ -294,11 +240,10 @@ local function getInventoryEggUIDs()
     return list
 end
 
-local function placeUIDAtTileTopCenter(uid, tilePart)
-    if not (uid and tilePart and tilePart:IsA("BasePart")) then return end
-    local pos = tilePart.CFrame.Position
-    local topY = pos.Y + (tilePart.Size and tilePart.Size.Y or 0) * 0.5
-    local dst = vectorCreate(pos.X, topY, pos.Z)
+local function placeUIDAtPartCenter(uid, part)
+    if not (uid and part and part:IsA("BasePart")) then return end
+    local pos = part.CFrame.Position
+    local dst = vectorCreate(pos.X, pos.Y, pos.Z)
     local args = {
         "Place",
         {
@@ -312,49 +257,95 @@ local function placeUIDAtTileTopCenter(uid, tilePart)
 end
 
 local function runAutoPlace()
-    usedTileNames = {}
+    usedPartNames = {}
     while autoPlaceEnabled do
-        local uids = getInventoryEggUIDs()
+        local uids = getInventoryPetUIDs()
         if #uids == 0 then
-            statusData.lastAction = "Auto Place: no eggs in inventory"
+            statusData.lastAction = "Auto Place: no pets in inventory"
             updateStatusParagraph()
-            task.wait(0.05)
+            task.wait(0.5)
             continue
         end
 
-        local tiles = getIsland3FarmTiles()
-        if #tiles == 0 then
-            statusData.lastAction = "Auto Place: no Farm_split_* tiles in Island_3"
+        local parts = getIsland3Parts()
+        if #parts == 0 then
+            statusData.lastAction = "Auto Place: no 8x8x8 parts in Island_3"
             updateStatusParagraph()
-            task.wait(0.05)
+            task.wait(0.5)
             continue
         end
 
         local available = {}
-        for _, t in ipairs(tiles) do
-            if not usedTileNames[t.Name] then
-                table.insert(available, t)
+        for _, p in ipairs(parts) do
+            if not usedPartNames[p.Name] then
+                table.insert(available, p)
             end
         end
         if #available == 0 then
-            statusData.lastAction = "Auto Place: no unused tiles"
+            statusData.lastAction = "Auto Place: no unused parts"
             updateStatusParagraph()
-            task.wait(0.05)
+            task.wait(0.5)
             continue
         end
 
         local count = math.min(#uids, #available)
         for i = 1, count do
             local uid = uids[i]
-            local tile = available[i]
-            usedTileNames[tile.Name] = true
+            local part = available[i]
+            usedPartNames[part.Name] = true
             task.spawn(function()
-                placeUIDAtTileTopCenter(uid, tile)
+                placeUIDAtPartCenter(uid, part)
             end)
         end
-        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " eggs"
+        statusData.lastAction = "Auto Place: placed " .. tostring(count) .. " pets"
         updateStatusParagraph()
-        task.wait(0.03)
+        task.wait(0.3)
+    end
+end
+
+-- Status tracking
+local statusData = {
+    eggsFound = 0,
+    matchingFound = 0,
+    affordableFound = 0,
+    lastAction = "Idle",
+    lastUID = nil,
+    totalBuys = 0,
+    netWorth = 0,
+    islandName = nil,
+}
+
+Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
+local statusParagraph = Tabs.AutoTab:Paragraph({
+    Title = "Auto Buy Status",
+    Desc = "Waiting...",
+    Image = "activity",
+    ImageSize = 22,
+})
+
+local function formatStatusDesc()
+    local lines = {}
+    table.insert(lines, "Island: " .. tostring(statusData.islandName or "?"))
+    table.insert(lines, "NetWorth: " .. tostring(statusData.netWorth))
+    table.insert(lines, "Eggs on belt: " .. tostring(statusData.eggsFound))
+    table.insert(lines, "Matching: " .. tostring(statusData.matchingFound) .. ", Affordable: " .. tostring(statusData.affordableFound))
+    table.insert(lines, "Buys: " .. tostring(statusData.totalBuys))
+    if statusData.selectedTypes then
+        table.insert(lines, "Selected: " .. statusData.selectedTypes)
+    end
+    if statusData.seenTypes then
+        table.insert(lines, "Seen: " .. statusData.seenTypes)
+    end
+    if statusData.lastUID then
+        table.insert(lines, "Last UID: " .. tostring(statusData.lastUID))
+    end
+    table.insert(lines, "Last: " .. tostring(statusData.lastAction))
+    return table.concat(lines, "\n")
+end
+
+local function updateStatusParagraph()
+    if statusParagraph and statusParagraph.SetDesc then
+        statusParagraph:SetDesc(formatStatusDesc())
     end
 end
 
@@ -366,7 +357,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         or eggInstance:GetAttribute("Name")
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
-    if not (selectedTypeSet[eggType] or selectedTypeSetLower[string.lower(eggType)]) then return false, nil, nil end
+    if not selectedTypeSet[eggType] then return false, nil, nil end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
@@ -440,8 +431,8 @@ local function runAutoBuy()
             continue
         end
 
-        local seen = {}
         local matching = {}
+        local seen = {}
         for _, child in ipairs(children) do
             local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
             local t = child:GetAttribute("Type") or child:GetAttribute("EggType") or child:GetAttribute("Name")
@@ -523,8 +514,8 @@ Tabs.AutoTab:Toggle({
 
 -- Auto Place UI toggle
 Tabs.AutoTab:Toggle({
-    Title = "Auto Place Eggs (Island_3 Farm_split)",
-    Desc = "Places inventory eggs on Island_3 Farm_split_* tiles (top-center)",
+    Title = "Auto Place Pets (Island_3)",
+    Desc = "Places inventory pets on Island_3 8x8x8 parts (center)",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
@@ -534,8 +525,12 @@ Tabs.AutoTab:Toggle({
                 autoPlaceThread = nil
             end)
             WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
+            statusData.lastAction = "Auto Place Started"
+            updateStatusParagraph()
         elseif (not state) and autoPlaceThread then
             WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
+            statusData.lastAction = "Auto Place Stopped"
+            updateStatusParagraph()
         end
     end
 })
@@ -546,6 +541,7 @@ Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = tru
 -- Close callback
 Window:OnClose(function()
     autoBuyEnabled = false
+    autoPlaceEnabled = false
 end)
 
 
