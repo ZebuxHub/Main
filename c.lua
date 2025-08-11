@@ -266,9 +266,7 @@ local function buyEggByUID(eggUID)
     end)
     if not ok then
         warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-        return false
     end
-    return true
 end
 
 local function focusEggByUID(eggUID)
@@ -284,54 +282,8 @@ local function focusEggByUID(eggUID)
     end
 end
 
--- Auto Place Egg support
-local function createVector3(x, y, z)
-    local ok, vecLib = pcall(function()
-        return _G and _G.vector
-    end)
-    if ok and type(vecLib) == "table" and type(vecLib.create) == "function" then
-        return vecLib.create(x, y, z)
-    end
-    return Vector3.new(x, y, z)
-end
-
-local targetPlaceColor = Color3.fromRGB(145, 98, 44)
-local function colorsClose(a, b, tol)
-    tol = tol or 0.01
-    return math.abs(a.R - b.R) <= tol and math.abs(a.G - b.G) <= tol and math.abs(a.B - b.B) <= tol
-end
-
-local function findPlacementPosition(islandName)
-    local art = workspace:FindFirstChild("Art")
-    if not art then return nil end
-    local island = art:FindFirstChild(islandName or "")
-    if not island then return nil end
-    for _, inst in ipairs(island:GetDescendants()) do
-        if inst:IsA("BasePart") then
-            local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
-            if col and colorsClose(col, targetPlaceColor) then
-                return inst.Position
-            end
-        end
-    end
-    return nil
-end
-
-local function placeEggByUID(eggUID, dstPosition)
-    if not eggUID or not dstPosition then return false end
-    local payload = {
-        DST = createVector3(dstPosition.X, dstPosition.Y, dstPosition.Z),
-        ID = eggUID,
-    }
-    local args = { "Place", payload }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
-        return false
-    end
-    return true
+local function placeEggByUID(eggUID)
+    -- forward declaration patch (actual implementation is below); filled by second definition
 end
 
 local function runAutoBuy()
@@ -377,7 +329,6 @@ local function runAutoBuy()
                 table.insert(matching, { uid = uid, price = price, eggType = eggType })
             end
         end
-
         if #matching == 0 then
             statusData.lastAction = "No matching eggs on belt (adjust dropdown)"
             updateStatusParagraph()
@@ -408,12 +359,13 @@ local function runAutoBuy()
         statusData.lastEggName = chosen.eggType
         statusData.lastAction = "Buying " .. tostring(chosen.eggType) .. " (UID " .. tostring(chosen.uid) .. ") for " .. tostring(chosen.price)
         updateStatusParagraph()
-        local bought = buyEggByUID(chosen.uid)
-        if bought then
-            focusEggByUID(chosen.uid)
-            statusData.totalBuys = (statusData.totalBuys or 0) + 1
-        else
-            statusData.lastAction = "Buy failed"
+        buyEggByUID(chosen.uid)
+        focusEggByUID(chosen.uid)
+        statusData.totalBuys = (statusData.totalBuys or 0) + 1
+        statusData.lastAction = "Bought + Focused " .. tostring(chosen.eggType)
+        if autoPlaceEnabled then
+            placeEggByUID(chosen.uid)
+            statusData.lastAction = "Placed " .. tostring(chosen.eggType)
         end
         updateStatusParagraph()
         task.wait(0.25)
@@ -442,9 +394,80 @@ Tabs.AutoTab:Toggle({
     end
 })
 
+-- Auto Place Egg
+local function createVector3(x, y, z)
+    local vlib = rawget(_G, "vector")
+    if type(vlib) == "table" and type(vlib.create) == "function" then
+        return vlib.create(x, y, z)
+    end
+    return Vector3.new(x, y, z)
+end
+
+local TARGET_COLOR = Color3.fromRGB(145, 98, 44)
+local function colorsClose(a, b, tol)
+    tol = tol or 0.01
+    return math.abs(a.R - b.R) <= tol and math.abs(a.G - b.G) <= tol and math.abs(a.B - b.B) <= tol
+end
+
+local function findPlacementPart(islandName)
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    local island = art:FindFirstChild(islandName or "")
+    if not island then return nil end
+    for _, inst in ipairs(island:GetDescendants()) do
+        if inst:IsA("BasePart") then
+            local col = inst.Color or (inst.BrickColor and inst.BrickColor.Color)
+            if col and colorsClose(col, TARGET_COLOR, 0.02) then
+                return inst
+            end
+        end
+    end
+    return nil
+end
+
+local function getGridVectorFromPart(part)
+    if not part then return nil end
+    local gx = part:GetAttribute("GridX") or part:GetAttribute("Grid X") or part:GetAttribute("gridX") or part:GetAttribute("gridx")
+    local gy = part:GetAttribute("GridY") or part:GetAttribute("Grid Y") or part:GetAttribute("gridY") or part:GetAttribute("gridy")
+    local gz = part:GetAttribute("GridZ") or part:GetAttribute("Grid Z") or part:GetAttribute("gridZ") or part:GetAttribute("gridz")
+    if type(gx) == "number" and type(gy) == "number" and type(gz) == "number" then
+        return createVector3(gx, gy, gz)
+    end
+    return nil
+end
+
+function placeEggByUID(eggUID)
+    local islandName = getAssignedIslandName()
+    if not islandName then return end
+    local part = findPlacementPart(islandName)
+    if not part then
+        statusData.lastAction = "No placement part found"
+        updateStatusParagraph()
+        return
+    end
+    local dst = getGridVectorFromPart(part)
+    if not dst then
+        local p = part.Position
+        dst = createVector3(p.X, p.Y, p.Z)
+    end
+    local args = {
+        "Place",
+        {
+            DST = dst,
+            ID = eggUID,
+        }
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Place for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
 Tabs.AutoTab:Toggle({
     Title = "Auto Place Egg",
-    Desc = "Place bought eggs at brown target on your island",
+    Desc = "Place bought eggs on brown tiles in your island",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
