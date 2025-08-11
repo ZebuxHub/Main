@@ -18,6 +18,16 @@ local REMOTE_CharacterRE = RS_Remote:WaitForChild("CharacterRE")
 local REMOTE_ConveyorRE = RS_Remote:WaitForChild("ConveyorRE")
 local REMOTE_DinoEventRE = RS_Remote:WaitForChild("DinoEventRE")
 
+-- Small input helper
+local function tapKey(key)
+    if not VirtualInputManager then return end
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, key, false, game)
+        task.wait(0.02)
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    end)
+end
+
 -- Window
 local Window = WindUI:CreateWindow({
     Title = "Build A Zoo",
@@ -96,7 +106,23 @@ local function buildEggIdList()
     return ids
 end
 
--- UI helpers (kept minimal to reduce overhead)
+-- UI helpers
+local function tryCreateTextInput(parent, opts)
+    -- Tries common method names to create a textbox-like input in WindUI
+    local created
+    for _, method in ipairs({"Textbox", "Input", "TextBox"}) do
+        local ok, res = pcall(function()
+            return parent[method](parent, opts)
+        end)
+        if ok and res then created = res break end
+    end
+    return created
+end
+
+local function caseInsensitiveContains(hay, needle)
+    if type(hay) ~= "string" or type(needle) ~= "string" then return false end
+    return string.find(string.lower(hay), string.lower(needle), 1, true) ~= nil
+end
 
 local function getEggPriceById(eggId)
     local entry = eggConfig[eggId] or eggConfig[tonumber(eggId)]
@@ -369,16 +395,10 @@ local function getPetUID()
         if not data then return nil end
     end
     
-    -- Wait for Egg object to exist (use Waiting pattern with descendant signal)
+    -- Wait for Egg object to exist
     local egg = data:FindFirstChild("Egg")
     if not egg then
-        local t0 = os.clock()
-        repeat
-            egg = data:FindFirstChild("Egg")
-            if egg then break end
-            local ev = data.ChildAdded:Wait()
-            if ev and ev.Name == "Egg" then egg = ev end
-        until (os.clock() - t0) > 2
+        egg = data:WaitForChild("Egg", 2)
         if not egg then return nil end
     end
     
@@ -713,12 +733,6 @@ local function tryHatchModel(model)
     if not playerOwnsInstance(model) then
         return false, "Not owner"
     end
-    -- Ensure we are holding an egg (press number 2 once)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-        task.wait(0.05)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    end)
     -- Find a ProximityPrompt named "E" or any prompt on the model
     local prompt
     -- Prefer a prompt on a part named Prompt or with ActionText that implies hatch
@@ -918,6 +932,8 @@ eggDropdown = Tabs.AutoTab:Dropdown({
         end
 })
 
+-- Removed search to reduce UI overhead and complexity
+
 Tabs.AutoTab:Button({
     Title = "Reload Eggs",
     Callback = function()
@@ -979,15 +995,9 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     eggType = tostring(eggType)
     if not selectedTypeSet[eggType] then return false, nil, nil end
 
-    local price = eggInstance:GetAttribute("Price")
-    if type(price) ~= "number" then
-        price = getEggPriceByType(eggType)
-    end
-    if type(price) ~= "number" then
-        -- If we cannot read price, assume 0 to avoid stalling (server will reject if not affordable)
-        price = 0
-    end
-    if (playerMoney or 0) < price then return false, nil, nil end
+    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    if type(price) ~= "number" then return false, nil, nil end
+    if playerMoney < price then return false, nil, nil end
     return true, eggInstance.Name, price
 end
 
@@ -997,7 +1007,7 @@ local function buyEggByUID(eggUID)
         eggUID
     }
     local ok, err = pcall(function()
-        REMOTE_CharacterRE:FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     if not ok then
         warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
@@ -1010,7 +1020,7 @@ local function focusEggByUID(eggUID)
         eggUID
     }
     local ok, err = pcall(function()
-        REMOTE_CharacterRE:FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     if not ok then
         warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
@@ -1019,8 +1029,6 @@ end
 
 local function runAutoBuy()
     while autoBuyEnabled do
-        -- Continuously refresh NetWorth each loop
-        statusData.netWorth = getPlayerNetWorth()
         local islandName = getAssignedIslandName()
         statusData.islandName = islandName
 
@@ -1043,17 +1051,20 @@ local function runAutoBuy()
         end
 
         -- Combine eggs from all belts (Conveyor1..n)
-        local children = {}
-        -- Collect models with minimal allocations
-        for b = 1, #beltFolders do
-            local kids = beltFolders[b]:GetChildren()
-            for i = 1, #kids do
-                local inst = kids[i]
-                if inst:IsA("Model") then children[#children+1] = inst end
+        local allChildren = {}
+        for i = 1, #beltFolders do
+            local belt = beltFolders[i]
+            local kids = belt:GetChildren()
+            for j = 1, #kids do
+                local inst = kids[j]
+                if inst:IsA("Model") then
+                    allChildren[#allChildren+1] = inst
+                end
             end
         end
+        local children = allChildren
         statusData.eggsFound = #children
-        -- NetWorth already updated at top of loop
+        statusData.netWorth = getPlayerNetWorth()
 
         if statusData.eggsFound == 0 then
             statusData.matchingFound = 0
@@ -1089,16 +1100,12 @@ local function runAutoBuy()
             continue
         end
 
-        table.sort(matching, function(a, b)
-            return (a.price or math.huge) < (b.price or math.huge)
-        end)
+        table.sort(matching, function(a, b) return (a.price or math.huge) < (b.price or math.huge) end)
 
         local affordable = {}
         for i = 1, #matching do
             local item = matching[i]
-            if statusData.netWorth >= (item.price or math.huge) then
-                affordable[#affordable+1] = item
-            end
+            if statusData.netWorth >= (item.price or math.huge) then affordable[#affordable+1] = item end
         end
         statusData.affordableFound = #affordable
 
@@ -1119,7 +1126,7 @@ local function runAutoBuy()
         statusData.totalBuys = (statusData.totalBuys or 0) + 1
         statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
         updateStatusParagraph()
-        task.wait(0.25)
+        task.wait(0.15)
     end
 end
 
@@ -1149,7 +1156,7 @@ Tabs.AutoTab:Toggle({
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local placeAnchorPosition = nil
-local anchorRadiusStuds = 300
+local anchorRadiusStuds = 150
 
 
 -- Auto Place status tracking
@@ -1165,7 +1172,18 @@ local placeStatusData = {
     validationStatus = nil,
 }
 
-
+Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
+Tabs.PlaceTab:Paragraph({
+    Title = "How to use",
+    Desc = table.concat({
+        "1) Stand where you want pets to appear.",
+        "2) Press 'Save Current Location'.",
+        "3) Turn on 'Auto Place'.",
+        "Tip: It will try free tiles within 300 studs of your saved spot.",
+    }, "\n"),
+    Image = "info",
+    ImageSize = 16,
+})
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place",
     Desc = "Save your spot, then turn on.",
@@ -1196,6 +1214,8 @@ end
 local function runAutoPlace()
     while autoPlaceEnabled do
         local ok, err = pcall(function()
+            -- Ensure slot 2 selected (hold egg) each cycle to reduce failure cases
+            tapKey(Enum.KeyCode.Two)
             local islandName = getAssignedIslandName()
             placeStatusData.islandName = islandName
             
@@ -1258,7 +1278,7 @@ local function runAutoPlace()
                 task.wait(0.8)
                 return
             end
-            local minSpacing = 8 -- studs between pets
+            local minSpacing = 6 -- smaller spacing for faster placement
             local chosenPart
             local targetPos = placeAnchorPosition
             -- Restrict to tiles within anchorRadiusStuds to keep placement localized
@@ -1270,9 +1290,9 @@ local function runAutoPlace()
             end
             chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, minSpacing, targetPos)
             if not chosenPart then
-                placeStatusData.lastAction = "All farm tiles occupied (min spacing " .. tostring(minSpacing) .. ")"
+                placeStatusData.lastAction = "All tiles busy near spot"
                 updatePlaceStatusParagraph()
-                task.wait(0.6)
+                task.wait(0.3)
                 return
             end
             local position = chosenPart.Position
@@ -1289,7 +1309,7 @@ local function runAutoPlace()
             end
             updatePlaceStatusParagraph()
             
-            task.wait(0.5)
+            task.wait(0.25)
         end)
         
         if not ok then
@@ -1312,12 +1332,6 @@ Tabs.PlaceTab:Toggle({
             if not placeAnchorPosition then
                 placeAnchorPosition = getPlayerRootPosition()
             end
-            -- Ensure we are holding an egg (hotkey 2) when starting Auto Place
-            pcall(function()
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-                task.wait(0.05)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-            end)
             autoPlaceThread = task.spawn(function()
                 runAutoPlace()
                 autoPlaceThread = nil
@@ -1330,6 +1344,133 @@ Tabs.PlaceTab:Toggle({
             placeStatusData.lastAction = "Stopped"
             updatePlaceStatusParagraph()
         end
+    end
+})
+
+-- Anchoring tools
+Tabs.PlaceTab:Button({
+    Title = "Save Current Location",
+    Desc = "Use your current position as an anchor (300 studs radius)",
+    Callback = function()
+        local pos = getPlayerRootPosition()
+        if not pos then
+            WindUI:Notify({ Title = "Auto Place", Content = "Could not read player position", Duration = 3 })
+            return
+        end
+        placeAnchorPosition = pos
+        WindUI:Notify({ Title = "Auto Place", Content = string.format("Anchor saved r=%d", anchorRadiusStuds), Duration = 3 })
+        placeStatusData.lastAction = "Anchor saved"
+        updatePlaceStatusParagraph()
+    end
+})
+Tabs.PlaceTab:Button({
+    Title = "Clear Anchor",
+    Desc = "Forget saved anchor; place anywhere",
+    Callback = function()
+        placeAnchorPosition = nil
+        WindUI:Notify({ Title = "Auto Place", Content = "Anchor cleared", Duration = 3 })
+        placeStatusData.lastAction = "Anchor cleared"
+        updatePlaceStatusParagraph()
+    end
+})
+
+-- Manual place button for testing
+Tabs.PlaceTab:Button({
+    Title = "Place Pet Now",
+    Desc = "Manually place a pet at the nearest free farm location",
+    Callback = function()
+        local islandName = getAssignedIslandName()
+        if not islandName then
+            WindUI:Notify({ Title = "Error", Content = "No island assigned", Duration = 3 })
+            return
+        end
+        
+        local islandNumber = getIslandNumberFromName(islandName)
+        if not islandNumber then
+            WindUI:Notify({ Title = "Error", Content = "Could not determine island number", Duration = 3 })
+            return
+        end
+        
+        local farmParts = getFarmParts(islandNumber)
+        if #farmParts == 0 then
+            WindUI:Notify({ Title = "Error", Content = "No farm parts found", Duration = 3 })
+            return
+        end
+        
+        local petUID = getPetUID()
+        if not petUID then
+            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
+            return
+        end
+        
+        -- Enhanced validation
+        local isValid, validationMsg = validatePetUID(petUID)
+        if not isValid then
+            WindUI:Notify({ Title = "Error", Content = "PET UID validation failed: " .. validationMsg, Duration = 3 })
+            return
+        end
+        
+        -- Prefer an available tile using pivot occupancy checks
+        local targetPos = placeAnchorPosition or getPlayerRootPosition()
+        local nearby = {}
+        for _, part in ipairs(farmParts) do
+            if not targetPos or (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
+                table.insert(nearby, part)
+            end
+        end
+        local chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, 8, targetPos)
+        if not chosenPart then
+            WindUI:Notify({ Title = "Error", Content = "All farm tiles are occupied nearby", Duration = 3 })
+            placeStatusData.lastAction = "Manual place failed (occupied)"
+            updatePlaceStatusParagraph()
+            return
+        end
+        local success = placePetAtPart(chosenPart, petUID)
+        
+        if success then
+            WindUI:Notify({ Title = "Success", Content = "Pet placed at farm location", Duration = 3 })
+            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
+            placeStatusData.lastAction = "Manual place successful"
+            updatePlaceStatusParagraph()
+        else
+            WindUI:Notify({ Title = "Error", Content = "Failed to place pet", Duration = 3 })
+            placeStatusData.lastAction = "Manual place failed"
+            updatePlaceStatusParagraph()
+        end
+    end
+})
+
+-- Pet validation test button
+Tabs.PlaceTab:Button({
+    Title = "Test Pet Validation",
+    Desc = "Check if current PET UID is valid",
+    Callback = function()
+        local petUID = getPetUID()
+        if not petUID then
+            WindUI:Notify({ Title = "Error", Content = "No PET UID found in PlayerGui.Data.Egg.Name", Duration = 3 })
+            return
+        end
+        
+        local isValid, validationMsg = validatePetUID(petUID)
+        local petInfo = getPetInfo(petUID)
+        
+        local message = "PET UID: " .. tostring(petUID) .. "\n"
+        message = message .. "Validation: " .. validationMsg .. "\n"
+        if petInfo and petInfo.Type then
+            message = message .. "Pet Type: " .. tostring(petInfo.Type)
+        end
+        
+        WindUI:Notify({ 
+            Title = isValid and "Valid PET" or "Invalid PET", 
+            Content = message, 
+            Duration = 5 
+        })
+        
+        -- Update status display
+        placeStatusData.petUID = petUID
+        placeStatusData.petInfo = petInfo
+        placeStatusData.validationStatus = validationMsg
+        updatePlaceStatusParagraph()
     end
 })
 
@@ -1384,6 +1525,17 @@ Tabs.PackTab:Toggle({
             WindUI:Notify({ Title = "Auto Pack", Content = "Started", Duration = 3 })
         elseif (not state) and autoPackThread then
             WindUI:Notify({ Title = "Auto Pack", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.PackTab:Button({
+    Title = "Claim Now",
+    Desc = "Fire online pack immediately then start cooldown",
+    Callback = function()
+        if fireOnlinePack() then
+            lastPackAt = os.clock()
+            WindUI:Notify({ Title = "Auto Pack", Content = "Claimed", Duration = 3 })
         end
     end
 })
@@ -1458,6 +1610,38 @@ Tabs.ShopTab:Toggle({
             WindUI:Notify({ Title = "Shop", Content = "Auto Upgrade stopped", Duration = 3 })
             setShopStatus("Stopped")
         end
+    end
+})
+
+Tabs.ShopTab:Button({
+    Title = "Upgrade All Affordable Now",
+    Desc = "Checks ResConveyor and fires upgrades 1..9 you can afford",
+    Callback = function()
+        local net = getPlayerNetWorth()
+        local actions = chooseAffordableUpgrades(net)
+        if #actions == 0 then
+            setShopStatus("No affordable upgrades (NetWorth " .. tostring(net) .. ")")
+            return
+        end
+        for _, a in ipairs(actions) do
+            if fireConveyorUpgrade(a.idx) then
+                shopStatus.upgradesDone += 1
+                purchasedUpgrades[a.idx] = true
+            end
+            shopStatus.upgradesTried += 1
+            task.wait(0.1)
+        end
+        setShopStatus("Manual upgrade fired for " .. tostring(#actions) .. " items")
+    end
+})
+
+Tabs.ShopTab:Button({
+    Title = "Reset Remembered Upgrades",
+    Desc = "Clear the one-time memory if you want to attempt again",
+    Callback = function()
+        purchasedUpgrades = {}
+        setShopStatus("Memory reset")
+        WindUI:Notify({ Title = "Shop", Content = "Upgrade memory cleared", Duration = 3 })
     end
 })
 
