@@ -1241,9 +1241,9 @@ local placeStatusData = {
 
 Tabs.PlaceTab:Section({ Title = "Egg Selection", Icon = "egg" })
 
--- Load egg types from ResEgg module
-local function loadEggTypesForPlacement()
-    local eggTypes = {}
+-- Use the same egg loading logic as the working egg dropdown
+local function buildEggIdListForPlacement()
+    local eggIds = {}
     local success, resEgg = pcall(function()
         return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResEgg"))
     end)
@@ -1251,21 +1251,21 @@ local function loadEggTypesForPlacement()
     if success and resEgg then
         for id, _ in pairs(resEgg) do
             if id ~= "_index" and id ~= "__index" and not string.match(id, "^_") then
-                table.insert(eggTypes, id)
+                table.insert(eggIds, id)
             end
         end
-        table.sort(eggTypes)
+        table.sort(eggIds)
     end
     
-    return eggTypes
+    return eggIds
 end
 
-local eggTypes = loadEggTypesForPlacement()
+local placementEggIds = buildEggIdListForPlacement()
 
 Tabs.PlaceTab:Dropdown({
     Title = "Egg Types to Place",
     Desc = "Select which egg types to place (leave empty to place all)",
-    Options = eggTypes,
+    Options = placementEggIds,
     Multi = true,
     Callback = function(selected)
         selectedEggTypes = selected
@@ -1276,9 +1276,7 @@ Tabs.PlaceTab:Button({
     Title = "Select All Eggs",
     Desc = "Select all available egg types",
     Callback = function()
-        selectedEggTypes = table.clone(eggTypes)
-        -- Update dropdown to show all selected
-        -- Note: This would require dropdown refresh functionality
+        selectedEggTypes = table.clone(placementEggIds)
     end
 })
 
@@ -1453,8 +1451,9 @@ local function runAutoPlace()
                         -- If specific egg types are selected, check if this egg matches
                         if #selectedEggTypes > 0 then
                             shouldInclude = false
-                            for _, selectedType in ipairs(selectedEggTypes) do
-                                if eggType == selectedType then
+                            for _, selectedId in ipairs(selectedEggTypes) do
+                                -- Check if egg type matches any selected ID
+                                if eggType == selectedId then
                                     shouldInclude = true
                                     break
                                 end
