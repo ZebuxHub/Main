@@ -1294,14 +1294,16 @@ local function getEggOptions()
 end
 
 -- Egg selection dropdown
-local eggDropdown = Tabs.PlaceTab:Dropdown({
+local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "Select Eggs to Place",
     Desc = "Choose which egg types to place automatically",
-    Value = eggIdList,
+    Values = eggIdList,
+    Value = {},
     Multi = true,
-    Callback = function(selected)
-        selectedEggTypes = selected
-        placeStatusData.selectedEggs = #selected
+    AllowNone = true,
+    Callback = function(selection)
+        selectedEggTypes = selection
+        placeStatusData.selectedEggs = #selection
         updatePlaceStatusParagraph()
     end
 })
