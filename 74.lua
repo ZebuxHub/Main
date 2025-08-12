@@ -1552,6 +1552,42 @@ local function runAutoPlace()
         task.wait(1)
         return
     end
+    
+    -- Double-check this tile isn't actually occupied by checking PlayerBuiltBlocks
+    local tileCenter = chosenPart.Position
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local distance = (modelPos - tileCenter).Magnitude
+                if distance < 8 then -- If pet is within 8 studs of tile center
+                    print("✗ Tile " .. tileIndex .. " actually occupied by " .. model.Name .. " at distance " .. string.format("%.1f", distance))
+                    takenTiles[tileIndex] = true -- Mark as taken
+                    placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                    -- Try to find another tile
+                    chosenPart = nil
+                    tileIndex = nil
+                    for j = 1, #farmParts do
+                        if not takenTiles[j] then
+                            chosenPart = farmParts[j]
+                            tileIndex = j
+                            print("✓ Found alternative tile " .. j .. " at " .. string.format("(%.0f, %.0f, %.0f)", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z))
+                            break
+                        end
+                    end
+                    if not chosenPart then
+                        print("✗ No alternative tiles available")
+                        placeStatusData.lastAction = "⏸️ All tiles occupied - waiting..."
+                        updatePlaceStatusParagraph()
+                        task.wait(1)
+                        return
+                    end
+                    break
+                end
+            end
+        end
+    end
     local target = chosenPart.Position
     local blockIndCF = CFrame.new(target) -- Use tile center directly
     
@@ -1607,15 +1643,17 @@ local function runAutoPlace()
     
     if success then
         -- Check if pet was actually placed in PlayerBuiltBlocks
-        task.wait(0.1) -- Wait for placement to register
+        task.wait(0.2) -- Wait longer for placement to register
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         local placementConfirmed = false
+        local placedModel = nil
         
         if playerBuiltBlocks then
             -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
             for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
                 if model:IsA("Model") and model.Name == petUID then
                     placementConfirmed = true
+                    placedModel = model
                     break
                 end
             end
@@ -1626,9 +1664,19 @@ local function runAutoPlace()
             local remaining = placeStatusData.remainingEggs or 0
             placeStatusData.lastAction = "✅ Placed PET " .. tostring(petUID) .. " (" .. remaining .. " eggs left)"
             
-            -- Mark this tile as taken immediately
+            -- Mark this tile as taken immediately and remember the placement
             if tileIndex then
                 takenTiles[tileIndex] = true
+                print("✓ Marked tile " .. tileIndex .. " as taken")
+                
+                -- Also check if the placed pet is near this tile and mark it
+                if placedModel then
+                    local modelPos = placedModel:GetPivot().Position
+                    local tileCenter = chosenPart.Position
+                    local distance = (modelPos - tileCenter).Magnitude
+                    print("✓ Pet placed at distance " .. string.format("%.1f", distance) .. " from tile center")
+                end
+                
                 -- Recalculate taken count
                 local newTakenCount = 0
                 for _ in pairs(takenTiles) do
@@ -1637,14 +1685,16 @@ local function runAutoPlace()
                 placeStatusData.takenTiles = newTakenCount
             end
             
-            task.wait(0.02) -- Ultra fast wait time
+            task.wait(0.1) -- Slightly longer wait to ensure placement is stable
         else
             placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
-            task.wait(0.05) -- Try again faster
+            print("✗ Placement verification failed - pet not found in PlayerBuiltBlocks")
+            task.wait(0.2) -- Wait longer on failure
         end
     else
         placeStatusData.lastAction = "❌ Failed to fire placement remote"
-        task.wait(0.05) -- Ultra fast error recovery
+        print("✗ Placement remote failed")
+        task.wait(0.2) -- Wait longer on error
     end
     updatePlaceStatusParagraph()
     
