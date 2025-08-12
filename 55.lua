@@ -1614,56 +1614,7 @@ Tabs.PlaceTab:Input({
     end
 })
 
-Tabs.PlaceTab:Toggle({
-    Title = "Auto Delete",
-    Desc = "Automatically delete slow pets",
-    Value = false,
-    Callback = function(state)
-        autoDeleteEnabled = state
-        if state and not autoDeleteThread then
-            deleteStatusData.totalDeleted = 0
-            autoDeleteThread = task.spawn(function()
-                runAutoDelete()
-                autoDeleteThread = nil
-            end)
-            WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 3 })
-            deleteStatusData.lastAction = "Started"
-            updateDeleteStatusParagraph()
-        elseif (not state) and autoDeleteThread then
-            WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 3 })
-            deleteStatusData.lastAction = "Stopped"
-            updateDeleteStatusParagraph()
-        end
-    end
-})
-
-local deleteStatusParagraph = Tabs.PlaceTab:Paragraph({
-    Title = "Auto Delete Status",
-    Desc = "Ready to delete slow pets",
-    Image = "trash",
-    ImageSize = 18,
-})
-
-local function formatDeleteStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("🗑️ Speed Threshold: %d", deleteStatusData.speedThreshold or 100))
-    table.insert(lines, string.format("❌ Deleted: %d", deleteStatusData.totalDeleted or 0))
-    
-    if deleteStatusData.currentPet then
-        table.insert(lines, string.format("🐾 Current: %s", tostring(deleteStatusData.currentPet)))
-    end
-    
-    table.insert(lines, string.format("🔄 Status: %s", tostring(deleteStatusData.lastAction or "Ready")))
-    return table.concat(lines, "\n")
-end
-
-local function updateDeleteStatusParagraph()
-    if deleteStatusParagraph and deleteStatusParagraph.SetDesc then
-        deleteStatusParagraph:SetDesc(formatDeleteStatusDesc())
-    end
-end
-
--- Auto Delete function
+-- Auto Delete function (define before toggle)
 local function runAutoDelete()
     while autoDeleteEnabled do
         local ok, err = pcall(function()
@@ -1756,6 +1707,55 @@ local function runAutoDelete()
             updateDeleteStatusParagraph()
             task.wait(1)
         end
+    end
+end
+
+Tabs.PlaceTab:Toggle({
+    Title = "Auto Delete",
+    Desc = "Automatically delete slow pets",
+    Value = false,
+    Callback = function(state)
+        autoDeleteEnabled = state
+        if state and not autoDeleteThread then
+            deleteStatusData.totalDeleted = 0
+            autoDeleteThread = task.spawn(function()
+                runAutoDelete()
+                autoDeleteThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 3 })
+            deleteStatusData.lastAction = "Started"
+            updateDeleteStatusParagraph()
+        elseif (not state) and autoDeleteThread then
+            WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 3 })
+            deleteStatusData.lastAction = "Stopped"
+            updateDeleteStatusParagraph()
+        end
+    end
+})
+
+local deleteStatusParagraph = Tabs.PlaceTab:Paragraph({
+    Title = "Auto Delete Status",
+    Desc = "Ready to delete slow pets",
+    Image = "trash",
+    ImageSize = 18,
+})
+
+local function formatDeleteStatusDesc()
+    local lines = {}
+    table.insert(lines, string.format("🗑️ Speed Threshold: %d", deleteStatusData.speedThreshold or 100))
+    table.insert(lines, string.format("❌ Deleted: %d", deleteStatusData.totalDeleted or 0))
+    
+    if deleteStatusData.currentPet then
+        table.insert(lines, string.format("🐾 Current: %s", tostring(deleteStatusData.currentPet)))
+    end
+    
+    table.insert(lines, string.format("🔄 Status: %s", tostring(deleteStatusData.lastAction or "Ready")))
+    return table.concat(lines, "\n")
+end
+
+local function updateDeleteStatusParagraph()
+    if deleteStatusParagraph and deleteStatusParagraph.SetDesc then
+        deleteStatusParagraph:SetDesc(formatDeleteStatusDesc())
     end
 end
 
