@@ -1471,8 +1471,17 @@ local function runAutoPlace()
     end
     
     -- Check each available egg against selected types
-    for _, eggInfo in ipairs(availableEggs) do
+    placeStatusData.lastAction = "Checking " .. #availableEggs .. " available eggs"
+    updatePlaceStatusParagraph()
+    
+    for i, eggInfo in ipairs(availableEggs) do
+        placeStatusData.lastAction = "Checking egg " .. i .. "/" .. #availableEggs .. ": " .. eggInfo.type
+        updatePlaceStatusParagraph()
+        
         if table.find(selectedEggTypes, eggInfo.type) then
+            placeStatusData.lastAction = "✓ Type " .. eggInfo.type .. " matches selection"
+            updatePlaceStatusParagraph()
+            
             -- Find corresponding egg in PlayerBuiltBlocks
             local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
             if playerBuiltBlocks then
@@ -1483,11 +1492,29 @@ local function runAutoPlace()
                         local eggCF = egg:GetAttribute("EggCF")
                         if eggCF then
                             table.insert(validEggs, { uid = eggInfo.uid, cf = eggCF, type = eggInfo.type })
+                            placeStatusData.lastAction = "✓ Added " .. eggInfo.type .. " to valid eggs"
+                            updatePlaceStatusParagraph()
+                        else
+                            placeStatusData.lastAction = "✗ No EggCF for " .. eggInfo.type
+                            updatePlaceStatusParagraph()
                         end
+                    else
+                        placeStatusData.lastAction = "✗ Wrong UserId for " .. eggInfo.type
+                        updatePlaceStatusParagraph()
                     end
+                else
+                    placeStatusData.lastAction = "✗ No model found for " .. eggInfo.uid
+                    updatePlaceStatusParagraph()
                 end
+            else
+                placeStatusData.lastAction = "✗ No PlayerBuiltBlocks found"
+                updatePlaceStatusParagraph()
             end
+        else
+            placeStatusData.lastAction = "✗ Type " .. eggInfo.type .. " not in selection"
+            updatePlaceStatusParagraph()
         end
+        task.wait(0.1) -- Show debug info briefly
     end
     
     if #validEggs == 0 then
