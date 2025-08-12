@@ -1380,6 +1380,14 @@ local tileStateCache = {} -- Cache tile states for performance
 local lastCacheUpdate = 0
 local cacheUpdateInterval = 0.1 -- Update cache every 100ms
 
+-- Error tracking system
+local errorStats = {
+    totalDetections = 0,
+    falsePositives = 0,
+    falseNegatives = 0,
+    corrections = 0
+}
+
 local function isModelAPet(model)
     if not model or not model:IsA("Model") then return false end
     
@@ -1662,9 +1670,55 @@ local function checkTakenTiles(farmParts)
         
         -- Final decision with confidence threshold
         if isTaken and highestConfidence >= 0.7 then -- Only mark as taken if we're 70%+ confident
-            takenTiles[i] = true
-            takenCount = takenCount + 1
-            print(string.format("Tile %d marked as taken: %s (confidence: %.2f)", i, occupancyReason, highestConfidence))
+            -- ERROR CORRECTION: Double-check with stricter validation
+            local finalValidation = false
+            
+            -- Validation 1: Direct model presence check
+            local params = OverlapParams.new()
+            params.RespectCanCollide = false
+            params.FilterType = Enum.RaycastFilterType.Blacklist
+            params.FilterDescendantsInstances = {part}
+            
+            local validationBox = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(12, 12, 12), params)
+            for _, nearbyPart in ipairs(validationBox) do
+                local model = nearbyPart:FindFirstAncestorOfClass("Model")
+                if model and model ~= Players.LocalPlayer.Character and isModelAPet(model) then
+                    -- Check if this is actually a real pet (not a decoration)
+                    if model:GetAttribute("UserId") or model:GetAttribute("PetType") then
+                        finalValidation = true
+                        break
+                    end
+                end
+            end
+            
+            -- Validation 2: Check if pet is actually placed (not just spawned)
+            if finalValidation then
+                local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+                if playerBuiltBlocks then
+                    local foundInPlayerBlocks = false
+                    for _, placedModel in ipairs(playerBuiltBlocks:GetChildren()) do
+                        if placedModel:IsA("Model") and placedModel.Name == model.Name then
+                            foundInPlayerBlocks = true
+                            break
+                        end
+                    end
+                    -- Only count as taken if pet is actually placed
+                    if not foundInPlayerBlocks then
+                        finalValidation = false
+                    end
+                end
+            end
+            
+            -- Only mark as taken if all validations pass
+            errorStats.totalDetections = errorStats.totalDetections + 1
+            if finalValidation then
+                takenTiles[i] = true
+                takenCount = takenCount + 1
+                print(string.format("✓ Tile %d CONFIRMED taken: %s (confidence: %.2f)", i, occupancyReason, highestConfidence))
+            else
+                errorStats.falsePositives = errorStats.falsePositives + 1
+                print(string.format("✗ Tile %d FALSE POSITIVE corrected: %s", i, occupancyReason))
+            end
         end
     end
     
@@ -1677,6 +1731,62 @@ local function checkTakenTiles(farmParts)
         takenCount = takenCount,
         lastUpdate = currentTime
     }
+    
+    -- ERROR CORRECTION: Periodic validation every 5 seconds
+    local validationTime = currentTime % 5 -- Every 5 seconds
+    if validationTime < 0.1 then -- Small window for validation
+        print("🔍 Running periodic validation...")
+        local correctedCount = 0
+        
+        for i, isTaken in pairs(takenTiles) do
+            if isTaken then
+                local part = farmParts[i]
+                local partPos = part.Position
+                
+                -- Re-validate each taken tile
+                local params = OverlapParams.new()
+                params.RespectCanCollide = false
+                local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(12, 12, 12), params)
+                
+                local stillOccupied = false
+                for _, nearbyPart in ipairs(nearbyParts) do
+                    local model = nearbyPart:FindFirstAncestorOfClass("Model")
+                    if model and model ~= Players.LocalPlayer.Character and isModelAPet(model) then
+                        -- Check if pet is actually placed and owned
+                        if model:GetAttribute("UserId") and model:GetAttribute("UserId") == Players.LocalPlayer.UserId then
+                            stillOccupied = true
+                            break
+                        end
+                    end
+                end
+                
+                if not stillOccupied then
+                    takenTiles[i] = false
+                    correctedCount = correctedCount + 1
+                    print(string.format("🔧 CORRECTED: Tile %d is actually free", i))
+                end
+            end
+        end
+        
+        if correctedCount > 0 then
+            errorStats.corrections = errorStats.corrections + correctedCount
+            print(string.format("🔧 Validation complete: Corrected %d false positives", correctedCount))
+            -- Recalculate taken count
+            local newTakenCount = 0
+            for _, isTaken in pairs(takenTiles) do
+                if isTaken then newTakenCount = newTakenCount + 1 end
+            end
+            placeStatusData.takenTiles = newTakenCount
+        end
+        
+        -- Report error rate every 30 seconds
+        local reportTime = currentTime % 30
+        if reportTime < 0.1 and errorStats.totalDetections > 0 then
+            local errorRate = (errorStats.falsePositives / errorStats.totalDetections) * 100
+            print(string.format("📊 ERROR RATE: %.2f%% (%d/%d false positives, %d corrections)", 
+                errorRate, errorStats.falsePositives, errorStats.totalDetections, errorStats.corrections))
+        end
+    end
 end
 
 local function runAutoPlace()
