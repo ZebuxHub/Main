@@ -1238,13 +1238,75 @@ local placeStatusData = {
     validationStatus = nil,
 }
 
+Tabs.PlaceTab:Section({ Title = "Egg Selection", Icon = "egg" })
+
+-- Load egg configuration for dropdown
+local eggConfig = nil
+local selectedEggTypes = {}
+
+local function loadEggConfig()
+    if not eggConfig then
+        local success, result = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResEgg"))
+        end)
+        if success then
+            eggConfig = result
+        end
+    end
+    return eggConfig
+end
+
+local function buildEggTypeList()
+    local config = loadEggConfig()
+    if not config then return {} end
+    
+    local eggTypes = {}
+    for id, data in pairs(config) do
+        if type(id) == "string" and not string.match(id, "^_") and id ~= "_index" and id ~= "__index" then
+            local eggType = data.Type or data.Name or id
+            table.insert(eggTypes, { id = id, type = eggType })
+        end
+    end
+    
+    table.sort(eggTypes, function(a, b) return a.type < b.type end)
+    return eggTypes
+end
+
+-- Create egg type dropdown
+local eggTypeDropdown = Tabs.PlaceTab:Dropdown({
+    Title = "Egg Types to Place",
+    Desc = "Select which egg types to place (multiple selection)",
+    Options = {},
+    Multi = true,
+    Callback = function(selected)
+        selectedEggTypes = selected
+        placeStatusData.lastAction = "Selected " .. #selected .. " egg types"
+        updatePlaceStatusParagraph()
+    end
+})
+
+-- Update dropdown options
+local function updateEggTypeDropdown()
+    local eggTypes = buildEggTypeList()
+    local options = {}
+    for _, egg in ipairs(eggTypes) do
+        table.insert(options, egg.type)
+    end
+    eggTypeDropdown:SetOptions(options)
+end
+
+-- Initialize dropdown
+updateEggTypeDropdown()
+
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
 Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
-        "1) Turn on 'Auto Place'.",
-        "2) The script walks to tiles and looks for BlockInd.",
-        "3) When BlockInd appears, it holds 2 and places.",
+        "1) Select egg types from dropdown above.",
+        "2) Turn on 'Auto Place'.",
+        "3) The script places only selected egg types.",
+        "4) It walks to tiles and looks for BlockInd.",
+        "5) When BlockInd appears, it holds 2 and places.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
@@ -1268,6 +1330,10 @@ local function formatPlaceStatusDesc()
         table.insert(lines, string.format("🥚 Current: %s | 📊 Left: %d", 
             tostring(placeStatusData.petUID), 
             placeStatusData.remainingEggs or 0))
+    end
+    
+    if #selectedEggTypes > 0 then
+        table.insert(lines, string.format("🎯 Filter: %s", table.concat(selectedEggTypes, ", ")))
     end
     
     if placeStatusData.lastPosition then
@@ -1388,18 +1454,36 @@ local function runAutoPlace()
         return
     end
     
-    -- Find eggs in PlayerBuiltBlocks that match player's UserId
+    -- Find eggs in PlayerBuiltBlocks that match player's UserId and selected types
     local playerUserId = Players.LocalPlayer.UserId
     local validEggs = {}
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    
     if playerBuiltBlocks then
         for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
             if egg:IsA("Model") then
                 local eggUserId = egg:GetAttribute("UserId")
                 if eggUserId and tonumber(eggUserId) == playerUserId then
-                    local eggCF = egg:GetAttribute("EggCF")
-                    if eggCF then
-                        table.insert(validEggs, { uid = egg.Name, cf = eggCF })
+                    -- Check if egg type matches selected types
+                    local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg:GetAttribute("Name")
+                    local shouldInclude = true
+                    
+                    -- If egg types are selected, filter by them
+                    if #selectedEggTypes > 0 then
+                        shouldInclude = false
+                        for _, selectedType in ipairs(selectedEggTypes) do
+                            if eggType and string.lower(eggType) == string.lower(selectedType) then
+                                shouldInclude = true
+                                break
+                            end
+                        end
+                    end
+                    
+                    if shouldInclude then
+                        local eggCF = egg:GetAttribute("EggCF")
+                        if eggCF then
+                            table.insert(validEggs, { uid = egg.Name, cf = eggCF, type = eggType })
+                        end
                     end
                 end
             end
@@ -1407,7 +1491,11 @@ local function runAutoPlace()
     end
     
     if #validEggs == 0 then
-        placeStatusData.lastAction = "No owned eggs found in PlayerBuiltBlocks"
+        if #selectedEggTypes > 0 then
+            placeStatusData.lastAction = "No " .. table.concat(selectedEggTypes, "/") .. " eggs found"
+        else
+            placeStatusData.lastAction = "No owned eggs found in PlayerBuiltBlocks"
+        end
         updatePlaceStatusParagraph()
         task.wait(0.2) -- Faster wait
         return
@@ -2735,4 +2823,3 @@ Tabs.FruitTab:Toggle({
         fruitOnlyIfZero = state
     end
 })
-
