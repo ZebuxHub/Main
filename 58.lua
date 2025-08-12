@@ -1681,7 +1681,9 @@ local function runAutoDelete()
                             if idleGUI then
                                 local speedText = idleGUI:FindFirstChild("Speed")
                                 if speedText and speedText:IsA("TextLabel") then
-                                    local speedValue = tonumber(speedText.Text)
+                                    -- Parse speed from format like "$100/s"
+                                    local speedTextValue = speedText.Text
+                                    local speedValue = tonumber(string.match(speedTextValue, "%d+"))
                                     if speedValue and speedValue < deleteSpeedThreshold then
                                         table.insert(petsToDelete, {
                                             name = pet.Name,
