@@ -1307,17 +1307,44 @@ local function runAutoPlace()
                 return
             end
             
-            -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
-            local availableUids = listAvailableEggUIDs()
-            if #availableUids == 0 then
-                placeStatusData.lastAction = "No available eggs to place"
-                updatePlaceStatusParagraph()
-                task.wait(0.8)
-                return
+                -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
+    local availableUids = listAvailableEggUIDs()
+    if #availableUids == 0 then
+        placeStatusData.lastAction = "No available eggs to place"
+        updatePlaceStatusParagraph()
+        task.wait(0.8)
+        return
+    end
+    
+    -- Find eggs in PlayerBuiltBlocks that match player's UserId
+    local playerUserId = Players.LocalPlayer.UserId
+    local validEggs = {}
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
+            if egg:IsA("Model") then
+                local eggUserId = egg:GetAttribute("UserId")
+                if eggUserId and tonumber(eggUserId) == playerUserId then
+                    local eggCF = egg:GetAttribute("EggCF")
+                    if eggCF then
+                        table.insert(validEggs, { uid = egg.Name, cf = eggCF })
+                    end
+                end
             end
-            -- Use the first available UID for placement
-            local petUID = availableUids[1]
-            placeStatusData.petUID = petUID
+        end
+    end
+    
+    if #validEggs == 0 then
+        placeStatusData.lastAction = "No owned eggs found in PlayerBuiltBlocks"
+        updatePlaceStatusParagraph()
+        task.wait(0.8)
+        return
+    end
+    
+    -- Use the first valid egg
+    local selectedEgg = validEggs[1]
+    local petUID = selectedEgg.uid
+    placeStatusData.petUID = petUID
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -1405,7 +1432,7 @@ local function runAutoPlace()
                 else
                     placeStatusData.lastAction = "No BlockInd, tile not available"
                     updatePlaceStatusParagraph()
-                    task.wait(0.2)
+                    task.wait(0.1) -- Faster scanning
                 end
             else
                 -- Fallback: try simple movement
@@ -1416,7 +1443,7 @@ local function runAutoPlace()
                     local hrp = char:FindFirstChild("HumanoidRootPart")
                     if hrp then
                         hrp.CFrame = CFrame.new(target)
-                        task.wait(0.5)
+                        task.wait(0.2) -- Faster teleport wait
                         -- Check for BlockInd after teleport
                         local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
                         if blockInd and blockInd:IsA("BasePart") then
@@ -1432,35 +1459,46 @@ local function runAutoPlace()
     if not chosenPart or not blockIndCF then
         placeStatusData.lastAction = "No available tiles found"
         updatePlaceStatusParagraph()
-        task.wait(0.4)
+        task.wait(0.2) -- Faster wait time
         return
     end
-    placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
-    placeStatusData.lastAction = "Placing at BlockInd position"
+    
+    -- Calculate placement position 6 studs below BlockInd
+    local placementPos = Vector3.new(
+        blockIndCF.Position.X,
+        blockIndCF.Position.Y - 6, -- 6 studs below BlockInd
+        blockIndCF.Position.Z
+    )
+    
+    placeStatusData.lastPosition = string.format("BlockInd: (%.1f, %.1f, %.1f) -> Place: (%.1f, %.1f, %.1f)", 
+        blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z,
+        placementPos.X, placementPos.Y, placementPos.Z)
+    placeStatusData.lastAction = "Placing 6 studs below BlockInd"
     updatePlaceStatusParagraph()
 
-    -- Press inventory key '2' to hold egg before placing
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    end)
-    task.wait(0.1) -- Give more time for egg to be held
-    -- Fire using BlockInd CFrame
+    -- Press "2" to hold egg before placing (faster and more reliable)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+    task.wait(0.05) -- Much faster response time
+    
     local args = {
         "Place",
         {
-            DST = vector.create(blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z),
+            DST = vector.create(placementPos.X, placementPos.Y, placementPos.Z),
             ID = petUID
         }
     }
+    
     local success = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
+    
     if success then
         placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
         placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
+        task.wait(0.1) -- Much faster wait time
     else
         placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
+        task.wait(0.2) -- Faster error recovery
     end
     updatePlaceStatusParagraph()
     
