@@ -1471,26 +1471,27 @@ local function runAutoPlace()
     end
     
     -- Check each available egg against selected types
-    placeStatusData.lastAction = "Checking " .. #availableEggs .. " available eggs"
-    updatePlaceStatusParagraph()
+    print("=== AUTO PLACE DEBUG ===")
+    print("Available eggs found: " .. #availableEggs)
+    print("Selected egg types: " .. table.concat(selectedEggTypes, ", "))
     
     for i, eggInfo in ipairs(availableEggs) do
-        placeStatusData.lastAction = "Checking egg " .. i .. "/" .. #availableEggs .. ": " .. eggInfo.type
-        updatePlaceStatusParagraph()
+        print("Checking egg " .. i .. "/" .. #availableEggs .. ": " .. eggInfo.type)
         
         if table.find(selectedEggTypes, eggInfo.type) then
-            placeStatusData.lastAction = "✓ Type " .. eggInfo.type .. " matches selection"
-            updatePlaceStatusParagraph()
+            print("✓ Type " .. eggInfo.type .. " matches selection")
             
             -- Add to valid eggs (eggs from PlayerGui.Data.Egg are ready to place)
             table.insert(validEggs, { uid = eggInfo.uid, type = eggInfo.type })
-            placeStatusData.lastAction = "✓ Added " .. eggInfo.type .. " to valid eggs"
-            updatePlaceStatusParagraph()
+            print("✓ Added " .. eggInfo.type .. " to valid eggs")
         else
-            placeStatusData.lastAction = "✗ Type " .. eggInfo.type .. " not in selection"
-            updatePlaceStatusParagraph()
+            print("✗ Type " .. eggInfo.type .. " not in selection")
         end
-        task.wait(0.1) -- Show debug info briefly
+    end
+    
+    print("Valid eggs found: " .. #validEggs)
+    for i, egg in ipairs(validEggs) do
+        print("  " .. i .. ". " .. egg.type .. " (UID: " .. egg.uid .. ")")
     end
     
     if #validEggs == 0 then
@@ -1506,27 +1507,28 @@ local function runAutoPlace()
     placeStatusData.petUID = petUID
     placeStatusData.remainingEggs = #validEggs -- Track remaining eggs
     
-    placeStatusData.lastAction = "Selected egg: " .. petUID .. " (Type: " .. selectedEgg.type .. ")"
-    updatePlaceStatusParagraph()
+    print("Selected egg: " .. petUID .. " (Type: " .. selectedEgg.type .. ")")
     
     -- Equip egg to Deploy S2
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
     if deploy then
         deploy:SetAttribute("S2", petUID)
-        placeStatusData.lastAction = "Equipped " .. petUID .. " to S2"
-        updatePlaceStatusParagraph()
+        print("✓ Equipped " .. petUID .. " to S2")
+    else
+        print("✗ Deploy folder not found!")
     end
     
     -- Press key 2 to hold the egg
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
     task.wait(0.1)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    placeStatusData.lastAction = "Pressed 2 to hold " .. petUID
-    updatePlaceStatusParagraph()
+    print("✓ Pressed 2 to hold " .. petUID)
     task.wait(0.2)
             
     -- Check which tiles are taken (only every 2 seconds for performance)
     checkTakenTiles(farmParts)
+    print("Farm parts found: " .. #farmParts)
+    print("Taken tiles: " .. (placeStatusData.takenTiles or 0))
     
     -- Find first available tile (not taken)
     local chosenPart = nil
@@ -1537,12 +1539,14 @@ local function runAutoPlace()
         if not takenTiles[i] then
             chosenPart = farmParts[i]
             tileIndex = i
+            print("✓ Found available tile " .. i .. " at " .. string.format("(%.0f, %.0f, %.0f)", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z))
             break
         end
     end
     
     -- If all tiles are taken, wait
     if not chosenPart then
+        print("✗ All tiles occupied - waiting...")
         placeStatusData.lastAction = "⏸️ All tiles occupied - waiting..."
         updatePlaceStatusParagraph()
         task.wait(1)
@@ -1589,12 +1593,17 @@ local function runAutoPlace()
         }
     }
     
-    placeStatusData.lastAction = "Firing placement for " .. petUID
-    updatePlaceStatusParagraph()
+    print("Firing placement for " .. petUID .. " at " .. string.format("(%.0f, %.0f, %.0f)", placementPos.X, placementPos.Y, placementPos.Z))
     
     local success = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
+    
+    if success then
+        print("✓ Placement remote fired successfully")
+    else
+        print("✗ Placement remote failed!")
+    end
     
     if success then
         -- Check if pet was actually placed in PlayerBuiltBlocks
