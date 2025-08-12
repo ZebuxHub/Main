@@ -353,6 +353,32 @@ local function getPetModelsOverlappingTile(farmPart)
     return models
 end
 
+-- Get all placed pet pivots from workspace.Pets
+local function getPlacedPetPivots()
+    local pivots = {}
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then return pivots end
+    for _, m in ipairs(petsFolder:GetChildren()) do
+        if m:IsA("Model") then
+            local ok, cf = pcall(function() return m:GetPivot() end)
+            if ok and cf then table.insert(pivots, cf.Position) end
+        end
+    end
+    return pivots
+end
+
+local function isTileNearAnyPivot(farmPart, pivots, maxDistance)
+    if not farmPart or not farmPart:IsA("BasePart") then return true end
+    local pos = farmPart.Position
+    local threshold = maxDistance or 1
+    for _, p in ipairs(pivots or {}) do
+        if (p - pos).Magnitude <= threshold then
+            return true
+        end
+    end
+    return false
+end
+
 local function isFarmTileOccupied(farmPart, minDistance)
     minDistance = minDistance or 6
     local center = getTileCenterPosition(farmPart)
@@ -1333,68 +1359,37 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- New logic: walk to each farm tile and use BlockInd to confirm availability
-    local minSpacing = 8
-    local me = getPlayerRootPosition() or Vector3.new()
-    table.sort(farmParts, function(a, b)
-        return (a.Position - me).Magnitude < (b.Position - me).Magnitude
-    end)
-    local chosenPart, blockIndCF
-    for _, part in ipairs(farmParts) do
-        -- Walk near the part and wait for BlockInd
-        placeStatusData.lastAction = "Walking to tile"
-        updatePlaceStatusParagraph()
-        local target = part.Position + Vector3.new(0, 2, 0)
-        pcall(function()
-            local char = Players.LocalPlayer.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then hum:MoveTo(target) hum.MoveToFinished:Wait(2) end
+            -- New logic: choose a farm tile that has no nearby pet (<=1 stud) and place directly
+            local me = getPlayerRootPosition() or Vector3.new()
+            table.sort(farmParts, function(a, b)
+                return (a.Position - me).Magnitude < (b.Position - me).Magnitude
+            end)
+            local pivots = getPlacedPetPivots()
+            local chosenPart
+            for _, part in ipairs(farmParts) do
+                if not isTileNearAnyPivot(part, pivots, 1) then
+                    chosenPart = part
+                    break
+                end
             end
-        end)
-        local found = false
-        local deadline = os.clock() + 1.2
-        while os.clock() < deadline do
-            local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
-            if blockInd and blockInd:IsA("BasePart") then
-                blockIndCF = blockInd.CFrame
-                found = true
-                break
+            if not chosenPart then
+                placeStatusData.lastAction = "All tiles have a pet within 1 stud"
+                updatePlaceStatusParagraph()
+                task.wait(0.5)
+                return
             end
-            task.wait(0.05)
-        end
-        if found then
-            chosenPart = part
-            break
-        end
-    end
-    if not chosenPart or not blockIndCF then
-        placeStatusData.lastAction = "No available tile (no BlockInd)"
-        updatePlaceStatusParagraph()
-        task.wait(0.4)
-        return
-    end
-    placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
-    placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at BlockInd"
-    updatePlaceStatusParagraph()
+            local pos = chosenPart.Position
+            placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", pos.X, pos.Y, pos.Z)
+            placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at tile"
+            updatePlaceStatusParagraph()
 
-    -- Press inventory key '2' to hold egg before placing
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    end)
-    task.wait(0.05)
-    -- Fire using BlockInd CFrame
-    local args = {
-        "Place",
-        {
-            DST = vector.create(blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z),
-            ID = petUID
-        }
-    }
-    local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
+            -- Press inventory key '2' to hold egg before placing
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+            end)
+            task.wait(0.05)
+            local success = placePetAtPart(chosenPart, petUID)
             if success then
                 placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
                 placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
