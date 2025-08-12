@@ -1283,14 +1283,43 @@ local function populateEggDropdown()
         end
         table.sort(eggOptions)
         eggDropdown:SetOptions(eggOptions)
+        print("Egg dropdown populated with " .. #eggOptions .. " options")
+    else
+        print("Failed to load egg config")
+        -- Fallback: try to get eggs from PlayerBuiltBlocks
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            local eggOptions = {}
+            for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
+                if egg:IsA("Model") then
+                    local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg:GetAttribute("Name")
+                    if eggType and not table.find(eggOptions, eggType) then
+                        table.insert(eggOptions, eggType)
+                    end
+                end
+            end
+            table.sort(eggOptions)
+            eggDropdown:SetOptions(eggOptions)
+            print("Egg dropdown populated from PlayerBuiltBlocks with " .. #eggOptions .. " options")
+        end
     end
 end
 
 -- Populate dropdown when script starts
 task.spawn(function()
-    task.wait(1) -- Wait for game to load
+    task.wait(2) -- Wait longer for game to load
     populateEggDropdown()
 end)
+
+-- Manual refresh button
+Tabs.PlaceTab:Button({
+    Title = "Refresh Egg List",
+    Desc = "Manually refresh the egg dropdown if it's empty",
+    Callback = function()
+        populateEggDropdown()
+        WindUI:Notify({ Title = "Egg List", Content = "Refreshed egg dropdown", Duration = 3 })
+    end
+})
 
 local function formatPlaceStatusDesc()
     local lines = {}
