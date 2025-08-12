@@ -1441,6 +1441,42 @@ local function getModelPosition(model)
     return Vector3.new(0, 0, 0)
 end
 
+local function getModelSize(model)
+    -- Get the actual size of the pet model
+    local modelSize = model:GetAttribute("ModelSize")
+    if modelSize then
+        -- ModelSize is usually a Vector3 or number
+        if typeof(modelSize) == "Vector3" then
+            return modelSize
+        elseif typeof(modelSize) == "number" then
+            return Vector3.new(modelSize, modelSize, modelSize)
+        end
+    end
+    
+    -- Fallback: calculate size from model bounds
+    local ok, size = pcall(function()
+        return model:GetExtentsSize()
+    end)
+    if ok and size then
+        return size
+    end
+    
+    -- Default size if we can't determine
+    return Vector3.new(4, 4, 4) -- Default pet size
+end
+
+local function calculateOccupancyRadius(model, baseRadius)
+    -- Calculate dynamic occupancy radius based on pet size
+    local modelSize = getModelSize(model)
+    local maxDimension = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+    
+    -- Base radius (8 studs) + half the pet's largest dimension
+    local dynamicRadius = baseRadius + (maxDimension / 2)
+    
+    -- Clamp to reasonable limits (4-20 studs)
+    return math.clamp(dynamicRadius, 4, 20)
+end
+
 local function checkTakenTiles(farmParts)
     local currentTime = tick()
     
@@ -1527,36 +1563,50 @@ local function checkTakenTiles(farmParts)
         local occupancyReason = ""
         local highestConfidence = 0
         
-        -- Method 1: Distance-based detection with confidence scoring
+        -- Method 1: Distance-based detection with dynamic pet size consideration
         for _, petInfo in ipairs(allPetModels) do
             local distance = (petInfo.pos - partPos).Magnitude
             
-            -- Dynamic distance threshold based on confidence
-            local threshold = 8 + (1 - petInfo.confidence) * 4 -- 8-12 studs based on confidence
+            -- Calculate dynamic threshold based on pet size AND confidence
+            local baseRadius = 8 -- Base tile size
+            local dynamicRadius = calculateOccupancyRadius(petInfo.model, baseRadius)
+            local confidenceMultiplier = 0.8 + (petInfo.confidence * 0.4) -- 0.8-1.2x multiplier
+            local finalThreshold = dynamicRadius * confidenceMultiplier
             
-            if distance < threshold then
+            if distance < finalThreshold then
+                local modelSize = getModelSize(petInfo.model)
                 isTaken = true
-                occupancyReason = string.format("%s (%.1f studs, %.1f conf)", petInfo.source, distance, petInfo.confidence)
+                occupancyReason = string.format("%s (%.1f studs, size: %.0fx%.0fx%.0f, %.1f conf)", 
+                    petInfo.source, distance, modelSize.X, modelSize.Y, modelSize.Z, petInfo.confidence)
                 highestConfidence = math.max(highestConfidence, petInfo.confidence)
             end
         end
         
-        -- Method 2: Physics-based overlap detection (backup)
+        -- Method 2: Physics-based overlap detection with dynamic sizing
         if not isTaken then
+            -- Check for any pets in the area with dynamic box sizing
             local params = OverlapParams.new()
             params.RespectCanCollide = false
             params.FilterType = Enum.RaycastFilterType.Blacklist
             params.FilterDescendantsInstances = {part} -- Exclude the tile itself
             
-            local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(10, 10, 10), params)
+            -- Use larger detection box to account for big pets
+            local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(16, 16, 16), params)
             
             for _, nearbyPart in ipairs(nearbyParts) do
                 local model = nearbyPart:FindFirstAncestorOfClass("Model")
                 if model and model ~= Players.LocalPlayer.Character and isModelAPet(model) then
-                    isTaken = true
-                    occupancyReason = string.format("Overlap: %s", model.Name)
-                    highestConfidence = math.max(highestConfidence, 0.85)
-                    break
+                    local modelSize = getModelSize(model)
+                    local distance = (getModelPosition(model) - partPos).Magnitude
+                    local dynamicRadius = calculateOccupancyRadius(model, 8)
+                    
+                    if distance < dynamicRadius then
+                        isTaken = true
+                        occupancyReason = string.format("Overlap: %s (size: %.0fx%.0fx%.0f, %.1f studs)", 
+                            model.Name, modelSize.X, modelSize.Y, modelSize.Z, distance)
+                        highestConfidence = math.max(highestConfidence, 0.85)
+                        break
+                    end
                 end
             end
         end
@@ -1567,7 +1617,7 @@ local function checkTakenTiles(farmParts)
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             raycastParams.FilterDescendantsInstances = {part}
             
-            -- Cast rays in multiple directions from tile center
+            -- Cast rays in multiple directions from tile center with dynamic range
             local rayDirections = {
                 Vector3.new(0, 1, 0),   -- Up
                 Vector3.new(0, -1, 0),  -- Down
@@ -1578,14 +1628,23 @@ local function checkTakenTiles(farmParts)
             }
             
             for _, direction in ipairs(rayDirections) do
-                local raycastResult = workspace:Raycast(partPos, direction * 6, raycastParams)
+                -- Use dynamic raycast range based on potential pet sizes
+                local raycastRange = 12 -- Increased range for big pets
+                local raycastResult = workspace:Raycast(partPos, direction * raycastRange, raycastParams)
                 if raycastResult then
                     local hitModel = raycastResult.Instance:FindFirstAncestorOfClass("Model")
                     if hitModel and hitModel ~= Players.LocalPlayer.Character and isModelAPet(hitModel) then
-                        isTaken = true
-                        occupancyReason = string.format("Raycast: %s", hitModel.Name)
-                        highestConfidence = math.max(highestConfidence, 0.9)
-                        break
+                        local modelSize = getModelSize(hitModel)
+                        local distance = raycastResult.Distance
+                        local dynamicRadius = calculateOccupancyRadius(hitModel, 8)
+                        
+                        if distance < dynamicRadius then
+                            isTaken = true
+                            occupancyReason = string.format("Raycast: %s (size: %.0fx%.0fx%.0f, %.1f studs)", 
+                                hitModel.Name, modelSize.X, modelSize.Y, modelSize.Z, distance)
+                            highestConfidence = math.max(highestConfidence, 0.9)
+                            break
+                        end
                     end
                 end
             end
