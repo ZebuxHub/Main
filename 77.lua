@@ -1632,9 +1632,43 @@ local function runAutoPlace()
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(target)
-            task.wait(0.02) -- Ultra fast teleport
+            task.wait(0.1) -- Wait a bit for teleport to complete
         end
     end
+    
+    -- FINAL VALIDATION: Small radius check at tile center
+    print("🔍 Final validation: Checking small radius at tile " .. tileIndex)
+    local finalCheck = false
+    local params = OverlapParams.new()
+    params.RespectCanCollide = false
+    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(target), Vector3.new(4, 4, 4), params)
+    
+    for _, nearbyPart in ipairs(nearbyParts) do
+        if nearbyPart ~= chosenPart then
+            local model = nearbyPart:FindFirstAncestorOfClass("Model")
+            if model and model ~= Players.LocalPlayer.Character then
+                -- Check if it's a pet by looking for specific attributes or tags
+                if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
+                   model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
+                    print("✗ Final check FAILED: Found model " .. model.Name .. " at tile " .. tileIndex)
+                    takenTiles[tileIndex] = true -- Mark as taken
+                    placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                    finalCheck = true
+                    break
+                end
+            end
+        end
+    end
+    
+    if finalCheck then
+        print("✗ Tile " .. tileIndex .. " failed final validation - skipping")
+        placeStatusData.lastAction = "Tile failed final validation"
+        updatePlaceStatusParagraph()
+        task.wait(0.1)
+        return -- Skip this tile and try next one
+    end
+    
+    print("✓ Final validation PASSED: Tile " .. tileIndex .. " is clear for placement")
     if not chosenPart or not blockIndCF then
         placeStatusData.lastAction = "No available tiles found"
         updatePlaceStatusParagraph()
