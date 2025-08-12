@@ -1505,20 +1505,25 @@ local function runAutoPlace()
     local petUID = selectedEgg.uid
     placeStatusData.petUID = petUID
     placeStatusData.remainingEggs = #validEggs -- Track remaining eggs
-            
-            -- Enhanced pet validation and info gathering
-            local isValid, validationMsg = validatePetUID(petUID)
-            placeStatusData.validationStatus = validationMsg
-            
-            if not isValid then
-                placeStatusData.lastAction = "PET UID validation failed: " .. validationMsg
-                updatePlaceStatusParagraph()
-                task.wait(0.6)
-                return
-            end
-            
-            -- Get pet information for better status display
-            placeStatusData.petInfo = getPetInfo(petUID)
+    
+    placeStatusData.lastAction = "Selected egg: " .. petUID .. " (Type: " .. selectedEgg.type .. ")"
+    updatePlaceStatusParagraph()
+    
+    -- Equip egg to Deploy S2
+    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+    if deploy then
+        deploy:SetAttribute("S2", petUID)
+        placeStatusData.lastAction = "Equipped " .. petUID .. " to S2"
+        updatePlaceStatusParagraph()
+    end
+    
+    -- Press key 2 to hold the egg
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    placeStatusData.lastAction = "Pressed 2 to hold " .. petUID
+    updatePlaceStatusParagraph()
+    task.wait(0.2)
             
     -- Check which tiles are taken (only every 2 seconds for performance)
     checkTakenTiles(farmParts)
@@ -1575,10 +1580,7 @@ local function runAutoPlace()
     placeStatusData.lastAction = "Placing 6 studs below BlockInd"
     updatePlaceStatusParagraph()
 
-    -- Press "2" to hold egg before placing (faster and more reliable)
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-    task.wait(0.05) -- Much faster response time
-    
+    -- Fire placement remote
     local args = {
         "Place",
         {
@@ -1586,6 +1588,9 @@ local function runAutoPlace()
             ID = petUID
         }
     }
+    
+    placeStatusData.lastAction = "Firing placement for " .. petUID
+    updatePlaceStatusParagraph()
     
     local success = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
