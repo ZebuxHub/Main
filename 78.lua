@@ -1636,13 +1636,27 @@ local function runAutoPlace()
         end
     end
     
-    -- FINAL VALIDATION: Small radius check at tile center
-    print("🔍 Final validation: Checking small radius at tile " .. tileIndex)
+    -- FINAL VALIDATION: 360-degree check around player position
+    print("🔍 Final validation: Checking 360-degree radius around player at tile " .. tileIndex)
     local finalCheck = false
+    
+    -- Get player position (where we actually teleported to)
+    local playerPos = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not playerPos then
+        print("✗ Player position not found")
+        return
+    end
+    
+    local actualPos = playerPos.Position
+    print("📍 Player actual position: " .. string.format("(%.1f, %.1f, %.1f)", actualPos.X, actualPos.Y, actualPos.Z))
+    print("📍 Tile center position: " .. string.format("(%.1f, %.1f, %.1f)", target.X, target.Y, target.Z))
+    
+    -- Check in a larger radius around the player's actual position
     local params = OverlapParams.new()
     params.RespectCanCollide = false
-    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(target), Vector3.new(4, 4, 4), params)
+    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(actualPos), Vector3.new(12, 12, 12), params)
     
+    local foundModels = {}
     for _, nearbyPart in ipairs(nearbyParts) do
         if nearbyPart ~= chosenPart then
             local model = nearbyPart:FindFirstAncestorOfClass("Model")
@@ -1650,19 +1664,34 @@ local function runAutoPlace()
                 -- Check if it's a pet by looking for specific attributes or tags
                 if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
                    model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
-                    print("✗ Final check FAILED: Found model " .. model.Name .. " at tile " .. tileIndex)
-                    takenTiles[tileIndex] = true -- Mark as taken
-                    placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
-                    finalCheck = true
-                    break
+                    local distance = (model:GetPivot().Position - actualPos).Magnitude
+                    table.insert(foundModels, {name = model.Name, distance = distance})
+                    
+                    -- If pet is too close (within 6 studs), mark as taken
+                    if distance < 6 then
+                        print("✗ Final check FAILED: Found model " .. model.Name .. " at distance " .. string.format("%.1f", distance) .. " studs")
+                        takenTiles[tileIndex] = true -- Mark as taken
+                        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                        finalCheck = true
+                    end
                 end
             end
         end
     end
     
+    -- Show all nearby models for debugging
+    if #foundModels > 0 then
+        print("📊 Nearby models found:")
+        for _, modelInfo in ipairs(foundModels) do
+            print("  - " .. modelInfo.name .. " at " .. string.format("%.1f", modelInfo.distance) .. " studs")
+        end
+    else
+        print("📊 No nearby models found")
+    end
+    
     if finalCheck then
-        print("✗ Tile " .. tileIndex .. " failed final validation - skipping")
-        placeStatusData.lastAction = "Tile failed final validation"
+        print("✗ Tile " .. tileIndex .. " failed final validation - too close to existing pets")
+        placeStatusData.lastAction = "Tile failed final validation - too close to pets"
         updatePlaceStatusParagraph()
         task.wait(0.1)
         return -- Skip this tile and try next one
