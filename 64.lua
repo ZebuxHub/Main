@@ -38,9 +38,11 @@ Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "Auto Feed", Icon = "utensils" })
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
--- Fruit auto-buy state (declared early so close handler can reference)
+local function updatePlaceStatusParagraph() end
+-- Auto state variables (declared early so close handler can reference)
 local autoFruitEnabled = false
 local autoFruitThread = nil
+local autoFeedEnabled = false
 
 -- Egg config loader
 local eggConfig = {}
@@ -1257,39 +1259,25 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     ImageSize = 18,
 })
 
--- Egg selection dropdown
-local eggDropdown = Tabs.PlaceTab:Dropdown({
-    Title = "Select Eggs to Place",
-    Desc = "Choose which egg types to place automatically",
-    Options = {}, -- Will be populated with egg types
-    Multi = true,
-    Callback = function(selected)
-        selectedEggTypes = selected
-        placeStatusData.selectedEggs = #selected
-        updatePlaceStatusParagraph()
-    end
-})
-
--- Function to populate egg dropdown
-local function populateEggDropdown()
+-- Function to get egg options
+local function getEggOptions()
+    local eggOptions = {}
+    
+    -- Try to get from ResEgg config first
     local eggConfig = loadEggConfig()
     if eggConfig then
-        local eggOptions = {}
         for id, data in pairs(eggConfig) do
             if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
                 local eggName = data.Type or data.Name or id
                 table.insert(eggOptions, eggName)
             end
         end
-        table.sort(eggOptions)
-        eggDropdown:SetOptions(eggOptions)
-        print("Egg dropdown populated with " .. #eggOptions .. " options")
-    else
-        print("Failed to load egg config")
-        -- Fallback: try to get eggs from PlayerBuiltBlocks
+    end
+    
+    -- Fallback: get from PlayerBuiltBlocks
+    if #eggOptions == 0 then
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
-            local eggOptions = {}
             for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
                 if egg:IsA("Model") then
                     local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg:GetAttribute("Name")
@@ -1298,26 +1286,33 @@ local function populateEggDropdown()
                     end
                 end
             end
-            table.sort(eggOptions)
-            eggDropdown:SetOptions(eggOptions)
-            print("Egg dropdown populated from PlayerBuiltBlocks with " .. #eggOptions .. " options")
         end
     end
+    
+    table.sort(eggOptions)
+    return eggOptions
 end
 
--- Populate dropdown when script starts
-task.spawn(function()
-    task.wait(2) -- Wait longer for game to load
-    populateEggDropdown()
-end)
+-- Egg selection dropdown
+local eggDropdown = Tabs.PlaceTab:Dropdown({
+    Title = "Select Eggs to Place",
+    Desc = "Choose which egg types to place automatically",
+    Options = getEggOptions(), -- Get options immediately
+    Multi = true,
+    Callback = function(selected)
+        selectedEggTypes = selected
+        placeStatusData.selectedEggs = #selected
+        updatePlaceStatusParagraph()
+    end
+})
 
 -- Manual refresh button
 Tabs.PlaceTab:Button({
     Title = "Refresh Egg List",
     Desc = "Manually refresh the egg dropdown if it's empty",
     Callback = function()
-        populateEggDropdown()
-        WindUI:Notify({ Title = "Egg List", Content = "Refreshed egg dropdown", Duration = 3 })
+        local newOptions = getEggOptions()
+        WindUI:Notify({ Title = "Egg List", Content = "Found " .. #newOptions .. " egg types", Duration = 3 })
     end
 })
 
