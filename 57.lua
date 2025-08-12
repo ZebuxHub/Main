@@ -1591,7 +1591,7 @@ Tabs.PlaceTab:Toggle({
     end
 })
 
--- Auto Delete variables
+-- Auto Delete functionality
 local autoDeleteEnabled = false
 local autoDeleteThread = nil
 local deleteSpeedThreshold = 100 -- Default speed threshold
@@ -1599,7 +1599,9 @@ local deleteStatusData = {
     totalDeleted = 0,
     lastAction = "Idle",
     currentPet = nil,
-    speedThreshold = 100
+    speedThreshold = 100,
+    scannedPets = 0,
+    slowPetsFound = 0
 }
 
 Tabs.PlaceTab:Section({ Title = "Auto Delete", Icon = "trash" })
@@ -1614,8 +1616,11 @@ local deleteStatusParagraph = Tabs.PlaceTab:Paragraph({
 
 local function formatDeleteStatusDesc()
     local lines = {}
-    table.insert(lines, string.format("🗑️ Speed Threshold: %d", deleteStatusData.speedThreshold or 100))
-    table.insert(lines, string.format("❌ Deleted: %d", deleteStatusData.totalDeleted or 0))
+    table.insert(lines, string.format("⚡ Speed Threshold: %d", deleteStatusData.speedThreshold or 100))
+    table.insert(lines, string.format("🔍 Scanned: %d | 🐌 Slow: %d | ❌ Deleted: %d", 
+        deleteStatusData.scannedPets or 0,
+        deleteStatusData.slowPetsFound or 0,
+        deleteStatusData.totalDeleted or 0))
     
     if deleteStatusData.currentPet then
         table.insert(lines, string.format("🐾 Current: %s", tostring(deleteStatusData.currentPet)))
@@ -1638,10 +1643,11 @@ Tabs.PlaceTab:Input({
     Callback = function(value)
         deleteSpeedThreshold = tonumber(value) or 100
         deleteStatusData.speedThreshold = deleteSpeedThreshold
+        updateDeleteStatusParagraph()
     end
 })
 
--- Auto Delete function (define before toggle)
+-- Auto Delete function
 local function runAutoDelete()
     while autoDeleteEnabled do
         local ok, err = pcall(function()
@@ -1656,10 +1662,15 @@ local function runAutoDelete()
             
             local playerUserId = Players.LocalPlayer.UserId
             local petsToDelete = {}
+            local scannedCount = 0
             
             -- Scan all pets and check their speed
             for _, pet in ipairs(petsFolder:GetChildren()) do
+                if not autoDeleteEnabled then break end
+                
                 if pet:IsA("Model") then
+                    scannedCount = scannedCount + 1
+                    
                     -- Check if pet belongs to player
                     local petUserId = pet:GetAttribute("UserId")
                     if petUserId and tonumber(petUserId) == playerUserId then
@@ -1683,6 +1694,9 @@ local function runAutoDelete()
                     end
                 end
             end
+            
+            deleteStatusData.scannedPets = scannedCount
+            deleteStatusData.slowPetsFound = #petsToDelete
             
             if #petsToDelete == 0 then
                 deleteStatusData.lastAction = "No slow pets found to delete"
@@ -1739,12 +1753,14 @@ end
 
 Tabs.PlaceTab:Toggle({
     Title = "Auto Delete",
-    Desc = "Automatically delete slow pets",
+    Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
     Callback = function(state)
         autoDeleteEnabled = state
         if state and not autoDeleteThread then
             deleteStatusData.totalDeleted = 0
+            deleteStatusData.scannedPets = 0
+            deleteStatusData.slowPetsFound = 0
             autoDeleteThread = task.spawn(function()
                 runAutoDelete()
                 autoDeleteThread = nil
@@ -1761,8 +1777,6 @@ Tabs.PlaceTab:Toggle({
 })
 
 -- Anchor workflow removed (no longer needed)
-
--- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
 -- Close callback
