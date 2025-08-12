@@ -1230,6 +1230,7 @@ local autoPlaceThread = nil
 local placeAnchorPosition = nil
 local anchorRadiusStuds = 50
 local takenTiles = {} -- Remember which tiles are taken
+local triedTiles = {} -- Remember which tiles we already tried this session
 local tileCheckTime = 0 -- Last time we checked tiles
 local selectedEggTypes = {} -- Selected egg types for placement
 
@@ -1530,26 +1531,28 @@ local function runAutoPlace()
     print("Farm parts found: " .. #farmParts)
     print("Taken tiles: " .. (placeStatusData.takenTiles or 0))
     
-    -- Find first available tile (not taken)
+    -- Find first available tile (not taken AND not tried)
     local chosenPart = nil
     local tileIndex = nil
     
-    -- Try sequential placement first
+    -- Try sequential placement first, but skip tiles we already tried
     for i = 1, #farmParts do
-        if not takenTiles[i] then
+        if not takenTiles[i] and not triedTiles[i] then
             chosenPart = farmParts[i]
             tileIndex = i
+            triedTiles[i] = true -- Mark as tried
             print("✓ Found available tile " .. i .. " at " .. string.format("(%.0f, %.0f, %.0f)", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z))
             break
         end
     end
     
-    -- If all tiles are taken, wait
+    -- If no untried tiles available, reset tried tiles and try again
     if not chosenPart then
-        print("✗ All tiles occupied - waiting...")
-        placeStatusData.lastAction = "⏸️ All tiles occupied - waiting..."
+        print("✗ All tiles tried - resetting memory and waiting...")
+        triedTiles = {} -- Reset tried tiles memory
+        placeStatusData.lastAction = "⏸️ All tiles tried - resetting memory"
         updatePlaceStatusParagraph()
-        task.wait(1)
+        task.wait(2) -- Wait longer before retry
         return
     end
     
@@ -1565,22 +1568,24 @@ local function runAutoPlace()
                     print("✗ Tile " .. tileIndex .. " actually occupied by " .. model.Name .. " at distance " .. string.format("%.1f", distance))
                     takenTiles[tileIndex] = true -- Mark as taken
                     placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
-                    -- Try to find another tile
+                    -- Try to find another tile (not taken AND not tried)
                     chosenPart = nil
                     tileIndex = nil
                     for j = 1, #farmParts do
-                        if not takenTiles[j] then
+                        if not takenTiles[j] and not triedTiles[j] then
                             chosenPart = farmParts[j]
                             tileIndex = j
+                            triedTiles[j] = true -- Mark as tried
                             print("✓ Found alternative tile " .. j .. " at " .. string.format("(%.0f, %.0f, %.0f)", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z))
                             break
                         end
                     end
                     if not chosenPart then
                         print("✗ No alternative tiles available")
-                        placeStatusData.lastAction = "⏸️ All tiles occupied - waiting..."
+                        placeStatusData.lastAction = "⏸️ All tiles tried - resetting memory"
                         updatePlaceStatusParagraph()
-                        task.wait(1)
+                        triedTiles = {} -- Reset tried tiles memory
+                        task.wait(2)
                         return
                     end
                     break
@@ -1719,6 +1724,7 @@ Tabs.PlaceTab:Toggle({
         if state and not autoPlaceThread then
             -- Reset counters and memory when starting
             takenTiles = {}
+            triedTiles = {} -- Reset tried tiles memory
             tileCheckTime = 0
             placeStatusData.totalPlaces = countPlacedPets() -- Get actual count
             
