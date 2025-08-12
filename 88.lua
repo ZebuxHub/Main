@@ -1680,24 +1680,26 @@ local function checkTakenTiles(farmParts)
             params.FilterDescendantsInstances = {part}
             
             local validationBox = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(12, 12, 12), params)
+            local foundModel = nil
             for _, nearbyPart in ipairs(validationBox) do
                 local model = nearbyPart:FindFirstAncestorOfClass("Model")
                 if model and model ~= Players.LocalPlayer.Character and isModelAPet(model) then
                     -- Check if this is actually a real pet (not a decoration)
                     if model:GetAttribute("UserId") or model:GetAttribute("PetType") then
                         finalValidation = true
+                        foundModel = model
                         break
                     end
                 end
             end
             
             -- Validation 2: Check if pet is actually placed (not just spawned)
-            if finalValidation then
+            if finalValidation and foundModel then -- Use foundModel instead of model
                 local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
                 if playerBuiltBlocks then
                     local foundInPlayerBlocks = false
                     for _, placedModel in ipairs(playerBuiltBlocks:GetChildren()) do
-                        if placedModel:IsA("Model") and placedModel.Name == model.Name then
+                        if placedModel:IsA("Model") and placedModel.Name and foundModel.Name and placedModel.Name == foundModel.Name then
                             foundInPlayerBlocks = true
                             break
                         end
@@ -1753,7 +1755,8 @@ local function checkTakenTiles(farmParts)
                     local model = nearbyPart:FindFirstAncestorOfClass("Model")
                     if model and model ~= Players.LocalPlayer.Character and isModelAPet(model) then
                         -- Check if pet is actually placed and owned
-                        if model:GetAttribute("UserId") and model:GetAttribute("UserId") == Players.LocalPlayer.UserId then
+                        local userId = model:GetAttribute("UserId")
+                        if userId and tonumber(userId) == Players.LocalPlayer.UserId then
                             stillOccupied = true
                             break
                         end
