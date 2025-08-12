@@ -465,19 +465,6 @@ local function listAvailableEggUIDs()
     return uids
 end
 
--- Build a list of available egg entries with their T attribute (type)
-local function listAvailableEggEntries()
-    local eg = getEggContainer()
-    local entries = {}
-    if not eg then return entries end
-    for _, child in ipairs(eg:GetChildren()) do
-        if #child:GetChildren() == 0 then
-            table.insert(entries, { uid = child.Name, T = child:GetAttribute("T") })
-        end
-    end
-    return entries
-end
-
 -- Enhanced pet validation based on the Pet module
 local function validatePetUID(petUID)
     if not petUID or type(petUID) ~= "string" or petUID == "" then
@@ -1025,34 +1012,6 @@ Tabs.AutoTab:Button({
     end
 })
 
--- Auto Place: dropdown to choose egg Types to place (uses eggIdList mapping like Auto Buy)
-local placeSelectedTypes = {}
-Tabs.PlaceTab:Dropdown({
-    Title = "Egg Types to Place",
-    Desc = "Pick which eggs to place (by Type/ID)",
-    Values = eggIdList,
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selection)
-        placeSelectedTypes = {}
-        local function addTypeFor(idStr)
-            placeSelectedTypes[idStr] = true
-            local mappedType = idToTypeMap[idStr]
-            if mappedType and tostring(mappedType) ~= idStr then
-                placeSelectedTypes[tostring(mappedType)] = true
-            end
-        end
-        if type(selection) == "table" then
-            for _, id in ipairs(selection) do addTypeFor(tostring(id)) end
-        elseif type(selection) == "string" then
-            addTypeFor(tostring(selection))
-        end
-        placeStatusData.lastAction = "Placement types set"
-        updatePlaceStatusParagraph()
-    end
-})
-
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
@@ -1290,7 +1249,7 @@ Tabs.PlaceTab:Paragraph({
 })
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place",
-    Desc = "Walk-to-tile + BlockInd placement (holds selected egg slot)",
+    Desc = "Walk-to-tile + BlockInd placement",
     Image = "map-pin",
     ImageSize = 18,
 })
@@ -1348,36 +1307,16 @@ local function runAutoPlace()
                 return
             end
             
-            -- Determine available eggs (UID + T) and optionally filter by selected types
-            local entries = listAvailableEggEntries()
-            if #entries == 0 then
+            -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
+            local availableUids = listAvailableEggUIDs()
+            if #availableUids == 0 then
                 placeStatusData.lastAction = "No available eggs to place"
                 updatePlaceStatusParagraph()
                 task.wait(0.8)
                 return
             end
-            -- Filter by selected Types if any were chosen
-            local filtered = {}
-            local usingTypes = (placeSelectedTypes and next(placeSelectedTypes) ~= nil)
-            if usingTypes then
-                for _, e in ipairs(entries) do
-                    local t = e.T and tostring(e.T)
-                    -- match on T or UID id fallback
-                    if (t and placeSelectedTypes[t]) or placeSelectedTypes[e.uid] then
-                        table.insert(filtered, e)
-                    end
-                end
-            else
-                filtered = entries
-            end
-            if #filtered == 0 then
-                placeStatusData.lastAction = "No eggs matching dropdown"
-                updatePlaceStatusParagraph()
-                task.wait(0.6)
-                return
-            end
-            -- Choose first matching
-            local petUID = filtered[1].uid
+            -- Use the first available UID for placement
+            local petUID = availableUids[1]
             placeStatusData.petUID = petUID
             
             -- Enhanced pet validation and info gathering
@@ -1394,66 +1333,85 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- New logic: walk to each farm tile and use BlockInd to confirm availability
-    local minSpacing = 8
+    -- Smart placement: check availability first, then walk only to available tiles
     local me = getPlayerRootPosition() or Vector3.new()
-    table.sort(farmParts, function(a, b)
+    local availableTiles = {}
+    
+    -- First pass: quickly check which tiles might be available (no nearby pets)
+    for _, part in ipairs(farmParts) do
+        if not isFarmTileOccupied(part, 8) then
+            table.insert(availableTiles, part)
+        end
+    end
+    
+    if #availableTiles == 0 then
+        placeStatusData.lastAction = "All tiles occupied"
+        updatePlaceStatusParagraph()
+        task.wait(0.8)
+        return
+    end
+    
+    -- Sort by distance to player
+    table.sort(availableTiles, function(a, b)
         return (a.Position - me).Magnitude < (b.Position - me).Magnitude
     end)
+    
     local chosenPart, blockIndCF
-    for _, part in ipairs(farmParts) do
-        -- Walk near the part and wait for BlockInd
-        placeStatusData.lastAction = "Walking to tile"
+    for _, part in ipairs(availableTiles) do
+        placeStatusData.lastAction = "Checking tile availability"
         updatePlaceStatusParagraph()
-        local target = part.Position + Vector3.new(0, 2, 0)
-        -- Keep player constrained to island area by using predefined safe CFrames as anchor points
-        -- If walking fails, we still probe for BlockInd briefly
-        pcall(function()
-            local char = Players.LocalPlayer.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then hum:MoveTo(target) hum.MoveToFinished:Wait(2) end
+        
+        -- Walk close to the tile center
+        local target = part.Position + Vector3.new(0, 1, 0)
+        local char = Players.LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:MoveTo(target)
+                local reached = hum.MoveToFinished:Wait(3)
+                if not reached then
+                    placeStatusData.lastAction = "Failed to reach tile"
+                    updatePlaceStatusParagraph()
+                    task.wait(0.2)
+                    goto continue_tile_check
+                end
             end
-        end)
+        end
+        
+        -- Wait for BlockInd to appear (since we're holding egg and near available tile)
         local found = false
-        local deadline = os.clock() + 1.2
+        local deadline = os.clock() + 2.0  -- Longer wait since we're already near
         while os.clock() < deadline do
             local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
             if blockInd and blockInd:IsA("BasePart") then
-                blockIndCF = blockInd.CFrame
-                found = true
-                break
+                -- Verify BlockInd is near this tile (allows 1-2 studs offset for taken tiles)
+                local dist = (blockInd.Position - part.Position).Magnitude
+                if dist <= 15 then  -- BlockInd can be up to 15 studs from tile center
+                    blockIndCF = blockInd.CFrame
+                    found = true
+                    break
+                end
             end
-            task.wait(0.05)
+            task.wait(0.1)
         end
+        
         if found then
             chosenPart = part
             break
         end
     end
+    
     if not chosenPart or not blockIndCF then
-        placeStatusData.lastAction = "No available tile (no BlockInd)"
+        placeStatusData.lastAction = "No BlockInd found on available tiles"
         updatePlaceStatusParagraph()
-        task.wait(0.4)
+        task.wait(0.6)
         return
     end
+    
     placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
     placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at BlockInd"
     updatePlaceStatusParagraph()
-
-    -- Press key based on Deploy slot where we equip the egg
-    -- Choose a target slot (S2..S8). We'll use S6 by default for eggs.
-    local targetSlot = 6
-    local keycode = keyCodeForDigit(targetSlot)
-    -- Put Egg_Name into the slot before pressing
-    setDeploySlot(targetSlot, tostring(petUID))
-    pcall(function()
-        if keycode then
-            VirtualInputManager:SendKeyEvent(true, keycode, false, game)
-            VirtualInputManager:SendKeyEvent(false, keycode, false, game)
-        end
-    end)
-    task.wait(0.05)
+    
     -- Fire using BlockInd CFrame
     local args = {
         "Place",
@@ -2202,34 +2160,6 @@ local function setDeploySlotS3(itemName)
         if child and child:IsA("ValueBase") then child.Value = itemName end
     end)
     return ok
-end
-
-local function setDeploySlot(slotNumber, itemName)
-    local deploy = getDeployContainer()
-    if not deploy then return false end
-    local key = "S" .. tostring(slotNumber)
-    local ok = pcall(function()
-        deploy:SetAttribute(key, itemName)
-        local child = deploy:FindFirstChild(key)
-        if child and child:IsA("ValueBase") then child.Value = itemName end
-    end)
-    return ok
-end
-
-local function keyCodeForDigit(n)
-    local map = {
-        [1] = Enum.KeyCode.One,
-        [2] = Enum.KeyCode.Two,
-        [3] = Enum.KeyCode.Three,
-        [4] = Enum.KeyCode.Four,
-        [5] = Enum.KeyCode.Five,
-        [6] = Enum.KeyCode.Six,
-        [7] = Enum.KeyCode.Seven,
-        [8] = Enum.KeyCode.Eight,
-        [9] = Enum.KeyCode.Nine,
-        [0] = Enum.KeyCode.Zero,
-    }
-    return map[n]
 end
 
 local function candidateKeysForFruit(fruitName)
