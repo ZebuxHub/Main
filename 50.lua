@@ -1256,15 +1256,18 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
 
 local function formatPlaceStatusDesc()
     local lines = {}
-    table.insert(lines, string.format("Island: %s", tostring(placeStatusData.islandName or "?")))
-    table.insert(lines, string.format("Tiles: %d | Placed: %d", placeStatusData.farmPartsFound or 0, placeStatusData.totalPlaces or 0))
-    if placeAnchorPosition then
-        table.insert(lines, string.format("Anchor: r=%d (%.0f, %.0f, %.0f)", anchorRadiusStuds, placeAnchorPosition.X, placeAnchorPosition.Y, placeAnchorPosition.Z))
+    table.insert(lines, string.format("🏝️ %s | 🏗️ %d tiles | 📊 %d placed", 
+        tostring(placeStatusData.islandName or "?"), 
+        placeStatusData.farmPartsFound or 0, 
+        placeStatusData.totalPlaces or 0))
+    
+    if placeStatusData.petUID then
+        table.insert(lines, string.format("🥚 %s | 📦 %d left", 
+            tostring(placeStatusData.petUID), 
+            placeStatusData.remainingEggs or 0))
     end
-    if placeStatusData.lastPosition then
-        table.insert(lines, "Last: " .. tostring(placeStatusData.lastPosition))
-    end
-    table.insert(lines, "Status: " .. tostring(placeStatusData.lastAction))
+    
+    table.insert(lines, "📋 " .. tostring(placeStatusData.lastAction or "Ready"))
     return table.concat(lines, "\n")
 end
 
@@ -1338,52 +1341,10 @@ local function runAutoPlace()
         return
     end
     
-    -- Check if selected egg types are available (match by Type from ModuleScript)
-    if placeStatusData.selectedEggTypes and #placeStatusData.selectedEggTypes > 0 then
-        local hasSelectedEgg = false
-        local selectedEggUID = nil
-        
-        -- Load egg config to map Type names to UIDs
-        local success, eggConfig = pcall(function()
-            return require(ReplicatedStorage.Config.ResEgg)
-        end)
-        
-        if success and eggConfig then
-            for _, selectedType in ipairs(placeStatusData.selectedEggTypes) do
-                for id, data in pairs(eggConfig) do
-                    if data.Type == selectedType then
-                        -- Check if this egg type is available in inventory
-                        for _, availableEgg in ipairs(availableEggs) do
-                            if availableEgg == id then
-                                hasSelectedEgg = true
-                                selectedEggUID = id
-                                break
-                            end
-                        end
-                        if hasSelectedEgg then break end
-                    end
-                end
-                if hasSelectedEgg then break end
-            end
-        end
-        
-        if not hasSelectedEgg then
-            placeStatusData.lastAction = "⏸️ No selected egg types available - waiting..."
-            updatePlaceStatusParagraph()
-            task.wait(1) -- Wait longer when no selected eggs
-            return
-        end
-        
-        -- Use the selected egg UID
-        local petUID = selectedEggUID
-        placeStatusData.petUID = petUID
-        placeStatusData.remainingEggs = #availableEggs - 1
-    else
-        -- Use first available egg if no selection
-        local petUID = availableEggs[1]
-        placeStatusData.petUID = petUID
-        placeStatusData.remainingEggs = #availableEggs - 1
-    end
+    -- Use first available egg
+    local petUID = availableEggs[1]
+    placeStatusData.petUID = petUID
+    placeStatusData.remainingEggs = #availableEggs - 1
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -1526,53 +1487,6 @@ local function runAutoPlace()
     end
 end
 
--- Egg selection dropdown for Auto Place
-local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-    Title = "Select Eggs to Place",
-    Desc = "Choose which eggs to place (leave empty for all)",
-    Options = {}, -- Will be populated with available eggs
-    Multi = true,
-    Callback = function(selected)
-        placeStatusData.selectedEggTypes = selected
-        updatePlaceStatusParagraph()
-    end
-})
-
--- Function to update dropdown with egg names from ModuleScript (like Auto Buy Egg)
-local function updatePlaceEggDropdown()
-    local eggNames = {}
-    
-    -- Load egg config from ModuleScript
-    local success, eggConfig = pcall(function()
-        return require(ReplicatedStorage.Config.ResEgg)
-    end)
-    
-    if success and eggConfig then
-        for id, data in pairs(eggConfig) do
-            -- Filter out internal keys like _index and __index
-            if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
-                if data.Type then
-                    table.insert(eggNames, data.Type)
-                end
-            end
-        end
-    end
-    
-    -- Sort the names for better organization
-    table.sort(eggNames)
-    placeEggDropdown:SetOptions(eggNames)
-end
-
--- Refresh button for egg dropdown
-Tabs.PlaceTab:Button({
-    Title = "Refresh Egg List",
-    Desc = "Update the list of available eggs",
-    Callback = function()
-        updatePlaceEggDropdown()
-        WindUI:Notify({ Title = "Auto Place", Content = "Egg list refreshed", Duration = 2 })
-    end
-})
-
 Tabs.PlaceTab:Toggle({
     Title = "Auto Place",
     Desc = "Automatically places pets from your inventory at farm locations",
@@ -1590,11 +1504,11 @@ Tabs.PlaceTab:Toggle({
                 autoPlaceThread = nil
             end)
             WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 3 })
-            placeStatusData.lastAction = "🚀 Started Auto Place"
+            placeStatusData.lastAction = "Started"
             updatePlaceStatusParagraph()
         elseif (not state) and autoPlaceThread then
             WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
-            placeStatusData.lastAction = "⏹️ Stopped"
+            placeStatusData.lastAction = "Stopped"
             updatePlaceStatusParagraph()
         end
     end
