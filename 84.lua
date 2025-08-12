@@ -1375,238 +1375,249 @@ local function countPlacedPets()
     return count
 end
 
--- ULTRA FAST: Event-driven spatial grid system
 -- WORLD-CLASS: Multi-layered empty tile detection system
-local tileStateCache = {} -- Cache tile states
-local tileOccupancyMap = {} -- Real-time occupancy tracking
-local tileValidationQueue = {} -- Queue for validation
-local lastValidationTime = 0
+local tileStateCache = {} -- Cache tile states for performance
+local lastCacheUpdate = 0
+local cacheUpdateInterval = 0.1 -- Update cache every 100ms
 
--- Advanced tile state tracking
-local function updateTileStateCache(farmParts)
-    local currentTime = tick()
-    if currentTime - lastValidationTime < 0.1 then return end -- Update every 100ms max
-    lastValidationTime = currentTime
+local function isModelAPet(model)
+    if not model or not model:IsA("Model") then return false end
     
-    tileStateCache = {}
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not playerBuiltBlocks then return end
+    -- Method 1: Check for definitive pet attributes
+    if model:GetAttribute("UserId") then return true end
+    if model:GetAttribute("PetType") then return true end
+    if model:GetAttribute("EggType") then return true end
+    if model:GetAttribute("Type") and string.find(string.lower(model:GetAttribute("Type")), "pet") then return true end
     
-    -- Build comprehensive tile state map
-    for i, part in ipairs(farmParts) do
-        local partPos = part.Position
-        local tileState = {
-            index = i,
-            position = partPos,
-            isOccupied = false,
-            occupancyType = nil, -- "pet", "egg", "block", "unknown"
-            lastChecked = currentTime,
-            confidence = 1.0 -- How sure we are about this tile's state
-        }
-        
-        -- Multi-layered detection
-        local detectionMethods = {
-            -- Method 1: Direct model overlap (most accurate)
-            function()
-                local params = OverlapParams.new()
-                params.RespectCanCollide = false
-                local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(6, 6, 6), params)
-                
-                for _, nearbyPart in ipairs(nearbyParts) do
-                    if nearbyPart ~= part then
-                        local model = nearbyPart:FindFirstAncestorOfClass("Model")
-                        if model and model ~= Players.LocalPlayer.Character then
-                            -- Advanced model classification
-                            if model:GetAttribute("UserId") or model:FindFirstChild("Humanoid") then
-                                tileState.isOccupied = true
-                                tileState.occupancyType = "pet"
-                                tileState.confidence = 0.95
-                                return true
-                            elseif model:GetAttribute("EggType") or model:GetAttribute("Type") then
-                                tileState.isOccupied = true
-                                tileState.occupancyType = "egg"
-                                tileState.confidence = 0.9
-                                return true
-                            elseif model:FindFirstChild("AnimationController") then
-                                tileState.isOccupied = true
-                                tileState.occupancyType = "pet"
-                                tileState.confidence = 0.85
-                                return true
-                            end
-                        end
-                    end
-                end
-                return false
-            end,
-            
-            -- Method 2: PlayerBuiltBlocks verification (authoritative)
-            function()
-                for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                    if model:IsA("Model") then
-                        local modelPos = model:GetPivot().Position
-                        local distance = (modelPos - partPos).Magnitude
-                        if distance < 8 then
-                            tileState.isOccupied = true
-                            tileState.occupancyType = "pet"
-                            tileState.confidence = 1.0 -- Highest confidence
-                            return true
-                        end
-                    end
-                end
-                return false
-            end,
-            
-            -- Method 3: Workspace.Pets verification (backup)
-            function()
-                local petsFolder = workspace:FindFirstChild("Pets")
-                if petsFolder then
-                    for _, model in ipairs(petsFolder:GetChildren()) do
-                        if model:IsA("Model") then
-                            local modelPos = model:GetPivot().Position
-                            local distance = (modelPos - partPos).Magnitude
-                            if distance < 8 then
-                                tileState.isOccupied = true
-                                tileState.occupancyType = "pet"
-                                tileState.confidence = 0.8
-                                return true
-                            end
-                        end
-                    end
-                end
-                return false
-            end
-        }
-        
-        -- Run all detection methods
-        for _, method in ipairs(detectionMethods) do
-            if method() then break end
-        end
-        
-        tileStateCache[i] = tileState
-    end
+    -- Method 2: Check for pet-specific components
+    if model:FindFirstChild("Humanoid") then return true end
+    if model:FindFirstChild("AnimationController") then return true end
+    if model:FindFirstChild("RootPart") and model.RootPart:FindFirstChild("GUI") then return true end
+    
+    -- Method 3: Check for pet-specific tags
+    if CollectionService and CollectionService:HasTag(model, "Pet") then return true end
+    if CollectionService and CollectionService:HasTag(model, "IdleBigPet") then return true end
+    
+    -- Method 4: Check name patterns
+    local lowerName = string.lower(model.Name)
+    if string.find(lowerName, "pet") or string.find(lowerName, "egg") then return true end
+    
+    -- Method 5: Check for pet-specific folders
+    if model:FindFirstChild("GUI") and model.GUI:FindFirstChild("BigPetGUI") then return true end
+    if model:FindFirstChild("GUI") and model.GUI:FindFirstChild("IdleGUI") then return true end
+    
+    return false
 end
 
--- Smart tile selection with confidence scoring
-local function findBestEmptyTile(farmParts, playerPosition)
-    updateTileStateCache(farmParts)
+local function getModelPosition(model)
+    -- Try multiple methods to get accurate position
+    if model.GetPivot then
+        local ok, cf = pcall(function() return model:GetPivot() end)
+        if ok and cf then return cf.Position end
+    end
     
-    local bestTile = nil
-    local bestScore = -math.huge
+    local primaryPart = model.PrimaryPart
+    if primaryPart then return primaryPart.Position end
     
-    for i, tileState in pairs(tileStateCache) do
-        if not tileState.isOccupied and not triedTiles[i] then
-            -- Calculate comprehensive score
-            local distance = (tileState.position - playerPosition).Magnitude
-            local distanceScore = math.max(0, 100 - distance) -- Closer = higher score
-            
-            local confidenceScore = tileState.confidence * 50 -- Higher confidence = higher score
-            
-            local accessibilityScore = 0
-            -- Check if tile is easily accessible (not blocked by walls/obstacles)
-            local params = OverlapParams.new()
-            params.RespectCanCollide = true
-            local obstacles = workspace:GetPartBoundsInBox(CFrame.new(tileState.position), Vector3.new(4, 4, 4), params)
-            if #obstacles <= 1 then -- Only the tile itself
-                accessibilityScore = 25
-            end
-            
-            local totalScore = distanceScore + confidenceScore + accessibilityScore
-            
-            if totalScore > bestScore then
-                bestScore = totalScore
-                bestTile = {
-                    index = i,
-                    part = farmParts[i],
-                    score = totalScore,
-                    distance = distance,
-                    confidence = tileState.confidence
-                }
-            end
+    local rootPart = model:FindFirstChild("RootPart")
+    if rootPart then return rootPart.Position end
+    
+    -- Fallback: calculate center from all parts
+    local parts = {}
+    for _, child in ipairs(model:GetDescendants()) do
+        if child:IsA("BasePart") then
+            table.insert(parts, child)
         end
     end
     
-    return bestTile
-end
-
--- Set up advanced event system
-local function setupAdvancedEvents()
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not playerBuiltBlocks then return end
-    
-    -- Clear old connections
-    for _, conn in ipairs(gridConnections) do
-        pcall(function() conn:Disconnect() end)
+    if #parts > 0 then
+        local totalPos = Vector3.new(0, 0, 0)
+        for _, part in ipairs(parts) do
+            totalPos = totalPos + part.Position
+        end
+        return totalPos / #parts
     end
-    gridConnections = {}
     
-    -- Listen for pet placement events
-    table.insert(gridConnections, playerBuiltBlocks.ChildAdded:Connect(function(child)
-        if child:IsA("Model") then
-            -- Invalidate nearby tiles immediately
-            local childPos = child:GetPivot().Position
-            for i, tileState in pairs(tileStateCache) do
-                local distance = (childPos - tileState.position).Magnitude
-                if distance < 12 then -- Invalidate tiles within 12 studs
-                    tileStateCache[i] = nil -- Force re-check
-                end
-            end
-        end
-    end))
-    
-    -- Listen for pet removal events
-    table.insert(gridConnections, playerBuiltBlocks.ChildRemoved:Connect(function(child)
-        if child:IsA("Model") then
-            -- Invalidate nearby tiles immediately
-            local childPos = child:GetPivot().Position
-            for i, tileState in pairs(tileStateCache) do
-                local distance = (childPos - tileState.position).Magnitude
-                if distance < 12 then -- Invalidate tiles within 12 studs
-                    tileStateCache[i] = nil -- Force re-check
-                end
-            end
-        end
-    end))
+    return Vector3.new(0, 0, 0)
 end
 
 local function checkTakenTiles(farmParts)
-    updateSpatialGrid() -- Update grid if needed
+    local currentTime = tick()
     
-    takenTiles = {}
+    -- Update cache only if needed
+    if currentTime - lastCacheUpdate < cacheUpdateInterval then
+        -- Use cached data but still update counts
+        local takenCount = 0
+        for i, isTaken in pairs(takenTiles) do
+            if isTaken then takenCount = takenCount + 1 end
+        end
+        placeStatusData.takenTiles = takenCount
+        placeStatusData.totalPlaces = countPlacedPets()
+        return
+    end
+    
+    lastCacheUpdate = currentTime
+    takenTiles = {} -- Reset taken tiles
     local takenCount = 0
     
+    -- PHASE 1: Collect ALL possible pet models from multiple sources
+    local allPetModels = {}
+    
+    -- Source 1: PlayerBuiltBlocks (most authoritative)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = getModelPosition(model)
+                table.insert(allPetModels, {
+                    model = model,
+                    pos = modelPos,
+                    source = "PlayerBuiltBlocks",
+                    confidence = 1.0
+                })
+            end
+        end
+    end
+    
+    -- Source 2: Workspace.Pets (backup source)
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if petsFolder then
+        for _, model in ipairs(petsFolder:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = getModelPosition(model)
+                table.insert(allPetModels, {
+                    model = model,
+                    pos = modelPos,
+                    source = "Pets",
+                    confidence = 0.9
+                })
+            end
+        end
+    end
+    
+    -- Source 3: Any model with pet-like characteristics in workspace
+    local function scanForPetModels(parent, maxDepth, currentDepth)
+        if currentDepth > maxDepth then return end
+        
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("Model") and isModelAPet(child) then
+                local modelPos = getModelPosition(child)
+                table.insert(allPetModels, {
+                    model = child,
+                    pos = modelPos,
+                    source = "Scan",
+                    confidence = 0.8
+                })
+            end
+            
+            -- Recursively scan children (but limit depth for performance)
+            if child:IsA("Folder") or child:IsA("Model") then
+                scanForPetModels(child, maxDepth, currentDepth + 1)
+            end
+        end
+    end
+    
+    -- Scan workspace for pet models (limited depth for performance)
+    scanForPetModels(workspace, 3, 0)
+    
+    -- PHASE 2: Advanced tile occupancy detection
     for i, part in ipairs(farmParts) do
         local partPos = part.Position
-        local gridX = math.floor(partPos.X / 64)
-        local gridZ = math.floor(partPos.Z / 64)
-        
-        -- Check only nearby grid cells (3x3 area)
         local isTaken = false
-        for dx = -1, 1 do
-            for dz = -1, 1 do
-                local key = (gridX + dx) .. "," .. (gridZ + dz)
-                local pets = spatialGrid[key]
-                if pets then
-                    for _, petPos in ipairs(pets) do
-                        local distance = (petPos - partPos).Magnitude
-                        if distance < 8 then
-                            isTaken = true
-                            break
-                        end
-                    end
-                    if isTaken then break end
-                end
+        local occupancyReason = ""
+        local highestConfidence = 0
+        
+        -- Method 1: Distance-based detection with confidence scoring
+        for _, petInfo in ipairs(allPetModels) do
+            local distance = (petInfo.pos - partPos).Magnitude
+            
+            -- Dynamic distance threshold based on confidence
+            local threshold = 8 + (1 - petInfo.confidence) * 4 -- 8-12 studs based on confidence
+            
+            if distance < threshold then
+                isTaken = true
+                occupancyReason = string.format("%s (%.1f studs, %.1f conf)", petInfo.source, distance, petInfo.confidence)
+                highestConfidence = math.max(highestConfidence, petInfo.confidence)
             end
-            if isTaken then break end
         end
         
-        if isTaken then
+        -- Method 2: Physics-based overlap detection (backup)
+        if not isTaken then
+            local params = OverlapParams.new()
+            params.RespectCanCollide = false
+            params.FilterType = Enum.RaycastFilterType.Blacklist
+            params.FilterDescendantsInstances = {part} -- Exclude the tile itself
+            
+            local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(10, 10, 10), params)
+            
+            for _, nearbyPart in ipairs(nearbyParts) do
+                local model = nearbyPart:FindFirstAncestorOfClass("Model")
+                if model and model ~= Players.LocalPlayer.Character and isModelAPet(model) then
+                    isTaken = true
+                    occupancyReason = string.format("Overlap: %s", model.Name)
+                    highestConfidence = math.max(highestConfidence, 0.85)
+                    break
+                end
+            end
+        end
+        
+        -- Method 3: Raycast-based detection (for hidden or complex models)
+        if not isTaken then
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            raycastParams.FilterDescendantsInstances = {part}
+            
+            -- Cast rays in multiple directions from tile center
+            local rayDirections = {
+                Vector3.new(0, 1, 0),   -- Up
+                Vector3.new(0, -1, 0),  -- Down
+                Vector3.new(1, 0, 0),   -- Right
+                Vector3.new(-1, 0, 0),  -- Left
+                Vector3.new(0, 0, 1),   -- Forward
+                Vector3.new(0, 0, -1)   -- Back
+            }
+            
+            for _, direction in ipairs(rayDirections) do
+                local raycastResult = workspace:Raycast(partPos, direction * 6, raycastParams)
+                if raycastResult then
+                    local hitModel = raycastResult.Instance:FindFirstAncestorOfClass("Model")
+                    if hitModel and hitModel ~= Players.LocalPlayer.Character and isModelAPet(hitModel) then
+                        isTaken = true
+                        occupancyReason = string.format("Raycast: %s", hitModel.Name)
+                        highestConfidence = math.max(highestConfidence, 0.9)
+                        break
+                    end
+                end
+            end
+        end
+        
+        -- Method 4: Attribute-based detection (for models with specific attributes)
+        if not isTaken then
+            -- Check if the tile itself has attributes indicating it's occupied
+            if part:GetAttribute("Occupied") or part:GetAttribute("HasPet") then
+                isTaken = true
+                occupancyReason = "Tile attribute"
+                highestConfidence = 1.0
+            end
+        end
+        
+        -- Final decision with confidence threshold
+        if isTaken and highestConfidence >= 0.7 then -- Only mark as taken if we're 70%+ confident
             takenTiles[i] = true
             takenCount = takenCount + 1
+            print(string.format("Tile %d marked as taken: %s (confidence: %.2f)", i, occupancyReason, highestConfidence))
         end
     end
     
     placeStatusData.takenTiles = takenCount
-    placeStatusData.totalPlaces = #spatialGrid > 0 and #spatialGrid or 0
+    placeStatusData.totalPlaces = countPlacedPets()
+    
+    -- Cache the results for performance
+    tileStateCache = {
+        takenTiles = table.clone(takenTiles),
+        takenCount = takenCount,
+        lastUpdate = currentTime
+    }
 end
 
 local function runAutoPlace()
@@ -1721,19 +1732,100 @@ local function runAutoPlace()
     print("Farm parts found: " .. #farmParts)
     print("Taken tiles: " .. (placeStatusData.takenTiles or 0))
     
-    -- WORLD-CLASS: Advanced tile selection with confidence scoring
+    -- WORLD-CLASS: Advanced tile selection with multi-factor scoring
+    local chosenPart = nil
+    local tileIndex = nil
+    local bestScore = -math.huge
+    
+    -- Get player position for distance calculations
     local playerPos = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local playerPosition = playerPos and playerPos.Position or Vector3.new()
     
-    local bestTile = findBestEmptyTile(farmParts, playerPosition)
+    -- Score all available tiles
+    for i = 1, #farmParts do
+        if not takenTiles[i] and not triedTiles[i] then
+            local part = farmParts[i]
+            local partPos = part.Position
+            local score = 0
+            
+            -- Factor 1: Distance to player (closer = higher score)
+            local distanceToPlayer = (partPos - playerPosition).Magnitude
+            local distanceScore = math.max(0, 100 - distanceToPlayer * 2) -- 100 points for very close, 0 for far
+            score = score + distanceScore
+            
+            -- Factor 2: Accessibility (check if tile is easily reachable)
+            local accessibilityScore = 0
+            local params = OverlapParams.new()
+            params.RespectCanCollide = true
+            params.FilterType = Enum.RaycastFilterType.Blacklist
+            params.FilterDescendantsInstances = {part}
+            
+            -- Check for obstacles between player and tile
+            local obstacles = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(4, 4, 4), params)
+            if #obstacles <= 1 then -- Only the tile itself
+                accessibilityScore = 50
+            elseif #obstacles <= 3 then
+                accessibilityScore = 25
+            end
+            score = score + accessibilityScore
+            
+            -- Factor 3: Tile quality (prefer certain positions)
+            local qualityScore = 0
+            -- Prefer tiles that are not at the very edge
+            local art = workspace:FindFirstChild("Art")
+            if art then
+                local island = art:FindFirstChild(placeStatusData.islandName or "")
+                if island then
+                    local islandSize = island:GetExtentsSize()
+                    local relativePos = partPos - island.Position
+                    local edgeDistance = math.min(
+                        math.abs(relativePos.X) / (islandSize.X / 2),
+                        math.abs(relativePos.Z) / (islandSize.Z / 2)
+                    )
+                    if edgeDistance < 0.8 then -- Not too close to edge
+                        qualityScore = 30
+                    end
+                end
+            end
+            score = score + qualityScore
+            
+            -- Factor 4: Spacing (prefer tiles with good spacing from other pets)
+            local spacingScore = 0
+            local nearbyPetCount = 0
+            for j = 1, #farmParts do
+                if takenTiles[j] then
+                    local otherPart = farmParts[j]
+                    local distance = (partPos - otherPart.Position).Magnitude
+                    if distance < 16 then -- Within 16 studs
+                        nearbyPetCount = nearbyPetCount + 1
+                    end
+                end
+            end
+            -- Prefer tiles with 1-3 nearby pets (good spacing, not too isolated)
+            if nearbyPetCount >= 1 and nearbyPetCount <= 3 then
+                spacingScore = 40
+            elseif nearbyPetCount == 0 then
+                spacingScore = 20 -- Slightly prefer some spacing
+            end
+            score = score + spacingScore
+            
+            -- Factor 5: Random variation (prevent predictable patterns)
+            local randomScore = math.random(0, 10)
+            score = score + randomScore
+            
+            -- Update best tile if this one scores higher
+            if score > bestScore then
+                bestScore = score
+                chosenPart = part
+                tileIndex = i
+            end
+        end
+    end
     
-    if bestTile then
-        local chosenPart = bestTile.part
-        local tileIndex = bestTile.index
+    if chosenPart then
         triedTiles[tileIndex] = true -- Mark as tried
-        
-        print("✓ Found WORLD-CLASS tile " .. tileIndex .. " at " .. string.format("(%.0f, %.0f, %.0f)", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z))
-        print("  📊 Score: " .. string.format("%.1f", bestTile.score) .. " | Distance: " .. string.format("%.1f", bestTile.distance) .. " | Confidence: " .. string.format("%.2f", bestTile.confidence))
+        print(string.format("✓ Found WORLD-CLASS tile %d at (%.0f, %.0f, %.0f) - Score: %.1f", 
+            tileIndex, chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z, bestScore))
     end
     
     -- If no untried tiles available, reset tried tiles and try again
@@ -1875,45 +1967,24 @@ local function runAutoPlace()
         local placementConfirmed = false
         local placedModel = nil
         
-        -- INSTANT: Event-driven placement verification
-        local placementConfirmed = false
-        local placedModel = nil
-        local verificationTimeout = tick() + 1.0 -- 1 second timeout
-        
-        -- Set up one-time event listener
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        local verificationConnection
-        if playerBuiltBlocks then
-            verificationConnection = playerBuiltBlocks.ChildAdded:Connect(function(child)
-                if child:IsA("Model") and child.Name == petUID then
-                    placementConfirmed = true
-                    placedModel = child
-                    print("✓ Placement confirmed INSTANTLY via event")
-                    if verificationConnection then
-                        verificationConnection:Disconnect()
-                    end
-                end
-            end)
-        end
-        
-        -- Fallback: Check manually if event doesn't fire
-        while not placementConfirmed and tick() < verificationTimeout do
-            task.wait(0.05) -- Very fast polling as fallback
+        -- Try multiple times to verify placement
+        for attempt = 1, 5 do
+            task.wait(0.3) -- Wait longer for placement to register
+            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
             
             if playerBuiltBlocks then
+                -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
                 for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
                     if model:IsA("Model") and model.Name == petUID then
                         placementConfirmed = true
                         placedModel = model
-                        print("✓ Placement confirmed via fallback check")
+                        print("✓ Placement confirmed on attempt " .. attempt)
                         break
                     end
                 end
             end
-        end
-        
-        if verificationConnection then
-            verificationConnection:Disconnect()
+            
+            if placementConfirmed then break end
         end
         
         if placementConfirmed then
@@ -1943,15 +2014,15 @@ local function runAutoPlace()
             end
             
             print("✅ SUCCESS: Moving to next egg")
-            task.wait(0.05) -- Faster wait to ensure placement is stable
+            task.wait(0.2) -- Wait to ensure placement is stable
         else
             placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
-            print("✗ Placement verification failed after 3 attempts - pet not found in PlayerBuiltBlocks")
+            print("✗ Placement verification failed after 5 attempts - pet not found in PlayerBuiltBlocks")
             print("🔄 RETRYING: Will try same egg again")
             -- Put the egg back at the front of the list to retry
             table.insert(validEggs, 1, { uid = petUID, type = selectedEgg.type })
             placeStatusData.remainingEggs = #validEggs
-            task.wait(0.2) -- Faster wait on failure
+            task.wait(0.5) -- Wait longer on failure
             return -- Don't continue, retry the same egg
         end
     else
@@ -1961,12 +2032,12 @@ local function runAutoPlace()
         -- Put the egg back at the front of the list to retry
         table.insert(validEggs, 1, { uid = petUID, type = selectedEgg.type })
         placeStatusData.remainingEggs = #validEggs
-        task.wait(0.1) -- Faster wait on error
+        task.wait(0.3) -- Wait longer on error
         return -- Don't continue, retry the same egg
     end
     updatePlaceStatusParagraph()
     
-    task.wait(0.01) -- Ultra fast loop
+    task.wait(0.02) -- Ultra fast loop
         end)
         
         if not ok then
@@ -1990,10 +2061,6 @@ Tabs.PlaceTab:Toggle({
             triedTiles = {} -- Reset tried tiles memory
             tileCheckTime = 0
             placeStatusData.totalPlaces = countPlacedPets() -- Get actual count
-            
-            -- Set up WORLD-CLASS event system
-            setupAdvancedEvents()
-            lastValidationTime = 0 -- Force initial validation
             
             -- Immediately hold egg on enable
             pcall(function()
