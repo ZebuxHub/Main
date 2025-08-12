@@ -1466,7 +1466,7 @@ local function runAutoPlace()
     -- Calculate placement position 6 studs below BlockInd
     local placementPos = Vector3.new(
         blockIndCF.Position.X,
-        blockIndCF.Position.Y - 6, -- 6 studs below BlockInd
+        blockIndCF.Position.Y, -- 6 studs below BlockInd
         blockIndCF.Position.Z
     )
     
