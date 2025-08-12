@@ -1376,33 +1376,63 @@ local function countPlacedPets()
 end
 
 local function checkTakenTiles(farmParts)
-    local currentTime = tick()
-    if currentTime - tileCheckTime < 1 then -- Check more frequently
-        return
-    end
-    tileCheckTime = currentTime
-    
+    -- ALWAYS check - no time limit for real-time awareness
     takenTiles = {} -- Reset taken tiles
     local takenCount = 0
     
+    -- Get all placed pets from PlayerBuiltBlocks (most accurate)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    local placedPets = {}
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                table.insert(placedPets, {model = model, pos = modelPos})
+            end
+        end
+    end
+    
+    -- Also check workspace.Pets for additional pets
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if petsFolder then
+        for _, model in ipairs(petsFolder:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                table.insert(placedPets, {model = model, pos = modelPos})
+            end
+        end
+    end
+    
+    -- Check each farm tile against all placed pets
     for i, part in ipairs(farmParts) do
         local isTaken = false
         local partPos = part.Position
         
-        -- Check if there are any models within 3 studs (more accurate)
-        local params = OverlapParams.new()
-        params.RespectCanCollide = false
-        local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(6, 6, 6), params)
+        -- Check against all placed pets
+        for _, petInfo in ipairs(placedPets) do
+            local distance = (petInfo.pos - partPos).Magnitude
+            if distance < 8 then -- If pet is within 8 studs of tile center
+                isTaken = true
+                break
+            end
+        end
         
-        for _, nearbyPart in ipairs(nearbyParts) do
-            if nearbyPart ~= part then
-                local model = nearbyPart:FindFirstAncestorOfClass("Model")
-                if model and model ~= Players.LocalPlayer.Character then
-                    -- Check if it's a pet by looking for specific attributes or tags
-                    if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
-                       model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
-                        isTaken = true
-                        break
+        -- Also check for nearby models as backup
+        if not isTaken then
+            local params = OverlapParams.new()
+            params.RespectCanCollide = false
+            local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(8, 8, 8), params)
+            
+            for _, nearbyPart in ipairs(nearbyParts) do
+                if nearbyPart ~= part then
+                    local model = nearbyPart:FindFirstAncestorOfClass("Model")
+                    if model and model ~= Players.LocalPlayer.Character then
+                        -- Check if it's a pet by looking for specific attributes or tags
+                        if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
+                           model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
+                            isTaken = true
+                            break
+                        end
                     end
                 end
             end
@@ -1647,21 +1677,28 @@ local function runAutoPlace()
     end
     
     if success then
-        -- Check if pet was actually placed in PlayerBuiltBlocks
-        task.wait(0.2) -- Wait longer for placement to register
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        -- Check if pet was actually placed in PlayerBuiltBlocks with multiple attempts
         local placementConfirmed = false
         local placedModel = nil
         
-        if playerBuiltBlocks then
-            -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") and model.Name == petUID then
-                    placementConfirmed = true
-                    placedModel = model
-                    break
+        -- Try multiple times to verify placement
+        for attempt = 1, 5 do
+            task.wait(0.3) -- Wait longer for placement to register
+            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+            
+            if playerBuiltBlocks then
+                -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
+                for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                    if model:IsA("Model") and model.Name == petUID then
+                        placementConfirmed = true
+                        placedModel = model
+                        print("✓ Placement confirmed on attempt " .. attempt)
+                        break
+                    end
                 end
             end
+            
+            if placementConfirmed then break end
         end
         
         if placementConfirmed then
@@ -1690,16 +1727,16 @@ local function runAutoPlace()
                 placeStatusData.takenTiles = newTakenCount
             end
             
-            task.wait(0.1) -- Slightly longer wait to ensure placement is stable
+            task.wait(0.2) -- Wait to ensure placement is stable
         else
             placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
-            print("✗ Placement verification failed - pet not found in PlayerBuiltBlocks")
-            task.wait(0.2) -- Wait longer on failure
+            print("✗ Placement verification failed after 5 attempts - pet not found in PlayerBuiltBlocks")
+            task.wait(0.5) -- Wait longer on failure
         end
     else
         placeStatusData.lastAction = "❌ Failed to fire placement remote"
         print("✗ Placement remote failed")
-        task.wait(0.2) -- Wait longer on error
+        task.wait(0.3) -- Wait longer on error
     end
     updatePlaceStatusParagraph()
     
