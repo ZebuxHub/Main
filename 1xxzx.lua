@@ -1333,85 +1333,87 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- Smart placement: check availability first, then walk only to available tiles
+    -- New logic: walk to each farm tile and use BlockInd to confirm availability
+    local minSpacing = 2 -- Much closer placement
     local me = getPlayerRootPosition() or Vector3.new()
-    local availableTiles = {}
-    
-    -- First pass: quickly check which tiles might be available (no nearby pets)
-    for _, part in ipairs(farmParts) do
-        if not isFarmTileOccupied(part, 8) then
-            table.insert(availableTiles, part)
-        end
-    end
-    
-    if #availableTiles == 0 then
-        placeStatusData.lastAction = "All tiles occupied"
-        updatePlaceStatusParagraph()
-        task.wait(0.8)
-        return
-    end
-    
-    -- Sort by distance to player
-    table.sort(availableTiles, function(a, b)
+    table.sort(farmParts, function(a, b)
         return (a.Position - me).Magnitude < (b.Position - me).Magnitude
     end)
-    
     local chosenPart, blockIndCF
-    for _, part in ipairs(availableTiles) do
-        placeStatusData.lastAction = "Checking tile availability"
-        updatePlaceStatusParagraph()
-        
-        -- Walk close to the tile center
-        local target = part.Position + Vector3.new(0, 1, 0)
-        local char = Players.LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum:MoveTo(target)
-                local reached = hum.MoveToFinished:Wait(3)
-                if not reached then
-                    placeStatusData.lastAction = "Failed to reach tile"
-                    updatePlaceStatusParagraph()
-                    task.wait(0.2)
-                    goto continue_tile_check
-                end
-            end
-        end
-        
-        -- Wait for BlockInd to appear (since we're holding egg and near available tile)
-        local found = false
-        local deadline = os.clock() + 2.0  -- Longer wait since we're already near
-        while os.clock() < deadline do
-            local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
-            if blockInd and blockInd:IsA("BasePart") then
-                -- Verify BlockInd is near this tile (allows 1-2 studs offset for taken tiles)
-                local dist = (blockInd.Position - part.Position).Magnitude
-                if dist <= 15 then  -- BlockInd can be up to 15 studs from tile center
-                    blockIndCF = blockInd.CFrame
-                    found = true
+    for _, part in ipairs(farmParts) do
+        -- Quick check: is this tile already occupied by a pet?
+        local isOccupied = false
+        local centerCF = part.CFrame
+        local params = OverlapParams.new()
+        params.RespectCanCollide = false
+        local parts = workspace:GetPartBoundsInBox(centerCF, Vector3.new(8, 8, 8), params)
+        for _, p in ipairs(parts) do
+            if p ~= part then
+                local model = p:FindFirstAncestorOfClass("Model")
+                if model and isPetLikeModel(model) then
+                    isOccupied = true
                     break
                 end
             end
-            task.wait(0.1)
         end
-        
-        if found then
-            chosenPart = part
-            break
+        if isOccupied then
+            placeStatusData.lastAction = "Tile occupied, skipping"
+            updatePlaceStatusParagraph()
+            task.wait(0.1)
+        else
+            -- Walk to tile center and check for BlockInd
+            placeStatusData.lastAction = "Walking to available tile"
+            updatePlaceStatusParagraph()
+            local target = part.Position -- Walk to exact center
+            local canReach = pcall(function()
+                local char = Players.LocalPlayer.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then 
+                        hum:MoveTo(target)
+                        -- Wait for movement to complete
+                        local reached = hum.MoveToFinished:Wait(3)
+                        if not reached then
+                            placeStatusData.lastAction = "Failed to reach tile"
+                            updatePlaceStatusParagraph()
+                            return false
+                        end
+                    end
+                end
+                return true
+            end)
+            
+            if canReach then
+                -- Now check for BlockInd (should appear when holding egg near available tile)
+                local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
+                if blockInd and blockInd:IsA("BasePart") then
+                    blockIndCF = blockInd.CFrame
+                    chosenPart = part
+                    break
+                else
+                    placeStatusData.lastAction = "No BlockInd, tile not available"
+                    updatePlaceStatusParagraph()
+                    task.wait(0.2)
+                end
+            end
         end
     end
-    
     if not chosenPart or not blockIndCF then
-        placeStatusData.lastAction = "No BlockInd found on available tiles"
+        placeStatusData.lastAction = "No available tiles found"
         updatePlaceStatusParagraph()
-        task.wait(0.6)
+        task.wait(0.4)
         return
     end
-    
     placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
-    placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at BlockInd"
+    placeStatusData.lastAction = "Placing at BlockInd position"
     updatePlaceStatusParagraph()
-    
+
+    -- Press inventory key '2' to hold egg before placing
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    end)
+    task.wait(0.1) -- Give more time for egg to be held
     -- Fire using BlockInd CFrame
     local args = {
         "Place",
@@ -1423,15 +1425,15 @@ local function runAutoPlace()
     local success = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
-            if success then
-                placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
-                placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
-            else
-                placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
-            end
-            updatePlaceStatusParagraph()
-            
-            task.wait(0.15)
+    if success then
+        placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
+        placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
+    else
+        placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
+    end
+    updatePlaceStatusParagraph()
+    
+    task.wait(0.15)
         end)
         
         if not ok then
