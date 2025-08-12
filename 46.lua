@@ -1360,100 +1360,18 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- New logic: walk to each farm tile and use BlockInd to confirm availability
-    local minSpacing = 2 -- Much closer placement
-    local me = getPlayerRootPosition() or Vector3.new()
-    table.sort(farmParts, function(a, b)
-        return (a.Position - me).Magnitude < (b.Position - me).Magnitude
-    end)
-    local chosenPart, blockIndCF
-    for _, part in ipairs(farmParts) do
-        -- Quick check: is this tile already occupied by a pet?
-        local isOccupied = false
-        local centerCF = part.CFrame
-        local params = OverlapParams.new()
-        params.RespectCanCollide = false
-        local parts = workspace:GetPartBoundsInBox(centerCF, Vector3.new(8, 8, 8), params)
-        for _, p in ipairs(parts) do
-            if p ~= part then
-                local model = p:FindFirstAncestorOfClass("Model")
-                if model and isPetLikeModel(model) then
-                    isOccupied = true
-                    break
-                end
-            end
-        end
-        if isOccupied then
-            placeStatusData.lastAction = "Tile occupied, skipping"
-            updatePlaceStatusParagraph()
-            task.wait(0.1)
-        else
-            -- Walk to tile center and check for BlockInd
-            placeStatusData.lastAction = "Walking to available tile"
-            updatePlaceStatusParagraph()
-            local target = part.Position -- Walk to exact center
-            local canReach = pcall(function()
-                local char = Players.LocalPlayer.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then 
-                        placeStatusData.lastAction = "Moving to tile at " .. string.format("(%.0f, %.0f, %.0f)", target.X, target.Y, target.Z)
-                        updatePlaceStatusParagraph()
-                        hum:MoveTo(target)
-                        -- Wait for movement to complete
-                        local reached = hum.MoveToFinished:Wait(5)
-                        if not reached then
-                            placeStatusData.lastAction = "Failed to reach tile"
-                            updatePlaceStatusParagraph()
-                            return false
-                        end
-                        placeStatusData.lastAction = "Reached tile, checking BlockInd"
-                        updatePlaceStatusParagraph()
-                    else
-                        placeStatusData.lastAction = "No Humanoid found"
-                        updatePlaceStatusParagraph()
-                        return false
-                    end
-                else
-                    placeStatusData.lastAction = "No Character found"
-                    updatePlaceStatusParagraph()
-                    return false
-                end
-                return true
-            end)
-            
-            if canReach then
-                -- Now check for BlockInd (should appear when holding egg near available tile)
-                local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
-                if blockInd and blockInd:IsA("BasePart") then
-                    blockIndCF = blockInd.CFrame
-                    chosenPart = part
-                    break
-                else
-                    placeStatusData.lastAction = "No BlockInd, tile not available"
-                    updatePlaceStatusParagraph()
-                    task.wait(0.1) -- Faster scanning
-                end
-            else
-                -- Fallback: try simple movement
-                placeStatusData.lastAction = "Trying simple movement"
-                updatePlaceStatusParagraph()
-                local char = Players.LocalPlayer.Character
-                if char then
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        hrp.CFrame = CFrame.new(target)
-                        task.wait(0.2) -- Faster teleport wait
-                        -- Check for BlockInd after teleport
-                        local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
-                        if blockInd and blockInd:IsA("BasePart") then
-                            blockIndCF = blockInd.CFrame
-                            chosenPart = part
-                            break
-                        end
-                    end
-                end
-            end
+    -- ULTRA FAST MODE: Skip all the slow checks and just place directly
+    local chosenPart = farmParts[1] -- Use first available tile
+    local target = chosenPart.Position
+    local blockIndCF = CFrame.new(target) -- Use tile center directly
+    
+    -- Quick teleport to tile
+    local char = Players.LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = CFrame.new(target)
+            task.wait(0.02) -- Ultra fast teleport
         end
     end
     if not chosenPart or not blockIndCF then
@@ -1495,14 +1413,14 @@ local function runAutoPlace()
     if success then
         placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
         placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
-        task.wait(0.1) -- Much faster wait time
+        task.wait(0.02) -- Ultra fast wait time
     else
         placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
-        task.wait(0.2) -- Faster error recovery
+        task.wait(0.05) -- Ultra fast error recovery
     end
     updatePlaceStatusParagraph()
     
-    task.wait(0.15)
+    task.wait(0.02) -- Ultra fast loop
         end)
         
         if not ok then
