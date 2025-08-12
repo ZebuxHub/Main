@@ -1393,7 +1393,7 @@ local function checkTakenTiles(farmParts)
         end
     end
     
-    -- Check each farm tile against all placed pets with size consideration
+    -- Check each farm tile against all placed pets with lenient size consideration
     for i, part in ipairs(farmParts) do
         local isTaken = false
         local partPos = part.Position
@@ -1403,8 +1403,9 @@ local function checkTakenTiles(farmParts)
             local distance = (petInfo.pos - partPos).Magnitude
             local petRadius = math.max(petInfo.size.X, petInfo.size.Y, petInfo.size.Z) / 2
             
-            -- Check if pet's radius overlaps with tile radius
-            if distance < (tileRadius + petRadius) then
+            -- More lenient: only mark as taken if pet is very close to tile center
+            -- Allow some overlap as long as tile center is mostly clear
+            if distance < (tileRadius * 0.6) then -- Only 60% of tile radius
                 isTaken = true
                 break
             end
@@ -1548,7 +1549,7 @@ local function runAutoPlace()
                 local modelSize = model:GetAttribute("ModelSize") or Vector3.new(4, 4, 4)
                 local petRadius = math.max(modelSize.X, modelSize.Y, modelSize.Z) / 2
                 
-                if distance < (4 + petRadius) then -- Tile radius + pet radius
+                if distance < 2.4 then -- Only 60% of tile radius (4 * 0.6 = 2.4)
                     takenTiles[tileIndex] = true
                     placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
                     -- Try to find another tile
@@ -1587,11 +1588,11 @@ local function runAutoPlace()
         end
     end
     
-    -- FINAL VALIDATION: Small radius check at tile center
+    -- FINAL VALIDATION: Very small radius check at tile center (more lenient)
     local finalCheck = false
     local params = OverlapParams.new()
     params.RespectCanCollide = false
-    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(target), Vector3.new(4, 4, 4), params)
+    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(target), Vector3.new(2, 2, 2), params) -- Smaller radius
     
     for _, nearbyPart in ipairs(nearbyParts) do
         if nearbyPart ~= chosenPart then
@@ -1599,10 +1600,15 @@ local function runAutoPlace()
             if model and model ~= Players.LocalPlayer.Character then
                 if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
                    model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
-                    takenTiles[tileIndex] = true
-                    placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
-                    finalCheck = true
-                    break
+                    -- Only fail if pet is very close to center
+                    local modelPos = model:GetPivot().Position
+                    local distance = (modelPos - target).Magnitude
+                    if distance < 1.5 then -- Very small radius for final check
+                        takenTiles[tileIndex] = true
+                        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                        finalCheck = true
+                        break
+                    end
                 end
             end
         end
