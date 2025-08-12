@@ -1508,11 +1508,12 @@ local function runAutoPlace()
     
     print("Selected egg: " .. petUID .. " (Type: " .. selectedEgg.type .. ")")
     
-    -- Equip egg to Deploy S2 (use the UID directly)
+    -- Equip egg to Deploy S2 (use Egg_UID format)
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
     if deploy then
-        deploy:SetAttribute("S2", petUID)
-        print("✓ Equipped UID " .. petUID .. " to S2")
+        local eggUID = "Egg_" .. petUID
+        deploy:SetAttribute("S2", eggUID)
+        print("✓ Equipped " .. eggUID .. " to S2")
     else
         print("✗ Deploy folder not found!")
     end
