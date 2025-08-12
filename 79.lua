@@ -1636,9 +1636,8 @@ local function runAutoPlace()
         end
     end
     
-    -- FINAL VALIDATION: 360-degree check around player position
-    print("🔍 Final validation: Checking 360-degree radius around player at tile " .. tileIndex)
-    local finalCheck = false
+    -- SMART VALIDATION: Find empty spot within large radius
+    print("🔍 Smart validation: Scanning for empty spot within tile " .. tileIndex)
     
     -- Get player position (where we actually teleported to)
     local playerPos = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -1649,12 +1648,11 @@ local function runAutoPlace()
     
     local actualPos = playerPos.Position
     print("📍 Player actual position: " .. string.format("(%.1f, %.1f, %.1f)", actualPos.X, actualPos.Y, actualPos.Z))
-    print("📍 Tile center position: " .. string.format("(%.1f, %.1f, %.1f)", target.X, target.Y, target.Z))
     
-    -- Check in a larger radius around the player's actual position
+    -- Scan large radius (16x16x16) to find all nearby models
     local params = OverlapParams.new()
     params.RespectCanCollide = false
-    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(actualPos), Vector3.new(12, 12, 12), params)
+    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(actualPos), Vector3.new(16, 16, 16), params)
     
     local foundModels = {}
     for _, nearbyPart in ipairs(nearbyParts) do
@@ -1665,39 +1663,58 @@ local function runAutoPlace()
                 if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
                    model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
                     local distance = (model:GetPivot().Position - actualPos).Magnitude
-                    table.insert(foundModels, {name = model.Name, distance = distance})
-                    
-                    -- If pet is too close (within 6 studs), mark as taken
-                    if distance < 6 then
-                        print("✗ Final check FAILED: Found model " .. model.Name .. " at distance " .. string.format("%.1f", distance) .. " studs")
-                        takenTiles[tileIndex] = true -- Mark as taken
-                        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
-                        finalCheck = true
-                    end
+                    table.insert(foundModels, {name = model.Name, distance = distance, pos = model:GetPivot().Position})
                 end
             end
         end
     end
     
-    -- Show all nearby models for debugging
-    if #foundModels > 0 then
-        print("📊 Nearby models found:")
+    print("📊 Found " .. #foundModels .. " nearby models")
+    
+    -- Find empty spot within the tile area
+    local emptySpot = nil
+    local testPositions = {
+        actualPos, -- Current position
+        Vector3.new(actualPos.X + 2, actualPos.Y, actualPos.Z), -- Right
+        Vector3.new(actualPos.X - 2, actualPos.Y, actualPos.Z), -- Left
+        Vector3.new(actualPos.X, actualPos.Y, actualPos.Z + 2), -- Forward
+        Vector3.new(actualPos.X, actualPos.Y, actualPos.Z - 2), -- Back
+        Vector3.new(actualPos.X + 1, actualPos.Y, actualPos.Z + 1), -- Diagonal
+        Vector3.new(actualPos.X - 1, actualPos.Y, actualPos.Z + 1), -- Diagonal
+        Vector3.new(actualPos.X + 1, actualPos.Y, actualPos.Z - 1), -- Diagonal
+        Vector3.new(actualPos.X - 1, actualPos.Y, actualPos.Z - 1), -- Diagonal
+    }
+    
+    for i, testPos in ipairs(testPositions) do
+        local isClear = true
         for _, modelInfo in ipairs(foundModels) do
-            print("  - " .. modelInfo.name .. " at " .. string.format("%.1f", modelInfo.distance) .. " studs")
+            local distance = (modelInfo.pos - testPos).Magnitude
+            if distance < 4 then -- Need 4 studs clearance
+                isClear = false
+                break
+            end
         end
-    else
-        print("📊 No nearby models found")
+        
+        if isClear then
+            emptySpot = testPos
+            print("✓ Found empty spot at position " .. i .. ": " .. string.format("(%.1f, %.1f, %.1f)", testPos.X, testPos.Y, testPos.Z))
+            break
+        end
     end
     
-    if finalCheck then
-        print("✗ Tile " .. tileIndex .. " failed final validation - too close to existing pets")
-        placeStatusData.lastAction = "Tile failed final validation - too close to pets"
+    if not emptySpot then
+        print("✗ No empty spot found within tile " .. tileIndex .. " - too crowded")
+        takenTiles[tileIndex] = true -- Mark as taken
+        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+        placeStatusData.lastAction = "Tile too crowded - no empty spot found"
         updatePlaceStatusParagraph()
         task.wait(0.1)
         return -- Skip this tile and try next one
     end
     
-    print("✓ Final validation PASSED: Tile " .. tileIndex .. " is clear for placement")
+    -- Update placement position to the empty spot
+    local placementPos = emptySpot
+    print("✓ Smart validation PASSED: Using empty spot at " .. string.format("(%.1f, %.1f, %.1f)", placementPos.X, placementPos.Y, placementPos.Z))
     if not chosenPart or not blockIndCF then
         placeStatusData.lastAction = "No available tiles found"
         updatePlaceStatusParagraph()
@@ -1705,17 +1722,10 @@ local function runAutoPlace()
         return
     end
     
-    -- Calculate placement position 6 studs below BlockInd
-    local placementPos = Vector3.new(
-        blockIndCF.Position.X,
-        blockIndCF.Position.Y,
-        blockIndCF.Position.Z
-    )
-    
-    placeStatusData.lastPosition = string.format("BlockInd: (%.1f, %.1f, %.1f) -> Place: (%.1f, %.1f, %.1f)", 
-        blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z,
+    -- Use the smart-found empty spot for placement
+    placeStatusData.lastPosition = string.format("Smart placement at: (%.1f, %.1f, %.1f)", 
         placementPos.X, placementPos.Y, placementPos.Z)
-    placeStatusData.lastAction = "Placing 6 studs below BlockInd"
+    placeStatusData.lastAction = "Placing at smart-found empty spot"
     updatePlaceStatusParagraph()
 
     -- Fire placement remote
