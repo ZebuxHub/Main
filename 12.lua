@@ -1240,17 +1240,16 @@ Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
 Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
-        "1) Stand where you want pets to appear.",
-        "2) Press 'Save Current Location'.",
-        "3) Turn on 'Auto Place'.",
-        "Tip: It will try free tiles within 300 studs of your saved spot.",
+        "1) Turn on 'Auto Place'.",
+        "2) The script walks to tiles and looks for BlockInd.",
+        "3) When BlockInd appears, it holds 2 and places.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
 })
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place",
-    Desc = "Save your spot, then turn on.",
+    Desc = "Walk-to-tile + BlockInd placement",
     Image = "map-pin",
     ImageSize = 18,
 })
@@ -1334,39 +1333,68 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-            -- Only place around the saved anchor spot
-            if not placeAnchorPosition then
-                placeStatusData.lastAction = "Save a spot first (Press 'Save Current Location')"
-                updatePlaceStatusParagraph()
-                task.wait(0.8)
-                return
+    -- New logic: walk to each farm tile and use BlockInd to confirm availability
+    local minSpacing = 8
+    local me = getPlayerRootPosition() or Vector3.new()
+    table.sort(farmParts, function(a, b)
+        return (a.Position - me).Magnitude < (b.Position - me).Magnitude
+    end)
+    local chosenPart, blockIndCF
+    for _, part in ipairs(farmParts) do
+        -- Walk near the part and wait for BlockInd
+        placeStatusData.lastAction = "Walking to tile"
+        updatePlaceStatusParagraph()
+        local target = part.Position + Vector3.new(0, 2, 0)
+        pcall(function()
+            local char = Players.LocalPlayer.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then hum:MoveTo(target) hum.MoveToFinished:Wait(2) end
             end
-            local minSpacing = 8 -- studs between pets
-            local chosenPart
-            local targetPos = placeAnchorPosition
-            -- Restrict to tiles within anchorRadiusStuds to keep placement localized
-            local nearby = {}
-            for _, part in ipairs(farmParts) do
-                if (part.Position - targetPos).Magnitude <= anchorRadiusStuds then
-                    table.insert(nearby, part)
-                end
+        end)
+        local found = false
+        local deadline = os.clock() + 1.2
+        while os.clock() < deadline do
+            local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
+            if blockInd and blockInd:IsA("BasePart") then
+                blockIndCF = blockInd.CFrame
+                found = true
+                break
             end
-            chosenPart = findAvailableFarmPartNearPosition(#nearby > 0 and nearby or farmParts, minSpacing, targetPos)
-            if not chosenPart then
-                placeStatusData.lastAction = "All farm tiles occupied (min spacing " .. tostring(minSpacing) .. ")"
-                updatePlaceStatusParagraph()
-                task.wait(0.6)
-                return
-            end
-            local position = chosenPart.Position
-            placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", position.X, position.Y, position.Z)
-            placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at center " .. placeStatusData.lastPosition
-            updatePlaceStatusParagraph()
-            
-            -- Press inventory key '2' to hold egg before placing (if available)
-            pcall(function() VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game) VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game) end)
             task.wait(0.05)
-            local success = placePetAtPart(chosenPart, petUID)
+        end
+        if found then
+            chosenPart = part
+            break
+        end
+    end
+    if not chosenPart or not blockIndCF then
+        placeStatusData.lastAction = "No available tile (no BlockInd)"
+        updatePlaceStatusParagraph()
+        task.wait(0.4)
+        return
+    end
+    placeStatusData.lastPosition = string.format("(%.1f, %.1f, %.1f)", blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
+    placeStatusData.lastAction = "Placing PET " .. tostring(petUID) .. " at BlockInd"
+    updatePlaceStatusParagraph()
+
+    -- Press inventory key '2' to hold egg before placing
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    end)
+    task.wait(0.05)
+    -- Fire using BlockInd CFrame
+    local args = {
+        "Place",
+        {
+            DST = vector.create(blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z),
+            ID = petUID
+        }
+    }
+    local success = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
             if success then
                 placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
                 placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
@@ -1394,10 +1422,11 @@ Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
-            -- Capture anchor when turning on if not set
-            if not placeAnchorPosition then
-                placeAnchorPosition = getPlayerRootPosition()
-            end
+            -- Immediately hold egg on enable
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+            end)
             autoPlaceThread = task.spawn(function()
                 runAutoPlace()
                 autoPlaceThread = nil
@@ -1413,32 +1442,7 @@ Tabs.PlaceTab:Toggle({
     end
 })
 
--- Anchoring tools
-Tabs.PlaceTab:Button({
-    Title = "Save Current Location",
-    Desc = "Use your current position as an anchor (100 studs radius)",
-    Callback = function()
-        local pos = getPlayerRootPosition()
-        if not pos then
-            WindUI:Notify({ Title = "Auto Place", Content = "Could not read player position", Duration = 3 })
-            return
-        end
-        placeAnchorPosition = pos
-        WindUI:Notify({ Title = "Auto Place", Content = string.format("Anchor saved r=%d", anchorRadiusStuds), Duration = 3 })
-        placeStatusData.lastAction = "Anchor saved"
-        updatePlaceStatusParagraph()
-    end
-})
-Tabs.PlaceTab:Button({
-    Title = "Clear Anchor",
-    Desc = "Forget saved anchor; place anywhere",
-    Callback = function()
-        placeAnchorPosition = nil
-        WindUI:Notify({ Title = "Auto Place", Content = "Anchor cleared", Duration = 3 })
-        placeStatusData.lastAction = "Anchor cleared"
-        updatePlaceStatusParagraph()
-    end
-})
+-- Anchor workflow removed (no longer needed)
 
 -- Optional helper to open the window
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
