@@ -1254,22 +1254,22 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     ImageSize = 18,
 })
 
-local function formatPlaceStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("🏝️ %s | 🏗️ %d tiles | 📊 %d placed", 
-        tostring(placeStatusData.islandName or "?"), 
-        placeStatusData.farmPartsFound or 0, 
-        placeStatusData.totalPlaces or 0))
-    
-    if placeStatusData.petUID then
-        table.insert(lines, string.format("🥚 %s | 📦 %d left", 
-            tostring(placeStatusData.petUID), 
-            placeStatusData.remainingEggs or 0))
+    local function formatPlaceStatusDesc()
+        local lines = {}
+        table.insert(lines, string.format("🏝️ %s | 🏗️ %d tiles | 📊 %d placed", 
+            tostring(placeStatusData.islandName or "?"), 
+            placeStatusData.farmPartsFound or 0, 
+            placeStatusData.totalPlaces or 0))
+        
+        if placeStatusData.petUID then
+            table.insert(lines, string.format("🥚 %s | 📦 %d left", 
+                tostring(placeStatusData.petUID), 
+                placeStatusData.remainingEggs or 0))
+        end
+        
+        table.insert(lines, "📋 " .. tostring(placeStatusData.lastAction or "Ready"))
+        return table.concat(lines, "\n")
     end
-    
-    table.insert(lines, "📋 " .. tostring(placeStatusData.lastAction or "Ready"))
-    return table.concat(lines, "\n")
-end
 
 local function updatePlaceStatusParagraph()
     if placeStatusParagraph and placeStatusParagraph.SetDesc then
@@ -1310,41 +1310,45 @@ local function runAutoPlace()
                 return
             end
             
-                -- Get available eggs from PlayerGui.Data.Egg (Configuration folders without subs)
-    local availableEggs = {}
-    local eggDataFolder = Players.LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if eggDataFolder then
-        local eggFolder = eggDataFolder:FindFirstChild("Egg")
-        if eggFolder then
-            for _, egg in ipairs(eggFolder:GetChildren()) do
-                if egg:IsA("Folder") and egg.Name == "Configuration" then
-                    -- Check if it has no subfolders (available egg)
-                    local hasSubs = false
-                    for _, child in ipairs(egg:GetChildren()) do
-                        if child:IsA("Folder") then
-                            hasSubs = true
-                            break
-                        end
-                    end
-                    if not hasSubs then
-                        table.insert(availableEggs, egg.Name)
+                -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
+    local availableUids = listAvailableEggUIDs()
+    if #availableUids == 0 then
+        placeStatusData.lastAction = "No available eggs to place"
+        updatePlaceStatusParagraph()
+        task.wait(0.8)
+        return
+    end
+    
+    -- Find eggs in PlayerBuiltBlocks that match player's UserId
+    local playerUserId = Players.LocalPlayer.UserId
+    local validEggs = {}
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
+            if egg:IsA("Model") then
+                local eggUserId = egg:GetAttribute("UserId")
+                if eggUserId and tonumber(eggUserId) == playerUserId then
+                    local eggCF = egg:GetAttribute("EggCF")
+                    if eggCF then
+                        table.insert(validEggs, { uid = egg.Name, cf = eggCF })
                     end
                 end
             end
         end
     end
     
-    if #availableEggs == 0 then
+    if #validEggs == 0 then
         placeStatusData.lastAction = "⏸️ No eggs available - waiting..."
         updatePlaceStatusParagraph()
         task.wait(1) -- Wait longer when no eggs
         return
     end
     
-    -- Use first available egg
-    local petUID = availableEggs[1]
+    -- Use the first valid egg and remove it from the list
+    local selectedEgg = table.remove(validEggs, 1)
+    local petUID = selectedEgg.uid
     placeStatusData.petUID = petUID
-    placeStatusData.remainingEggs = #availableEggs - 1
+    placeStatusData.remainingEggs = #validEggs -- Track remaining eggs
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -1360,7 +1364,7 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- SMART TILE SELECTION: Find tile with no nearby models (1 stud check)
+    -- SMART TILE SELECTION: Find empty tile (no models within 1 stud)
     local chosenPart = nil
     local target = nil
     
@@ -1391,15 +1395,17 @@ local function runAutoPlace()
         end
     end
     
-    -- If no empty tile found, use first tile
+    -- If no empty tile found, wait
     if not chosenPart then
-        chosenPart = farmParts[1]
-        target = chosenPart.Position
+        placeStatusData.lastAction = "⏸️ All tiles occupied - waiting..."
+        updatePlaceStatusParagraph()
+        task.wait(1) -- Wait longer when no space
+        return
     end
     
     local blockIndCF = CFrame.new(target)
     
-    -- Quick teleport to tile
+    -- Quick teleport to empty tile
     local char = Players.LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -1463,10 +1469,10 @@ local function runAutoPlace()
         if placementConfirmed then
             placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
             local remaining = placeStatusData.remainingEggs or 0
-            placeStatusData.lastAction = "✅ Placed: " .. tostring(petUID) .. " | Left: " .. remaining
+            placeStatusData.lastAction = "✅ Placed PET " .. tostring(petUID) .. " (" .. remaining .. " eggs left)"
             task.wait(0.02) -- Ultra fast wait time
         else
-            placeStatusData.lastAction = "❌ Failed to place: " .. tostring(petUID)
+            placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
             task.wait(0.05) -- Try again faster
         end
     else
