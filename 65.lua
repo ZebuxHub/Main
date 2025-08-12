@@ -1297,7 +1297,7 @@ end
 local eggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "Select Eggs to Place",
     Desc = "Choose which egg types to place automatically",
-    Options = getEggOptions(), -- Get options immediately
+    Value = eggIdList,
     Multi = true,
     Callback = function(selected)
         selectedEggTypes = selected
