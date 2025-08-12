@@ -461,7 +461,13 @@ local function listAvailableEggUIDs()
     if not eg then return uids end
     for _, child in ipairs(eg:GetChildren()) do
         if #child:GetChildren() == 0 then -- no subfolder => available
-            table.insert(uids, child.Name)
+            -- Get the actual egg type from T attribute
+            local eggType = child:GetAttribute("T")
+            if eggType then
+                table.insert(uids, { uid = child.Name, type = eggType })
+            else
+                table.insert(uids, { uid = child.Name, type = child.Name })
+            end
         end
     end
     return uids
@@ -1446,18 +1452,16 @@ local function runAutoPlace()
             end
             
                 -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
-    local availableUids = listAvailableEggUIDs()
-    if #availableUids == 0 then
+    local availableEggs = listAvailableEggUIDs()
+    if #availableEggs == 0 then
         placeStatusData.lastAction = "No available eggs to place"
         updatePlaceStatusParagraph()
         task.wait(0.8)
         return
     end
     
-    -- Find eggs in PlayerBuiltBlocks that match player's UserId AND selected types
-    local playerUserId = Players.LocalPlayer.UserId
+    -- Filter available eggs by selected types
     local validEggs = {}
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
     
     if #selectedEggTypes == 0 then
         placeStatusData.lastAction = "No egg types selected - please select eggs to place"
@@ -1466,17 +1470,19 @@ local function runAutoPlace()
         return
     end
     
-    if playerBuiltBlocks then
-        for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
-            if egg:IsA("Model") then
-                local eggUserId = egg:GetAttribute("UserId")
-                if eggUserId and tonumber(eggUserId) == playerUserId then
-                    -- Check if this egg type is selected
-                    local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg:GetAttribute("Name")
-                    if eggType and table.find(selectedEggTypes, eggType) then
+    -- Check each available egg against selected types
+    for _, eggInfo in ipairs(availableEggs) do
+        if table.find(selectedEggTypes, eggInfo.type) then
+            -- Find corresponding egg in PlayerBuiltBlocks
+            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+            if playerBuiltBlocks then
+                local egg = playerBuiltBlocks:FindFirstChild(eggInfo.uid)
+                if egg and egg:IsA("Model") then
+                    local eggUserId = egg:GetAttribute("UserId")
+                    if eggUserId and tonumber(eggUserId) == Players.LocalPlayer.UserId then
                         local eggCF = egg:GetAttribute("EggCF")
                         if eggCF then
-                            table.insert(validEggs, { uid = egg.Name, cf = eggCF, type = eggType })
+                            table.insert(validEggs, { uid = eggInfo.uid, cf = eggCF, type = eggInfo.type })
                         end
                     end
                 end
