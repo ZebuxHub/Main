@@ -1337,14 +1337,15 @@ local function runAutoPlace()
     if #validEggs == 0 then
         placeStatusData.lastAction = "No owned eggs found in PlayerBuiltBlocks"
         updatePlaceStatusParagraph()
-        task.wait(0.8)
+        task.wait(0.2) -- Faster wait
         return
     end
     
-    -- Use the first valid egg
-    local selectedEgg = validEggs[1]
+    -- Use the first valid egg and remove it from the list
+    local selectedEgg = table.remove(validEggs, 1)
     local petUID = selectedEgg.uid
     placeStatusData.petUID = petUID
+    placeStatusData.remainingEggs = #validEggs -- Track remaining eggs
             
             -- Enhanced pet validation and info gathering
             local isValid, validationMsg = validatePetUID(petUID)
@@ -1360,8 +1361,13 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- ULTRA FAST MODE: Skip all the slow checks and just place directly
-    local chosenPart = farmParts[1] -- Use first available tile
+    -- ULTRA FAST MODE: Use different tiles for each placement
+    local tileIndex = (placeStatusData.totalPlaces or 0) + 1
+    if tileIndex > #farmParts then
+        -- If we've used all tiles, start over with random selection
+        tileIndex = math.random(1, #farmParts)
+    end
+    local chosenPart = farmParts[tileIndex]
     local target = chosenPart.Position
     local blockIndCF = CFrame.new(target) -- Use tile center directly
     
@@ -1411,11 +1417,32 @@ local function runAutoPlace()
     end)
     
     if success then
-        placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
-        placeStatusData.lastAction = "Successfully placed PET " .. tostring(petUID)
-        task.wait(0.02) -- Ultra fast wait time
+        -- Check if pet was actually placed in PlayerBuiltBlocks
+        task.wait(0.1) -- Wait for placement to register
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        local placementConfirmed = false
+        
+        if playerBuiltBlocks then
+            -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") and model.Name == petUID then
+                    placementConfirmed = true
+                    break
+                end
+            end
+        end
+        
+        if placementConfirmed then
+            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
+            local remaining = placeStatusData.remainingEggs or 0
+            placeStatusData.lastAction = "✅ Placed PET " .. tostring(petUID) .. " (" .. remaining .. " eggs left)"
+            task.wait(0.02) -- Ultra fast wait time
+        else
+            placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
+            task.wait(0.05) -- Try again faster
+        end
     else
-        placeStatusData.lastAction = "Failed to place PET " .. tostring(petUID)
+        placeStatusData.lastAction = "❌ Failed to fire placement remote"
         task.wait(0.05) -- Ultra fast error recovery
     end
     updatePlaceStatusParagraph()
