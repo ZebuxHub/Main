@@ -1376,65 +1376,38 @@ local function countPlacedPets()
 end
 
 local function checkTakenTiles(farmParts)
-    -- ALWAYS check - no time limit for real-time awareness
+    -- FAST: Only check PlayerBuiltBlocks (most accurate and fastest)
     takenTiles = {} -- Reset taken tiles
     local takenCount = 0
     
-    -- Get all placed pets from PlayerBuiltBlocks (most accurate)
+    -- Get all placed pets from PlayerBuiltBlocks only (faster)
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    local placedPets = {}
-    if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                table.insert(placedPets, {model = model, pos = modelPos})
-            end
+    if not playerBuiltBlocks then
+        placeStatusData.takenTiles = 0
+        placeStatusData.totalPlaces = 0
+        return
+    end
+    
+    -- Create a spatial hash for fast distance checking
+    local petPositions = {}
+    for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+        if model:IsA("Model") then
+            local modelPos = model:GetPivot().Position
+            table.insert(petPositions, modelPos)
         end
     end
     
-    -- Also check workspace.Pets for additional pets
-    local petsFolder = workspace:FindFirstChild("Pets")
-    if petsFolder then
-        for _, model in ipairs(petsFolder:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                table.insert(placedPets, {model = model, pos = modelPos})
-            end
-        end
-    end
-    
-    -- Check each farm tile against all placed pets
+    -- Check each farm tile against pet positions (faster)
     for i, part in ipairs(farmParts) do
         local isTaken = false
         local partPos = part.Position
         
-        -- Check against all placed pets
-        for _, petInfo in ipairs(placedPets) do
-            local distance = (petInfo.pos - partPos).Magnitude
+        -- Check against all placed pets (optimized)
+        for _, petPos in ipairs(petPositions) do
+            local distance = (petPos - partPos).Magnitude
             if distance < 8 then -- If pet is within 8 studs of tile center
                 isTaken = true
                 break
-            end
-        end
-        
-        -- Also check for nearby models as backup
-        if not isTaken then
-            local params = OverlapParams.new()
-            params.RespectCanCollide = false
-            local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(8, 8, 8), params)
-            
-            for _, nearbyPart in ipairs(nearbyParts) do
-                if nearbyPart ~= part then
-                    local model = nearbyPart:FindFirstAncestorOfClass("Model")
-                    if model and model ~= Players.LocalPlayer.Character then
-                        -- Check if it's a pet by looking for specific attributes or tags
-                        if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
-                           model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
-                            isTaken = true
-                            break
-                        end
-                    end
-                end
             end
         end
         
@@ -1445,8 +1418,7 @@ local function checkTakenTiles(farmParts)
     end
     
     placeStatusData.takenTiles = takenCount
-    -- Update actual placed count from PlayerBuiltBlocks
-    placeStatusData.totalPlaces = countPlacedPets()
+    placeStatusData.totalPlaces = #petPositions -- Faster count
 end
 
 local function runAutoPlace()
@@ -1715,9 +1687,9 @@ local function runAutoPlace()
         local placementConfirmed = false
         local placedModel = nil
         
-        -- Try multiple times to verify placement
-        for attempt = 1, 5 do
-            task.wait(0.3) -- Wait longer for placement to register
+        -- Try multiple times to verify placement (FASTER)
+        for attempt = 1, 3 do
+            task.wait(0.1) -- Faster wait for placement to register
             local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
             
             if playerBuiltBlocks then
@@ -1762,15 +1734,15 @@ local function runAutoPlace()
             end
             
             print("✅ SUCCESS: Moving to next egg")
-            task.wait(0.2) -- Wait to ensure placement is stable
+            task.wait(0.05) -- Faster wait to ensure placement is stable
         else
             placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
-            print("✗ Placement verification failed after 5 attempts - pet not found in PlayerBuiltBlocks")
+            print("✗ Placement verification failed after 3 attempts - pet not found in PlayerBuiltBlocks")
             print("🔄 RETRYING: Will try same egg again")
             -- Put the egg back at the front of the list to retry
             table.insert(validEggs, 1, { uid = petUID, type = selectedEgg.type })
             placeStatusData.remainingEggs = #validEggs
-            task.wait(0.5) -- Wait longer on failure
+            task.wait(0.2) -- Faster wait on failure
             return -- Don't continue, retry the same egg
         end
     else
@@ -1780,12 +1752,12 @@ local function runAutoPlace()
         -- Put the egg back at the front of the list to retry
         table.insert(validEggs, 1, { uid = petUID, type = selectedEgg.type })
         placeStatusData.remainingEggs = #validEggs
-        task.wait(0.3) -- Wait longer on error
-        return -- Don't continue, retry the same egg
+                    task.wait(0.1) -- Faster wait on error
+            return -- Don't continue, retry the same egg
     end
     updatePlaceStatusParagraph()
     
-    task.wait(0.02) -- Ultra fast loop
+    task.wait(0.01) -- Ultra fast loop
         end)
         
         if not ok then
