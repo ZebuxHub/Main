@@ -1591,6 +1591,174 @@ Tabs.PlaceTab:Toggle({
     end
 })
 
+-- Auto Delete variables
+local autoDeleteEnabled = false
+local autoDeleteThread = nil
+local deleteSpeedThreshold = 100 -- Default speed threshold
+local deleteStatusData = {
+    totalDeleted = 0,
+    lastAction = "Idle",
+    currentPet = nil,
+    speedThreshold = 100
+}
+
+Tabs.PlaceTab:Section({ Title = "Auto Delete", Icon = "trash" })
+
+Tabs.PlaceTab:Input({
+    Title = "Speed Threshold",
+    Desc = "Delete pets with speed below this value",
+    Value = "100",
+    Callback = function(value)
+        deleteSpeedThreshold = tonumber(value) or 100
+        deleteStatusData.speedThreshold = deleteSpeedThreshold
+    end
+})
+
+Tabs.PlaceTab:Toggle({
+    Title = "Auto Delete",
+    Desc = "Automatically delete slow pets",
+    Value = false,
+    Callback = function(state)
+        autoDeleteEnabled = state
+        if state and not autoDeleteThread then
+            deleteStatusData.totalDeleted = 0
+            autoDeleteThread = task.spawn(function()
+                runAutoDelete()
+                autoDeleteThread = nil
+            end)
+            WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 3 })
+            deleteStatusData.lastAction = "Started"
+            updateDeleteStatusParagraph()
+        elseif (not state) and autoDeleteThread then
+            WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 3 })
+            deleteStatusData.lastAction = "Stopped"
+            updateDeleteStatusParagraph()
+        end
+    end
+})
+
+local deleteStatusParagraph = Tabs.PlaceTab:Paragraph({
+    Title = "Auto Delete Status",
+    Desc = "Ready to delete slow pets",
+    Image = "trash",
+    ImageSize = 18,
+})
+
+local function formatDeleteStatusDesc()
+    local lines = {}
+    table.insert(lines, string.format("🗑️ Speed Threshold: %d", deleteStatusData.speedThreshold or 100))
+    table.insert(lines, string.format("❌ Deleted: %d", deleteStatusData.totalDeleted or 0))
+    
+    if deleteStatusData.currentPet then
+        table.insert(lines, string.format("🐾 Current: %s", tostring(deleteStatusData.currentPet)))
+    end
+    
+    table.insert(lines, string.format("🔄 Status: %s", tostring(deleteStatusData.lastAction or "Ready")))
+    return table.concat(lines, "\n")
+end
+
+local function updateDeleteStatusParagraph()
+    if deleteStatusParagraph and deleteStatusParagraph.SetDesc then
+        deleteStatusParagraph:SetDesc(formatDeleteStatusDesc())
+    end
+end
+
+-- Auto Delete function
+local function runAutoDelete()
+    while autoDeleteEnabled do
+        local ok, err = pcall(function()
+            -- Get all pets in workspace.Pets
+            local petsFolder = workspace:FindFirstChild("Pets")
+            if not petsFolder then
+                deleteStatusData.lastAction = "No pets folder found"
+                updateDeleteStatusParagraph()
+                task.wait(1)
+                return
+            end
+            
+            local playerUserId = Players.LocalPlayer.UserId
+            local petsToDelete = {}
+            
+            -- Scan all pets and check their speed
+            for _, pet in ipairs(petsFolder:GetChildren()) do
+                if pet:IsA("Model") then
+                    -- Check if pet belongs to player
+                    local petUserId = pet:GetAttribute("UserId")
+                    if petUserId and tonumber(petUserId) == playerUserId then
+                        -- Check pet's speed
+                        local rootPart = pet:FindFirstChild("RootPart")
+                        if rootPart then
+                            local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
+                            if idleGUI then
+                                local speedText = idleGUI:FindFirstChild("Speed")
+                                if speedText and speedText:IsA("TextLabel") then
+                                    local speedValue = tonumber(speedText.Text)
+                                    if speedValue and speedValue < deleteSpeedThreshold then
+                                        table.insert(petsToDelete, {
+                                            name = pet.Name,
+                                            speed = speedValue
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            if #petsToDelete == 0 then
+                deleteStatusData.lastAction = "No slow pets found to delete"
+                updateDeleteStatusParagraph()
+                task.wait(2)
+                return
+            end
+            
+            -- Delete pets one by one
+            for i, petInfo in ipairs(petsToDelete) do
+                if not autoDeleteEnabled then break end
+                
+                deleteStatusData.currentPet = petInfo.name
+                deleteStatusData.lastAction = string.format("Deleting pet %s (Speed: %d)", petInfo.name, petInfo.speed)
+                updateDeleteStatusParagraph()
+                
+                -- Fire delete remote
+                local args = {
+                    "Del",
+                    petInfo.name
+                }
+                
+                local success = pcall(function()
+                    ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                end)
+                
+                if success then
+                    deleteStatusData.totalDeleted = deleteStatusData.totalDeleted + 1
+                    deleteStatusData.lastAction = string.format("✅ Deleted %s (Speed: %d)", petInfo.name, petInfo.speed)
+                    updateDeleteStatusParagraph()
+                    task.wait(0.5) -- Wait between deletions
+                else
+                    deleteStatusData.lastAction = string.format("❌ Failed to delete %s", petInfo.name)
+                    updateDeleteStatusParagraph()
+                    task.wait(0.2)
+                end
+            end
+            
+            deleteStatusData.currentPet = nil
+            deleteStatusData.lastAction = string.format("Completed - Deleted %d slow pets", #petsToDelete)
+            updateDeleteStatusParagraph()
+            task.wait(3) -- Wait before next scan
+            
+        end)
+        
+        if not ok then
+            warn("Auto Delete error: " .. tostring(err))
+            deleteStatusData.lastAction = "Error: " .. tostring(err)
+            updateDeleteStatusParagraph()
+            task.wait(1)
+        end
+    end
+end
+
 -- Anchor workflow removed (no longer needed)
 
 -- Optional helper to open the window
