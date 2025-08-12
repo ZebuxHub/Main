@@ -1470,28 +1470,27 @@ local function runAutoPlace()
         return
     end
     
-    -- Check each available egg against selected types
+    -- FAST: Only check eggs that match selected types
     print("=== AUTO PLACE DEBUG ===")
     print("Available eggs found: " .. #availableEggs)
     print("Selected egg types: " .. table.concat(selectedEggTypes, ", "))
     
-    for i, eggInfo in ipairs(availableEggs) do
-        print("Checking egg " .. i .. "/" .. #availableEggs .. ": " .. eggInfo.type)
-        
-        if table.find(selectedEggTypes, eggInfo.type) then
-            print("✓ Type " .. eggInfo.type .. " matches selection")
-            
-            -- Add to valid eggs (eggs from PlayerGui.Data.Egg are ready to place)
+    -- Create a set for fast lookup
+    local selectedSet = {}
+    for _, type in ipairs(selectedEggTypes) do
+        selectedSet[type] = true
+    end
+    
+    -- Only process eggs that match selected types (FAST)
+    for _, eggInfo in ipairs(availableEggs) do
+        if selectedSet[eggInfo.type] then
             table.insert(validEggs, { uid = eggInfo.uid, type = eggInfo.type })
-            print("✓ Added " .. eggInfo.type .. " to valid eggs")
-        else
-            print("✗ Type " .. eggInfo.type .. " not in selection")
         end
     end
     
     print("Valid eggs found: " .. #validEggs)
-    for i, egg in ipairs(validEggs) do
-        print("  " .. i .. ". " .. egg.type .. " (UID: " .. egg.uid .. ")")
+    if #validEggs > 0 then
+        print("First egg: " .. validEggs[1].type .. " (UID: " .. validEggs[1].uid .. ")")
     end
     
     if #validEggs == 0 then
@@ -1509,11 +1508,11 @@ local function runAutoPlace()
     
     print("Selected egg: " .. petUID .. " (Type: " .. selectedEgg.type .. ")")
     
-    -- Equip egg to Deploy S2
+    -- Equip egg to Deploy S2 (use the UID directly)
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
     if deploy then
         deploy:SetAttribute("S2", petUID)
-        print("✓ Equipped " .. petUID .. " to S2")
+        print("✓ Equipped UID " .. petUID .. " to S2")
     else
         print("✗ Deploy folder not found!")
     end
