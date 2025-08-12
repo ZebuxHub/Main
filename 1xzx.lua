@@ -1370,15 +1370,27 @@ local function runAutoPlace()
                 if char then
                     local hum = char:FindFirstChildOfClass("Humanoid")
                     if hum then 
+                        placeStatusData.lastAction = "Moving to tile at " .. string.format("(%.0f, %.0f, %.0f)", target.X, target.Y, target.Z)
+                        updatePlaceStatusParagraph()
                         hum:MoveTo(target)
                         -- Wait for movement to complete
-                        local reached = hum.MoveToFinished:Wait(3)
+                        local reached = hum.MoveToFinished:Wait(5)
                         if not reached then
                             placeStatusData.lastAction = "Failed to reach tile"
                             updatePlaceStatusParagraph()
                             return false
                         end
+                        placeStatusData.lastAction = "Reached tile, checking BlockInd"
+                        updatePlaceStatusParagraph()
+                    else
+                        placeStatusData.lastAction = "No Humanoid found"
+                        updatePlaceStatusParagraph()
+                        return false
                     end
+                else
+                    placeStatusData.lastAction = "No Character found"
+                    updatePlaceStatusParagraph()
+                    return false
                 end
                 return true
             end)
@@ -1394,6 +1406,25 @@ local function runAutoPlace()
                     placeStatusData.lastAction = "No BlockInd, tile not available"
                     updatePlaceStatusParagraph()
                     task.wait(0.2)
+                end
+            else
+                -- Fallback: try simple movement
+                placeStatusData.lastAction = "Trying simple movement"
+                updatePlaceStatusParagraph()
+                local char = Players.LocalPlayer.Character
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        hrp.CFrame = CFrame.new(target)
+                        task.wait(0.5)
+                        -- Check for BlockInd after teleport
+                        local blockInd = workspace:FindFirstChild("Default/BlockInd", true)
+                        if blockInd and blockInd:IsA("BasePart") then
+                            blockIndCF = blockInd.CFrame
+                            chosenPart = part
+                            break
+                        end
+                    end
                 end
             end
         end
