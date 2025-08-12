@@ -1375,40 +1375,84 @@ local function countPlacedPets()
     return count
 end
 
-local function checkTakenTiles(farmParts)
-    -- FAST: Only check PlayerBuiltBlocks (most accurate and fastest)
-    takenTiles = {} -- Reset taken tiles
-    local takenCount = 0
+-- ULTRA FAST: Event-driven spatial grid system
+local spatialGrid = {}
+local gridNeedsUpdate = true
+local gridConnections = {}
+
+local function updateSpatialGrid()
+    if not gridNeedsUpdate then return end
+    gridNeedsUpdate = false
     
-    -- Get all placed pets from PlayerBuiltBlocks only (faster)
+    spatialGrid = {}
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not playerBuiltBlocks then
-        placeStatusData.takenTiles = 0
-        placeStatusData.totalPlaces = 0
-        return
-    end
+    if not playerBuiltBlocks then return end
     
-    -- Create a spatial hash for fast distance checking
-    local petPositions = {}
+    -- Build spatial grid (64x64 stud cells)
     for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
         if model:IsA("Model") then
-            local modelPos = model:GetPivot().Position
-            table.insert(petPositions, modelPos)
+            local pos = model:GetPivot().Position
+            local gridX = math.floor(pos.X / 64)
+            local gridZ = math.floor(pos.Z / 64)
+            local key = gridX .. "," .. gridZ
+            
+            if not spatialGrid[key] then spatialGrid[key] = {} end
+            table.insert(spatialGrid[key], pos)
         end
     end
+end
+
+-- Set up event-driven updates
+local function setupGridEvents()
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if not playerBuiltBlocks then return end
     
-    -- Check each farm tile against pet positions (faster)
+    -- Clear old connections
+    for _, conn in ipairs(gridConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    gridConnections = {}
+    
+    -- Listen for new pets
+    table.insert(gridConnections, playerBuiltBlocks.ChildAdded:Connect(function()
+        gridNeedsUpdate = true
+    end))
+    
+    -- Listen for removed pets
+    table.insert(gridConnections, playerBuiltBlocks.ChildRemoved:Connect(function()
+        gridNeedsUpdate = true
+    end))
+end
+
+local function checkTakenTiles(farmParts)
+    updateSpatialGrid() -- Update grid if needed
+    
+    takenTiles = {}
+    local takenCount = 0
+    
     for i, part in ipairs(farmParts) do
-        local isTaken = false
         local partPos = part.Position
+        local gridX = math.floor(partPos.X / 64)
+        local gridZ = math.floor(partPos.Z / 64)
         
-        -- Check against all placed pets (optimized)
-        for _, petPos in ipairs(petPositions) do
-            local distance = (petPos - partPos).Magnitude
-            if distance < 8 then -- If pet is within 8 studs of tile center
-                isTaken = true
-                break
+        -- Check only nearby grid cells (3x3 area)
+        local isTaken = false
+        for dx = -1, 1 do
+            for dz = -1, 1 do
+                local key = (gridX + dx) .. "," .. (gridZ + dz)
+                local pets = spatialGrid[key]
+                if pets then
+                    for _, petPos in ipairs(pets) do
+                        local distance = (petPos - partPos).Magnitude
+                        if distance < 8 then
+                            isTaken = true
+                            break
+                        end
+                    end
+                    if isTaken then break end
+                end
             end
+            if isTaken then break end
         end
         
         if isTaken then
@@ -1418,7 +1462,7 @@ local function checkTakenTiles(farmParts)
     end
     
     placeStatusData.takenTiles = takenCount
-    placeStatusData.totalPlaces = #petPositions -- Faster count
+    placeStatusData.totalPlaces = #spatialGrid > 0 and #spatialGrid or 0
 end
 
 local function runAutoPlace()
@@ -1533,19 +1577,29 @@ local function runAutoPlace()
     print("Farm parts found: " .. #farmParts)
     print("Taken tiles: " .. (placeStatusData.takenTiles or 0))
     
-    -- Find first available tile (not taken AND not tried)
+    -- SMART: Find best available tile (closest to player, not taken, not tried)
     local chosenPart = nil
     local tileIndex = nil
+    local bestDistance = math.huge
     
-    -- Try sequential placement first, but skip tiles we already tried
+    local playerPos = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local playerPosition = playerPos and playerPos.Position or Vector3.new()
+    
+    -- Find closest available tile
     for i = 1, #farmParts do
         if not takenTiles[i] and not triedTiles[i] then
-            chosenPart = farmParts[i]
-            tileIndex = i
-            triedTiles[i] = true -- Mark as tried
-            print("✓ Found available tile " .. i .. " at " .. string.format("(%.0f, %.0f, %.0f)", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z))
-            break
+            local distance = (farmParts[i].Position - playerPosition).Magnitude
+            if distance < bestDistance then
+                bestDistance = distance
+                chosenPart = farmParts[i]
+                tileIndex = i
+            end
         end
+    end
+    
+    if chosenPart then
+        triedTiles[tileIndex] = true -- Mark as tried
+        print("✓ Found best tile " .. tileIndex .. " at " .. string.format("(%.0f, %.0f, %.0f) [%.1f studs away]", chosenPart.Position.X, chosenPart.Position.Y, chosenPart.Position.Z, bestDistance))
     end
     
     -- If no untried tiles available, reset tried tiles and try again
@@ -1687,24 +1741,45 @@ local function runAutoPlace()
         local placementConfirmed = false
         local placedModel = nil
         
-        -- Try multiple times to verify placement (FASTER)
-        for attempt = 1, 3 do
-            task.wait(0.1) -- Faster wait for placement to register
-            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        -- INSTANT: Event-driven placement verification
+        local placementConfirmed = false
+        local placedModel = nil
+        local verificationTimeout = tick() + 1.0 -- 1 second timeout
+        
+        -- Set up one-time event listener
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        local verificationConnection
+        if playerBuiltBlocks then
+            verificationConnection = playerBuiltBlocks.ChildAdded:Connect(function(child)
+                if child:IsA("Model") and child.Name == petUID then
+                    placementConfirmed = true
+                    placedModel = child
+                    print("✓ Placement confirmed INSTANTLY via event")
+                    if verificationConnection then
+                        verificationConnection:Disconnect()
+                    end
+                end
+            end)
+        end
+        
+        -- Fallback: Check manually if event doesn't fire
+        while not placementConfirmed and tick() < verificationTimeout do
+            task.wait(0.05) -- Very fast polling as fallback
             
             if playerBuiltBlocks then
-                -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
                 for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
                     if model:IsA("Model") and model.Name == petUID then
                         placementConfirmed = true
                         placedModel = model
-                        print("✓ Placement confirmed on attempt " .. attempt)
+                        print("✓ Placement confirmed via fallback check")
                         break
                     end
                 end
             end
-            
-            if placementConfirmed then break end
+        end
+        
+        if verificationConnection then
+            verificationConnection:Disconnect()
         end
         
         if placementConfirmed then
@@ -1752,8 +1827,8 @@ local function runAutoPlace()
         -- Put the egg back at the front of the list to retry
         table.insert(validEggs, 1, { uid = petUID, type = selectedEgg.type })
         placeStatusData.remainingEggs = #validEggs
-                    task.wait(0.1) -- Faster wait on error
-            return -- Don't continue, retry the same egg
+        task.wait(0.1) -- Faster wait on error
+        return -- Don't continue, retry the same egg
     end
     updatePlaceStatusParagraph()
     
@@ -1781,6 +1856,10 @@ Tabs.PlaceTab:Toggle({
             triedTiles = {} -- Reset tried tiles memory
             tileCheckTime = 0
             placeStatusData.totalPlaces = countPlacedPets() -- Get actual count
+            
+            -- Set up ultra-fast event system
+            setupGridEvents()
+            gridNeedsUpdate = true -- Force initial grid update
             
             -- Immediately hold egg on enable
             pcall(function()
