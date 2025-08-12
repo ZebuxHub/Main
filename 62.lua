@@ -1223,7 +1223,7 @@ local placeAnchorPosition = nil
 local anchorRadiusStuds = 50
 local takenTiles = {} -- Remember which tiles are taken
 local tileCheckTime = 0 -- Last time we checked tiles
-local selectedEggTypes = {} -- Store selected egg types for placement
+local selectedEggTypes = {} -- Selected egg types for placement
 
 
 -- Auto Place status tracking
@@ -1239,55 +1239,13 @@ local placeStatusData = {
     validationStatus = nil,
 }
 
-Tabs.PlaceTab:Section({ Title = "Egg Selection", Icon = "egg" })
-
--- Use the same egg loading logic as the working egg dropdown
-local function buildEggIdListForPlacement()
-    local eggIds = {}
-    local success, resEgg = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResEgg"))
-    end)
-    
-    if success and resEgg then
-        for id, _ in pairs(resEgg) do
-            if id ~= "_index" and id ~= "__index" and not string.match(id, "^_") then
-                table.insert(eggIds, id)
-            end
-        end
-        table.sort(eggIds)
-    end
-    
-    return eggIds
-end
-
-local placementEggIds = buildEggIdListForPlacement()
-
-Tabs.PlaceTab:Dropdown({
-    Title = "Egg Types to Place",
-    Desc = "Select which egg types to place (leave empty to place all)",
-    Options = placementEggIds,
-    Multi = true,
-    Callback = function(selected)
-        selectedEggTypes = selected
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "Select All Eggs",
-    Desc = "Select all available egg types",
-    Callback = function()
-        selectedEggTypes = table.clone(placementEggIds)
-    end
-})
-
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
 Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
-        "1) Select egg types you want to place (optional).",
-        "2) Turn on 'Auto Place'.",
-        "3) The script will place only selected egg types.",
-        "4) If no eggs selected, places all available eggs.",
+        "1) Turn on 'Auto Place'.",
+        "2) The script walks to tiles and looks for BlockInd.",
+        "3) When BlockInd appears, it holds 2 and places.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
@@ -1299,6 +1257,41 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     ImageSize = 18,
 })
 
+-- Egg selection dropdown
+local eggDropdown = Tabs.PlaceTab:Dropdown({
+    Title = "Select Eggs to Place",
+    Desc = "Choose which egg types to place automatically",
+    Options = {}, -- Will be populated with egg types
+    Multi = true,
+    Callback = function(selected)
+        selectedEggTypes = selected
+        placeStatusData.selectedEggs = #selected
+        updatePlaceStatusParagraph()
+    end
+})
+
+-- Function to populate egg dropdown
+local function populateEggDropdown()
+    local eggConfig = loadEggConfig()
+    if eggConfig then
+        local eggOptions = {}
+        for id, data in pairs(eggConfig) do
+            if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
+                local eggName = data.Type or data.Name or id
+                table.insert(eggOptions, eggName)
+            end
+        end
+        table.sort(eggOptions)
+        eggDropdown:SetOptions(eggOptions)
+    end
+end
+
+-- Populate dropdown when script starts
+task.spawn(function()
+    task.wait(1) -- Wait for game to load
+    populateEggDropdown()
+end)
+
 local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
@@ -1307,11 +1300,13 @@ local function formatPlaceStatusDesc()
         placeStatusData.totalPlaces or 0,
         placeStatusData.takenTiles or 0))
     
+    if placeStatusData.selectedEggs then
+        table.insert(lines, string.format("🥚 Selected: %d types", placeStatusData.selectedEggs or 0))
+    end
+    
     if placeStatusData.petUID then
-        local eggType = placeStatusData.eggType or "Unknown"
-        table.insert(lines, string.format("🥚 Current: %s (%s) | 📊 Left: %d", 
+        table.insert(lines, string.format("🐾 Current: %s | 📊 Left: %d", 
             tostring(placeStatusData.petUID), 
-            eggType,
             placeStatusData.remainingEggs or 0))
     end
     
@@ -1433,34 +1428,28 @@ local function runAutoPlace()
         return
     end
     
-    -- Find eggs in PlayerBuiltBlocks that match player's UserId and selected types
+    -- Find eggs in PlayerBuiltBlocks that match player's UserId AND selected types
     local playerUserId = Players.LocalPlayer.UserId
     local validEggs = {}
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    
+    if #selectedEggTypes == 0 then
+        placeStatusData.lastAction = "No egg types selected - please select eggs to place"
+        updatePlaceStatusParagraph()
+        task.wait(0.5)
+        return
+    end
+    
     if playerBuiltBlocks then
         for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
             if egg:IsA("Model") then
                 local eggUserId = egg:GetAttribute("UserId")
                 if eggUserId and tonumber(eggUserId) == playerUserId then
-                    local eggCF = egg:GetAttribute("EggCF")
-                    if eggCF then
-                        -- Check if egg type is selected (if any are selected)
-                        local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg.Name
-                        local shouldInclude = true
-                        
-                        -- If specific egg types are selected, check if this egg matches
-                        if #selectedEggTypes > 0 then
-                            shouldInclude = false
-                            for _, selectedId in ipairs(selectedEggTypes) do
-                                -- Check if egg type matches any selected ID
-                                if eggType == selectedId then
-                                    shouldInclude = true
-                                    break
-                                end
-                            end
-                        end
-                        
-                        if shouldInclude then
+                    -- Check if this egg type is selected
+                    local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg:GetAttribute("Name")
+                    if eggType and table.find(selectedEggTypes, eggType) then
+                        local eggCF = egg:GetAttribute("EggCF")
+                        if eggCF then
                             table.insert(validEggs, { uid = egg.Name, cf = eggCF, type = eggType })
                         end
                     end
@@ -1470,18 +1459,16 @@ local function runAutoPlace()
     end
     
     if #validEggs == 0 then
-        placeStatusData.lastAction = "No owned eggs found in PlayerBuiltBlocks"
+        placeStatusData.lastAction = "No matching eggs found - check selection"
         updatePlaceStatusParagraph()
-        task.wait(0.2) -- Faster wait
+        task.wait(0.2)
         return
     end
     
     -- Use the first valid egg and remove it from the list
     local selectedEgg = table.remove(validEggs, 1)
     local petUID = selectedEgg.uid
-    local eggType = selectedEgg.type or "Unknown"
     placeStatusData.petUID = petUID
-    placeStatusData.eggType = eggType
     placeStatusData.remainingEggs = #validEggs -- Track remaining eggs
             
             -- Enhanced pet validation and info gathering
