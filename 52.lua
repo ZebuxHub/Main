@@ -1221,6 +1221,8 @@ local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local placeAnchorPosition = nil
 local anchorRadiusStuds = 50
+local takenTiles = {} -- Remember which tiles are taken
+local tileCheckTime = 0 -- Last time we checked tiles
 
 
 -- Auto Place status tracking
@@ -1254,27 +1256,71 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     ImageSize = 18,
 })
 
-    local function formatPlaceStatusDesc()
-        local lines = {}
-        table.insert(lines, string.format("🏝️ %s | 🏗️ %d tiles | 📊 %d placed", 
-            tostring(placeStatusData.islandName or "?"), 
-            placeStatusData.farmPartsFound or 0, 
-            placeStatusData.totalPlaces or 0))
-        
-        if placeStatusData.petUID then
-            table.insert(lines, string.format("🥚 %s | 📦 %d left", 
-                tostring(placeStatusData.petUID), 
-                placeStatusData.remainingEggs or 0))
-        end
-        
-        table.insert(lines, "📋 " .. tostring(placeStatusData.lastAction or "Ready"))
-        return table.concat(lines, "\n")
+local function formatPlaceStatusDesc()
+    local lines = {}
+    table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
+    table.insert(lines, string.format("📦 Tiles: %d | ✅ Placed: %d | ❌ Taken: %d", 
+        placeStatusData.farmPartsFound or 0, 
+        placeStatusData.totalPlaces or 0,
+        placeStatusData.takenTiles or 0))
+    
+    if placeStatusData.petUID then
+        table.insert(lines, string.format("🥚 Current: %s | 📊 Left: %d", 
+            tostring(placeStatusData.petUID), 
+            placeStatusData.remainingEggs or 0))
     end
+    
+    if placeStatusData.lastPosition then
+        table.insert(lines, string.format("📍 Last: %s", tostring(placeStatusData.lastPosition)))
+    end
+    
+    table.insert(lines, string.format("🔄 Status: %s", tostring(placeStatusData.lastAction or "Ready")))
+    return table.concat(lines, "\n")
+end
 
 local function updatePlaceStatusParagraph()
     if placeStatusParagraph and placeStatusParagraph.SetDesc then
         placeStatusParagraph:SetDesc(formatPlaceStatusDesc())
     end
+end
+
+-- Check and remember which tiles are taken
+local function checkTakenTiles(farmParts)
+    local currentTime = tick()
+    if currentTime - tileCheckTime < 2 then -- Only check every 2 seconds
+        return
+    end
+    tileCheckTime = currentTime
+    
+    takenTiles = {} -- Reset taken tiles
+    local takenCount = 0
+    
+    for i, part in ipairs(farmParts) do
+        local isTaken = false
+        local partPos = part.Position
+        
+        -- Check if there are any models within 2 studs
+        local params = OverlapParams.new()
+        params.RespectCanCollide = false
+        local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(4, 4, 4), params)
+        
+        for _, nearbyPart in ipairs(nearbyParts) do
+            if nearbyPart ~= part then
+                local model = nearbyPart:FindFirstAncestorOfClass("Model")
+                if model and model ~= Players.LocalPlayer.Character and isPetLikeModel(model) then
+                    isTaken = true
+                    break
+                end
+            end
+        end
+        
+        if isTaken then
+            takenTiles[i] = true
+            takenCount = takenCount + 1
+        end
+    end
+    
+    placeStatusData.takenTiles = takenCount
 end
 
 local function runAutoPlace()
@@ -1338,9 +1384,9 @@ local function runAutoPlace()
     end
     
     if #validEggs == 0 then
-        placeStatusData.lastAction = "⏸️ No eggs available - waiting..."
+        placeStatusData.lastAction = "No owned eggs found in PlayerBuiltBlocks"
         updatePlaceStatusParagraph()
-        task.wait(1) -- Wait longer when no eggs
+        task.wait(0.2) -- Faster wait
         return
     end
     
@@ -1364,48 +1410,33 @@ local function runAutoPlace()
             -- Get pet information for better status display
             placeStatusData.petInfo = getPetInfo(petUID)
             
-    -- SMART TILE SELECTION: Find empty tile (no models within 1 stud)
-    local chosenPart = nil
-    local target = nil
+    -- Check which tiles are taken (only every 2 seconds for performance)
+    checkTakenTiles(farmParts)
     
+    -- Find first available tile (not taken)
+    local chosenPart = nil
+    local tileIndex = nil
+    
+    -- Try sequential placement first
     for i = 1, #farmParts do
-        local part = farmParts[i]
-        local partPos = part.Position
-        
-        -- Check if there are any models within 1 stud
-        local nearbyModels = false
-        local params = OverlapParams.new()
-        params.RespectCanCollide = false
-        local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(2, 2, 2), params)
-        
-        for _, nearbyPart in ipairs(nearbyParts) do
-            if nearbyPart ~= part then
-                local model = nearbyPart:FindFirstAncestorOfClass("Model")
-                if model and model ~= Players.LocalPlayer.Character then
-                    nearbyModels = true
-                    break
-                end
-            end
-        end
-        
-        if not nearbyModels then
-            chosenPart = part
-            target = partPos
+        if not takenTiles[i] then
+            chosenPart = farmParts[i]
+            tileIndex = i
             break
         end
     end
     
-    -- If no empty tile found, wait
+    -- If all tiles are taken, wait
     if not chosenPart then
         placeStatusData.lastAction = "⏸️ All tiles occupied - waiting..."
         updatePlaceStatusParagraph()
-        task.wait(1) -- Wait longer when no space
+        task.wait(1)
         return
     end
+    local target = chosenPart.Position
+    local blockIndCF = CFrame.new(target) -- Use tile center directly
     
-    local blockIndCF = CFrame.new(target)
-    
-    -- Quick teleport to empty tile
+    -- Quick teleport to tile
     local char = Players.LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -1470,6 +1501,13 @@ local function runAutoPlace()
             placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
             local remaining = placeStatusData.remainingEggs or 0
             placeStatusData.lastAction = "✅ Placed PET " .. tostring(petUID) .. " (" .. remaining .. " eggs left)"
+            
+            -- Mark this tile as taken
+            if tileIndex then
+                takenTiles[tileIndex] = true
+                placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+            end
+            
             task.wait(0.02) -- Ultra fast wait time
         else
             placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
