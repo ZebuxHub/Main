@@ -1285,9 +1285,26 @@ local function updatePlaceStatusParagraph()
 end
 
 -- Check and remember which tiles are taken
+-- Count actual placed pets in PlayerBuiltBlocks
+local function countPlacedPets()
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    local count = 0
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local userId = model:GetAttribute("UserId")
+                if userId and tonumber(userId) == Players.LocalPlayer.UserId then
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count
+end
+
 local function checkTakenTiles(farmParts)
     local currentTime = tick()
-    if currentTime - tileCheckTime < 2 then -- Only check every 2 seconds
+    if currentTime - tileCheckTime < 1 then -- Check more frequently
         return
     end
     tileCheckTime = currentTime
@@ -1299,17 +1316,21 @@ local function checkTakenTiles(farmParts)
         local isTaken = false
         local partPos = part.Position
         
-        -- Check if there are any models within 2 studs
+        -- Check if there are any models within 3 studs (more accurate)
         local params = OverlapParams.new()
         params.RespectCanCollide = false
-        local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(4, 4, 4), params)
+        local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(partPos), Vector3.new(6, 6, 6), params)
         
         for _, nearbyPart in ipairs(nearbyParts) do
             if nearbyPart ~= part then
                 local model = nearbyPart:FindFirstAncestorOfClass("Model")
-                if model and model ~= Players.LocalPlayer.Character and isPetLikeModel(model) then
-                    isTaken = true
-                    break
+                if model and model ~= Players.LocalPlayer.Character then
+                    -- Check if it's a pet by looking for specific attributes or tags
+                    if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
+                       model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
+                        isTaken = true
+                        break
+                    end
                 end
             end
         end
@@ -1321,6 +1342,8 @@ local function checkTakenTiles(farmParts)
     end
     
     placeStatusData.takenTiles = takenCount
+    -- Update actual placed count from PlayerBuiltBlocks
+    placeStatusData.totalPlaces = countPlacedPets()
 end
 
 local function runAutoPlace()
@@ -1455,7 +1478,7 @@ local function runAutoPlace()
     -- Calculate placement position 6 studs below BlockInd
     local placementPos = Vector3.new(
         blockIndCF.Position.X,
-        blockIndCF.Position.Y, -- 6 studs below BlockInd
+        blockIndCF.Position.Y,
         blockIndCF.Position.Z
     )
     
@@ -1502,10 +1525,15 @@ local function runAutoPlace()
             local remaining = placeStatusData.remainingEggs or 0
             placeStatusData.lastAction = "✅ Placed PET " .. tostring(petUID) .. " (" .. remaining .. " eggs left)"
             
-            -- Mark this tile as taken
+            -- Mark this tile as taken immediately
             if tileIndex then
                 takenTiles[tileIndex] = true
-                placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                -- Recalculate taken count
+                local newTakenCount = 0
+                for _ in pairs(takenTiles) do
+                    newTakenCount = newTakenCount + 1
+                end
+                placeStatusData.takenTiles = newTakenCount
             end
             
             task.wait(0.02) -- Ultra fast wait time
@@ -1538,6 +1566,11 @@ Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
+            -- Reset counters and memory when starting
+            takenTiles = {}
+            tileCheckTime = 0
+            placeStatusData.totalPlaces = countPlacedPets() -- Get actual count
+            
             -- Immediately hold egg on enable
             pcall(function()
                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
