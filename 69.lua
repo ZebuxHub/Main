@@ -1482,34 +1482,10 @@ local function runAutoPlace()
             placeStatusData.lastAction = "✓ Type " .. eggInfo.type .. " matches selection"
             updatePlaceStatusParagraph()
             
-            -- Find corresponding egg in PlayerBuiltBlocks
-            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-            if playerBuiltBlocks then
-                local egg = playerBuiltBlocks:FindFirstChild(eggInfo.uid)
-                if egg and egg:IsA("Model") then
-                    local eggUserId = egg:GetAttribute("UserId")
-                    if eggUserId and tonumber(eggUserId) == Players.LocalPlayer.UserId then
-                        local eggCF = egg:GetAttribute("EggCF")
-                        if eggCF then
-                            table.insert(validEggs, { uid = eggInfo.uid, cf = eggCF, type = eggInfo.type })
-                            placeStatusData.lastAction = "✓ Added " .. eggInfo.type .. " to valid eggs"
-                            updatePlaceStatusParagraph()
-                        else
-                            placeStatusData.lastAction = "✗ No EggCF for " .. eggInfo.type
-                            updatePlaceStatusParagraph()
-                        end
-                    else
-                        placeStatusData.lastAction = "✗ Wrong UserId for " .. eggInfo.type
-                        updatePlaceStatusParagraph()
-                    end
-                else
-                    placeStatusData.lastAction = "✗ No model found for " .. eggInfo.uid
-                    updatePlaceStatusParagraph()
-                end
-            else
-                placeStatusData.lastAction = "✗ No PlayerBuiltBlocks found"
-                updatePlaceStatusParagraph()
-            end
+            -- Add to valid eggs (eggs from PlayerGui.Data.Egg are ready to place)
+            table.insert(validEggs, { uid = eggInfo.uid, type = eggInfo.type })
+            placeStatusData.lastAction = "✓ Added " .. eggInfo.type .. " to valid eggs"
+            updatePlaceStatusParagraph()
         else
             placeStatusData.lastAction = "✗ Type " .. eggInfo.type .. " not in selection"
             updatePlaceStatusParagraph()
