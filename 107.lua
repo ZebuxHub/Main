@@ -1360,12 +1360,28 @@ Tabs.PlaceTab:Button({
     end
 })
 
+Tabs.PlaceTab:Button({
+    Title = "Force Refresh Tiles",
+    Desc = "Manually recheck all farm tiles for availability",
+    Callback = function()
+        updateAvailableTiles()
+        WindUI:Notify({ Title = "Tile Refresh", Content = "Rechecked all tiles", Duration = 3 })
+    end
+})
+
 local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
     table.insert(lines, string.format("🥚 Available Eggs: %d | 📦 Available Tiles: %d", 
         placeStatusData.availableEggs or 0, 
         placeStatusData.availableTiles or 0))
+    
+    if placeStatusData.totalTiles then
+        table.insert(lines, string.format("📊 Total Tiles: %d | ❌ Occupied: %d", 
+            placeStatusData.totalTiles or 0,
+            placeStatusData.occupiedTiles or 0))
+    end
+    
     table.insert(lines, string.format("✅ Total Placed: %d", placeStatusData.totalPlaces or 0))
     
     if placeStatusData.selectedEggs then
@@ -1439,23 +1455,32 @@ local function updateAvailableTiles()
     local farmParts = getFarmParts(islandNumber)
     
     availableTiles = {}
+    local totalTiles = #farmParts
+    local occupiedTiles = 0
+    
     for i, part in ipairs(farmParts) do
         -- Check if tile is actually available (not occupied) with more lenient radius
         local isOccupied = false
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") then
-                    local modelPos = model:GetPivot().Position
-                    local distance = (modelPos - part.Position).Magnitude
-                    -- More lenient: allow placement if pet is within 10 studs of tile center
-                    -- This accounts for eggs being placed above the tile
-                    if distance < 10.0 then -- 10 stud radius check
-                        isOccupied = true
-                        break
-                    end
+                    for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local tilePos = part.Position
+                
+                -- Separate X/Z and Y axis checks
+                local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                
+                -- X/Z: 4 studs radius (tile is 8x8, so 4 studs from center)
+                -- Y: 8 studs radius (allow eggs placed above/below tile)
+                if xzDistance < 4.0 and yDistance < 8.0 then
+                    isOccupied = true
+                    occupiedTiles = occupiedTiles + 1
+                    break
                 end
             end
+        end
         end
         
         if not isOccupied then
@@ -1464,6 +1489,13 @@ local function updateAvailableTiles()
     end
     
     placeStatusData.availableTiles = #availableTiles
+    placeStatusData.totalTiles = totalTiles
+    placeStatusData.occupiedTiles = occupiedTiles
+    
+    -- Debug info
+    placeStatusData.lastAction = string.format("Found %d available tiles out of %d total (occupied: %d)", 
+        #availableTiles, totalTiles, occupiedTiles)
+    
     updatePlaceStatusParagraph()
 end
 
@@ -1480,8 +1512,14 @@ local function placeEggInstantly(eggInfo, tileInfo)
         for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
             if model:IsA("Model") then
                 local modelPos = model:GetPivot().Position
-                local distance = (modelPos - tilePart.Position).Magnitude
-                if distance < 10.0 then -- 10 stud radius check (more lenient)
+                local tilePos = tilePart.Position
+                
+                -- Separate X/Z and Y axis checks
+                local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                
+                -- X/Z: 4 studs radius, Y: 8 studs radius
+                if xzDistance < 4.0 and yDistance < 8.0 then
                     placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied - skipping"
                     placingInProgress = false
                     return false
@@ -1615,8 +1653,14 @@ local function attemptPlacement()
                 for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
                     if model:IsA("Model") then
                         local modelPos = model:GetPivot().Position
-                        local distance = (modelPos - tileInfo.part.Position).Magnitude
-                        if distance < 10.0 then -- 10 stud radius check (more lenient)
+                        local tilePos = tileInfo.part.Position
+                        
+                        -- Separate X/Z and Y axis checks
+                        local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                        local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                        
+                        -- X/Z: 4 studs radius, Y: 8 studs radius
+                        if xzDistance < 4.0 and yDistance < 8.0 then
                             isStillAvailable = false
                             break
                         end
