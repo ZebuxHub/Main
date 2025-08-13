@@ -28,12 +28,13 @@ local Window = WindUI:CreateWindow({
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 | Buy Eggs"})
-Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 |Place Pets"})
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 | Place Pets"})
 Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "⚡ | Hatch Eggs"})
 Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
-Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 |Fruit Store"})
+Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
+Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
@@ -2673,8 +2674,6 @@ local onlyIfNoneOwnedToggle = Tabs.FruitTab:Toggle({
 })
 
 -- ============ Config System ============
-Tabs.FruitTab:Section({ Title = "💾 Save Settings", Icon = "save" })
-
 -- Create config manager
 local ConfigManager = Window.ConfigManager
 local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
@@ -2699,7 +2698,17 @@ local function registerConfigElements()
     end
 end
 
-Tabs.FruitTab:Button({
+-- ============ Save Settings Tab ============
+Tabs.SaveTab:Section({ Title = "💾 Save & Load", Icon = "save" })
+
+Tabs.SaveTab:Paragraph({
+    Title = "💾 Settings Manager",
+    Desc = "Save your current settings to remember them next time you use the script!",
+    Image = "save",
+    ImageSize = 18,
+})
+
+Tabs.SaveTab:Button({
     Title = "💾 Save Settings",
     Desc = "Save all your current settings",
     Callback = function()
@@ -2712,7 +2721,7 @@ Tabs.FruitTab:Button({
     end
 })
 
-Tabs.FruitTab:Button({
+Tabs.SaveTab:Button({
     Title = "📂 Load Settings",
     Desc = "Load your saved settings",
     Callback = function()
@@ -2725,7 +2734,7 @@ Tabs.FruitTab:Button({
     end
 })
 
-Tabs.FruitTab:Button({
+Tabs.SaveTab:Button({
     Title = "🔄 Reset Settings",
     Desc = "Reset all settings to default",
     Callback = function()
