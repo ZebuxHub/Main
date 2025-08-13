@@ -2783,19 +2783,12 @@ Tabs.ConfigTab:Button({
             -- Save the config
             local success = pcall(function()
                 customConfig:Save()
-                -- Force refresh the config list after saving
-                task.wait(0.1)
-                local newConfigs = getAvailableConfigs()
-                if configDropdown and configDropdown.Refresh then
-                    configDropdown:Refresh(newConfigs)
-                end
-                -- Update status to show the new config was found
-                configStatus.last = "✅ Saved and refreshed: " .. name
-                updateConfigStatus()
             end)
             
             if success then
                 configStatus.saved = (configStatus.saved or 0) + 1
+                configStatus.last = "✅ Saved config: " .. name
+                updateConfigStatus()
                 WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
             else
                 configStatus.last = "❌ Failed to save config"
@@ -2815,26 +2808,41 @@ Tabs.ConfigTab:Section({ Title = "📂 Load Configuration", Icon = "folder" })
 local function getAvailableConfigs()
     local configs = {}
     
-    -- Try multiple methods to get configs
+    -- Try to get configs from ConfigManager
     local success, allConfigs = pcall(function()
         return ConfigManager:AllConfigs()
     end)
     
     if success and allConfigs then
+        print("Found configs from ConfigManager:", game:GetService("HttpService"):JSONEncode(allConfigs))
         for configName, _ in pairs(allConfigs) do
             if type(configName) == "string" and configName ~= "" then
                 table.insert(configs, configName)
             end
         end
+    else
+        print("Failed to get configs from ConfigManager:", allConfigs)
     end
     
-    -- Also try to get from the default config
-    if not table.find(configs, "ZooConfig") then
-        table.insert(configs, "ZooConfig")
+    -- Also try to scan the file system directly as fallback
+    local folderPath = "WindUI/Zebux/config"
+    local success2, files = pcall(function()
+        return listfiles(folderPath)
+    end)
+    
+    if success2 and files then
+        print("Found files in folder:", game:GetService("HttpService"):JSONEncode(files))
+        for _, file in ipairs(files) do
+            local fileName = file:match("([^/]+)%.json$")
+            if fileName and not table.find(configs, fileName) then
+                table.insert(configs, fileName)
+            end
+        end
     end
     
     -- Sort configs alphabetically for better UX
     table.sort(configs)
+    print("Final config list:", game:GetService("HttpService"):JSONEncode(configs))
     return configs
 end
 
@@ -2922,19 +2930,12 @@ Tabs.ConfigTab:Button({
         
         local success = pcall(function()
             customConfig:Save()
-            -- Force refresh the config list after saving
-            task.wait(0.1)
-            local newConfigs = getAvailableConfigs()
-            if configDropdown and configDropdown.Refresh then
-                configDropdown:Refresh(newConfigs)
-            end
-            -- Update status to show the new config was found
-            configStatus.last = "✅ Saved and refreshed: " .. name
-            updateConfigStatus()
         end)
         
         if success then
             configStatus.saved = (configStatus.saved or 0) + 1
+            configStatus.last = "✅ Saved config: " .. name
+            updateConfigStatus()
             WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
         else
             configStatus.last = "❌ Failed to save config"
@@ -2957,6 +2958,40 @@ Tabs.ConfigTab:Button({
         end
         print("=============================")
         WindUI:Notify({ Title = "💾 Config Info", Content = "Check console for all configs!", Duration = 3 })
+    end
+})
+
+Tabs.ConfigTab:Button({
+    Title = "🔍 Debug Config System",
+    Desc = "Check what's happening with configs",
+    Callback = function()
+        print("=== CONFIG DEBUG ===")
+        print("ConfigManager exists:", ConfigManager ~= nil)
+        print("ConfigManager type:", typeof(ConfigManager))
+        
+        local success, allConfigs = pcall(function()
+            return ConfigManager:AllConfigs()
+        end)
+        print("AllConfigs success:", success)
+        print("AllConfigs result:", allConfigs)
+        
+        -- Check file system
+        local folderPath = "WindUI/Zebux/config"
+        local success2, files = pcall(function()
+            return listfiles(folderPath)
+        end)
+        print("File scan success:", success2)
+        print("Files found:", files)
+        
+        -- Try to list all files in workspace
+        local success3, allFiles = pcall(function()
+            return listfiles("")
+        end)
+        print("All files scan success:", success3)
+        print("All files:", allFiles)
+        
+        print("===================")
+        WindUI:Notify({ Title = "🔍 Debug Complete", Content = "Check console for debug info!", Duration = 5 })
     end
 })
 
