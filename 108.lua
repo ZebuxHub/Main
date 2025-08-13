@@ -34,7 +34,7 @@ Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "Auto Claim", Icon = "dollar-sign
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "Auto Pack", Icon = "gift" })
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "Fruit Market", Icon = "apple" })
-Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "Auto Feed", Icon = "utensils" })
+
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -1240,8 +1240,8 @@ local function runAutoBuy()
 end
 
 Tabs.AutoTab:Toggle({
-    Title = "Auto Buy Egg",
-    Desc = "Instantly buys new eggs as they appear on the belt",
+    Title = "🥚 Auto Buy Eggs",
+    Desc = "Instantly buys eggs as soon as they appear on the conveyor belt!",
     Value = false,
     Callback = function(state)
         autoBuyEnabled = state
@@ -1250,12 +1250,12 @@ Tabs.AutoTab:Toggle({
                 runAutoBuy()
                 autoBuyThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Buy", Content = "Started - Monitoring belt", Duration = 3 })
-            statusData.lastAction = "Started - Event-driven monitoring"
+            WindUI:Notify({ Title = "🥚 Auto Buy", Content = "Started - Watching for eggs! 🎉", Duration = 3 })
+            statusData.lastAction = "Started - Watching for eggs!"
             updateStatusParagraph()
         elseif (not state) and autoBuyThread then
             cleanupBeltConnections()
-            WindUI:Notify({ Title = "Auto Buy", Content = "Stopped", Duration = 3 })
+            WindUI:Notify({ Title = "🥚 Auto Buy", Content = "Stopped", Duration = 3 })
             statusData.lastAction = "Stopped"
             updateStatusParagraph()
         end
@@ -1776,8 +1776,8 @@ local function runAutoPlace()
 end
 
 Tabs.PlaceTab:Toggle({
-    Title = "Auto Place",
-    Desc = "Instantly places eggs on every available tile and monitors for new eggs/tiles",
+    Title = "🏠 Auto Place Pets",
+    Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
@@ -1791,12 +1791,12 @@ Tabs.PlaceTab:Toggle({
                 runAutoPlace()
                 autoPlaceThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Place", Content = "Started - Event-driven placement", Duration = 3 })
-            placeStatusData.lastAction = "Started - Monitoring eggs and tiles"
+            WindUI:Notify({ Title = "🏠 Auto Place", Content = "Started - Placing pets automatically! 🎉", Duration = 3 })
+            placeStatusData.lastAction = "Started - Placing pets automatically!"
             updatePlaceStatusParagraph()
         elseif (not state) and autoPlaceThread then
             cleanupPlaceConnections()
-            WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 3 })
+            WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
             placeStatusData.lastAction = "Stopped"
             updatePlaceStatusParagraph()
         end
@@ -2205,16 +2205,16 @@ Tabs.ShopTab:Button({
 
 
 -- ============ Fruit Market (Auto Buy Fruit) ============
-Tabs.FruitTab:Section({ Title = "Status", Icon = "info" })
-local fruitStatus = { last = "Idle", haveUI = false, haveData = false, selected = "" }
-local fruitParagraph = Tabs.FruitTab:Paragraph({ Title = "Fruit Market", Desc = "Pick fruits then turn on.", Image = "apple", ImageSize = 18 })
+Tabs.FruitTab:Section({ Title = "🍎 Fruit Store Status", Icon = "info" })
+local fruitStatus = { last = "Ready to buy fruits!", haveUI = false, haveData = false, selected = "", totalBought = 0 }
+local fruitParagraph = Tabs.FruitTab:Paragraph({ Title = "🍎 Fruit Market", Desc = "Pick your favorite fruits to buy automatically!", Image = "apple", ImageSize = 18 })
 local function updateFruitStatus()
     if fruitParagraph and fruitParagraph.SetDesc then
         local lines = {}
-        table.insert(lines, "Selected: " .. (fruitStatus.selected or ""))
-        table.insert(lines, "Store Data: " .. (fruitStatus.haveData and "Available" or "Not found"))
-        table.insert(lines, "Store UI: " .. (fruitStatus.haveUI and "Visible" or "Not found"))
-        table.insert(lines, "Status: " .. tostring(fruitStatus.last or ""))
+        table.insert(lines, "🍎 Selected Fruits: " .. (fruitStatus.selected or "None picked yet"))
+        table.insert(lines, "🛒 Store Open: " .. (fruitStatus.haveUI and "✅ Yes" or "❌ No - Open the store first"))
+        table.insert(lines, "📊 Total Bought: " .. tostring(fruitStatus.totalBought or 0))
+        table.insert(lines, "🔄 Status: " .. tostring(fruitStatus.last or "Ready!"))
         fruitParagraph:SetDesc(table.concat(lines, "\n"))
     end
 end
@@ -2247,8 +2247,8 @@ end
 local selectedFruitSet = {}
 local fruitDropdown
 fruitDropdown = Tabs.FruitTab:Dropdown({
-    Title = "Fruits",
-    Desc = "Choose items to buy.",
+    Title = "🍎 Pick Your Fruits",
+    Desc = "Choose which yummy fruits you want to buy automatically!",
     Values = buildFruitList(),
     Value = {},
     Multi = true,
@@ -2272,282 +2272,33 @@ fruitDropdown = Tabs.FruitTab:Dropdown({
 })
 
 Tabs.FruitTab:Button({
-    Title = "Reload Fruits",
-    Desc = "Reload ResPetFood",
+    Title = "🔄 Refresh Fruit List",
+    Desc = "Update the fruit list if it's not showing all fruits",
     Callback = function()
         loadPetFoodConfig()
         if fruitDropdown and fruitDropdown.Refresh then
             fruitDropdown:Refresh(buildFruitList())
         end
         updateFruitStatus()
+        WindUI:Notify({ Title = "🍎 Fruit Market", Content = "Fruit list refreshed!", Duration = 3 })
     end
 })
 
 Tabs.FruitTab:Button({
-    Title = "Select All Fruits",
-    Desc = "Quickly select every fruit in the list",
+    Title = "🍎 Select All Fruits",
+    Desc = "Quickly pick every fruit in the store!",
     Callback = function()
         local all = buildFruitList()
         selectedFruitSet = {}
         for _, n in ipairs(all) do selectedFruitSet[n] = true end
         fruitStatus.selected = table.concat(all, ", ")
         updateFruitStatus()
-        WindUI:Notify({ Title = "Fruit Market", Content = "All fruits selected", Duration = 3 })
+        WindUI:Notify({ Title = "🍎 Fruit Market", Content = "All fruits selected! 🎉", Duration = 3 })
     end
 })
 
 
--- ============ Auto Feed Pets ============
--- Forward declare helpers used below
-local getAllFruitNames
-local hasAnyFruitOwned
-local setDeploySlotS3
--- New approach: decide feedable by PlayerGui.Data.Pets entries having BPV attribute
-local function getFeedablePets()
-    local feedable = {}
-    -- Try authoritative list from PlayerGui.Data.Pets (UIDs of player's pets)
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    local petsData = data and data:FindFirstChild("Pets")
-    if petsData then
-        for _, petVal in ipairs(petsData:GetChildren()) do
-            local uid = petVal.Name
-            local hasBPV = petVal:GetAttribute("BPV") ~= nil
-            if hasBPV then
-                -- Map UID -> world model if present
-                local worldPets = workspace:FindFirstChild("Pets")
-                local model = worldPets and worldPets:FindFirstChild(uid)
-                if model and model:IsA("Model") then
-                    table.insert(feedable, model)
-                end
-            end
-        end
-        if #feedable > 0 then return feedable end
-    end
-    -- Fallback: scan world for BigPetGUI.Feed
-    local petsFolder = workspace:FindFirstChild("Pets")
-    if not petsFolder then return feedable end
-    for _, pet in ipairs(petsFolder:GetChildren()) do
-        if pet:IsA("Model") then
-            local root = pet:FindFirstChild("RootPart")
-            local gui = root and root:FindFirstChild("GUI")
-            local big = gui and gui:FindFirstChild("BigPetGUI")
-            if big and big:FindFirstChild("Feed") then
-                table.insert(feedable, pet)
-            end
-        end
-    end
-    return feedable
-end
 
-local function fireFeedPetByModel(petModel)
-    if not petModel then return false end
-    local args = { "Feed", petModel.Name }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
-    end)
-    if not ok then warn("Feed failed for pet " .. tostring(petModel.Name) .. ": " .. tostring(err)) end
-    return ok
-end
-
-local autoFeedEnabled = false
-local autoFeedThread = nil
-local feedStatus = { last = "Idle", fed = 0, found = 0 }
-Tabs.FeedTab:Section({ Title = "Status", Icon = "info" })
-local feedParagraph = Tabs.FeedTab:Paragraph({ Title = "Auto Feed", Desc = "Turn on to feed pets that show a Feed bar.", Image = "utensils", ImageSize = 18 })
-local function updateFeedStatus()
-    if feedParagraph and feedParagraph.SetDesc then
-        feedParagraph:SetDesc(string.format("Feedable: %d\nFed total: %d\nStatus: %s", feedStatus.found or 0, feedStatus.fed or 0, tostring(feedStatus.last or "")))
-    end
-end
-
--- Feed fruit selection (independent from Fruit Market)
-local feedSelectedFruitSet = {}
-local function buildFeedFruitList()
-    return buildFruitList()
-end
-Tabs.FeedTab:Dropdown({
-    Title = "Feed Fruits",
-    Desc = "Pick fruits this will use (slot S3)",
-    Values = buildFeedFruitList(),
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selection)
-        feedSelectedFruitSet = {}
-        local function add(n)
-            if n and n ~= "" then feedSelectedFruitSet[tostring(n)] = true end
-        end
-        if type(selection) == "table" then for _, n in ipairs(selection) do add(n) end
-        elseif type(selection) == "string" then add(selection) end
-        feedStatus.last = "Fruits set"
-        updateFeedStatus()
-    end
-})
-
--- Event-driven auto feed: watch PlayerGui.Data.Pets entries and fire when Feed attribute disappears
-local feedWatchStarted = false
-local feedRootConns = {}
-local feedEntryConns = {}
-local feedCooldownByUid = {}
-local function disconnectAllFeedConns()
-    for _, c in ipairs(feedRootConns) do pcall(function() c:Disconnect() end) end
-    feedRootConns = {}
-    for inst, arr in pairs(feedEntryConns) do
-        for _, c in ipairs(arr) do pcall(function() c:Disconnect() end) end
-        feedEntryConns[inst] = nil
-    end
-end
-
-local function getPetsDataFolder()
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = pg and pg:FindFirstChild("Data")
-    return data and data:FindFirstChild("Pets") or nil
-end
-
-local function uidToWorldModel(uid)
-    local petsFolder = workspace:FindFirstChild("Pets")
-    return petsFolder and petsFolder:FindFirstChild(uid) or nil
-end
-
-local function tryFeedFromEntry(petEntry)
-    if not autoFeedEnabled then return false end
-    if not petEntry or not petEntry.GetAttribute then return false end
-    local uid = petEntry.Name
-    -- requires BPV to be present per user logic
-    if petEntry:GetAttribute("BPV") == nil then return false end
-    -- fire only when Feed attribute is missing
-    local feedAttr = petEntry:GetAttribute("Feed")
-    if feedAttr ~= nil then return false end
-    -- simple cooldown to avoid bursts
-    local now = os.clock()
-    if feedCooldownByUid[uid] and now - feedCooldownByUid[uid] < 2 then return false end
-    if not hasAnyFruitOwned() then
-        feedStatus.last = "No fruit owned"
-        updateFeedStatus()
-        return false
-    end
-    local model = uidToWorldModel(uid)
-    if not model then return false end
-    -- Choose a fruit from the feed selection
-    local chosenFruit
-    for name, use in pairs(feedSelectedFruitSet) do
-        if use then chosenFruit = name break end
-    end
-    if not chosenFruit then
-        feedStatus.last = "Pick feed fruits first"
-        updateFeedStatus()
-        return false
-    end
-    -- Equip chosen fruit into S3 and press 3 to hold
-    setDeploySlotS3("PetFood_" .. tostring(chosenFruit))
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Three, false, game)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Three, false, game)
-    end)
-    feedStatus.last = "Feeding " .. tostring(uid) .. " with " .. tostring(chosenFruit)
-    updateFeedStatus()
-    local ok = fireFeedPetByModel(model)
-    if ok then
-        feedCooldownByUid[uid] = now
-        feedStatus.fed = (feedStatus.fed or 0) + 1
-        updateFeedStatus()
-    end
-    return ok
-end
-
-local function attachEntryWatch(petEntry)
-    if feedEntryConns[petEntry] then return end
-    local conns = {}
-    local function onAttr()
-        -- When Feed changes or BPV appears/disappears, re-evaluate
-        tryFeedFromEntry(petEntry)
-    end
-    table.insert(conns, petEntry:GetAttributeChangedSignal("Feed"):Connect(onAttr))
-    table.insert(conns, petEntry:GetAttributeChangedSignal("BPV"):Connect(onAttr))
-    feedEntryConns[petEntry] = conns
-    -- initial evaluation
-    task.spawn(onAttr)
-end
-
-local function startFeedWatch()
-    if feedWatchStarted then return end
-    feedWatchStarted = true
-    disconnectAllFeedConns()
-    local pets = getPetsDataFolder()
-    if not pets then
-        feedStatus.last = "Waiting for Data.Pets"
-        updateFeedStatus()
-        return
-    end
-    -- attach to existing entries
-    for _, child in ipairs(pets:GetChildren()) do
-        attachEntryWatch(child)
-    end
-    -- watch for child add/remove
-    table.insert(feedRootConns, pets.ChildAdded:Connect(function(ch)
-        attachEntryWatch(ch)
-    end))
-    table.insert(feedRootConns, pets.ChildRemoved:Connect(function(ch)
-        local arr = feedEntryConns[ch]
-        if arr then
-            for _, c in ipairs(arr) do pcall(function() c:Disconnect() end) end
-            feedEntryConns[ch] = nil
-        end
-    end))
-    feedStatus.last = "Watching Feed attributes"
-    updateFeedStatus()
-end
-
-local function stopFeedWatch()
-    if not feedWatchStarted then return end
-    feedWatchStarted = false
-    disconnectAllFeedConns()
-end
-
-Tabs.FeedTab:Toggle({
-    Title = "Auto Feed",
-    Desc = "Feeds only pets that have a Feed bar (workspace.Pets)",
-    Value = false,
-    Callback = function(state)
-        autoFeedEnabled = state
-        if state then
-            startFeedWatch()
-            feedStatus.last = "Started"
-            updateFeedStatus()
-            WindUI:Notify({ Title = "Auto Feed", Content = "Started", Duration = 3 })
-        else
-            stopFeedWatch()
-            feedStatus.last = "Stopped"
-            updateFeedStatus()
-            WindUI:Notify({ Title = "Auto Feed", Content = "Stopped", Duration = 3 })
-        end
-    end
-})
-
-Tabs.FeedTab:Button({
-    Title = "Feed All Now",
-    Desc = "Feeds each pet with a Feed bar once",
-    Callback = function()
-        local list = getFeedablePets()
-        feedStatus.found = #list
-        if #list == 0 then
-            WindUI:Notify({ Title = "Auto Feed", Content = "No feedable pets found", Duration = 3 })
-            feedStatus.last = "No feedable pets"
-            updateFeedStatus()
-            return
-        end
-        local count = 0
-        for _, pet in ipairs(list) do
-            if fireFeedPetByModel(pet) then count += 1 end
-            task.wait(0.1)
-        end
-        feedStatus.fed = (feedStatus.fed or 0) + count
-        feedStatus.last = string.format("Manual: fed %d", count)
-        updateFeedStatus()
-        WindUI:Notify({ Title = "Auto Feed", Content = string.format("Fed %d", count), Duration = 3 })
-    end
-})
 
 local function getFoodStoreUI()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
@@ -2784,17 +2535,18 @@ local function attemptBuySelected(names)
         if fruitOnlyIfZero then
             local have = getAssetCount(name)
             if have ~= nil and have > 0 then
-                fruitStatus.last = name .. " already owned (" .. tostring(have) .. ")"
+                fruitStatus.last = "🍎 " .. name .. " already owned (" .. tostring(have) .. ")"
                 updateFruitStatus()
                 task.wait(0.05)
                 skip = true
             end
         end
         if not skip and isFruitInStock(name) then
-            fruitStatus.last = "Buying " .. name
+            fruitStatus.last = "🛒 Buying " .. name .. "..."
             updateFruitStatus()
             fireBuyFruit(name)
             bought += 1
+            fruitStatus.totalBought = (fruitStatus.totalBought or 0) + 1
             task.wait(0.1)
         end
     end
@@ -2860,7 +2612,7 @@ local function runAutoFruit()
             for k in pairs(selectedFruitSet) do table.insert(names, k) end
             table.sort(names)
             if #names == 0 then
-                fruitStatus.last = "Pick fruits first"
+                fruitStatus.last = "🍎 Pick some fruits first!"
                 updateFruitStatus()
                 task.wait(0.8)
                 return
@@ -2868,16 +2620,16 @@ local function runAutoFruit()
             -- Try once now
             local bought = attemptBuySelected(names)
             if bought == 0 then
-                fruitStatus.last = "Waiting for stock changes"
+                fruitStatus.last = "⏰ Waiting for fruits to be in stock..."
                 updateFruitStatus()
                 waitForFruitAvailability(names, 30)
             else
-                fruitStatus.last = "Bought " .. tostring(bought)
+                fruitStatus.last = "🎉 Bought " .. tostring(bought) .. " fruits!"
             end
             updateFruitStatus()
         end)
         if not ok then
-            fruitStatus.last = "Error: " .. tostring(err)
+            fruitStatus.last = "❌ Error: " .. tostring(err)
             updateFruitStatus()
             task.wait(1)
         end
@@ -2885,8 +2637,8 @@ local function runAutoFruit()
 end
 
 Tabs.FruitTab:Toggle({
-    Title = "Auto Buy Fruit",
-    Desc = "Buys selected fruits when in stock (requires Food Store UI open)",
+    Title = "🛒 Auto Buy Fruits",
+    Desc = "Automatically buys your selected fruits when they're available in the store!",
     Value = false,
     Callback = function(state)
         autoFruitEnabled = state
@@ -2895,33 +2647,33 @@ Tabs.FruitTab:Toggle({
                 runAutoFruit()
                 autoFruitThread = nil
             end)
-            fruitStatus.last = "Started"
+            fruitStatus.last = "🚀 Started buying fruits automatically!"
             updateFruitStatus()
-            WindUI:Notify({ Title = "Fruit Market", Content = "Auto buy started", Duration = 3 })
+            WindUI:Notify({ Title = "🍎 Fruit Market", Content = "Auto buy started! 🎉", Duration = 3 })
         elseif (not state) and autoFruitThread then
-            fruitStatus.last = "Stopped"
+            fruitStatus.last = "⏸️ Stopped buying fruits"
             updateFruitStatus()
-            WindUI:Notify({ Title = "Fruit Market", Content = "Auto buy stopped", Duration = 3 })
+            WindUI:Notify({ Title = "🍎 Fruit Market", Content = "Auto buy stopped", Duration = 3 })
         end
     end
 })
 
 Tabs.FruitTab:Button({
-    Title = "Buy Selected Now",
-    Desc = "Attempts to buy each selected fruit once",
+    Title = "🛒 Buy Fruits Now",
+    Desc = "Try to buy all your selected fruits right now!",
     Callback = function()
         local names = {}
         for k in pairs(selectedFruitSet) do table.insert(names, k) end
         table.sort(names)
         if #names == 0 then
-            WindUI:Notify({ Title = "Fruit Market", Content = "Pick fruits first", Duration = 3 })
+            WindUI:Notify({ Title = "🍎 Fruit Market", Content = "Pick some fruits first!", Duration = 3 })
             return
         end
         local gui = getFoodStoreUI()
         fruitStatus.haveUI = gui ~= nil
         if not gui then
-            WindUI:Notify({ Title = "Fruit Market", Content = "Open Food Store UI first", Duration = 3 })
-            fruitStatus.last = "Store UI not found"
+            WindUI:Notify({ Title = "🍎 Fruit Market", Content = "Open the fruit store first!", Duration = 3 })
+            fruitStatus.last = "❌ Store not open - open the store first!"
             updateFruitStatus()
             return
         end
@@ -2930,18 +2682,19 @@ Tabs.FruitTab:Button({
             if isFruitInStock(n) then
                 fireBuyFruit(n)
                 bought += 1
+                fruitStatus.totalBought = (fruitStatus.totalBought or 0) + 1
                 task.wait(0.1)
             end
         end
-        WindUI:Notify({ Title = "Fruit Market", Content = string.format("Bought %d", bought), Duration = 3 })
-        fruitStatus.last = string.format("Manual: bought %d", bought)
+        WindUI:Notify({ Title = "🍎 Fruit Market", Content = string.format("Bought %d fruits! 🎉", bought), Duration = 3 })
+        fruitStatus.last = string.format("🎉 Bought %d fruits!", bought)
         updateFruitStatus()
     end
 })
 
 Tabs.FruitTab:Toggle({
-    Title = "Only If None Owned",
-    Desc = "Check Data.Asset and only buy if owned count is 0",
+    Title = "🍎 Only Buy If You Don't Have Any",
+    Desc = "Only buy fruits if you don't have any of that type already",
     Value = false,
     Callback = function(state)
         fruitOnlyIfZero = state
