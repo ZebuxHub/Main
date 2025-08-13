@@ -28,12 +28,12 @@ local Window = WindUI:CreateWindow({
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 | Buy Eggs"})
-Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 |Place Pets"})
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 | Place Pets"})
 Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "⚡ | Hatch Eggs"})
 Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
-Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 |Fruit Store"})
+Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
 Tabs.ConfigTab = Tabs.MainSection:Tab({ Title = "💾 | Save/Load"})
 
 -- Forward declarations for status used by UI callbacks defined below
@@ -575,7 +575,7 @@ local function runAutoClaim()
     end
 end
 
-Tabs.ClaimTab:Toggle({
+local autoClaimToggle = Tabs.ClaimTab:Toggle({
     Title = "💰 Auto Get Money",
     Desc = "Automatically collects money from your pets",
     Value = false,
@@ -593,7 +593,7 @@ Tabs.ClaimTab:Toggle({
     end
 })
 
-Tabs.ClaimTab:Slider({
+local claimDelaySlider = Tabs.ClaimTab:Slider({
     Title = "⏰ Claim Speed",
     Desc = "How fast to collect money (lower = faster)",
     Default = 100,
@@ -875,7 +875,7 @@ local function runAutoHatch()
     end
 end
 
-Tabs.HatchTab:Toggle({
+local autoHatchToggle = Tabs.HatchTab:Toggle({
     Title = "⚡ Auto Hatch Eggs",
     Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
@@ -1227,7 +1227,7 @@ local function runAutoBuy()
     cleanupBeltConnections()
 end
 
-Tabs.AutoTab:Toggle({
+local autoBuyToggle = Tabs.AutoTab:Toggle({
     Title = "🥚 Auto Buy Eggs",
     Desc = "Instantly buys eggs as soon as they appear on the conveyor belt!",
     Value = false,
@@ -1745,7 +1745,7 @@ local function runAutoPlace()
     cleanupPlaceConnections()
 end
 
-Tabs.PlaceTab:Toggle({
+local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Title = "🏠 Auto Place Pets",
     Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
@@ -1818,10 +1818,13 @@ local function updateDeleteStatusParagraph()
     end
 end
 
-Tabs.PlaceTab:Input({
+local deleteSpeedSlider = Tabs.PlaceTab:Slider({
     Title = "Speed Threshold",
     Desc = "Delete pets with speed below this value",
-    Value = "100",
+    Default = 100,
+    Min = 0,
+    Max = 1000,
+    Rounding = 0,
     Callback = function(value)
         deleteSpeedThreshold = tonumber(value) or 100
         deleteStatusData.speedThreshold = deleteSpeedThreshold
@@ -1935,7 +1938,7 @@ local function runAutoDelete()
     end
 end
 
-Tabs.PlaceTab:Toggle({
+local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Title = "Auto Delete",
     Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
@@ -2038,7 +2041,7 @@ local function runAutoPack()
     end
 end
 
-Tabs.PackTab:Toggle({
+local autoPackToggle = Tabs.PackTab:Toggle({
     Title = "🎁 Auto Get Packs",
     Desc = "Automatically claims online packs when ready",
     Value = false,
@@ -2104,7 +2107,7 @@ end
 
 local autoUpgradeEnabled = false
 local autoUpgradeThread = nil
-Tabs.ShopTab:Toggle({
+local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     Title = "🛒 Auto Upgrade Conveyor",
     Desc = "Automatically upgrades conveyor when you have enough money",
     Value = false,
@@ -2606,7 +2609,7 @@ local function runAutoFruit()
     end
 end
 
-Tabs.FruitTab:Toggle({
+local autoFruitToggle = Tabs.FruitTab:Toggle({
     Title = "🛒 Auto Buy Fruits",
     Desc = "Automatically buys your selected fruits when they're available in the store!",
     Value = false,
@@ -2662,7 +2665,7 @@ Tabs.FruitTab:Button({
     end
 })
 
-Tabs.FruitTab:Toggle({
+local fruitOnlyIfZeroToggle = Tabs.FruitTab:Toggle({
     Title = "🍎 Only Buy If You Don't Have Any",
     Desc = "Only buy fruits if you don't have any of that type already",
     Value = false,
@@ -2692,204 +2695,64 @@ local function updateConfigStatus()
     end
 end
 
--- Function to collect all current settings
-local function collectCurrentConfig()
-    local config = {
-        timestamp = os.time(),
-        version = "1.0",
-        
-        -- Auto Buy Eggs
-        autoBuyEnabled = autoBuyEnabled,
-        selectedEggTypes = selectedTypeSet,
-        
-        -- Auto Place Pets
-        autoPlaceEnabled = autoPlaceEnabled,
-        selectedEggTypesPlace = selectedEggTypes,
-        
-        -- Auto Hatch
-        autoHatchEnabled = autoHatchEnabled,
-        
-        -- Auto Claim Money
-        autoClaimEnabled = autoClaimEnabled,
-        autoClaimDelay = autoClaimDelay,
-        
-        -- Auto Upgrade Conveyor
-        autoUpgradeEnabled = autoUpgradeEnabled,
-        purchasedUpgrades = purchasedUpgrades,
-        
-        -- Auto Pack
-        autoPackEnabled = autoPackEnabled,
-        
-        -- Fruit Market
-        autoFruitEnabled = autoFruitEnabled,
-        selectedFruitSet = selectedFruitSet,
-        fruitOnlyIfZero = fruitOnlyIfZero,
-        
-        -- Auto Delete
-        autoDeleteEnabled = autoDeleteEnabled,
-        deleteSpeedThreshold = deleteSpeedThreshold
-    }
-    
-    return config
-end
+-- Get WindUI ConfigManager
+local ConfigManager = Window.ConfigManager
 
--- Function to apply loaded configuration
-local function applyConfig(config)
-    if not config then return false end
+-- Create config file
+local zooConfig = ConfigManager:CreateConfig("ZooConfig")
+
+-- Register all UI elements for config
+local function registerConfigElements(configToRegister)
+    local config = configToRegister or zooConfig
     
     -- Auto Buy Eggs
-    if config.autoBuyEnabled ~= nil then
-        autoBuyEnabled = config.autoBuyEnabled
-    end
-    if config.selectedEggTypes then
-        selectedTypeSet = config.selectedEggTypes
-        -- Update UI dropdown
-        if eggDropdown and eggDropdown.SetValue then
-            local selected = {}
-            for k in pairs(selectedTypeSet) do
-                table.insert(selected, k)
-            end
-            eggDropdown:SetValue(selected)
-        end
+    if autoBuyToggle then
+        config:Register("autoBuyEnabled", autoBuyToggle)
     end
     
     -- Auto Place Pets
-    if config.autoPlaceEnabled ~= nil then
-        autoPlaceEnabled = config.autoPlaceEnabled
-    end
-    if config.selectedEggTypesPlace then
-        selectedEggTypes = config.selectedEggTypesPlace
-        -- Update UI dropdown
-        if placeEggDropdown and placeEggDropdown.SetValue then
-            placeEggDropdown:SetValue(selectedEggTypes)
-        end
+    if autoPlaceToggle then
+        config:Register("autoPlaceEnabled", autoPlaceToggle)
     end
     
     -- Auto Hatch
-    if config.autoHatchEnabled ~= nil then
-        autoHatchEnabled = config.autoHatchEnabled
+    if autoHatchToggle then
+        config:Register("autoHatchEnabled", autoHatchToggle)
     end
     
     -- Auto Claim Money
-    if config.autoClaimEnabled ~= nil then
-        autoClaimEnabled = config.autoClaimEnabled
+    if autoClaimToggle then
+        config:Register("autoClaimEnabled", autoClaimToggle)
     end
-    if config.autoClaimDelay then
-        autoClaimDelay = config.autoClaimDelay
+    if claimDelaySlider then
+        config:Register("autoClaimDelay", claimDelaySlider)
     end
     
     -- Auto Upgrade Conveyor
-    if config.autoUpgradeEnabled ~= nil then
-        autoUpgradeEnabled = config.autoUpgradeEnabled
-    end
-    if config.purchasedUpgrades then
-        purchasedUpgrades = config.purchasedUpgrades
+    if autoUpgradeToggle then
+        config:Register("autoUpgradeEnabled", autoUpgradeToggle)
     end
     
     -- Auto Pack
-    if config.autoPackEnabled ~= nil then
-        autoPackEnabled = config.autoPackEnabled
+    if autoPackToggle then
+        config:Register("autoPackEnabled", autoPackToggle)
     end
     
     -- Fruit Market
-    if config.autoFruitEnabled ~= nil then
-        autoFruitEnabled = config.autoFruitEnabled
+    if autoFruitToggle then
+        config:Register("autoFruitEnabled", autoFruitToggle)
     end
-    if config.selectedFruitSet then
-        selectedFruitSet = config.selectedFruitSet
-        -- Update UI dropdown
-        if fruitDropdown and fruitDropdown.SetValue then
-            local selected = {}
-            for k in pairs(selectedFruitSet) do
-                table.insert(selected, k)
-            end
-            fruitDropdown:SetValue(selected)
-        end
-    end
-    if config.fruitOnlyIfZero ~= nil then
-        fruitOnlyIfZero = config.fruitOnlyIfZero
+    if fruitOnlyIfZeroToggle then
+        config:Register("fruitOnlyIfZero", fruitOnlyIfZeroToggle)
     end
     
     -- Auto Delete
-    if config.autoDeleteEnabled ~= nil then
-        autoDeleteEnabled = config.autoDeleteEnabled
+    if autoDeleteToggle then
+        config:Register("autoDeleteEnabled", autoDeleteToggle)
     end
-    if config.deleteSpeedThreshold then
-        deleteSpeedThreshold = config.deleteSpeedThreshold
+    if deleteSpeedSlider then
+        config:Register("deleteSpeedThreshold", deleteSpeedSlider)
     end
-    
-    return true
-end
-
--- Function to save configuration to file
-local function saveConfigToFile(filename)
-    local config = collectCurrentConfig()
-    local json = game:GetService("HttpService"):JSONEncode(config)
-    
-    local success, result = pcall(function()
-        writefile(filename .. ".json", json)
-    end)
-    
-    if success then
-        configStatus.saved = (configStatus.saved or 0) + 1
-        configStatus.last = "✅ Saved config: " .. filename
-        updateConfigStatus()
-        WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. filename .. ".json! 🎉", Duration = 5 })
-        return true
-    else
-        configStatus.last = "❌ Failed to save: " .. tostring(result)
-        updateConfigStatus()
-        WindUI:Notify({ Title = "💾 Save Failed", Content = "Could not save config: " .. tostring(result), Duration = 5 })
-        return false
-    end
-end
-
--- Function to load configuration from file
-local function loadConfigFromFile(filename)
-    local success, result = pcall(function()
-        local content = readfile(filename .. ".json")
-        return game:GetService("HttpService"):JSONDecode(content)
-    end)
-    
-    if success then
-        local applied = applyConfig(result)
-        if applied then
-            configStatus.loaded = (configStatus.loaded or 0) + 1
-            configStatus.last = "✅ Loaded config: " .. filename
-            updateConfigStatus()
-            WindUI:Notify({ Title = "💾 Config Loaded", Content = "Settings loaded from " .. filename .. ".json! 🎉", Duration = 5 })
-            return true
-        else
-            configStatus.last = "❌ Failed to apply config"
-            updateConfigStatus()
-            WindUI:Notify({ Title = "💾 Load Failed", Content = "Could not apply loaded settings", Duration = 5 })
-            return false
-        end
-    else
-        configStatus.last = "❌ Failed to load: " .. tostring(result)
-        updateConfigStatus()
-        WindUI:Notify({ Title = "💾 Load Failed", Content = "Could not load config: " .. tostring(result), Duration = 5 })
-        return false
-    end
-end
-
--- Function to list saved configs
-local function listSavedConfigs()
-    local configs = {}
-    local success, files = pcall(function()
-        return listfiles()
-    end)
-    
-    if success then
-        for _, file in ipairs(files) do
-            if file:match("%.json$") then
-                local name = file:gsub("%.json$", "")
-                table.insert(configs, name)
-            end
-        end
-    end
-    
-    return configs
 end
 
 -- Save Configuration UI
@@ -2898,7 +2761,7 @@ Tabs.ConfigTab:Section({ Title = "💾 Save Configuration", Icon = "save" })
 local configNameInput = Tabs.ConfigTab:Input({
     Title = "📝 Config Name",
     Desc = "Enter a name for your configuration",
-    Value = "MyConfig",
+    Value = "MyZooConfig",
     Callback = function(value)
         -- Store the value for later use
         configNameInput.value = value
@@ -2909,9 +2772,29 @@ Tabs.ConfigTab:Button({
     Title = "💾 Save Config",
     Desc = "Save all your current settings to a file",
     Callback = function()
-        local name = configNameInput.value or "MyConfig"
+        local name = configNameInput.value or "MyZooConfig"
         if name and name ~= "" then
-            saveConfigToFile(name)
+            -- Create a new config with the custom name
+            local customConfig = ConfigManager:CreateConfig(name)
+            
+            -- Register all elements to this config
+            registerConfigElements(customConfig)
+            
+            -- Save the config
+            local success = pcall(function()
+                customConfig:Save()
+            end)
+            
+            if success then
+                configStatus.saved = (configStatus.saved or 0) + 1
+                configStatus.last = "✅ Saved config: " .. name
+                updateConfigStatus()
+                WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
+            else
+                configStatus.last = "❌ Failed to save config"
+                updateConfigStatus()
+                WindUI:Notify({ Title = "💾 Save Failed", Content = "Could not save config!", Duration = 5 })
+            end
         else
             WindUI:Notify({ Title = "💾 Save Failed", Content = "Please enter a config name!", Duration = 3 })
         end
@@ -2921,7 +2804,21 @@ Tabs.ConfigTab:Button({
 -- Load Configuration UI
 Tabs.ConfigTab:Section({ Title = "📂 Load Configuration", Icon = "folder" })
 
-local savedConfigs = listSavedConfigs()
+-- Function to get all available configs
+local function getAvailableConfigs()
+    local configs = {}
+    local allConfigs = ConfigManager:AllConfigs()
+    
+    for configName, _ in pairs(allConfigs) do
+        table.insert(configs, configName)
+    end
+    
+    return configs
+end
+
+local savedConfigs = getAvailableConfigs()
+local selectedConfigName = ""
+
 local configDropdown = Tabs.ConfigTab:Dropdown({
     Title = "📂 Saved Configs",
     Desc = "Choose a configuration to load",
@@ -2931,8 +2828,34 @@ local configDropdown = Tabs.ConfigTab:Dropdown({
     AllowNone = true,
     Callback = function(selection)
         if selection and #selection > 0 then
-            local configName = selection[1]
-            loadConfigFromFile(configName)
+            selectedConfigName = selection[1]
+        end
+    end
+})
+
+Tabs.ConfigTab:Button({
+    Title = "📂 Load Selected Config",
+    Desc = "Load the selected configuration",
+    Callback = function()
+        if selectedConfigName and selectedConfigName ~= "" then
+            local success = pcall(function()
+                local configToLoad = ConfigManager:CreateConfig(selectedConfigName)
+                registerConfigElements(configToLoad)
+                configToLoad:Load()
+            end)
+            
+            if success then
+                configStatus.loaded = (configStatus.loaded or 0) + 1
+                configStatus.last = "✅ Loaded config: " .. selectedConfigName
+                updateConfigStatus()
+                WindUI:Notify({ Title = "💾 Config Loaded", Content = "Settings loaded from " .. selectedConfigName .. "! 🎉", Duration = 5 })
+            else
+                configStatus.last = "❌ Failed to load config"
+                updateConfigStatus()
+                WindUI:Notify({ Title = "💾 Load Failed", Content = "Could not load config!", Duration = 5 })
+            end
+        else
+            WindUI:Notify({ Title = "💾 Load Failed", Content = "Please select a config first!", Duration = 3 })
         end
     end
 })
@@ -2941,7 +2864,7 @@ Tabs.ConfigTab:Button({
     Title = "🔄 Refresh Config List",
     Desc = "Update the list of saved configurations",
     Callback = function()
-        local newConfigs = listSavedConfigs()
+        local newConfigs = getAvailableConfigs()
         if configDropdown and configDropdown.Refresh then
             configDropdown:Refresh(newConfigs)
         end
@@ -2957,22 +2880,41 @@ Tabs.ConfigTab:Button({
     Desc = "Quick save with timestamp",
     Callback = function()
         local timestamp = os.date("%Y%m%d_%H%M%S")
-        local name = "Config_" .. timestamp
-        saveConfigToFile(name)
+        local name = "ZooConfig_" .. timestamp
+        
+        local customConfig = ConfigManager:CreateConfig(name)
+        registerConfigElements(customConfig)
+        
+        local success = pcall(function()
+            customConfig:Save()
+        end)
+        
+        if success then
+            configStatus.saved = (configStatus.saved or 0) + 1
+            configStatus.last = "✅ Saved config: " .. name
+            updateConfigStatus()
+            WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
+        else
+            configStatus.last = "❌ Failed to save config"
+            updateConfigStatus()
+            WindUI:Notify({ Title = "💾 Save Failed", Content = "Could not save config!", Duration = 5 })
+        end
     end
 })
 
 Tabs.ConfigTab:Button({
-    Title = "📋 Show Current Settings",
-    Desc = "Display all current settings in console",
+    Title = "📋 Show All Configs",
+    Desc = "Display all available configs in console",
     Callback = function()
-        local config = collectCurrentConfig()
-        print("=== CURRENT CONFIGURATION ===")
-        for key, value in pairs(config) do
-            print(key .. ": " .. tostring(value))
+        local allConfigs = ConfigManager:AllConfigs()
+        print("=== ALL AVAILABLE CONFIGS ===")
+        for configName, configData in pairs(allConfigs) do
+            print("Config: " .. configName)
+            print("Data: " .. game:GetService("HttpService"):JSONEncode(configData))
+            print("---")
         end
         print("=============================")
-        WindUI:Notify({ Title = "💾 Config Info", Content = "Check console for current settings!", Duration = 3 })
+        WindUI:Notify({ Title = "💾 Config Info", Content = "Check console for all configs!", Duration = 3 })
     end
 })
 
