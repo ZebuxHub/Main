@@ -44,6 +44,11 @@ local function updatePlaceStatusParagraph() end
 local autoFruitEnabled = false
 local autoFruitThread = nil
 local autoFeedEnabled = false
+local autoPlaceEnabled = false
+local autoPlaceThread = nil
+local autoHatchEnabled = false
+local autoHatchThread = nil
+local automationPriority = "Hatch" -- "Hatch" or "Place"
 
 -- Egg config loader
 local eggConfig = {}
@@ -624,8 +629,6 @@ Tabs.ClaimTab:Button({
 })
 
 -- ============ Auto Hatch ============
-local autoHatchEnabled = false
-local autoHatchThread = nil
 
 -- Hatch debug UI
 Tabs.HatchTab:Section({ Title = "📊 Status", Icon = "info" })
@@ -829,6 +832,14 @@ end
 
 local function runAutoHatch()
     while autoHatchEnabled do
+        -- Check priority - if Auto Place is running and has priority, pause hatching
+        if autoPlaceEnabled and automationPriority == "Place" then
+            hatchStatus.last = "Paused - Auto Place has priority"
+            updateHatchStatus()
+            task.wait(1.0)
+            return
+        end
+        
         local ok, err = pcall(function()
             hatchStatus.last = "Scanning"
             updateHatchStatus()
@@ -856,6 +867,13 @@ local function runAutoHatch()
                 return (pa - me).Magnitude < (pb - me).Magnitude
             end)
             for _, m in ipairs(eggs) do
+                -- Check priority again before each hatch
+                if autoPlaceEnabled and automationPriority == "Place" then
+                    hatchStatus.last = "Paused - Auto Place has priority"
+                    updateHatchStatus()
+                    return
+                end
+                
                 hatchStatus.lastModel = m.Name
                 hatchStatus.lastEggType = getEggTypeFromModel(m)
                 hatchStatus.last = "Moving to hatch"
@@ -882,6 +900,11 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Callback = function(state)
         autoHatchEnabled = state
         if state and not autoHatchThread then
+            -- Check if Auto Place is running and we have lower priority
+            if autoPlaceEnabled and automationPriority == "Place" then
+                WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Auto Place has priority - Hatch paused", Duration = 3 })
+                return
+            end
             autoHatchThread = task.spawn(function()
                 runAutoHatch()
                 autoHatchThread = nil
@@ -925,6 +948,35 @@ Tabs.HatchTab:Button({
         updateHatchStatus()
         local ok = tryHatchModel(eggs[1])
         WindUI:Notify({ Title = ok and "🎉 Hatched!" or "❌ Hatch Failed", Content = eggs[1].Name, Duration = 3 })
+    end
+})
+
+-- Priority system UI
+Tabs.HatchTab:Section({ Title = "🎯 Priority Settings", Icon = "target" })
+
+Tabs.HatchTab:Paragraph({
+    Title = "🎯 Automation Priority",
+    Desc = "Choose which automation should work when both Auto Hatch and Auto Place are enabled",
+    Image = "target",
+    ImageSize = 18,
+})
+
+local priorityDropdown = Tabs.HatchTab:Dropdown({
+    Title = "🎯 Choose Priority",
+    Desc = "Select which automation has priority",
+    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
+    Value = "⚡ Auto Hatch First",
+    Callback = function(selection)
+        if selection == "⚡ Auto Hatch First" then
+            automationPriority = "Hatch"
+        else
+            automationPriority = "Place"
+        end
+        WindUI:Notify({ 
+            Title = "🎯 Priority Set", 
+            Content = "Priority set to: " .. selection, 
+            Duration = 3 
+        })
     end
 })
 
@@ -1250,9 +1302,9 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     end
 })
 
+
+
 -- Event-driven Auto Place functionality
-local autoPlaceEnabled = false
-local autoPlaceThread = nil
 local placeConnections = {}
 local placingInProgress = false
 local availableEggs = {} -- Track available eggs to place
@@ -1329,6 +1381,81 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     end
 })
 
+
+local function updateAvailableEggs()
+    local eggs = listAvailableEggUIDs()
+    availableEggs = {}
+    
+    if #selectedEggTypes == 0 then
+        -- If no types selected, use all eggs
+        availableEggs = eggs
+    else
+        -- Filter by selected types
+        local selectedSet = {}
+        for _, type in ipairs(selectedEggTypes) do
+            selectedSet[type] = true
+        end
+        
+        for _, eggInfo in ipairs(eggs) do
+            if selectedSet[eggInfo.type] then
+                table.insert(availableEggs, eggInfo)
+            end
+        end
+    end
+    
+    placeStatusData.availableEggs = #availableEggs
+    updatePlaceStatusParagraph()
+end
+
+local function updateAvailableTiles()
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    local farmParts = getFarmParts(islandNumber)
+    
+    availableTiles = {}
+    local totalTiles = #farmParts
+    local occupiedTiles = 0
+    
+    for i, part in ipairs(farmParts) do
+        -- Check if tile is actually available (not occupied) with more lenient radius
+        local isOccupied = false
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") then
+                    local modelPos = model:GetPivot().Position
+                    local tilePos = part.Position
+                    
+                    -- Separate X/Z and Y axis checks
+                    local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                    local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                    
+                    -- X/Z: 4 studs radius (tile is 8x8, so 4 studs from center)
+                    -- Y: 8 studs radius (allow eggs placed above/below tile)
+                    if xzDistance < 4.0 and yDistance < 8.0 then
+                        isOccupied = true
+                        occupiedTiles = occupiedTiles + 1
+                        break
+                    end
+                end
+            end
+        end
+        
+        if not isOccupied then
+            table.insert(availableTiles, { part = part, index = i })
+        end
+    end
+    
+    placeStatusData.availableTiles = #availableTiles
+    placeStatusData.totalTiles = totalTiles
+    placeStatusData.occupiedTiles = occupiedTiles
+    
+    -- Debug info
+    placeStatusData.lastAction = string.format("Found %d available tiles out of %d total (occupied: %d)", 
+        #availableTiles, totalTiles, occupiedTiles)
+    
+    updatePlaceStatusParagraph()
+end
 
 Tabs.PlaceTab:Button({
     Title = "🔄 Refresh Tiles",
@@ -1444,30 +1571,6 @@ local function updateAvailableTiles()
     updatePlaceStatusParagraph()
 end
 
-local function updateAvailableEggs()
-    local eggs = listAvailableEggUIDs()
-    availableEggs = {}
-    
-    if #selectedEggTypes == 0 then
-        -- If no types selected, use all eggs
-        availableEggs = eggs
-    else
-        -- Filter by selected types
-        local selectedSet = {}
-        for _, type in ipairs(selectedEggTypes) do
-            selectedSet[type] = true
-        end
-        
-        for _, eggInfo in ipairs(eggs) do
-            if selectedSet[eggInfo.type] then
-                table.insert(availableEggs, eggInfo)
-            end
-        end
-    end
-    
-    placeStatusData.availableEggs = #availableEggs
-    updatePlaceStatusParagraph()
-end
 
 
 
@@ -1717,6 +1820,14 @@ end
 
 local function runAutoPlace()
     while autoPlaceEnabled do
+        -- Check priority - if Auto Hatch is running and has priority, pause placing
+        if autoHatchEnabled and automationPriority == "Hatch" then
+            placeStatusData.lastAction = "Paused - Auto Hatch has priority"
+            updatePlaceStatusParagraph()
+            task.wait(1.0)
+            return
+        end
+        
         local islandName = getAssignedIslandName()
         placeStatusData.islandName = islandName
         
@@ -1736,6 +1847,13 @@ local function runAutoPlace()
         
         -- Wait until disabled or island changes
         while autoPlaceEnabled do
+            -- Check priority again during monitoring
+            if autoHatchEnabled and automationPriority == "Hatch" then
+                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
+                updatePlaceStatusParagraph()
+                return
+            end
+            
             local currentIsland = getAssignedIslandName()
             if currentIsland ~= islandName then
                 break -- Island changed, restart monitoring
@@ -1754,6 +1872,11 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
+            -- Check if Auto Hatch is running and we have lower priority
+            if autoHatchEnabled and automationPriority == "Hatch" then
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Auto Hatch has priority - Place paused", Duration = 3 })
+                return
+            end
             -- Reset counters
             placeStatusData.totalPlaces = countPlacedPets()
             placeStatusData.availableEggs = 0
@@ -2695,6 +2818,7 @@ local function registerConfigElements()
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("selectedFruits", fruitDropdown)
         zooConfig:Register("onlyIfNoneOwned", onlyIfNoneOwnedToggle)
+        zooConfig:Register("automationPriority", priorityDropdown)
     end
 end
 
