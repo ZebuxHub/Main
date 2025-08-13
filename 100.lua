@@ -974,8 +974,8 @@ local selectedTypeSet = {}
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
-    Title = "Egg Types",
-    Desc = "Select which egg types to buy automatically",
+    Title = "Egg IDs",
+    Desc = "Pick the eggs you want to buy.",
     Values = eggIdList,
     Value = {},
     Multi = true,
@@ -1010,15 +1010,13 @@ eggDropdown = Tabs.AutoTab:Dropdown({
 -- Removed search bar to reduce UI clutter and processing
 
 Tabs.AutoTab:Button({
-    Title = "Refresh Egg List",
-    Desc = "Reload the list of available egg types",
+    Title = "Reload Eggs",
     Callback = function()
         loadEggConfig()
         eggIdList = buildEggIdList()
         if eggDropdown and eggDropdown.Refresh then
             eggDropdown:Refresh(eggIdList)
         end
-        WindUI:Notify({ Title = "Egg List", Content = "Refreshed " .. #eggIdList .. " egg types", Duration = 3 })
     end
 })
 
@@ -1039,44 +1037,20 @@ statusData = {
 
 Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
 local statusParagraph = Tabs.AutoTab:Paragraph({
-    Title = "Auto Buy Status",
-    Desc = "Shows what the auto buyer is doing",
+    Title = "Auto Buy",
+    Desc = "Turn on the switch and pick egg names.",
     Image = "shopping-bag",
     ImageSize = 18,
 })
 
 local function formatStatusDesc()
     local lines = {}
-    
-    -- Simple status line
-    if statusData.lastAction and statusData.lastAction ~= "" then
-        table.insert(lines, "🔄 " .. tostring(statusData.lastAction))
-    end
-    
-    -- Quick stats
-    if statusData.eggsFound and statusData.eggsFound > 0 then
-        table.insert(lines, string.format("🥚 Belt: %d eggs", statusData.eggsFound))
-    end
-    
-    if statusData.matchingFound and statusData.matchingFound > 0 then
-        table.insert(lines, string.format("✅ Match: %d | 💰 Can buy: %d", statusData.matchingFound, statusData.affordableFound or 0))
-    end
-    
-    -- Money info
-    if statusData.netWorth and statusData.netWorth > 0 then
-        table.insert(lines, string.format("💵 Money: %s", tostring(statusData.netWorth)))
-    end
-    
-    -- Last purchase
-    if statusData.lastUID then
-        table.insert(lines, string.format("🛒 Last: %s", tostring(statusData.lastUID):sub(1, 8) .. "..."))
-    end
-    
-    -- Total purchases
-    if statusData.totalBuys and statusData.totalBuys > 0 then
-        table.insert(lines, string.format("📊 Total: %d bought", statusData.totalBuys))
-    end
-    
+    table.insert(lines, string.format("Island: %s", tostring(statusData.islandName or "?")))
+    table.insert(lines, string.format("NetWorth: %s", tostring(statusData.netWorth)))
+    table.insert(lines, string.format("Belt: %d eggs | Match %d | Can buy %d", statusData.eggsFound or 0, statusData.matchingFound or 0, statusData.affordableFound or 0))
+    if statusData.selectedTypes then table.insert(lines, "Selected: " .. statusData.selectedTypes) end
+    if statusData.lastUID then table.insert(lines, "Last Buy: " .. tostring(statusData.lastUID)) end
+    table.insert(lines, "Status: " .. tostring(statusData.lastAction))
     return table.concat(lines, "\n")
 end
 
@@ -1130,8 +1104,8 @@ end
 
 -- Event-driven Auto Buy system
 local beltConnections = {}
-local lastBeltEggs = {}
-local buyCooldowns = {}
+local lastBeltChildren = {}
+local buyingInProgress = false
 
 local function cleanupBeltConnections()
     for _, conn in ipairs(beltConnections) do
@@ -1142,7 +1116,6 @@ end
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
-    
     local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
@@ -1151,71 +1124,68 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
     if playerMoney < price then return false, nil, nil end
-    
     return true, eggInstance.Name, price
 end
 
-local function attemptBuyEgg(eggInstance)
-    if not autoBuyEnabled then return false end
-    
-    local eggUID = eggInstance.Name
-    local now = tick()
-    
-    -- Cooldown to prevent spam
-    if buyCooldowns[eggUID] and (now - buyCooldowns[eggUID]) < 0.5 then
-        return false
-    end
+local function buyEggInstantly(eggInstance)
+    if buyingInProgress then return end
+    buyingInProgress = true
     
     local netWorth = getPlayerNetWorth()
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        buyCooldowns[eggUID] = now
         statusData.lastUID = uid
-        statusData.lastAction = "Buying egg for " .. tostring(price)
-        statusData.totalBuys = (statusData.totalBuys or 0) + 1
+        statusData.lastAction = "Buying UID " .. tostring(uid) .. " for " .. tostring(price)
         statusData.netWorth = netWorth
         updateStatusParagraph()
         
         buyEggByUID(uid)
         focusEggByUID(uid)
-        
-        statusData.lastAction = "✅ Egg bought!"
+        statusData.totalBuys = (statusData.totalBuys or 0) + 1
+        statusData.lastAction = "Bought + Focused UID " .. tostring(uid)
         updateStatusParagraph()
-        return true
     end
     
-    return false
+    buyingInProgress = false
 end
 
 local function setupBeltMonitoring(belt)
     if not belt then return end
     
-    -- Monitor for new eggs
+    -- Monitor for new eggs appearing
     local function onChildAdded(child)
         if not autoBuyEnabled then return end
         if child:IsA("Model") then
-            task.wait(0.1) -- Small delay to let attributes load
-            attemptBuyEgg(child)
+            task.wait(0.1) -- Small delay to ensure attributes are set
+            buyEggInstantly(child)
         end
     end
     
-    local function onChildRemoved(child)
-        if child:IsA("Model") then
-            lastBeltEggs[child.Name] = nil
+    -- Monitor existing eggs for price/money changes
+    local function checkExistingEggs()
+        if not autoBuyEnabled then return end
+        local children = belt:GetChildren()
+        for _, child in ipairs(children) do
+            if child:IsA("Model") then
+                buyEggInstantly(child)
+            end
         end
     end
     
+    -- Connect events
     table.insert(beltConnections, belt.ChildAdded:Connect(onChildAdded))
-    table.insert(beltConnections, belt.ChildRemoved:Connect(onChildRemoved))
     
-    -- Check existing eggs
-    for _, child in ipairs(belt:GetChildren()) do
-        if child:IsA("Model") then
-            lastBeltEggs[child.Name] = true
-            attemptBuyEgg(child)
+    -- Check existing eggs periodically
+    local checkThread = task.spawn(function()
+        while autoBuyEnabled do
+            checkExistingEggs()
+            task.wait(0.5) -- Check every 0.5 seconds
         end
-    end
+    end)
+    
+    -- Store thread for cleanup
+    beltConnections[#beltConnections + 1] = { disconnect = function() checkThread = nil end }
 end
 
 local function runAutoBuy()
@@ -1224,7 +1194,7 @@ local function runAutoBuy()
         statusData.islandName = islandName
 
         if not islandName or islandName == "" then
-            statusData.lastAction = "Waiting for island..."
+            statusData.lastAction = "Waiting for island assignment"
             updateStatusParagraph()
             task.wait(1)
             continue
@@ -1235,55 +1205,35 @@ local function runAutoBuy()
             statusData.eggsFound = 0
             statusData.matchingFound = 0
             statusData.affordableFound = 0
-            statusData.lastAction = "Waiting for conveyor belt..."
+            statusData.lastAction = "Waiting for belt on island"
             updateStatusParagraph()
             task.wait(1)
             continue
         end
 
-        -- Setup event monitoring for this belt
-        cleanupBeltConnections()
-        setupBeltMonitoring(activeBelt)
-        
-        -- Update status
-        local allChildren = activeBelt:GetChildren()
+        -- Count current eggs
         local children = {}
-        for _, inst in ipairs(allChildren) do
+        for _, inst in ipairs(activeBelt:GetChildren()) do
             if inst:IsA("Model") then table.insert(children, inst) end
         end
         statusData.eggsFound = #children
         statusData.netWorth = getPlayerNetWorth()
+
+        -- Setup monitoring for this belt
+        cleanupBeltConnections()
+        setupBeltMonitoring(activeBelt)
         
-        -- Count matching and affordable eggs
-        local matching = 0
-        local affordable = 0
-        local seen = {}
-        
-        for _, child in ipairs(children) do
-            local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
-            local t = child:GetAttribute("Type") or child:GetAttribute("EggType") or child:GetAttribute("Name")
-            if t ~= nil then seen[tostring(t)] = true end
-            if ok then
-                matching = matching + 1
-                if statusData.netWorth >= (price or math.huge) then
-                    affordable = affordable + 1
-                end
-            end
-        end
-        
-        statusData.matchingFound = matching
-        statusData.affordableFound = affordable
-        
-        local seenList = {}
-        for k in pairs(seen) do table.insert(seenList, k) end
-        table.sort(seenList)
-        statusData.seenTypes = (#seenList > 0) and table.concat(seenList, ", ") or nil
-        
-        statusData.lastAction = "Watching for new eggs..."
+        statusData.lastAction = "Monitoring belt for new eggs"
         updateStatusParagraph()
         
-        -- Wait for events instead of constant polling
-        task.wait(2)
+        -- Wait until disabled or island changes
+        while autoBuyEnabled do
+            local currentIsland = getAssignedIslandName()
+            if currentIsland ~= islandName then
+                break -- Island changed, restart monitoring
+            end
+            task.wait(0.5)
+        end
     end
     
     cleanupBeltConnections()
@@ -1291,26 +1241,21 @@ end
 
 Tabs.AutoTab:Toggle({
     Title = "Auto Buy Egg",
-    Desc = "Event-driven buying - instantly buys new eggs that appear on belt",
+    Desc = "Instantly buys new eggs as they appear on the belt",
     Value = false,
     Callback = function(state)
         autoBuyEnabled = state
         if state and not autoBuyThread then
-            -- Reset data
-            lastBeltEggs = {}
-            buyCooldowns = {}
-            statusData.totalBuys = 0
-            
             autoBuyThread = task.spawn(function()
                 runAutoBuy()
                 autoBuyThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Buy", Content = "Started watching for eggs", Duration = 3 })
-            statusData.lastAction = "Started watching for eggs..."
+            WindUI:Notify({ Title = "Auto Buy", Content = "Started - Monitoring belt", Duration = 3 })
+            statusData.lastAction = "Started - Event-driven monitoring"
             updateStatusParagraph()
         elseif (not state) and autoBuyThread then
             cleanupBeltConnections()
-            WindUI:Notify({ Title = "Auto Buy", Content = "Stopped watching", Duration = 3 })
+            WindUI:Notify({ Title = "Auto Buy", Content = "Stopped", Duration = 3 })
             statusData.lastAction = "Stopped"
             updateStatusParagraph()
         end
@@ -1420,33 +1365,27 @@ Tabs.PlaceTab:Button({
 
 local function formatPlaceStatusDesc()
     local lines = {}
+    table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
+    table.insert(lines, string.format("📦 Tiles: %d | ✅ Placed: %d | ❌ Taken: %d", 
+        placeStatusData.farmPartsFound or 0, 
+        placeStatusData.totalPlaces or 0,
+        placeStatusData.takenTiles or 0))
     
-    -- Status line
-    if placeStatusData.lastAction and placeStatusData.lastAction ~= "" then
-        table.insert(lines, "🔄 " .. tostring(placeStatusData.lastAction))
+    if placeStatusData.selectedEggs then
+        table.insert(lines, string.format("🥚 Selected: %d types", placeStatusData.selectedEggs or 0))
     end
     
-    -- Quick stats
-    if placeStatusData.farmPartsFound and placeStatusData.farmPartsFound > 0 then
-        table.insert(lines, string.format("📦 Tiles: %d | ✅ Placed: %d | ❌ Taken: %d", 
-            placeStatusData.farmPartsFound, 
-            placeStatusData.totalPlaces or 0,
-            placeStatusData.takenTiles or 0))
-    end
-    
-    -- Current egg info
     if placeStatusData.petUID then
-        local shortUID = tostring(placeStatusData.petUID):sub(1, 8) .. "..."
-        table.insert(lines, string.format("🥚 Current: %s (%d left)", 
-            shortUID, 
+        table.insert(lines, string.format("🐾 Current: %s | 📊 Left: %d", 
+            tostring(placeStatusData.petUID), 
             placeStatusData.remainingEggs or 0))
     end
     
-    -- Island info
-    if placeStatusData.islandName then
-        table.insert(lines, string.format("🏝️ %s", tostring(placeStatusData.islandName)))
+    if placeStatusData.lastPosition then
+        table.insert(lines, string.format("📍 Last: %s", tostring(placeStatusData.lastPosition)))
     end
     
+    table.insert(lines, string.format("🔄 Status: %s", tostring(placeStatusData.lastAction or "Ready")))
     return table.concat(lines, "\n")
 end
 
@@ -1474,45 +1413,43 @@ local function countPlacedPets()
     return count
 end
 
--- World-class ultra-fast tile detection system
 local function checkTakenTiles(farmParts)
     takenTiles = {}
     local takenCount = 0
     
-    -- Create a tall detection box for each tile (8x8x8 tile, 20 studs tall)
+    -- Get all placed pets with their sizes
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    local placedPets = {}
+    
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local modelSize = model:GetAttribute("ModelSize") or Vector3.new(4, 4, 4) -- Default size
+                table.insert(placedPets, {model = model, pos = modelPos, size = modelSize})
+            end
+        end
+    end
+    
+    -- Check each farm tile against all placed pets with lenient size consideration
     for i, part in ipairs(farmParts) do
-        local tileCenter = part.Position
-        local detectionBox = CFrame.new(tileCenter)
-        local boxSize = Vector3.new(8, 20, 8) -- Full tile width, tall height for stacked pets
+        local isTaken = false
+        local partPos = part.Position
+        local tileRadius = 4 -- Half of 8x8x8 tile
         
-        -- Use GetPartBoundsInBox for ultra-fast detection
-        local params = OverlapParams.new()
-        params.RespectCanCollide = false
-        params.FilterType = Enum.RaycastFilterType.Blacklist
-        params.FilterDescendantsInstances = {part} -- Exclude the tile itself
-        
-        local overlappingParts = workspace:GetPartBoundsInBox(detectionBox, boxSize, params)
-        
-        local hasPet = false
-        for _, overlappingPart in ipairs(overlappingParts) do
-            -- Check if this part belongs to a pet model
-            local model = overlappingPart:FindFirstAncestorOfClass("Model")
-            if model and model ~= Players.LocalPlayer.Character then
-                -- Check if it's a pet by looking for pet-specific attributes or structure
-                if model:GetAttribute("UserId") or 
-                   model:GetAttribute("PetType") or 
-                   model:GetAttribute("ModelSize") or
-                   model:FindFirstChild("Humanoid") or 
-                   model:FindFirstChild("AnimationController") or
-                   -- Check for pet body parts (tail, arm, leg, etc.)
-                   (model.Name and (model.Name:match("^%x+$") or #model.Name > 20)) then
-                    hasPet = true
-                    break
-                end
+        for _, petInfo in ipairs(placedPets) do
+            local distance = (petInfo.pos - partPos).Magnitude
+            local petRadius = math.max(petInfo.size.X, petInfo.size.Y, petInfo.size.Z) / 2
+            
+            -- More lenient: only mark as taken if pet is very close to tile center
+            -- Allow some overlap as long as tile center is mostly clear
+            if distance < (tileRadius * 0.6) then -- Only 60% of tile radius
+                isTaken = true
+                break
             end
         end
         
-        if hasPet then
+        if isTaken then
             takenTiles[i] = true
             takenCount = takenCount + 1
         end
@@ -1529,9 +1466,9 @@ local function runAutoPlace()
             placeStatusData.islandName = islandName
             
             if not islandName or islandName == "" then
-                placeStatusData.lastAction = "Waiting for island..."
+                placeStatusData.lastAction = "Waiting for island assignment"
                 updatePlaceStatusParagraph()
-                task.wait(0.2)
+                task.wait(0.6)
                 return
             end
             
@@ -1539,9 +1476,9 @@ local function runAutoPlace()
             placeStatusData.islandNumber = islandNumber
             
             if not islandNumber then
-                placeStatusData.lastAction = "Invalid island: " .. tostring(islandName)
+                placeStatusData.lastAction = "Could not determine island number from: " .. tostring(islandName)
                 updatePlaceStatusParagraph()
-                task.wait(0.2)
+                task.wait(0.6)
                 return
             end
             
@@ -1549,18 +1486,18 @@ local function runAutoPlace()
             placeStatusData.farmPartsFound = #farmParts
             
             if placeStatusData.farmPartsFound == 0 then
-                placeStatusData.lastAction = "No farm tiles found"
+                placeStatusData.lastAction = "No farm parts found on Island_" .. tostring(islandNumber)
                 updatePlaceStatusParagraph()
-                task.wait(0.2)
+                task.wait(0.6)
                 return
             end
             
                 -- Determine available eggs to place (from PlayerGui.Data.Egg without subfolders)
     local availableEggs = listAvailableEggUIDs()
     if #availableEggs == 0 then
-        placeStatusData.lastAction = "No eggs to place"
+        placeStatusData.lastAction = "No available eggs to place"
         updatePlaceStatusParagraph()
-        task.wait(0.2)
+        task.wait(0.8)
         return
     end
     
@@ -1568,9 +1505,9 @@ local function runAutoPlace()
     local validEggs = {}
     
     if #selectedEggTypes == 0 then
-        placeStatusData.lastAction = "Select egg types first"
+        placeStatusData.lastAction = "No egg types selected - please select eggs to place"
         updatePlaceStatusParagraph()
-        task.wait(0.2)
+        task.wait(0.5)
         return
     end
     
@@ -1588,9 +1525,9 @@ local function runAutoPlace()
     end
     
     if #validEggs == 0 then
-        placeStatusData.lastAction = "No matching eggs found"
+        placeStatusData.lastAction = "No matching eggs found - check selection"
         updatePlaceStatusParagraph()
-        task.wait(0.1)
+        task.wait(0.2)
         return
     end
     
@@ -1633,13 +1570,49 @@ local function runAutoPlace()
     -- If no untried tiles available, reset tried tiles and try again
     if not chosenPart then
         triedTiles = {} -- Reset tried tiles memory
-        placeStatusData.lastAction = "Resetting tile memory..."
+        placeStatusData.lastAction = "⏸️ All tiles tried - resetting memory"
         updatePlaceStatusParagraph()
-        task.wait(0.5)
+        task.wait(2)
         return
     end
     
-    -- Ultra-fast: Skip double-check, trust the detection system
+    -- Double-check this tile isn't actually occupied by checking PlayerBuiltBlocks
+    local tileCenter = chosenPart.Position
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local distance = (modelPos - tileCenter).Magnitude
+                local modelSize = model:GetAttribute("ModelSize") or Vector3.new(4, 4, 4)
+                local petRadius = math.max(modelSize.X, modelSize.Y, modelSize.Z) / 2
+                
+                if distance < 2.4 then -- Only 60% of tile radius (4 * 0.6 = 2.4)
+                    takenTiles[tileIndex] = true
+                    placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                    -- Try to find another tile
+                    chosenPart = nil
+                    tileIndex = nil
+                    for j = 1, #farmParts do
+                        if not takenTiles[j] and not triedTiles[j] then
+                            chosenPart = farmParts[j]
+                            tileIndex = j
+                            triedTiles[j] = true
+                            break
+                        end
+                    end
+                    if not chosenPart then
+                        placeStatusData.lastAction = "⏸️ All tiles tried - resetting memory"
+                        updatePlaceStatusParagraph()
+                        triedTiles = {}
+                        task.wait(2)
+                        return
+                    end
+                    break
+                end
+            end
+        end
+    end
     local target = chosenPart.Position
     local blockIndCF = CFrame.new(target) -- Use tile center directly
     
@@ -1653,24 +1626,56 @@ local function runAutoPlace()
         end
     end
     
-    -- Ultra-fast: Skip final validation, trust the detection system
-    if not chosenPart or not blockIndCF then
-        placeStatusData.lastAction = "No available tiles found"
+    -- FINAL VALIDATION: Very small radius check at tile center (more lenient)
+    local finalCheck = false
+    local params = OverlapParams.new()
+    params.RespectCanCollide = false
+    local nearbyParts = workspace:GetPartBoundsInBox(CFrame.new(target), Vector3.new(2, 2, 2), params) -- Smaller radius
+    
+    for _, nearbyPart in ipairs(nearbyParts) do
+        if nearbyPart ~= chosenPart then
+            local model = nearbyPart:FindFirstAncestorOfClass("Model")
+            if model and model ~= Players.LocalPlayer.Character then
+                if model:GetAttribute("UserId") or model:GetAttribute("PetType") or 
+                   model:FindFirstChild("Humanoid") or model:FindFirstChild("AnimationController") then
+                    -- Only fail if pet is very close to center
+                    local modelPos = model:GetPivot().Position
+                    local distance = (modelPos - target).Magnitude
+                    if distance < 1.5 then -- Very small radius for final check
+                        takenTiles[tileIndex] = true
+                        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+                        finalCheck = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+    
+    if finalCheck then
+        placeStatusData.lastAction = "Tile failed final validation"
         updatePlaceStatusParagraph()
         task.wait(0.1)
         return
     end
+    if not chosenPart or not blockIndCF then
+        placeStatusData.lastAction = "No available tiles found"
+        updatePlaceStatusParagraph()
+        task.wait(0.2) -- Faster wait time
+        return
+    end
     
-    -- Calculate placement position +7 studs above tile center
+    -- Calculate placement position 6 studs below BlockInd
     local placementPos = Vector3.new(
         blockIndCF.Position.X,
-        blockIndCF.Position.Y, 
+        blockIndCF.Position.Y,
         blockIndCF.Position.Z
     )
     
-    placeStatusData.lastPosition = string.format("Tile: (%.1f, %.1f, %.1f) -> Place: (%.1f, %.1f, %.1f)", 
+    placeStatusData.lastPosition = string.format("BlockInd: (%.1f, %.1f, %.1f) -> Place: (%.1f, %.1f, %.1f)", 
         blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z,
         placementPos.X, placementPos.Y, placementPos.Z)
+    placeStatusData.lastAction = "Placing 6 studs below BlockInd"
     updatePlaceStatusParagraph()
 
     -- Fire placement remote
@@ -1687,23 +1692,34 @@ local function runAutoPlace()
     end)
     
     if success then
-        -- Fast placement verification (single check)
-        task.wait(0.1) -- Minimal wait for placement to register
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        -- Check if pet was actually placed in PlayerBuiltBlocks with multiple attempts
         local placementConfirmed = false
+        local placedModel = nil
         
-        if playerBuiltBlocks then
-            -- Quick check for the placed pet
-            local placedModel = playerBuiltBlocks:FindFirstChild(petUID)
-            if placedModel and placedModel:IsA("Model") then
-                placementConfirmed = true
+        -- Try multiple times to verify placement
+        for attempt = 1, 5 do
+            task.wait(0.3) -- Wait longer for placement to register
+            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+            
+            if playerBuiltBlocks then
+                -- Look for the placed pet by checking if it exists in PlayerBuiltBlocks
+                for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                    if model:IsA("Model") and model.Name == petUID then
+                        placementConfirmed = true
+                        placedModel = model
+                        print("✓ Placement confirmed on attempt " .. attempt)
+                        break
+                    end
+                end
             end
+            
+            if placementConfirmed then break end
         end
         
         if placementConfirmed then
             placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
             local remaining = placeStatusData.remainingEggs or 0
-            placeStatusData.lastAction = "✅ Placed egg (" .. remaining .. " left)"
+            placeStatusData.lastAction = "✅ Placed PET " .. tostring(petUID) .. " (" .. remaining .. " eggs left)"
             
             -- Mark this tile as taken immediately
             if tileIndex then
@@ -1711,13 +1727,13 @@ local function runAutoPlace()
                 placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
             end
             
-            task.wait(0.05) -- Ultra fast
+            task.wait(0.2)
         else
-            placeStatusData.lastAction = "❌ Placement failed"
+            placeStatusData.lastAction = "❌ Placement failed - PET not found in PlayerBuiltBlocks"
             -- Put the egg back at the front of the list to retry
             table.insert(validEggs, 1, { uid = petUID, type = selectedEgg.type })
             placeStatusData.remainingEggs = #validEggs
-            task.wait(0.2) -- Faster retry
+            task.wait(0.5)
             return
         end
     else
@@ -1730,7 +1746,7 @@ local function runAutoPlace()
     end
     updatePlaceStatusParagraph()
     
-    task.wait(0.01) -- Ultra fast loop
+    task.wait(0.02) -- Ultra fast loop
         end)
         
         if not ok then
