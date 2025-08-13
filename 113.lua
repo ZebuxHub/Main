@@ -2761,7 +2761,7 @@ Tabs.ConfigTab:Section({ Title = "💾 Save Configuration", Icon = "save" })
 local configNameInput = Tabs.ConfigTab:Input({
     Title = "📝 Config Name",
     Desc = "Enter a name for your configuration",
-    Value = "MyZooConfig",
+    Value = "",
     Callback = function(value)
         -- Store the value for later use
         configNameInput.value = value
@@ -2807,12 +2807,20 @@ Tabs.ConfigTab:Section({ Title = "📂 Load Configuration", Icon = "folder" })
 -- Function to get all available configs
 local function getAvailableConfigs()
     local configs = {}
-    local allConfigs = ConfigManager:AllConfigs()
+    local success, allConfigs = pcall(function()
+        return ConfigManager:AllConfigs()
+    end)
     
-    for configName, _ in pairs(allConfigs) do
-        table.insert(configs, configName)
+    if success and allConfigs then
+        for configName, _ in pairs(allConfigs) do
+            if type(configName) == "string" and configName ~= "" then
+                table.insert(configs, configName)
+            end
+        end
     end
     
+    -- Sort configs alphabetically for better UX
+    table.sort(configs)
     return configs
 end
 
@@ -2827,8 +2835,12 @@ local configDropdown = Tabs.ConfigTab:Dropdown({
     Multi = false,
     AllowNone = true,
     Callback = function(selection)
-        if selection and #selection > 0 then
+        if selection and type(selection) == "table" and #selection > 0 then
             selectedConfigName = selection[1]
+        elseif type(selection) == "string" then
+            selectedConfigName = selection
+        else
+            selectedConfigName = ""
         end
     end
 })
@@ -2864,11 +2876,20 @@ Tabs.ConfigTab:Button({
     Title = "🔄 Refresh Config List",
     Desc = "Update the list of saved configurations",
     Callback = function()
-        local newConfigs = getAvailableConfigs()
-        if configDropdown and configDropdown.Refresh then
-            configDropdown:Refresh(newConfigs)
+        local success, newConfigs = pcall(function()
+            return getAvailableConfigs()
+        end)
+        
+        if success and newConfigs then
+            if configDropdown and configDropdown.Refresh then
+                configDropdown:Refresh(newConfigs)
+                -- Reset the selection to avoid table assignment error
+                selectedConfigName = ""
+            end
+            WindUI:Notify({ Title = "💾 Config List", Content = "Found " .. #newConfigs .. " saved configs!", Duration = 3 })
+        else
+            WindUI:Notify({ Title = "💾 Config Error", Content = "Failed to refresh config list!", Duration = 3 })
         end
-        WindUI:Notify({ Title = "💾 Config List", Content = "Found " .. #newConfigs .. " saved configs!", Duration = 3 })
     end
 })
 
