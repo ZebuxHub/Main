@@ -1284,16 +1284,7 @@ local placeStatusData = {
 }
 
 Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
-Tabs.PlaceTab:Paragraph({
-    Title = "How to use",
-    Desc = table.concat({
-        "1) Turn on 'Auto Place'.",
-        "2) The script walks to tiles and looks for BlockInd.",
-        "3) When BlockInd appears, it holds 2 and places.",
-    }, "\n"),
-    Image = "info",
-    ImageSize = 16,
-})
+
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
     Title = "Auto Place",
     Desc = "Walk-to-tile + BlockInd placement",
@@ -1350,15 +1341,6 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     end
 })
 
--- Manual refresh button
-Tabs.PlaceTab:Button({
-    Title = "Refresh Egg List",
-    Desc = "Manually refresh the egg dropdown if it's empty",
-    Callback = function()
-        local newOptions = getEggOptions()
-        WindUI:Notify({ Title = "Egg List", Content = "Found " .. #newOptions .. " egg types", Duration = 3 })
-    end
-})
 
 Tabs.PlaceTab:Button({
     Title = "Force Refresh Tiles",
