@@ -1346,9 +1346,10 @@ Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
         "1) Turn on 'Auto Place'.",
-        "2) Script checks ModelSize to detect pet overlap.",
-        "3) Teleports to tile and checks for BlockInd.",
-        "4) If BlockInd appears, places the egg.",
+        "2) Script teleports to each tile and checks for BlockInd.",
+        "3) If BlockInd appears = tile is available.",
+        "4) If no BlockInd = tile is taken (remembered).",
+        "5) Places eggs at BlockInd position when available.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
@@ -1475,54 +1476,31 @@ local function countPlacedPets()
     return count
 end
 
--- World-class smart tile detection using ModelSize and BlockInd
+-- Smart BlockInd-based tile detection system
 local function checkTakenTiles(farmParts)
     takenTiles = {}
     local takenCount = 0
     
-    -- Get all pets from workspace.Pets with their ModelSize
-    local petsFolder = workspace:FindFirstChild("Pets")
-    local petModels = {}
-    
-    if petsFolder then
-        for _, pet in ipairs(petsFolder:GetChildren()) do
-            if pet:IsA("Model") then
-                local modelSize = pet:GetAttribute("ModelSize") or Vector3.new(4, 4, 4)
-                local petPos = pet:GetPivot().Position
-                table.insert(petModels, {
-                    model = pet,
-                    position = petPos,
-                    size = modelSize,
-                    radius = math.max(modelSize.X, modelSize.Y, modelSize.Z) / 2
-                })
-            end
-        end
-    end
-    
-    -- Check each farm tile against pets using ModelSize for accurate overlap detection
+    -- Check each tile by teleporting to it and looking for BlockInd
     for i, part in ipairs(farmParts) do
         local tileCenter = part.Position
-        local tileRadius = 4 -- Half of 8x8x8 tile
-        local isTaken = false
         
-        for _, petInfo in ipairs(petModels) do
-            -- Calculate horizontal distance (ignore Y for stacking)
-            local horizontalDistance = Vector2.new(
-                petInfo.position.X - tileCenter.X,
-                petInfo.position.Z - tileCenter.Z
-            ).Magnitude
-            
-            -- Check if pet's ModelSize overlaps with tile
-            -- Pet radius + tile radius = overlap threshold
-            local overlapThreshold = petInfo.radius + tileRadius
-            
-            if horizontalDistance < overlapThreshold then
-                isTaken = true
-                break
+        -- Quick teleport to tile center
+        local char = Players.LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = CFrame.new(tileCenter)
+                task.wait(0.05) -- Brief wait for teleport
             end
         end
         
-        if isTaken then
+        -- Check if BlockInd appears (means tile is available)
+        local defaultFolder = workspace:FindFirstChild("Default")
+        local blockInd = defaultFolder and defaultFolder:FindFirstChild("BlockInd")
+        
+        if not blockInd then
+            -- BlockInd not found = tile is taken
             takenTiles[i] = true
             takenCount = takenCount + 1
         end
@@ -1649,25 +1627,25 @@ local function runAutoPlace()
         return
     end
     
-    -- Final validation: Check if BlockInd appears when standing on tile
+    -- Final BlockInd verification before placement
     local target = chosenPart.Position
-    local blockIndCF = CFrame.new(target)
     
-    -- Quick teleport to tile center
+    -- Teleport to tile and check BlockInd
     local char = Players.LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(target)
-            task.wait(0.05) -- Brief wait for teleport
+            task.wait(0.1) -- Wait for teleport and BlockInd to appear
         end
     end
     
-    -- Check if BlockInd appears (confirms tile is available)
+    -- Final check: BlockInd must be present for placement
     local defaultFolder = workspace:FindFirstChild("Default")
     local blockInd = defaultFolder and defaultFolder:FindFirstChild("BlockInd")
+    
     if not blockInd then
-        -- BlockInd not found, tile might be taken
+        -- BlockInd not found = tile is actually taken, mark it and try another
         takenTiles[tileIndex] = true
         placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
         placeStatusData.lastAction = "Tile blocked - no BlockInd"
@@ -1676,17 +1654,8 @@ local function runAutoPlace()
         return
     end
     
-    -- Quick teleport to tile
-    local char = Players.LocalPlayer.Character
-    if char then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.CFrame = CFrame.new(target)
-            task.wait(0.1) -- Wait a bit for teleport to complete
-        end
-    end
-    
-    -- Ultra-fast: Skip final validation, trust the detection system
+    -- BlockInd found = tile is available, use its position for placement
+    local blockIndCF = blockInd.CFrame
     if not chosenPart or not blockIndCF then
         placeStatusData.lastAction = "No available tiles found"
         updatePlaceStatusParagraph()
@@ -1701,10 +1670,9 @@ local function runAutoPlace()
         blockIndCF.Position.Z
     )
     
-    placeStatusData.lastPosition = string.format("BlockInd: (%.1f, %.1f, %.1f) -> Place: (%.1f, %.1f, %.1f)", 
-        blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z,
-        placementPos.X, placementPos.Y, placementPos.Z)
-    placeStatusData.lastAction = "Placing 6 studs below BlockInd"
+    placeStatusData.lastPosition = string.format("BlockInd: (%.1f, %.1f, %.1f)", 
+        blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
+    placeStatusData.lastAction = "Placing at BlockInd position"
     updatePlaceStatusParagraph()
 
     -- Fire placement remote
@@ -2953,3 +2921,4 @@ Tabs.FruitTab:Toggle({
         fruitOnlyIfZero = state
     end
 })
+
