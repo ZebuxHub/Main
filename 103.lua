@@ -1486,7 +1486,7 @@ local function updateAvailableTiles()
     
     availableTiles = {}
     for i, part in ipairs(farmParts) do
-        -- Check if tile is actually available (not occupied)
+        -- Check if tile is actually available (not occupied) with 1 stud radius
         local isOccupied = false
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
@@ -1494,7 +1494,7 @@ local function updateAvailableTiles()
                 if model:IsA("Model") then
                     local modelPos = model:GetPivot().Position
                     local distance = (modelPos - part.Position).Magnitude
-                    if distance < 2.4 then -- 60% of tile radius
+                    if distance < 1.0 then -- 1 stud radius check
                         isOccupied = true
                         break
                     end
@@ -1517,6 +1517,22 @@ local function placeEggInstantly(eggInfo, tileInfo)
     
     local petUID = eggInfo.uid
     local tilePart = tileInfo.part
+    
+    -- Final check: is tile still available?
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local distance = (modelPos - tilePart.Position).Magnitude
+                if distance < 1.0 then -- 1 stud radius check
+                    placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied - skipping"
+                    placingInProgress = false
+                    return false
+                end
+            end
+        end
+    end
     
     -- Equip egg to Deploy S2
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
@@ -1557,7 +1573,6 @@ local function placeEggInstantly(eggInfo, tileInfo)
     if success then
         -- Verify placement
         task.wait(0.3)
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         local placementConfirmed = false
         
         if playerBuiltBlocks then
@@ -1626,21 +1641,47 @@ end
 local function attemptPlacement()
     if #availableEggs == 0 or #availableTiles == 0 then return end
     
-    -- Place eggs on available tiles
+    -- Place eggs on available tiles (limit to prevent lag)
     local placed = 0
     local attempts = 0
-    local maxAttempts = math.min(#availableEggs, #availableTiles) * 2 -- Allow some retries
+    local maxAttempts = math.min(#availableEggs, #availableTiles, 5) -- Limit to 5 attempts max
     
     while #availableEggs > 0 and #availableTiles > 0 and attempts < maxAttempts do
         attempts = attempts + 1
         
-        if placeEggInstantly(availableEggs[1], availableTiles[1]) then
-            placed = placed + 1
-            task.wait(0.1) -- Small delay between successful placements
+        -- Double-check tile is still available before placing
+        local tileInfo = availableTiles[1]
+        local isStillAvailable = true
+        
+        if tileInfo then
+            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+            if playerBuiltBlocks then
+                for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                    if model:IsA("Model") then
+                        local modelPos = model:GetPivot().Position
+                        local distance = (modelPos - tileInfo.part.Position).Magnitude
+                        if distance < 1.0 then -- 1 stud radius check
+                            isStillAvailable = false
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        if isStillAvailable then
+            if placeEggInstantly(availableEggs[1], availableTiles[1]) then
+                placed = placed + 1
+                task.wait(0.2) -- Longer delay between successful placements
+            else
+                -- Placement failed, tile was removed from availableTiles
+                task.wait(0.1) -- Quick retry
+            end
         else
-            -- Placement failed, tile was removed from availableTiles
-            -- Try next tile with same egg
-            task.wait(0.05) -- Quick retry
+            -- Tile is no longer available, remove it
+            table.remove(availableTiles, 1)
+            placeStatusData.availableTiles = #availableTiles
+            updatePlaceStatusParagraph()
         end
     end
     
@@ -1689,13 +1730,13 @@ local function setupPlacementMonitoring()
         table.insert(placeConnections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
     end
     
-    -- Periodic updates
+    -- Less frequent periodic updates to reduce lag
     local updateThread = task.spawn(function()
         while autoPlaceEnabled do
             updateAvailableEggs()
             updateAvailableTiles()
             attemptPlacement()
-            task.wait(1) -- Update every second
+            task.wait(3) -- Update every 3 seconds instead of 1
         end
     end)
     
