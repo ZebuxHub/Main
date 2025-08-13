@@ -1102,15 +1102,105 @@ local function focusEggByUID(eggUID)
     end
 end
 
+-- Event-driven Auto Buy system
+local beltConnections = {}
+local lastBeltEggs = {}
+local buyCooldowns = {}
+
+local function cleanupBeltConnections()
+    for _, conn in ipairs(beltConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    beltConnections = {}
+end
+
+local function shouldBuyEggInstance(eggInstance, playerMoney)
+    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
+    
+    local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
+    if not eggType then return false, nil, nil end
+    eggType = tostring(eggType)
+    if not selectedTypeSet[eggType] then return false, nil, nil end
+
+    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    if type(price) ~= "number" then return false, nil, nil end
+    if playerMoney < price then return false, nil, nil end
+    
+    return true, eggInstance.Name, price
+end
+
+local function attemptBuyEgg(eggInstance)
+    if not autoBuyEnabled then return false end
+    
+    local eggUID = eggInstance.Name
+    local now = tick()
+    
+    -- Cooldown to prevent spam
+    if buyCooldowns[eggUID] and (now - buyCooldowns[eggUID]) < 0.5 then
+        return false
+    end
+    
+    local netWorth = getPlayerNetWorth()
+    local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
+    
+    if ok then
+        buyCooldowns[eggUID] = now
+        statusData.lastUID = uid
+        statusData.lastAction = "Buying " .. uid .. " for " .. tostring(price)
+        statusData.totalBuys = (statusData.totalBuys or 0) + 1
+        statusData.netWorth = netWorth
+        updateStatusParagraph()
+        
+        buyEggByUID(uid)
+        focusEggByUID(uid)
+        
+        statusData.lastAction = "Bought + Focused " .. uid
+        updateStatusParagraph()
+        return true
+    end
+    
+    return false
+end
+
+local function setupBeltMonitoring(belt)
+    if not belt then return end
+    
+    -- Monitor for new eggs
+    local function onChildAdded(child)
+        if not autoBuyEnabled then return end
+        if child:IsA("Model") then
+            task.wait(0.1) -- Small delay to let attributes load
+            attemptBuyEgg(child)
+        end
+    end
+    
+    local function onChildRemoved(child)
+        if child:IsA("Model") then
+            lastBeltEggs[child.Name] = nil
+        end
+    end
+    
+    table.insert(beltConnections, belt.ChildAdded:Connect(onChildAdded))
+    table.insert(beltConnections, belt.ChildRemoved:Connect(onChildRemoved))
+    
+    -- Check existing eggs
+    for _, child in ipairs(belt:GetChildren()) do
+        if child:IsA("Model") then
+            lastBeltEggs[child.Name] = true
+            attemptBuyEgg(child)
+        end
+    end
+end
+
 local function runAutoBuy()
     while autoBuyEnabled do
         local islandName = getAssignedIslandName()
         statusData.islandName = islandName
 
         if not islandName or islandName == "" then
-            statusData.lastAction = "Waiting for island assignment (AssignedIslandName)"
+            statusData.lastAction = "Waiting for island assignment"
             updateStatusParagraph()
-            task.wait(0.6)
+            task.wait(1)
             continue
         end
 
@@ -1121,11 +1211,15 @@ local function runAutoBuy()
             statusData.affordableFound = 0
             statusData.lastAction = "Waiting for belt on island"
             updateStatusParagraph()
-            task.wait(0.6)
+            task.wait(1)
             continue
         end
 
-        -- Use only the active belt's eggs
+        -- Setup event monitoring for this belt
+        cleanupBeltConnections()
+        setupBeltMonitoring(activeBelt)
+        
+        -- Update status
         local allChildren = activeBelt:GetChildren()
         local children = {}
         for _, inst in ipairs(allChildren) do
@@ -1133,90 +1227,63 @@ local function runAutoBuy()
         end
         statusData.eggsFound = #children
         statusData.netWorth = getPlayerNetWorth()
-
-        if statusData.eggsFound == 0 then
-            statusData.matchingFound = 0
-            statusData.affordableFound = 0
-            statusData.lastAction = "Waiting for eggs to spawn"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        local matching = {}
+        
+        -- Count matching and affordable eggs
+        local matching = 0
+        local affordable = 0
         local seen = {}
+        
         for _, child in ipairs(children) do
             local ok, uid, price = shouldBuyEggInstance(child, statusData.netWorth)
             local t = child:GetAttribute("Type") or child:GetAttribute("EggType") or child:GetAttribute("Name")
             if t ~= nil then seen[tostring(t)] = true end
             if ok then
-                table.insert(matching, { uid = uid, price = price })
+                matching = matching + 1
+                if statusData.netWorth >= (price or math.huge) then
+                    affordable = affordable + 1
+                end
             end
         end
-        do
-            local list = {}
-            for k in pairs(seen) do table.insert(list, k) end
-            table.sort(list)
-            statusData.seenTypes = (#list > 0) and table.concat(list, ", ") or nil
-        end
-        statusData.matchingFound = #matching
-
-        if statusData.matchingFound == 0 then
-            statusData.affordableFound = 0
-            statusData.lastAction = "No matching eggs on belt (adjust dropdown)"
-            updateStatusParagraph()
-            task.wait(0.5)
-            continue
-        end
-
-        table.sort(matching, function(a, b)
-            return (a.price or math.huge) < (b.price or math.huge)
-        end)
-
-        local affordable = {}
-        for _, item in ipairs(matching) do
-            if statusData.netWorth >= (item.price or math.huge) then
-                table.insert(affordable, item)
-            end
-        end
-        statusData.affordableFound = #affordable
-
-        if statusData.affordableFound == 0 then
-            local cheapest = matching[1]
-            statusData.lastAction = "Waiting for money (cheapest " .. tostring(cheapest and cheapest.price or "?") .. ", NetWorth " .. tostring(statusData.netWorth) .. ")"
-            updateStatusParagraph()
-            task.wait(0.2)
-            continue
-        end
-
-        local chosen = affordable[1]
-        statusData.lastUID = chosen.uid
-        statusData.lastAction = "Buying UID " .. tostring(chosen.uid) .. " for " .. tostring(chosen.price)
+        
+        statusData.matchingFound = matching
+        statusData.affordableFound = affordable
+        
+        local seenList = {}
+        for k in pairs(seen) do table.insert(seenList, k) end
+        table.sort(seenList)
+        statusData.seenTypes = (#seenList > 0) and table.concat(seenList, ", ") or nil
+        
+        statusData.lastAction = "Monitoring belt for new eggs"
         updateStatusParagraph()
-        buyEggByUID(chosen.uid)
-        focusEggByUID(chosen.uid)
-        statusData.totalBuys = (statusData.totalBuys or 0) + 1
-        statusData.lastAction = "Bought + Focused UID " .. tostring(chosen.uid)
-        updateStatusParagraph()
-        task.wait(0.1)
+        
+        -- Wait for events instead of constant polling
+        task.wait(2)
     end
+    
+    cleanupBeltConnections()
 end
 
 Tabs.AutoTab:Toggle({
     Title = "Auto Buy Egg",
-    Desc = "Buys eggs from your island conveyor that match the selected egg IDs",
+    Desc = "Event-driven buying - instantly buys new eggs that appear on belt",
     Value = false,
     Callback = function(state)
         autoBuyEnabled = state
         if state and not autoBuyThread then
+            -- Reset data
+            lastBeltEggs = {}
+            buyCooldowns = {}
+            statusData.totalBuys = 0
+            
             autoBuyThread = task.spawn(function()
                 runAutoBuy()
                 autoBuyThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Buy", Content = "Started", Duration = 3 })
-            statusData.lastAction = "Started"
+            WindUI:Notify({ Title = "Auto Buy", Content = "Event monitoring started", Duration = 3 })
+            statusData.lastAction = "Event monitoring started"
             updateStatusParagraph()
         elseif (not state) and autoBuyThread then
+            cleanupBeltConnections()
             WindUI:Notify({ Title = "Auto Buy", Content = "Stopped", Duration = 3 })
             statusData.lastAction = "Stopped"
             updateStatusParagraph()
