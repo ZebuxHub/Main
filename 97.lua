@@ -1511,13 +1511,14 @@ local function checkTakenTiles(farmParts)
     -- Check each tile by teleporting to it and looking for BlockInd
     for i, part in ipairs(farmParts) do
         local tileCenter = part.Position
+        local tileTop = Vector3.new(tileCenter.X, tileCenter.Y + 7, tileCenter.Z) -- 7 studs above tile center (based on your position)
         
-        -- Quick teleport to tile center
+        -- Quick teleport to tile top (not inside the tile)
         local char = Players.LocalPlayer.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp then
-                hrp.CFrame = CFrame.new(tileCenter)
+                hrp.CFrame = CFrame.new(tileTop)
                 task.wait(0.05) -- Brief wait for teleport
             end
         end
@@ -1656,13 +1657,14 @@ local function runAutoPlace()
     
     -- Final BlockInd verification before placement (egg already held)
     local target = chosenPart.Position
+    local tileTop = Vector3.new(target.X, target.Y + 7, target.Z) -- 7 studs above tile center (based on your position)
     
-    -- Teleport to tile and check BlockInd (egg should already be held)
+    -- Teleport to tile top and check BlockInd (egg should already be held)
     local char = Players.LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
-            hrp.CFrame = CFrame.new(target)
+            hrp.CFrame = CFrame.new(tileTop)
             task.wait(0.1) -- Wait for teleport and BlockInd to appear
         end
     end
