@@ -1440,7 +1440,7 @@ local function updateAvailableTiles()
     
     availableTiles = {}
     for i, part in ipairs(farmParts) do
-        -- Check if tile is actually available (not occupied) with 1 stud radius
+        -- Check if tile is actually available (not occupied) with more lenient radius
         local isOccupied = false
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
@@ -1448,7 +1448,9 @@ local function updateAvailableTiles()
                 if model:IsA("Model") then
                     local modelPos = model:GetPivot().Position
                     local distance = (modelPos - part.Position).Magnitude
-                    if distance < 1.0 then -- 1 stud radius check
+                    -- More lenient: allow placement if pet is within 10 studs of tile center
+                    -- This accounts for eggs being placed above the tile
+                    if distance < 10.0 then -- 10 stud radius check
                         isOccupied = true
                         break
                     end
@@ -1479,7 +1481,7 @@ local function placeEggInstantly(eggInfo, tileInfo)
             if model:IsA("Model") then
                 local modelPos = model:GetPivot().Position
                 local distance = (modelPos - tilePart.Position).Magnitude
-                if distance < 1.0 then -- 1 stud radius check
+                if distance < 10.0 then -- 10 stud radius check (more lenient)
                     placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied - skipping"
                     placingInProgress = false
                     return false
@@ -1614,7 +1616,7 @@ local function attemptPlacement()
                     if model:IsA("Model") then
                         local modelPos = model:GetPivot().Position
                         local distance = (modelPos - tileInfo.part.Position).Magnitude
-                        if distance < 1.0 then -- 1 stud radius check
+                        if distance < 10.0 then -- 10 stud radius check (more lenient)
                             isStillAvailable = false
                             break
                         end
