@@ -1510,16 +1510,19 @@ local function checkTakenTiles(farmParts)
     
     -- Check each tile by teleporting to it and looking for BlockInd
     for i, part in ipairs(farmParts) do
+        placeStatusData.lastAction = "Scanning tile " .. i .. "/" .. #farmParts
+        updatePlaceStatusParagraph()
+        
         local tileCenter = part.Position
         local tileTop = Vector3.new(tileCenter.X, tileCenter.Y + 7, tileCenter.Z) -- 7 studs above tile center (based on your position)
         
-        -- Quick teleport to tile top (not inside the tile)
+        -- Teleport to tile top (not inside the tile)
         local char = Players.LocalPlayer.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp then
                 hrp.CFrame = CFrame.new(tileTop)
-                task.wait(0.05) -- Brief wait for teleport
+                task.wait(0.2) -- Wait longer for teleport and BlockInd to appear
             end
         end
         
@@ -1532,6 +1535,9 @@ local function checkTakenTiles(farmParts)
             takenTiles[i] = true
             takenCount = takenCount + 1
         end
+        
+        -- Wait a bit more to ensure BlockInd has time to disappear if needed
+        task.wait(0.1)
     end
     
     placeStatusData.takenTiles = takenCount
@@ -1665,7 +1671,7 @@ local function runAutoPlace()
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(tileTop)
-            task.wait(0.1) -- Wait for teleport and BlockInd to appear
+            task.wait(0.3) -- Wait longer for teleport and BlockInd to appear
         end
     end
     
@@ -1761,7 +1767,7 @@ local function runAutoPlace()
     end
     updatePlaceStatusParagraph()
     
-    task.wait(0.01) -- Ultra fast loop
+    task.wait(0.05) -- Slower loop to allow proper BlockInd detection
         end)
         
         if not ok then
