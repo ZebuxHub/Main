@@ -1594,12 +1594,30 @@ local function placeEggInstantly(eggInfo, tileInfo)
             placingInProgress = false
             return true
         else
-            placeStatusData.lastAction = "❌ Placement failed for " .. tostring(petUID)
+            placeStatusData.lastAction = "❌ Placement failed for " .. tostring(petUID) .. " - removing tile"
+            -- Remove the failed tile from available tiles so we don't retry it
+            for i, tile in ipairs(availableTiles) do
+                if tile.index == tileInfo.index then
+                    table.remove(availableTiles, i)
+                    break
+                end
+            end
+            placeStatusData.availableTiles = #availableTiles
+            updatePlaceStatusParagraph()
             placingInProgress = false
             return false
         end
     else
-        placeStatusData.lastAction = "❌ Failed to fire placement for " .. tostring(petUID)
+        placeStatusData.lastAction = "❌ Failed to fire placement for " .. tostring(petUID) .. " - removing tile"
+        -- Remove the failed tile from available tiles so we don't retry it
+        for i, tile in ipairs(availableTiles) do
+            if tile.index == tileInfo.index then
+                table.remove(availableTiles, i)
+                break
+            end
+        end
+        placeStatusData.availableTiles = #availableTiles
+        updatePlaceStatusParagraph()
         placingInProgress = false
         return false
     end
@@ -1610,17 +1628,27 @@ local function attemptPlacement()
     
     -- Place eggs on available tiles
     local placed = 0
-    for i = 1, math.min(#availableEggs, #availableTiles) do
+    local attempts = 0
+    local maxAttempts = math.min(#availableEggs, #availableTiles) * 2 -- Allow some retries
+    
+    while #availableEggs > 0 and #availableTiles > 0 and attempts < maxAttempts do
+        attempts = attempts + 1
+        
         if placeEggInstantly(availableEggs[1], availableTiles[1]) then
             placed = placed + 1
-            task.wait(0.1) -- Small delay between placements
+            task.wait(0.1) -- Small delay between successful placements
         else
-            break -- Stop if placement fails
+            -- Placement failed, tile was removed from availableTiles
+            -- Try next tile with same egg
+            task.wait(0.05) -- Quick retry
         end
     end
     
     if placed > 0 then
         placeStatusData.lastAction = "Placed " .. tostring(placed) .. " eggs"
+        updatePlaceStatusParagraph()
+    elseif attempts > 0 then
+        placeStatusData.lastAction = "Tried " .. tostring(attempts) .. " placements, no success"
         updatePlaceStatusParagraph()
     end
 end
