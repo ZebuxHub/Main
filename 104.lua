@@ -1400,52 +1400,6 @@ local function countPlacedPets()
     return count
 end
 
-local function checkTakenTiles(farmParts)
-    takenTiles = {}
-    local takenCount = 0
-    
-    -- Get all placed pets with their sizes
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    local placedPets = {}
-    
-    if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                local modelSize = model:GetAttribute("ModelSize") or Vector3.new(4, 4, 4) -- Default size
-                table.insert(placedPets, {model = model, pos = modelPos, size = modelSize})
-            end
-        end
-    end
-    
-    -- Check each farm tile against all placed pets with lenient size consideration
-    for i, part in ipairs(farmParts) do
-        local isTaken = false
-        local partPos = part.Position
-        local tileRadius = 4 -- Half of 8x8x8 tile
-        
-        for _, petInfo in ipairs(placedPets) do
-            local distance = (petInfo.pos - partPos).Magnitude
-            local petRadius = math.max(petInfo.size.X, petInfo.size.Y, petInfo.size.Z) / 2
-            
-            -- More lenient: only mark as taken if pet is very close to tile center
-            -- Allow some overlap as long as tile center is mostly clear
-            if distance < (tileRadius * 0.6) then -- Only 60% of tile radius
-                isTaken = true
-                break
-            end
-        end
-        
-        if isTaken then
-            takenTiles[i] = true
-            takenCount = takenCount + 1
-        end
-    end
-    
-    placeStatusData.takenTiles = takenCount
-    placeStatusData.totalPlaces = countPlacedPets()
-end
-
 -- Event-driven placement system
 local function cleanupPlaceConnections()
     for _, conn in ipairs(placeConnections) do
