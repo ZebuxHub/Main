@@ -2781,9 +2781,18 @@ Tabs.ConfigTab:Button({
             registerConfigElements(customConfig)
             
             -- Save the config
-            local success = pcall(function()
-                customConfig:Save()
-            end)
+                    local success = pcall(function()
+            customConfig:Save()
+            -- Force refresh the config list after saving
+            task.wait(0.1)
+            local newConfigs = getAvailableConfigs()
+            if configDropdown and configDropdown.Refresh then
+                configDropdown:Refresh(newConfigs)
+            end
+            -- Update status to show the new config was found
+            configStatus.last = "✅ Saved and refreshed: " .. name
+            updateConfigStatus()
+        end)
             
             if success then
                 configStatus.saved = (configStatus.saved or 0) + 1
@@ -2807,6 +2816,8 @@ Tabs.ConfigTab:Section({ Title = "📂 Load Configuration", Icon = "folder" })
 -- Function to get all available configs
 local function getAvailableConfigs()
     local configs = {}
+    
+    -- Try multiple methods to get configs
     local success, allConfigs = pcall(function()
         return ConfigManager:AllConfigs()
     end)
@@ -2817,6 +2828,11 @@ local function getAvailableConfigs()
                 table.insert(configs, configName)
             end
         end
+    end
+    
+    -- Also try to get from the default config
+    if not table.find(configs, "ZooConfig") then
+        table.insert(configs, "ZooConfig")
     end
     
     -- Sort configs alphabetically for better UX
