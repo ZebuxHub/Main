@@ -1,6 +1,6 @@
 local KeyGuardLibrary = loadstring(game:HttpGet("https://cdn.keyguardian.org/library/v1.0.0.lua"))()
-local trueData = "c3445a840c724f04974fb5045c82fc05"
-local falseData = "2e99d927e2524f34a24af2eaa950f61c"
+local trueData = "1d1ddd012c004a64a8841853450bdce0"
+local falseData = "0f289ad4ba244d2499d8018b0fd572fa"
 
 KeyGuardLibrary.Set({
 	publicToken = "8336ddf50c0746359b04047ff8e226f7",
@@ -9,16 +9,43 @@ KeyGuardLibrary.Set({
 	falseData = falseData,
 })
 
-local key = "test"
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local key = ""
 
-local getkey = KeyGuardLibrary.getLink()
-print(getkey)
+local Window = Fluent:CreateWindow({
+		Title = "Key System",
+		SubTitle = "Zebux",
+		TabWidth = 160,
+		Size = UDim2.fromOffset(580, 340),
+		Acrylic = false,
+		Theme = "Dark",
+		MinimizeKey = Enum.KeyCode.LeftControl
+})
 
-local response = KeyGuardLibrary.validateDefaultKey(key)
-print(response)
+local Tabs = {
+		KeySys = Window:AddTab({ Title = "Key System", Icon = "key" }),
+}
 
-if response == trueData then
-	-- Build A Zoo: Auto Buy Egg using WindUI
+local Entkey = Tabs.KeySys:AddInput("Input", {
+		Title = "Enter Key",
+		Description = "Enter Key Here",
+		Default = "",
+		Placeholder = "Enter key…",
+		Numeric = false,
+		Finished = false,
+		Callback = function(Value)
+				key = Value
+		end
+})
+
+local Checkkey = Tabs.KeySys:AddButton({
+		Title = "Check Key",
+		Description = "Enter Key before pressing this button",
+		Callback = function()
+				local response = KeyGuardLibrary.validateDefaultKey(key)
+				if response == trueData then
+						print("Key is valid")
+					-- Build A Zoo: Auto Buy Egg using WindUI
 
 -- Load WindUI library (same as in Windui.lua)
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -2880,13 +2907,18 @@ Window:OnClose(function()
     print("UI closed.")
 end)
 
-else
-	print("Key is invalid")
-end
+				else
+						print("Key is invalid")
+				end
+		end
+})
 
---[[
-	KeyGuardLibrary.validateDefaultKey(key) - Validate key
-	KeyGuardLibrary.validatePremiumKey(key) - Validate premium key
-	KeyGuardLibrary.getService() - Get service
-	KeyGuardLibrary.getLink() - Get link
-]]
+local Getkey = Tabs.KeySys:AddButton({
+		Title = "Get Key",
+		Description = "Get Key here",
+		Callback = function()
+				setclipboard(KeyGuardLibrary.getLink())
+		end
+})
+
+Window:SelectTab(1)
