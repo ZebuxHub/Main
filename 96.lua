@@ -1346,10 +1346,11 @@ Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
         "1) Turn on 'Auto Place'.",
-        "2) Script teleports to each tile and checks for BlockInd.",
-        "3) If BlockInd appears = tile is available.",
-        "4) If no BlockInd = tile is taken (remembered).",
-        "5) Places eggs at BlockInd position when available.",
+        "2) Script holds an egg and teleports to each tile.",
+        "3) Checks for BlockInd (only appears when holding egg).",
+        "4) If BlockInd appears = tile is available.",
+        "5) If no BlockInd = tile is taken (remembered).",
+        "6) Places eggs at BlockInd position when available.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
@@ -1476,10 +1477,36 @@ local function countPlacedPets()
     return count
 end
 
--- Smart BlockInd-based tile detection system
+-- Smart BlockInd-based tile detection system (requires holding egg)
 local function checkTakenTiles(farmParts)
     takenTiles = {}
     local takenCount = 0
+    
+    -- Get an egg to hold for BlockInd detection
+    local availableEggs = listAvailableEggUIDs()
+    if #availableEggs == 0 then
+        -- No eggs available, can't check BlockInd
+        placeStatusData.takenTiles = 0
+        placeStatusData.totalPlaces = countPlacedPets()
+        return
+    end
+    
+    -- Use first available egg for detection
+    local detectionEgg = availableEggs[1]
+    local petUID = detectionEgg.uid
+    
+    -- Equip egg to Deploy S2 for BlockInd detection
+    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+    if deploy then
+        local eggUID = "Egg_" .. petUID
+        deploy:SetAttribute("S2", eggUID)
+    end
+    
+    -- Press key 2 to hold the egg
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    task.wait(0.2) -- Wait for egg to be held
     
     -- Check each tile by teleporting to it and looking for BlockInd
     for i, part in ipairs(farmParts) do
@@ -1627,10 +1654,10 @@ local function runAutoPlace()
         return
     end
     
-    -- Final BlockInd verification before placement
+    -- Final BlockInd verification before placement (egg already held)
     local target = chosenPart.Position
     
-    -- Teleport to tile and check BlockInd
+    -- Teleport to tile and check BlockInd (egg should already be held)
     local char = Players.LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
