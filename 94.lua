@@ -1346,8 +1346,9 @@ Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
         "1) Turn on 'Auto Place'.",
-        "2) The script walks to tiles and looks for BlockInd.",
-        "3) When BlockInd appears, it holds 2 and places.",
+        "2) Script checks ModelSize to detect pet overlap.",
+        "3) Teleports to tile and checks for BlockInd.",
+        "4) If BlockInd appears, places the egg.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
@@ -1474,45 +1475,54 @@ local function countPlacedPets()
     return count
 end
 
--- World-class ultra-fast tile detection system
+-- World-class smart tile detection using ModelSize and BlockInd
 local function checkTakenTiles(farmParts)
     takenTiles = {}
     local takenCount = 0
     
-    -- Create a tall detection box for each tile (8x8x8 tile, 20 studs tall)
+    -- Get all pets from workspace.Pets with their ModelSize
+    local petsFolder = workspace:FindFirstChild("Pets")
+    local petModels = {}
+    
+    if petsFolder then
+        for _, pet in ipairs(petsFolder:GetChildren()) do
+            if pet:IsA("Model") then
+                local modelSize = pet:GetAttribute("ModelSize") or Vector3.new(4, 4, 4)
+                local petPos = pet:GetPivot().Position
+                table.insert(petModels, {
+                    model = pet,
+                    position = petPos,
+                    size = modelSize,
+                    radius = math.max(modelSize.X, modelSize.Y, modelSize.Z) / 2
+                })
+            end
+        end
+    end
+    
+    -- Check each farm tile against pets using ModelSize for accurate overlap detection
     for i, part in ipairs(farmParts) do
         local tileCenter = part.Position
-        local detectionBox = CFrame.new(tileCenter)
-        local boxSize = Vector3.new(8, 20, 8) -- Full tile width, tall height for stacked pets
+        local tileRadius = 4 -- Half of 8x8x8 tile
+        local isTaken = false
         
-        -- Use GetPartBoundsInBox for ultra-fast detection
-        local params = OverlapParams.new()
-        params.RespectCanCollide = false
-        params.FilterType = Enum.RaycastFilterType.Blacklist
-        params.FilterDescendantsInstances = {part} -- Exclude the tile itself
-        
-        local overlappingParts = workspace:GetPartBoundsInBox(detectionBox, boxSize, params)
-        
-        local hasPet = false
-        for _, overlappingPart in ipairs(overlappingParts) do
-            -- Check if this part belongs to a pet model
-            local model = overlappingPart:FindFirstAncestorOfClass("Model")
-            if model and model ~= Players.LocalPlayer.Character then
-                -- Check if it's a pet by looking for pet-specific attributes or structure
-                if model:GetAttribute("UserId") or 
-                   model:GetAttribute("PetType") or 
-                   model:GetAttribute("ModelSize") or
-                   model:FindFirstChild("Humanoid") or 
-                   model:FindFirstChild("AnimationController") or
-                   -- Check for pet body parts (tail, arm, leg, etc.)
-                   (model.Name and (model.Name:match("^%x+$") or #model.Name > 20)) then
-                    hasPet = true
-                    break
-                end
+        for _, petInfo in ipairs(petModels) do
+            -- Calculate horizontal distance (ignore Y for stacking)
+            local horizontalDistance = Vector2.new(
+                petInfo.position.X - tileCenter.X,
+                petInfo.position.Z - tileCenter.Z
+            ).Magnitude
+            
+            -- Check if pet's ModelSize overlaps with tile
+            -- Pet radius + tile radius = overlap threshold
+            local overlapThreshold = petInfo.radius + tileRadius
+            
+            if horizontalDistance < overlapThreshold then
+                isTaken = true
+                break
             end
         end
         
-        if hasPet then
+        if isTaken then
             takenTiles[i] = true
             takenCount = takenCount + 1
         end
@@ -1639,9 +1649,32 @@ local function runAutoPlace()
         return
     end
     
-    -- Ultra-fast: Skip double-check, trust the detection system
+    -- Final validation: Check if BlockInd appears when standing on tile
     local target = chosenPart.Position
-    local blockIndCF = CFrame.new(target) -- Use tile center directly
+    local blockIndCF = CFrame.new(target)
+    
+    -- Quick teleport to tile center
+    local char = Players.LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = CFrame.new(target)
+            task.wait(0.05) -- Brief wait for teleport
+        end
+    end
+    
+    -- Check if BlockInd appears (confirms tile is available)
+    local defaultFolder = workspace:FindFirstChild("Default")
+    local blockInd = defaultFolder and defaultFolder:FindFirstChild("BlockInd")
+    if not blockInd then
+        -- BlockInd not found, tile might be taken
+        takenTiles[tileIndex] = true
+        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
+        placeStatusData.lastAction = "Tile blocked - no BlockInd"
+        updatePlaceStatusParagraph()
+        task.wait(0.1)
+        return
+    end
     
     -- Quick teleport to tile
     local char = Players.LocalPlayer.Character
