@@ -28,13 +28,12 @@ local Window = WindUI:CreateWindow({
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 | Buy Eggs"})
-Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 | Place Pets"})
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 |Place Pets"})
 Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "⚡ | Hatch Eggs"})
 Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
-Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
-Tabs.ConfigTab = Tabs.MainSection:Tab({ Title = "💾 | Save/Load"})
+Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 |Fruit Store"})
 
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
@@ -593,7 +592,7 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     end
 })
 
-local claimDelaySlider = Tabs.ClaimTab:Slider({
+local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Title = "⏰ Claim Speed",
     Desc = "How fast to collect money (lower = faster)",
     Default = 100,
@@ -1394,6 +1393,56 @@ local function cleanupPlaceConnections()
     placeConnections = {}
 end
 
+local function updateAvailableTiles()
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    local farmParts = getFarmParts(islandNumber)
+    
+    availableTiles = {}
+    local totalTiles = #farmParts
+    local occupiedTiles = 0
+    
+    for i, part in ipairs(farmParts) do
+        -- Check if tile is actually available (not occupied) with more lenient radius
+        local isOccupied = false
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") then
+                    local modelPos = model:GetPivot().Position
+                    local tilePos = part.Position
+                    
+                    -- Separate X/Z and Y axis checks
+                    local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                    local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                    
+                    -- X/Z: 4 studs radius (tile is 8x8, so 4 studs from center)
+                    -- Y: 8 studs radius (allow eggs placed above/below tile)
+                    if xzDistance < 4.0 and yDistance < 8.0 then
+                        isOccupied = true
+                        occupiedTiles = occupiedTiles + 1
+                        break
+                    end
+                end
+            end
+        end
+        
+        if not isOccupied then
+            table.insert(availableTiles, { part = part, index = i })
+        end
+    end
+    
+    placeStatusData.availableTiles = #availableTiles
+    placeStatusData.totalTiles = totalTiles
+    placeStatusData.occupiedTiles = occupiedTiles
+    
+    -- Debug info
+    placeStatusData.lastAction = string.format("Found %d available tiles out of %d total (occupied: %d)", 
+        #availableTiles, totalTiles, occupiedTiles)
+    
+    updatePlaceStatusParagraph()
+end
+
 local function updateAvailableEggs()
     local eggs = listAvailableEggUIDs()
     availableEggs = {}
@@ -1419,55 +1468,7 @@ local function updateAvailableEggs()
     updatePlaceStatusParagraph()
 end
 
-local function updateAvailableTiles()
-    local islandName = getAssignedIslandName()
-    local islandNumber = getIslandNumberFromName(islandName)
-    local farmParts = getFarmParts(islandNumber)
-    
-    availableTiles = {}
-    local totalTiles = #farmParts
-    local occupiedTiles = 0
-    
-    for i, part in ipairs(farmParts) do
-        -- Check if tile is actually available (not occupied) with more lenient radius
-        local isOccupied = false
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        if playerBuiltBlocks then
-                    for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                local tilePos = part.Position
-                
-                -- Separate X/Z and Y axis checks
-                local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                local yDistance = math.abs(modelPos.Y - tilePos.Y)
-                
-                -- X/Z: 4 studs radius (tile is 8x8, so 4 studs from center)
-                -- Y: 8 studs radius (allow eggs placed above/below tile)
-                if xzDistance < 4.0 and yDistance < 8.0 then
-                    isOccupied = true
-                    occupiedTiles = occupiedTiles + 1
-                    break
-                end
-            end
-        end
-        end
-        
-        if not isOccupied then
-            table.insert(availableTiles, { part = part, index = i })
-        end
-    end
-    
-    placeStatusData.availableTiles = #availableTiles
-    placeStatusData.totalTiles = totalTiles
-    placeStatusData.occupiedTiles = occupiedTiles
-    
-    -- Debug info
-    placeStatusData.lastAction = string.format("Found %d available tiles out of %d total (occupied: %d)", 
-        #availableTiles, totalTiles, occupiedTiles)
-    
-    updatePlaceStatusParagraph()
-end
+
 
 local function placeEggInstantly(eggInfo, tileInfo)
     if placingInProgress then return false end
@@ -1818,13 +1819,10 @@ local function updateDeleteStatusParagraph()
     end
 end
 
-local deleteSpeedSlider = Tabs.PlaceTab:Slider({
+local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
     Title = "Speed Threshold",
     Desc = "Delete pets with speed below this value",
-    Default = 100,
-    Min = 0,
-    Max = 1000,
-    Rounding = 0,
+    Value = "100",
     Callback = function(value)
         deleteSpeedThreshold = tonumber(value) or 100
         deleteStatusData.speedThreshold = deleteSpeedThreshold
@@ -2665,7 +2663,7 @@ Tabs.FruitTab:Button({
     end
 })
 
-local fruitOnlyIfZeroToggle = Tabs.FruitTab:Toggle({
+local onlyIfNoneOwnedToggle = Tabs.FruitTab:Toggle({
     Title = "🍎 Only Buy If You Don't Have Any",
     Desc = "Only buy fruits if you don't have any of that type already",
     Value = false,
@@ -2674,326 +2672,107 @@ local fruitOnlyIfZeroToggle = Tabs.FruitTab:Toggle({
     end
 })
 
--- ============ Configuration System ============
-local configStatus = { last = "Ready to save/load configs!", saved = 0, loaded = 0 }
+-- ============ Config System ============
+Tabs.FruitTab:Section({ Title = "💾 Save Settings", Icon = "save" })
 
-Tabs.ConfigTab:Section({ Title = "💾 Save/Load Status", Icon = "info" })
-local configParagraph = Tabs.ConfigTab:Paragraph({
-    Title = "💾 Configuration Manager",
-    Desc = "Save your settings or load them back!",
-    Image = "save",
-    ImageSize = 18,
-})
-
-local function updateConfigStatus()
-    if configParagraph and configParagraph.SetDesc then
-        local lines = {}
-        table.insert(lines, "💾 Saved Configs: " .. tostring(configStatus.saved or 0))
-        table.insert(lines, "📂 Loaded Configs: " .. tostring(configStatus.loaded or 0))
-        table.insert(lines, "🔄 Status: " .. tostring(configStatus.last or "Ready!"))
-        configParagraph:SetDesc(table.concat(lines, "\n"))
-    end
-end
-
--- Get WindUI ConfigManager
+-- Create config manager
 local ConfigManager = Window.ConfigManager
+local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 
--- Create config file
-local zooConfig = ConfigManager:CreateConfig("ZooConfig")
-
--- Register all UI elements for config
-local function registerConfigElements(configToRegister)
-    local config = configToRegister or zooConfig
-    
-    -- Auto Buy Eggs
-    if autoBuyToggle then
-        config:Register("autoBuyEnabled", autoBuyToggle)
-    end
-    
-    -- Auto Place Pets
-    if autoPlaceToggle then
-        config:Register("autoPlaceEnabled", autoPlaceToggle)
-    end
-    
-    -- Auto Hatch
-    if autoHatchToggle then
-        config:Register("autoHatchEnabled", autoHatchToggle)
-    end
-    
-    -- Auto Claim Money
-    if autoClaimToggle then
-        config:Register("autoClaimEnabled", autoClaimToggle)
-    end
-    if claimDelaySlider then
-        config:Register("autoClaimDelay", claimDelaySlider)
-    end
-    
-    -- Auto Upgrade Conveyor
-    if autoUpgradeToggle then
-        config:Register("autoUpgradeEnabled", autoUpgradeToggle)
-    end
-    
-    -- Auto Pack
-    if autoPackToggle then
-        config:Register("autoPackEnabled", autoPackToggle)
-    end
-    
-    -- Fruit Market
-    if autoFruitToggle then
-        config:Register("autoFruitEnabled", autoFruitToggle)
-    end
-    if fruitOnlyIfZeroToggle then
-        config:Register("fruitOnlyIfZero", fruitOnlyIfZeroToggle)
-    end
-    
-    -- Auto Delete
-    if autoDeleteToggle then
-        config:Register("autoDeleteEnabled", autoDeleteToggle)
-    end
-    if deleteSpeedSlider then
-        config:Register("deleteSpeedThreshold", deleteSpeedSlider)
+-- Register all UI elements for config (will be done after UI creation)
+local function registerConfigElements()
+    if zooConfig then
+        zooConfig:Register("autoBuyEnabled", autoBuyToggle)
+        zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
+        zooConfig:Register("autoHatchEnabled", autoHatchToggle)
+        zooConfig:Register("autoClaimEnabled", autoClaimToggle)
+        zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
+        zooConfig:Register("autoPackEnabled", autoPackToggle)
+        zooConfig:Register("autoFruitEnabled", autoFruitToggle)
+        zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
+        zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
+        zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
+        zooConfig:Register("selectedEggs", eggDropdown)
+        zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
+        zooConfig:Register("selectedFruits", fruitDropdown)
+        zooConfig:Register("onlyIfNoneOwned", onlyIfNoneOwnedToggle)
     end
 end
 
--- Save Configuration UI
-Tabs.ConfigTab:Section({ Title = "💾 Save Configuration", Icon = "save" })
-
-local configNameInputValue = ""
-local configNameInput = Tabs.ConfigTab:Input({
-    Title = "📝 Config Name",
-    Desc = "Enter a name for your configuration",
-    Value = "MyZooConfig",
-    Callback = function(value)
-        configNameInputValue = value
-    end
-})
-
-Tabs.ConfigTab:Button({
-    Title = "💾 Save Config",
-    Desc = "Save all your current settings to a file",
+Tabs.FruitTab:Button({
+    Title = "💾 Save Settings",
+    Desc = "Save all your current settings",
     Callback = function()
-        local name = configNameInputValue or "MyZooConfig"
-        if name and name ~= "" then
-            -- Create a new config with the custom name
-            local customConfig = ConfigManager:CreateConfig(name)
-            
-            -- Register all elements to this config
-            registerConfigElements(customConfig)
-            
-            -- Save the config
-            local success = pcall(function()
-                customConfig:Save()
-            end)
-            
-            if success then
-                configStatus.saved = (configStatus.saved or 0) + 1
-                configStatus.last = "✅ Saved config: " .. name
-                updateConfigStatus()
-                WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
-            else
-                configStatus.last = "❌ Failed to save config"
-                updateConfigStatus()
-                WindUI:Notify({ Title = "💾 Save Failed", Content = "Could not save config!", Duration = 5 })
-            end
-        else
-            WindUI:Notify({ Title = "💾 Save Failed", Content = "Please enter a config name!", Duration = 3 })
-        end
+        zooConfig:Save()
+        WindUI:Notify({ 
+            Title = "💾 Settings Saved", 
+            Content = "All your settings have been saved! 🎉", 
+            Duration = 3 
+        })
     end
 })
 
--- Load Configuration UI
-Tabs.ConfigTab:Section({ Title = "📂 Load Configuration", Icon = "folder" })
-
--- Function to get all available configs
-local function getAvailableConfigs()
-    local configs = {}
-    
-    -- Try to get configs from ConfigManager
-    local success, allConfigs = pcall(function()
-        return ConfigManager:AllConfigs()
-    end)
-    
-    if success and allConfigs then
-        print("Found configs from ConfigManager:", game:GetService("HttpService"):JSONEncode(allConfigs))
-        for configName, _ in pairs(allConfigs) do
-            if type(configName) == "string" and configName ~= "" then
-                table.insert(configs, configName)
-            end
-        end
-    else
-        print("Failed to get configs from ConfigManager:", allConfigs)
-    end
-    
-    -- Also try to scan the file system directly as fallback
-    local folderPath = "WindUI/Zebux/config"
-    local success2, files = pcall(function()
-        return listfiles(folderPath)
-    end)
-    
-    if success2 and files then
-        print("Found files in folder:", game:GetService("HttpService"):JSONEncode(files))
-        for _, file in ipairs(files) do
-            local fileName = file:match("([^/]+)%.json$")
-            if fileName and not table.find(configs, fileName) then
-                table.insert(configs, fileName)
-            end
-        end
-    end
-    
-    -- Sort configs alphabetically for better UX
-    table.sort(configs)
-    print("Final config list:", game:GetService("HttpService"):JSONEncode(configs))
-    return configs
-end
-
-local savedConfigs = getAvailableConfigs()
-local selectedConfigName = ""
-
-local configDropdown = Tabs.ConfigTab:Dropdown({
-    Title = "📂 Saved Configs",
-    Desc = "Choose a configuration to load",
-    Values = savedConfigs,
-    Value = {},
-    Multi = false,
-    AllowNone = true,
-    Callback = function(selection)
-        if selection and type(selection) == "table" and #selection > 0 then
-            selectedConfigName = selection[1]
-        elseif type(selection) == "string" then
-            selectedConfigName = selection
-        else
-            selectedConfigName = ""
-        end
-    end
-})
-
-Tabs.ConfigTab:Button({
-    Title = "📂 Load Selected Config",
-    Desc = "Load the selected configuration",
+Tabs.FruitTab:Button({
+    Title = "📂 Load Settings",
+    Desc = "Load your saved settings",
     Callback = function()
-        if selectedConfigName and selectedConfigName ~= "" then
-            local success = pcall(function()
-                local configToLoad = ConfigManager:CreateConfig(selectedConfigName)
-                registerConfigElements(configToLoad)
-                configToLoad:Load()
-            end)
-            
-            if success then
-                configStatus.loaded = (configStatus.loaded or 0) + 1
-                configStatus.last = "✅ Loaded config: " .. selectedConfigName
-                updateConfigStatus()
-                WindUI:Notify({ Title = "💾 Config Loaded", Content = "Settings loaded from " .. selectedConfigName .. "! 🎉", Duration = 5 })
-            else
-                configStatus.last = "❌ Failed to load config"
-                updateConfigStatus()
-                WindUI:Notify({ Title = "💾 Load Failed", Content = "Could not load config!", Duration = 5 })
-            end
-        else
-            WindUI:Notify({ Title = "💾 Load Failed", Content = "Please select a config first!", Duration = 3 })
-        end
+        zooConfig:Load()
+        WindUI:Notify({ 
+            Title = "📂 Settings Loaded", 
+            Content = "Your settings have been loaded! 🎉", 
+            Duration = 3 
+        })
     end
 })
 
-Tabs.ConfigTab:Button({
-    Title = "🔄 Refresh Config List",
-    Desc = "Update the list of saved configurations",
+Tabs.FruitTab:Button({
+    Title = "🔄 Reset Settings",
+    Desc = "Reset all settings to default",
     Callback = function()
-        local success, newConfigs = pcall(function()
-            return getAvailableConfigs()
-        end)
-        
-        if success and newConfigs then
-            if configDropdown and configDropdown.Refresh then
-                configDropdown:Refresh(newConfigs)
-                -- Reset the selection to avoid table assignment error
-                selectedConfigName = ""
-            end
-            WindUI:Notify({ Title = "💾 Config List", Content = "Found " .. #newConfigs .. " saved configs!", Duration = 3 })
-        else
-            WindUI:Notify({ Title = "💾 Config Error", Content = "Failed to refresh config list!", Duration = 3 })
-        end
+        Window:Dialog({
+            Title = "🔄 Reset Settings",
+            Content = "Are you sure you want to reset all settings to default?",
+            Icon = "alert-triangle",
+            Buttons = {
+                {
+                    Title = "❌ Cancel",
+                    Variant = "Secondary",
+                    Callback = function() end
+                },
+                {
+                    Title = "✅ Reset",
+                    Variant = "Primary",
+                    Callback = function()
+                        -- Clear config file to reset to defaults
+                        if zooConfig then
+                            zooConfig:Clear()
+                            WindUI:Notify({ 
+                                Title = "🔄 Settings Reset", 
+                                Content = "All settings have been reset to default! 🎉", 
+                                Duration = 3 
+                            })
+                        end
+                    end
+                }
+            }
+        })
     end
 })
 
--- Quick Actions
-Tabs.ConfigTab:Section({ Title = "⚡ Quick Actions", Icon = "zap" })
-
-Tabs.ConfigTab:Button({
-    Title = "💾 Save Current Settings",
-    Desc = "Quick save with timestamp",
-    Callback = function()
-        local timestamp = os.date("%Y%m%d_%H%M%S")
-        local name = "ZooConfig_" .. timestamp
-        
-        local customConfig = ConfigManager:CreateConfig(name)
-        registerConfigElements(customConfig)
-        
-        local success = pcall(function()
-            customConfig:Save()
-        end)
-        
-        if success then
-            configStatus.saved = (configStatus.saved or 0) + 1
-            configStatus.last = "✅ Saved config: " .. name
-            updateConfigStatus()
-            WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
-        else
-            configStatus.last = "❌ Failed to save config"
-            updateConfigStatus()
-            WindUI:Notify({ Title = "💾 Save Failed", Content = "Could not save config!", Duration = 5 })
-        end
+-- Register config elements and auto-load when script starts
+task.spawn(function()
+    task.wait(1) -- Wait a bit for UI to fully load
+    registerConfigElements() -- Register all UI elements for config
+    if zooConfig then
+        zooConfig:Load()
+        WindUI:Notify({ 
+            Title = "📂 Auto-Load", 
+            Content = "Your saved settings have been loaded! 🎉", 
+            Duration = 3 
+        })
     end
-})
+end)
 
-Tabs.ConfigTab:Button({
-    Title = "📋 Show All Configs",
-    Desc = "Display all available configs in console",
-    Callback = function()
-        local allConfigs = ConfigManager:AllConfigs()
-        print("=== ALL AVAILABLE CONFIGS ===")
-        for configName, configData in pairs(allConfigs) do
-            print("Config: " .. configName)
-            print("Data: " .. game:GetService("HttpService"):JSONEncode(configData))
-            print("---")
-        end
-        print("=============================")
-        WindUI:Notify({ Title = "💾 Config Info", Content = "Check console for all configs!", Duration = 3 })
-    end
-})
-
-Tabs.ConfigTab:Button({
-    Title = "🔍 Debug Config System",
-    Desc = "Check what's happening with configs",
-    Callback = function()
-        print("=== CONFIG DEBUG ===")
-        print("ConfigManager exists:", ConfigManager ~= nil)
-        print("ConfigManager type:", typeof(ConfigManager))
-        
-        local success, allConfigs = pcall(function()
-            return ConfigManager:AllConfigs()
-        end)
-        print("AllConfigs success:", success)
-        print("AllConfigs result:", allConfigs)
-        
-        -- Check file system
-        local folderPath = "WindUI/Zebux/config"
-        local success2, files = pcall(function()
-            return listfiles(folderPath)
-        end)
-        print("File scan success:", success2)
-        print("Files found:", files)
-        
-        -- Try to list all files in workspace
-        local success3, allFiles = pcall(function()
-            return listfiles("")
-        end)
-        print("All files scan success:", success3)
-        print("All files:", allFiles)
-        
-        print("===================")
-        WindUI:Notify({ Title = "🔍 Debug Complete", Content = "Check console for debug info!", Duration = 5 })
-    end
-})
-
--- Initialize config status
-updateConfigStatus()
+Window:OnClose(function()
+    print("UI closed.")
+end)
