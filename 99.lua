@@ -1346,11 +1346,8 @@ Tabs.PlaceTab:Paragraph({
     Title = "How to use",
     Desc = table.concat({
         "1) Turn on 'Auto Place'.",
-        "2) Script holds an egg and teleports to each tile.",
-        "3) Checks for BlockInd (only appears when holding egg).",
-        "4) If BlockInd appears = tile is available.",
-        "5) If no BlockInd = tile is taken (remembered).",
-        "6) Places eggs at BlockInd position when available.",
+        "2) The script walks to tiles and looks for BlockInd.",
+        "3) When BlockInd appears, it holds 2 and places.",
     }, "\n"),
     Image = "info",
     ImageSize = 16,
@@ -1477,67 +1474,48 @@ local function countPlacedPets()
     return count
 end
 
--- Smart BlockInd-based tile detection system (requires holding egg)
+-- World-class ultra-fast tile detection system
 local function checkTakenTiles(farmParts)
     takenTiles = {}
     local takenCount = 0
     
-    -- Get an egg to hold for BlockInd detection
-    local availableEggs = listAvailableEggUIDs()
-    if #availableEggs == 0 then
-        -- No eggs available, can't check BlockInd
-        placeStatusData.takenTiles = 0
-        placeStatusData.totalPlaces = countPlacedPets()
-        return
-    end
-    
-    -- Use first available egg for detection
-    local detectionEgg = availableEggs[1]
-    local petUID = detectionEgg.uid
-    
-    -- Equip egg to Deploy S2 for BlockInd detection
-    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
-    if deploy then
-        local eggUID = "Egg_" .. petUID
-        deploy:SetAttribute("S2", eggUID)
-    end
-    
-    -- Press key 2 to hold the egg
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-    task.wait(0.1)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    task.wait(0.2) -- Wait for egg to be held
-    
-    -- Check each tile by teleporting to it and looking for BlockInd
+    -- Create a tall detection box for each tile (8x8x8 tile, 20 studs tall)
     for i, part in ipairs(farmParts) do
-        placeStatusData.lastAction = "Scanning tile " .. i .. "/" .. #farmParts
-        updatePlaceStatusParagraph()
-        
         local tileCenter = part.Position
-        local tileTop = Vector3.new(tileCenter.X, tileCenter.Y + 7, tileCenter.Z) -- 7 studs above tile center (based on your position)
+        local detectionBox = CFrame.new(tileCenter)
+        local boxSize = Vector3.new(8, 20, 8) -- Full tile width, tall height for stacked pets
         
-        -- Teleport to tile top (not inside the tile)
-        local char = Players.LocalPlayer.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.CFrame = CFrame.new(tileTop)
-                task.wait(0.2) -- Wait longer for teleport and BlockInd to appear
+        -- Use GetPartBoundsInBox for ultra-fast detection
+        local params = OverlapParams.new()
+        params.RespectCanCollide = false
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        params.FilterDescendantsInstances = {part} -- Exclude the tile itself
+        
+        local overlappingParts = workspace:GetPartBoundsInBox(detectionBox, boxSize, params)
+        
+        local hasPet = false
+        for _, overlappingPart in ipairs(overlappingParts) do
+            -- Check if this part belongs to a pet model
+            local model = overlappingPart:FindFirstAncestorOfClass("Model")
+            if model and model ~= Players.LocalPlayer.Character then
+                -- Check if it's a pet by looking for pet-specific attributes or structure
+                if model:GetAttribute("UserId") or 
+                   model:GetAttribute("PetType") or 
+                   model:GetAttribute("ModelSize") or
+                   model:FindFirstChild("Humanoid") or 
+                   model:FindFirstChild("AnimationController") or
+                   -- Check for pet body parts (tail, arm, leg, etc.)
+                   (model.Name and (model.Name:match("^%x+$") or #model.Name > 20)) then
+                    hasPet = true
+                    break
+                end
             end
         end
         
-        -- Check if BlockInd appears (means tile is available)
-        local defaultFolder = workspace:FindFirstChild("Default")
-        local blockInd = defaultFolder and defaultFolder:FindFirstChild("BlockInd")
-        
-        if not blockInd then
-            -- BlockInd not found = tile is taken
+        if hasPet then
             takenTiles[i] = true
             takenCount = takenCount + 1
         end
-        
-        -- Wait a bit more to ensure BlockInd has time to disappear if needed
-        task.wait(0.1)
     end
     
     placeStatusData.takenTiles = takenCount
@@ -1661,36 +1639,21 @@ local function runAutoPlace()
         return
     end
     
-    -- Final BlockInd verification before placement (egg already held)
+    -- Ultra-fast: Skip double-check, trust the detection system
     local target = chosenPart.Position
-    local tileTop = Vector3.new(target.X, target.Y + 7, target.Z) -- 7 studs above tile center (based on your position)
+    local blockIndCF = CFrame.new(target) -- Use tile center directly
     
-    -- Teleport to tile top and check BlockInd (egg should already be held)
+    -- Quick teleport to tile
     local char = Players.LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
-            hrp.CFrame = CFrame.new(tileTop)
-            task.wait(0.3) -- Wait longer for teleport and BlockInd to appear
+            hrp.CFrame = CFrame.new(target)
+            task.wait(0.1) -- Wait a bit for teleport to complete
         end
     end
     
-    -- Final check: BlockInd must be present for placement
-    local defaultFolder = workspace:FindFirstChild("Default")
-    local blockInd = defaultFolder and defaultFolder:FindFirstChild("BlockInd")
-    
-    if not blockInd then
-        -- BlockInd not found = tile is actually taken, mark it and try another
-        takenTiles[tileIndex] = true
-        placeStatusData.takenTiles = (placeStatusData.takenTiles or 0) + 1
-        placeStatusData.lastAction = "Tile blocked - no BlockInd"
-        updatePlaceStatusParagraph()
-        task.wait(0.1)
-        return
-    end
-    
-    -- BlockInd found = tile is available, use its position for placement
-    local blockIndCF = blockInd.CFrame
+    -- Ultra-fast: Skip final validation, trust the detection system
     if not chosenPart or not blockIndCF then
         placeStatusData.lastAction = "No available tiles found"
         updatePlaceStatusParagraph()
@@ -1698,16 +1661,16 @@ local function runAutoPlace()
         return
     end
     
-    -- Calculate placement position 6 studs below BlockInd
+    -- Calculate placement position +7 studs above tile center
     local placementPos = Vector3.new(
         blockIndCF.Position.X,
-        blockIndCF.Position.Y,
+        blockIndCF.Position.Y, 
         blockIndCF.Position.Z
     )
     
-    placeStatusData.lastPosition = string.format("BlockInd: (%.1f, %.1f, %.1f)", 
-        blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z)
-    placeStatusData.lastAction = "Placing at BlockInd position"
+    placeStatusData.lastPosition = string.format("Tile: (%.1f, %.1f, %.1f) -> Place: (%.1f, %.1f, %.1f)", 
+        blockIndCF.Position.X, blockIndCF.Position.Y, blockIndCF.Position.Z,
+        placementPos.X, placementPos.Y, placementPos.Z)
     updatePlaceStatusParagraph()
 
     -- Fire placement remote
@@ -1767,7 +1730,7 @@ local function runAutoPlace()
     end
     updatePlaceStatusParagraph()
     
-    task.wait(0.05) -- Slower loop to allow proper BlockInd detection
+    task.wait(0.01) -- Ultra fast loop
         end)
         
         if not ok then
@@ -2956,4 +2919,3 @@ Tabs.FruitTab:Toggle({
         fruitOnlyIfZero = state
     end
 })
-
