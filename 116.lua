@@ -2781,23 +2781,21 @@ Tabs.ConfigTab:Button({
             registerConfigElements(customConfig)
             
             -- Save the config
-                    local success = pcall(function()
-            customConfig:Save()
-            -- Force refresh the config list after saving
-            task.wait(0.1)
-            local newConfigs = getAvailableConfigs()
-            if configDropdown and configDropdown.Refresh then
-                configDropdown:Refresh(newConfigs)
-            end
-            -- Update status to show the new config was found
-            configStatus.last = "✅ Saved and refreshed: " .. name
-            updateConfigStatus()
-        end)
+            local success = pcall(function()
+                customConfig:Save()
+                -- Force refresh the config list after saving
+                task.wait(0.1)
+                local newConfigs = getAvailableConfigs()
+                if configDropdown and configDropdown.Refresh then
+                    configDropdown:Refresh(newConfigs)
+                end
+                -- Update status to show the new config was found
+                configStatus.last = "✅ Saved and refreshed: " .. name
+                updateConfigStatus()
+            end)
             
             if success then
                 configStatus.saved = (configStatus.saved or 0) + 1
-                configStatus.last = "✅ Saved config: " .. name
-                updateConfigStatus()
                 WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
             else
                 configStatus.last = "❌ Failed to save config"
@@ -2924,12 +2922,19 @@ Tabs.ConfigTab:Button({
         
         local success = pcall(function()
             customConfig:Save()
+            -- Force refresh the config list after saving
+            task.wait(0.1)
+            local newConfigs = getAvailableConfigs()
+            if configDropdown and configDropdown.Refresh then
+                configDropdown:Refresh(newConfigs)
+            end
+            -- Update status to show the new config was found
+            configStatus.last = "✅ Saved and refreshed: " .. name
+            updateConfigStatus()
         end)
         
         if success then
             configStatus.saved = (configStatus.saved or 0) + 1
-            configStatus.last = "✅ Saved config: " .. name
-            updateConfigStatus()
             WindUI:Notify({ Title = "💾 Config Saved", Content = "Settings saved to " .. name .. "! 🎉", Duration = 5 })
         else
             configStatus.last = "❌ Failed to save config"
