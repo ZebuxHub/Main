@@ -26,14 +26,14 @@ local Window = WindUI:CreateWindow({
 })
 
 local Tabs = {}
-Tabs.MainSection = Window:Section({ Title = "Automation", Opened = true })
-Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "Auto Eggs", Icon = "egg" })
-Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "Auto Place", Icon = "map-pin" })
-Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "Auto Hatch", Icon = "zap" })
-Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "Auto Claim", Icon = "dollar-sign" })
-Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "Shop", Icon = "shopping-cart" })
-Tabs.PackTab = Tabs.MainSection:Tab({ Title = "Auto Pack", Icon = "gift" })
-Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "Fruit Market", Icon = "apple" })
+Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
+Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 Buy Eggs"})
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 Place Pets"})
+Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "⚡ Hatch Eggs"})
+Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 Get Money"})
+Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 Shop"})
+Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 Get Packs"})
+Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 Fruit Store"})
 
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
@@ -575,8 +575,8 @@ local function runAutoClaim()
 end
 
 Tabs.ClaimTab:Toggle({
-    Title = "Auto Claim Money",
-    Desc = "Claims from each of your placed pets (workspace.Pets)",
+    Title = "💰 Auto Get Money",
+    Desc = "Automatically collects money from your pets",
     Value = false,
     Callback = function(state)
         autoClaimEnabled = state
@@ -585,16 +585,16 @@ Tabs.ClaimTab:Toggle({
                 runAutoClaim()
                 autoClaimThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Claim", Content = "Started", Duration = 3 })
+            WindUI:Notify({ Title = "💰 Auto Claim", Content = "Started collecting money! 🎉", Duration = 3 })
         elseif (not state) and autoClaimThread then
-            WindUI:Notify({ Title = "Auto Claim", Content = "Stopped", Duration = 3 })
+            WindUI:Notify({ Title = "💰 Auto Claim", Content = "Stopped", Duration = 3 })
         end
     end
 })
 
 Tabs.ClaimTab:Slider({
-    Title = "Delay Between Claims",
-    Desc = "Time between each pet claim (ms)",
+    Title = "⏰ Claim Speed",
+    Desc = "How fast to collect money (lower = faster)",
     Default = 100,
     Min = 0,
     Max = 1000,
@@ -605,12 +605,12 @@ Tabs.ClaimTab:Slider({
 })
 
 Tabs.ClaimTab:Button({
-    Title = "Claim All Now",
-    Desc = "Immediately claims from all your pets",
+    Title = "💰 Get All Money Now",
+    Desc = "Collect money from all pets right now",
     Callback = function()
         local names = getOwnedPetNames()
         if #names == 0 then
-            WindUI:Notify({ Title = "Auto Claim", Content = "No pets found in Data.Pets", Duration = 3 })
+            WindUI:Notify({ Title = "💰 Auto Claim", Content = "No pets found", Duration = 3 })
             return
         end
         local count = 0
@@ -618,7 +618,7 @@ Tabs.ClaimTab:Button({
             if claimMoneyForPet(n) then count += 1 end
             task.wait(0.05)
         end
-        WindUI:Notify({ Title = "Auto Claim", Content = string.format("Claimed from %d pets", count), Duration = 3 })
+        WindUI:Notify({ Title = "💰 Auto Claim", Content = string.format("Got money from %d pets! 🎉", count), Duration = 3 })
     end
 })
 
@@ -627,11 +627,11 @@ local autoHatchEnabled = false
 local autoHatchThread = nil
 
 -- Hatch debug UI
-Tabs.HatchTab:Section({ Title = "Status", Icon = "info" })
-local hatchStatus = { last = "Idle", owned = 0, ready = 0, lastModel = nil, lastEggType = nil }
+Tabs.HatchTab:Section({ Title = "📊 Status", Icon = "info" })
+local hatchStatus = { last = "Ready to hatch!", owned = 0, ready = 0, lastModel = nil, lastEggType = nil }
 local hatchParagraph = Tabs.HatchTab:Paragraph({
-    Title = "Auto Hatch",
-    Desc = "Scanner idle",
+    Title = "⚡ Auto Hatch Status",
+    Desc = "Shows egg hatching progress",
     Image = "zap",
     ImageSize = 18,
 })
@@ -875,8 +875,8 @@ local function runAutoHatch()
 end
 
 Tabs.HatchTab:Toggle({
-    Title = "Auto Hatch",
-    Desc = "Walk to your eggs in workspace.PlayerBuiltBlocks and press E",
+    Title = "⚡ Auto Hatch Eggs",
+    Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
     Callback = function(state)
         autoHatchEnabled = state
@@ -885,31 +885,31 @@ Tabs.HatchTab:Toggle({
                 runAutoHatch()
                 autoHatchThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Hatch", Content = "Started", Duration = 3 })
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Started hatching eggs! 🎉", Duration = 3 })
         elseif (not state) and autoHatchThread then
-            WindUI:Notify({ Title = "Auto Hatch", Content = "Stopped", Duration = 3 })
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Stopped", Duration = 3 })
         end
     end
 })
 
 Tabs.HatchTab:Button({
-    Title = "Hatch Nearest",
-    Desc = "Hatch the nearest owned egg (E prompt)",
+    Title = "⚡ Hatch Nearest Egg",
+    Desc = "Hatch the closest egg to you",
     Callback = function()
         local owned = collectOwnedEggs()
         hatchStatus.owned = #owned
         if #owned == 0 then
-            hatchStatus.last = "No owned eggs"
+            hatchStatus.last = "No eggs to hatch"
             updateHatchStatus()
-            WindUI:Notify({ Title = "Auto Hatch", Content = "No eggs owned", Duration = 3 })
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs found", Duration = 3 })
             return
         end
         local eggs = filterReadyEggs(owned)
         hatchStatus.ready = #eggs
         if #eggs == 0 then
-            hatchStatus.last = "Owned but not ready"
+            hatchStatus.last = "Eggs not ready yet"
             updateHatchStatus()
-            WindUI:Notify({ Title = "Auto Hatch", Content = "No eggs ready", Duration = 3 })
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs ready", Duration = 3 })
             return
         end
         local me = getPlayerRootPosition() or Vector3.new()
@@ -923,7 +923,7 @@ Tabs.HatchTab:Button({
         hatchStatus.last = "Moving to hatch"
         updateHatchStatus()
         local ok = tryHatchModel(eggs[1])
-        WindUI:Notify({ Title = ok and "Hatched" or "Hatch Failed", Content = eggs[1].Name, Duration = 3 })
+        WindUI:Notify({ Title = ok and "🎉 Hatched!" or "❌ Hatch Failed", Content = eggs[1].Name, Duration = 3 })
     end
 })
 
@@ -974,8 +974,8 @@ local selectedTypeSet = {}
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
-    Title = "Egg IDs",
-    Desc = "Pick the eggs you want to buy.",
+    Title = "🥚 Pick Eggs",
+    Desc = "Choose which eggs to buy",
     Values = eggIdList,
     Value = {},
     Multi = true,
@@ -1007,19 +1007,6 @@ eggDropdown = Tabs.AutoTab:Dropdown({
         end
 })
 
--- Removed search bar to reduce UI clutter and processing
-
-Tabs.AutoTab:Button({
-    Title = "Reload Eggs",
-    Callback = function()
-        loadEggConfig()
-        eggIdList = buildEggIdList()
-        if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(eggIdList)
-        end
-    end
-})
-
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
@@ -1035,10 +1022,10 @@ statusData = {
     islandName = nil,
 }
 
-Tabs.AutoTab:Section({ Title = "Status", Icon = "info" })
+Tabs.AutoTab:Section({ Title = "📊 Status", Icon = "info" })
 local statusParagraph = Tabs.AutoTab:Paragraph({
-    Title = "Auto Buy",
-    Desc = "Turn on the switch and pick egg names.",
+    Title = "🥚 Auto Buy Status",
+    Desc = "Turn on and pick eggs to buy!",
     Image = "shopping-bag",
     ImageSize = 18,
 })
@@ -1283,11 +1270,11 @@ local placeStatusData = {
     selectedEggs = 0,
 }
 
-Tabs.PlaceTab:Section({ Title = "Status", Icon = "info" })
+Tabs.PlaceTab:Section({ Title = "📊 Status", Icon = "info" })
 
 local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
-    Title = "Auto Place",
-    Desc = "Walk-to-tile + BlockInd placement",
+    Title = "🏠 Auto Place Status",
+    Desc = "Shows pet placement progress",
     Image = "map-pin",
     ImageSize = 18,
 })
@@ -1328,8 +1315,8 @@ end
 
 -- Egg selection dropdown
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-    Title = "Select Eggs to Place",
-    Desc = "Choose which egg types to place automatically",
+    Title = "🥚 Pick Pet Types",
+    Desc = "Choose which pets to place",
     Values = eggIdList,
     Value = {},
     Multi = true,
@@ -1343,11 +1330,11 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
 
 
 Tabs.PlaceTab:Button({
-    Title = "Force Refresh Tiles",
-    Desc = "Manually recheck all farm tiles for availability",
+    Title = "🔄 Refresh Tiles",
+    Desc = "Check for empty tiles again",
     Callback = function()
         updateAvailableTiles()
-        WindUI:Notify({ Title = "Tile Refresh", Content = "Rechecked all tiles", Duration = 3 })
+        WindUI:Notify({ Title = "🏠 Tile Refresh", Content = "Checked tiles again!", Duration = 3 })
     end
 })
 
@@ -2051,8 +2038,8 @@ local function runAutoPack()
 end
 
 Tabs.PackTab:Toggle({
-    Title = "Auto Claim Pack",
-    Desc = "Claims when the timer shows 30:00",
+    Title = "🎁 Auto Get Packs",
+    Desc = "Automatically claims online packs when ready",
     Value = false,
     Callback = function(state)
         autoPackEnabled = state
@@ -2061,28 +2048,28 @@ Tabs.PackTab:Toggle({
                 runAutoPack()
                 autoPackThread = nil
             end)
-            WindUI:Notify({ Title = "Auto Pack", Content = "Started", Duration = 3 })
+            WindUI:Notify({ Title = "🎁 Auto Pack", Content = "Started getting packs! 🎉", Duration = 3 })
         elseif (not state) and autoPackThread then
-            WindUI:Notify({ Title = "Auto Pack", Content = "Stopped", Duration = 3 })
+            WindUI:Notify({ Title = "🎁 Auto Pack", Content = "Stopped", Duration = 3 })
         end
     end
 })
 
 Tabs.PackTab:Button({
-    Title = "Claim Now",
-    Desc = "Fire online pack immediately then start cooldown",
+    Title = "🎁 Get Pack Now",
+    Desc = "Claim online pack right now",
     Callback = function()
         if fireOnlinePack() then
             lastPackAt = os.clock()
-            WindUI:Notify({ Title = "Auto Pack", Content = "Claimed", Duration = 3 })
+            WindUI:Notify({ Title = "🎁 Auto Pack", Content = "Got pack! 🎉", Duration = 3 })
         end
     end
 })
 
 -- ============ Shop / Auto Upgrade ============
-Tabs.ShopTab:Section({ Title = "Auto Upgrade Conveyor", Icon = "arrow-up" })
-local shopStatus = { lastAction = "Idle", upgradesTried = 0, upgradesDone = 0 }
-local shopParagraph = Tabs.ShopTab:Paragraph({ Title = "Shop Status", Desc = "Waiting...", Image = "activity", ImageSize = 22 })
+Tabs.ShopTab:Section({ Title = "🛒 Auto Upgrade Conveyor", Icon = "arrow-up" })
+local shopStatus = { lastAction = "Ready to upgrade!", upgradesTried = 0, upgradesDone = 0 }
+local shopParagraph = Tabs.ShopTab:Paragraph({ Title = "🛒 Shop Status", Desc = "Shows upgrade progress", Image = "activity", ImageSize = 22 })
 local function setShopStatus(msg)
     shopStatus.lastAction = msg
     if shopParagraph and shopParagraph.SetDesc then
@@ -2117,8 +2104,8 @@ end
 local autoUpgradeEnabled = false
 local autoUpgradeThread = nil
 Tabs.ShopTab:Toggle({
-    Title = "Auto Upgrade",
-    Desc = "Auto-upgrades conveyor 1..9 when NetWorth >= Cost (ResConveyor)",
+    Title = "🛒 Auto Upgrade Conveyor",
+    Desc = "Automatically upgrades conveyor when you have enough money",
     Value = false,
     Callback = function(state)
         autoUpgradeEnabled = state
@@ -2128,7 +2115,7 @@ Tabs.ShopTab:Toggle({
                     local net = getPlayerNetWorth()
                     local actions = chooseAffordableUpgrades(net)
                     if #actions == 0 then
-                        setShopStatus("Waiting (NetWorth " .. tostring(net) .. ")")
+                        setShopStatus("Waiting for money (NetWorth " .. tostring(net) .. ")")
                         task.wait(0.8)
                     else
                         for _, a in ipairs(actions) do
@@ -2143,23 +2130,23 @@ Tabs.ShopTab:Toggle({
                     end
                 end
             end)
-            setShopStatus("Started")
-            WindUI:Notify({ Title = "Shop", Content = "Auto Upgrade started", Duration = 3 })
+            setShopStatus("Started upgrading!")
+            WindUI:Notify({ Title = "🛒 Shop", Content = "Auto upgrade started! 🎉", Duration = 3 })
         elseif (not state) and autoUpgradeThread then
-            WindUI:Notify({ Title = "Shop", Content = "Auto Upgrade stopped", Duration = 3 })
+            WindUI:Notify({ Title = "🛒 Shop", Content = "Auto upgrade stopped", Duration = 3 })
             setShopStatus("Stopped")
         end
     end
 })
 
 Tabs.ShopTab:Button({
-    Title = "Upgrade All Affordable Now",
-    Desc = "Checks ResConveyor and fires upgrades 1..9 you can afford",
+    Title = "🛒 Upgrade All Now",
+    Desc = "Upgrade everything you can afford right now",
     Callback = function()
         local net = getPlayerNetWorth()
         local actions = chooseAffordableUpgrades(net)
         if #actions == 0 then
-            setShopStatus("No affordable upgrades (NetWorth " .. tostring(net) .. ")")
+            setShopStatus("No upgrades affordable (NetWorth " .. tostring(net) .. ")")
             return
         end
         for _, a in ipairs(actions) do
@@ -2170,17 +2157,17 @@ Tabs.ShopTab:Button({
             shopStatus.upgradesTried += 1
             task.wait(0.1)
         end
-        setShopStatus("Manual upgrade fired for " .. tostring(#actions) .. " items")
+        setShopStatus("Upgraded " .. tostring(#actions) .. " items!")
     end
 })
 
 Tabs.ShopTab:Button({
-    Title = "Reset Remembered Upgrades",
-    Desc = "Clear the one-time memory if you want to attempt again",
+    Title = "🔄 Reset Upgrade Memory",
+    Desc = "Clear upgrade memory to try again",
     Callback = function()
         purchasedUpgrades = {}
-        setShopStatus("Memory reset")
-        WindUI:Notify({ Title = "Shop", Content = "Upgrade memory cleared", Duration = 3 })
+        setShopStatus("Memory reset!")
+        WindUI:Notify({ Title = "🛒 Shop", Content = "Upgrade memory cleared!", Duration = 3 })
     end
 })
 
