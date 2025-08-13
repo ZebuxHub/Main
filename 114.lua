@@ -2758,13 +2758,13 @@ end
 -- Save Configuration UI
 Tabs.ConfigTab:Section({ Title = "💾 Save Configuration", Icon = "save" })
 
+local configNameInputValue = ""
 local configNameInput = Tabs.ConfigTab:Input({
     Title = "📝 Config Name",
     Desc = "Enter a name for your configuration",
-    Value = "",
+    Value = "MyZooConfig",
     Callback = function(value)
-        -- Store the value for later use
-        configNameInput.value = value
+        configNameInputValue = value
     end
 })
 
@@ -2772,7 +2772,7 @@ Tabs.ConfigTab:Button({
     Title = "💾 Save Config",
     Desc = "Save all your current settings to a file",
     Callback = function()
-        local name = configNameInput.value or "MyZooConfig"
+        local name = configNameInputValue or "MyZooConfig"
         if name and name ~= "" then
             -- Create a new config with the custom name
             local customConfig = ConfigManager:CreateConfig(name)
