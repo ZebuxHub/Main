@@ -1561,6 +1561,8 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     -- Now check mutation if mutations are selected
     if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutation(eggInstance.Name)
+        warn("Checking egg " .. eggInstance.Name .. " - mutation result: " .. tostring(eggMutation))
+        
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
             warn("Skipping egg " .. eggInstance.Name .. " - no mutation found")
