@@ -1479,6 +1479,9 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
         table.sort(keys)
         statusData.selectedMutations = table.concat(keys, ", ")
         updateStatusParagraph()
+        
+        -- Debug: Show what was selected
+        print("Mutations selected:", table.concat(keys, ", "))
     end
 })
 
@@ -1744,13 +1747,16 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
 
 
 
--- Event-driven Auto Place functionality
+-- Wake-up monitoring system for eggs and tiles
 local placeConnections = {}
 local placingInProgress = false
 local availableEggs = {} -- Track available eggs to place
 local availableTiles = {} -- Track available tiles
 local selectedEggTypes = {} -- Selected egg types for placement
 local tileMonitoringActive = false
+local systemAwake = false -- Track if system is currently awake
+local sleepDuration = 5.0 -- Sleep for 5 seconds when no work
+local wakeUpInterval = 2.0 -- Wake up every 2 seconds to check
 
 
 -- Auto Place status tracking
@@ -2002,6 +2008,11 @@ local function formatPlaceStatusDesc()
     if placeStatusData.selectedEggs then
         table.insert(lines, string.format("🎯 Selected Types: %d", placeStatusData.selectedEggs or 0))
     end
+    
+    -- Show wake/sleep status
+    local statusIcon = systemAwake and "⚡" or "😴"
+    local statusText = systemAwake and "AWAKE" or "SLEEPING"
+    table.insert(lines, string.format("%s System: %s", statusIcon, statusText))
     
     table.insert(lines, string.format("🔄 Status: %s", tostring(placeStatusData.lastAction or "Ready")))
     return table.concat(lines, "\n")
@@ -2330,66 +2341,50 @@ local function attemptPlacement()
 end
 
 local function setupPlacementMonitoring()
-    -- Monitor for new eggs in PlayerGui.Data.Egg
-    local eggContainer = getEggContainer()
-    if eggContainer then
-        local function onEggAdded(child)
-            if not autoPlaceEnabled then return end
-            if #child:GetChildren() == 0 then -- No subfolder = available egg
-                task.wait(0.2) -- Wait for attributes to be set
-                updateAvailableEggs()
-                attemptPlacement()
-            end
-        end
-        
-        local function onEggRemoved(child)
-            if not autoPlaceEnabled then return end
-            updateAvailableEggs()
-        end
-        
-        table.insert(placeConnections, eggContainer.ChildAdded:Connect(onEggAdded))
-        table.insert(placeConnections, eggContainer.ChildRemoved:Connect(onEggRemoved))
-    end
-    
-    -- Monitor for new tiles becoming available (when pets are removed from PlayerBuiltBlocks)
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if playerBuiltBlocks then
-        local function onBlockChanged()
-            if not autoPlaceEnabled then return end
-            task.wait(0.2)
-            updateAvailableTiles()
-            attemptPlacement()
-        end
-        
-        table.insert(placeConnections, playerBuiltBlocks.ChildAdded:Connect(onBlockChanged))
-        table.insert(placeConnections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
-    end
-    
-    -- Monitor for pets in workspace (when pets hatch and appear in workspace.Pets)
-    local workspacePets = workspace:FindFirstChild("Pets")
-    if workspacePets then
-        local function onPetChanged()
-            if not autoPlaceEnabled then return end
-            task.wait(0.2)
-            updateAvailableTiles()
-            attemptPlacement()
-        end
-        
-        table.insert(placeConnections, workspacePets.ChildAdded:Connect(onPetChanged))
-        table.insert(placeConnections, workspacePets.ChildRemoved:Connect(onPetChanged))
-    end
-    
-    -- More frequent periodic updates to handle continuous placement
-    local updateThread = task.spawn(function()
+    -- Wake-up monitoring thread
+    local wakeUpThread = task.spawn(function()
         while autoPlaceEnabled do
+            -- Wake up and check for work
+            systemAwake = true
+            placeStatusData.lastAction = "🔍 Waking up to check for work..."
+            updatePlaceStatusParagraph()
+            
+            -- Update eggs and tiles
             updateAvailableEggs()
             updateAvailableTiles()
-            attemptPlacement()
-            task.wait(1.5) -- Update every 1.5 seconds for better responsiveness
+            
+            -- Check if we have work to do
+            if #availableEggs > 0 and #availableTiles > 0 then
+                placeStatusData.lastAction = "⚡ Work found! Placing eggs..."
+                updatePlaceStatusParagraph()
+                
+                -- Stay awake and work
+                local workDone = 0
+                while #availableEggs > 0 and #availableTiles > 0 and autoPlaceEnabled do
+                    if attemptPlacement() then
+                        workDone = workDone + 1
+                        task.wait(0.2) -- Small delay between placements
+                    else
+                        break -- No more work possible
+                    end
+                end
+                
+                placeStatusData.lastAction = string.format("✅ Work complete! Placed %d eggs", workDone)
+                updatePlaceStatusParagraph()
+                
+                -- Sleep for a bit after completing work
+                task.wait(sleepDuration)
+            else
+                -- No work available, go back to sleep
+                placeStatusData.lastAction = "😴 No work available, going to sleep..."
+                updatePlaceStatusParagraph()
+                systemAwake = false
+                task.wait(sleepDuration)
+            end
         end
     end)
     
-    table.insert(placeConnections, { disconnect = function() updateThread = nil end })
+    table.insert(placeConnections, { disconnect = function() wakeUpThread = nil end })
 end
 
 local function runAutoPlace()
@@ -3449,6 +3444,26 @@ Tabs.SaveTab:Button({
     end
 })
 
+-- Function to restore mutation selection after loading
+local function restoreMutationSelection()
+    if mutationDropdown and selectedMutationSet then
+        local selectedMutations = {}
+        for mutation in pairs(selectedMutationSet) do
+            table.insert(selectedMutations, mutation)
+        end
+        if #selectedMutations > 0 then
+            -- Update the dropdown to show selected mutations
+            if mutationDropdown.SetValue then
+                mutationDropdown:SetValue(selectedMutations)
+            end
+            -- Update status display
+            statusData.selectedMutations = table.concat(selectedMutations, ", ")
+            updateStatusParagraph()
+            print("Restored mutations:", table.concat(selectedMutations, ", "))
+        end
+    end
+end
+
 -- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for external modules to load
@@ -3463,6 +3478,9 @@ task.spawn(function()
     
     if zooConfig then
         zooConfig:Load()
+        -- Restore mutation selection after loading
+        task.wait(0.5) -- Small delay to ensure UI is ready
+        restoreMutationSelection()
         WindUI:Notify({ 
             Title = "📂 Auto-Load", 
             Content = "Your saved settings have been loaded! 🎉", 
