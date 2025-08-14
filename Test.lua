@@ -3298,6 +3298,7 @@ local function registerConfigElements()
         zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
+        zooConfig:Register("automationPriority", priorityDropdown)
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
@@ -3346,9 +3347,21 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         zooConfig:Save()
+        
+        -- Debug: Show what mutations are selected
+        local mutationCount = 0
+        for _ in pairs(selectedMutationSet) do
+            mutationCount = mutationCount + 1
+        end
+        
+        local message = "All your settings have been saved! 🎉"
+        if mutationCount > 0 then
+            message = message .. string.format("\nMutations selected: %d", mutationCount)
+        end
+        
         WindUI:Notify({ 
             Title = "💾 Settings Saved", 
-            Content = "All your settings have been saved! 🎉", 
+            Content = message, 
             Duration = 3 
         })
     end
@@ -3359,9 +3372,21 @@ Tabs.SaveTab:Button({
     Desc = "Load your saved settings",
     Callback = function()
         zooConfig:Load()
+        
+        -- Debug: Show what mutations are loaded
+        local mutationCount = 0
+        for _ in pairs(selectedMutationSet) do
+            mutationCount = mutationCount + 1
+        end
+        
+        local message = "Your settings have been loaded! 🎉"
+        if mutationCount > 0 then
+            message = message .. string.format("\nMutations loaded: %d", mutationCount)
+        end
+        
         WindUI:Notify({ 
             Title = "📂 Settings Loaded", 
-            Content = "Your settings have been loaded! 🎉", 
+            Content = message, 
             Duration = 3 
         })
     end
