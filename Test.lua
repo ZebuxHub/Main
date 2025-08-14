@@ -3247,6 +3247,11 @@ pcall(function()
     local fruitSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
     if fruitSystem then
         fruitUI = fruitSystem(Tabs, WindUI, LocalPlayer, ReplicatedStorage, Players)
+        
+        -- Register fruit UI elements immediately after creation
+        if fruitUI then
+            -- Will be registered later when zooConfig is available
+        end
     else
         Tabs.FruitTab:Paragraph({
             Title = "🍎 Fruit Store System",
@@ -3395,8 +3400,16 @@ Tabs.SaveTab:Button({
 
 -- Register config elements and auto-load when script starts
 task.spawn(function()
-    task.wait(1) -- Wait a bit for UI to fully load
+    task.wait(2) -- Wait longer for external modules to load
     registerConfigElements() -- Register all UI elements for config
+    
+    -- Re-register fruit UI elements if they were loaded after initial registration
+    if fruitUI and zooConfig then
+        zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
+        zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
+        zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
+    end
+    
     if zooConfig then
         zooConfig:Load()
         WindUI:Notify({ 
