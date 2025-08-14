@@ -240,16 +240,26 @@ local function getEggMutation(eggUID)
                             if mutateText and mutateText:IsA("TextLabel") then
                                 local mutationText = mutateText.Text
                                 if mutationText and mutationText ~= "" then
+                                    warn("Found mutation for " .. eggUID .. ": " .. mutationText)
                                     return mutationText
+                                else
+                                    warn("No mutation text found for " .. eggUID .. " (empty or nil)")
                                 end
+                            else
+                                warn("No Mutate TextLabel found for " .. eggUID)
                             end
+                        else
+                            warn("No GUI/EggGUI found for " .. eggUID)
                         end
+                    else
+                        warn("No RootPart found for " .. eggUID)
                     end
                 end
             end
         end
     end
     
+    warn("Egg " .. eggUID .. " not found on any conveyor belt")
     return nil
 end
 
@@ -1553,12 +1563,15 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         local eggMutation = getEggMutation(eggInstance.Name)
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
+            warn("Skipping egg " .. eggInstance.Name .. " - no mutation found")
             return false, nil, nil
         end
         -- Check if egg has a selected mutation
         if not selectedMutationSet[eggMutation] then
+            warn("Skipping egg " .. eggInstance.Name .. " - mutation " .. eggMutation .. " not in selected list")
             return false, nil, nil
         end
+        warn("Egg " .. eggInstance.Name .. " has valid mutation: " .. eggMutation)
     end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
