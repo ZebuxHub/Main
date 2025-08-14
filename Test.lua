@@ -1502,6 +1502,25 @@ Tabs.AutoTab:Button({
     end
 })
 
+Tabs.AutoTab:Button({
+    Title = "🔍 Debug Selection",
+    Desc = "Show what eggs and mutations are currently selected",
+    Callback = function()
+        local eggTypes = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
+        table.sort(eggTypes)
+        
+        local mutations = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
+        table.sort(mutations)
+        
+        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
+        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
+        
+        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
+    end
+})
+
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
@@ -1565,7 +1584,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
-            warn("Skipping egg " .. eggInstance.Name .. " - no mutation found")
+            warn("Skipping egg " .. eggInstance.Name .. " - no mutation found (user selected mutations)")
             return false, nil, nil
         end
         -- Check if egg has a selected mutation
@@ -1574,6 +1593,8 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
             return false, nil, nil
         end
         warn("Egg " .. eggInstance.Name .. " has valid mutation: " .. eggMutation)
+    else
+        warn("No mutations selected - buying any egg type")
     end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
@@ -1627,8 +1648,15 @@ local function buyEggInstantly(eggInstance)
     if buyingInProgress then return end
     buyingInProgress = true
     
+    warn("=== BUY ATTEMPT ===")
+    warn("Egg: " .. eggInstance.Name)
+    warn("Selected eggs: " .. (next(selectedTypeSet) and "YES" or "NO"))
+    warn("Selected mutations: " .. (next(selectedMutationSet) and "YES" or "NO"))
+    
     local netWorth = getPlayerNetWorth()
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
+    
+    warn("Should buy result: " .. tostring(ok))
     
     if ok then
         statusData.lastUID = uid
@@ -1642,6 +1670,8 @@ local function buyEggInstantly(eggInstance)
         statusData.lastAction = "Bought + Focused UID " .. tostring(uid)
         updateStatusParagraph()
     end
+    
+    buyingInProgress = false
     
     buyingInProgress = false
 end
