@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Window
 local Window = WindUI:CreateWindow({
-    Title = "Build A Zoo",
+    Title = "Build A Zoo 1",
     Icon = "app-window-mac",
     IconThemed = true,
     Author = "Zebux",
@@ -320,25 +320,52 @@ local function getFarmParts(islandNumber)
     local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
     
     if locksFolder then
-        -- Create a map of locked positions
-        local lockedPositions = {}
+        -- Create a map of locked areas using CFrame and size
+        local lockedAreas = {}
         for _, lockModel in ipairs(locksFolder:GetChildren()) do
             if lockModel:IsA("Model") then
                 local farmPart = lockModel:FindFirstChild("Farm")
                 if farmPart and farmPart:IsA("BasePart") then
                     -- Check if this lock is active (transparency = 0 means locked)
                     if farmPart.Transparency == 0 then
-                        -- This tile is locked, mark its position
-                        local lockPos = farmPart.Position
-                        lockedPositions[lockPos] = true
+                        -- Store the lock's CFrame and size for area checking
+                        table.insert(lockedAreas, {
+                            cframe = farmPart.CFrame,
+                            size = farmPart.Size,
+                            position = farmPart.Position
+                        })
                     end
                 end
             end
         end
         
-        -- Only include farm parts that are not locked
+        -- Check each farm part against locked areas
         for _, farmPart in ipairs(farmParts) do
-            if not lockedPositions[farmPart.Position] then
+            local isLocked = false
+            
+            for _, lockArea in ipairs(lockedAreas) do
+                -- Check if farm part is within the lock area
+                -- Use CFrame and size to determine if the farm part is covered by the lock
+                local farmPartPos = farmPart.Position
+                local lockCenter = lockArea.position
+                local lockSize = lockArea.size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if farm part is within the lock bounds
+                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
+                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
+                    isLocked = true
+                    break
+                end
+            end
+            
+            if not isLocked then
                 table.insert(unlockedFarmParts, farmPart)
             end
         end
@@ -466,13 +493,25 @@ local function isTileUnlocked(islandName, tilePosition)
     local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
     if not locksFolder then return true end -- Assume unlocked if no locks folder
     
-    -- Check if there's a lock at this position
+    -- Check if there's a lock covering this position
     for _, lockModel in ipairs(locksFolder:GetChildren()) do
         if lockModel:IsA("Model") then
             local farmPart = lockModel:FindFirstChild("Farm")
-            if farmPart and farmPart:IsA("BasePart") then
-                -- Check if this lock is at the same position and is active (locked)
-                if (farmPart.Position - tilePosition).Magnitude < 1.0 and farmPart.Transparency == 0 then
+            if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
+                -- Check if tile position is within the lock area
+                local lockCenter = farmPart.Position
+                local lockSize = farmPart.Size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if tile position is within the lock bounds
+                if tilePosition.X >= lockMinX and tilePosition.X <= lockMaxX and
+                   tilePosition.Z >= lockMinZ and tilePosition.Z <= lockMaxZ then
                     return false -- This tile is locked
                 end
             end
@@ -511,8 +550,11 @@ local function debugTileLockRelationship()
                     table.insert(farmSplits, {
                         name = child.Name,
                         position = child.Position,
+                        cframe = child.CFrame,
+                        size = child.Size,
                         locked = false,
-                        lockModel = nil
+                        lockModel = nil,
+                        lockInfo = nil
                     })
                 end
             end
@@ -532,6 +574,8 @@ local function debugTileLockRelationship()
                     table.insert(locks, {
                         modelName = lockModel.Name,
                         position = farmPart.Position,
+                        cframe = farmPart.CFrame,
+                        size = farmPart.Size,
                         transparency = farmPart.Transparency,
                         isLocked = farmPart.Transparency == 0
                     })
@@ -540,13 +584,30 @@ local function debugTileLockRelationship()
         end
     end
     
-    -- Match farm splits with locks
+    -- Match farm splits with locks using area overlap
     for _, farmSplit in ipairs(farmSplits) do
         for _, lock in ipairs(locks) do
-            if (farmSplit.position - lock.position).Magnitude < 1.0 then
-                farmSplit.locked = lock.isLocked
-                farmSplit.lockModel = lock.modelName
-                break
+            if lock.isLocked then
+                -- Check if farm part is within the lock area
+                local farmPartPos = farmSplit.position
+                local lockCenter = lock.position
+                local lockSize = lock.size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if farm part is within the lock bounds
+                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
+                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
+                    farmSplit.locked = true
+                    farmSplit.lockModel = lock.modelName
+                    farmSplit.lockInfo = string.format("Lock: %s (Size: %s)", lock.modelName, tostring(lock.size))
+                    break
+                end
             end
         end
     end
@@ -556,29 +617,43 @@ local function debugTileLockRelationship()
     message = message .. string.format("📊 Total Farm Splits: %d\n", #farmSplits)
     message = message .. string.format("🔒 Total Locks: %d\n\n", #locks)
     
+    -- Show lock information first
+    message = message .. "🔒 LOCK INFORMATION:\n"
+    for i, lock in ipairs(locks) do
+        if lock.isLocked then
+            message = message .. string.format("  %s: Pos(%s) Size(%s) Transp(%s)\n", 
+                lock.modelName, 
+                string.format("%.1f,%.1f,%.1f", lock.position.X, lock.position.Y, lock.position.Z),
+                tostring(lock.size),
+                tostring(lock.transparency))
+        end
+        if i >= 5 then break end
+    end
+    
+    message = message .. "\n📋 FARM SPLIT STATUS:\n"
     local unlockedCount = 0
     local lockedCount = 0
     
     for i, farmSplit in ipairs(farmSplits) do
         if farmSplit.locked then
             lockedCount = lockedCount + 1
-            message = message .. string.format("🔒 %s: LOCKED (Lock: %s)\n", 
-                farmSplit.name, farmSplit.lockModel or "Unknown")
+            message = message .. string.format("🔒 %s: LOCKED\n  %s\n", 
+                farmSplit.name, farmSplit.lockInfo or "Unknown")
         else
             unlockedCount = unlockedCount + 1
             message = message .. string.format("✅ %s: UNLOCKED\n", farmSplit.name)
         end
         
         -- Limit message length
-        if i >= 10 then
-            message = message .. "... (showing first 10)\n"
+        if i >= 8 then
+            message = message .. "... (showing first 8)\n"
             break
         end
     end
     
     message = message .. string.format("\n📈 Summary: %d unlocked, %d locked", unlockedCount, lockedCount)
     
-    WindUI:Notify({ Title = "🔍 Tile Lock Debug", Content = message, Duration = 8 })
+    WindUI:Notify({ Title = "🔍 Tile Lock Debug", Content = message, Duration = 10 })
 end
 
 local function getPetUID()
@@ -1717,6 +1792,89 @@ Tabs.PlaceTab:Button({
     Desc = "Show detailed relationship between farm splits and locks",
     Callback = function()
         debugTileLockRelationship()
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "📐 Show CFrame Info",
+    Desc = "Display CFrame and size information for locks and farm splits",
+    Callback = function()
+        local islandName = getAssignedIslandName()
+        if not islandName then
+            WindUI:Notify({ Title = "📐 CFrame Info", Content = "No island assigned!", Duration = 3 })
+            return
+        end
+        
+        local art = workspace:FindFirstChild("Art")
+        if not art then
+            WindUI:Notify({ Title = "📐 CFrame Info", Content = "No Art folder found!", Duration = 3 })
+            return
+        end
+        
+        local island = art:FindFirstChild(islandName)
+        if not island then
+            WindUI:Notify({ Title = "📐 CFrame Info", Content = "Island not found: " .. islandName, Duration = 3 })
+            return
+        end
+        
+        local message = string.format("🏝️ Island: %s\n\n", islandName)
+        
+        -- Show lock information
+        message = message .. "🔒 LOCK INFORMATION:\n"
+        local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
+        if locksFolder then
+            for i, lockModel in ipairs(locksFolder:GetChildren()) do
+                if lockModel:IsA("Model") then
+                    local farmPart = lockModel:FindFirstChild("Farm")
+                    if farmPart and farmPart:IsA("BasePart") then
+                        local pos = farmPart.Position
+                        local size = farmPart.Size
+                        local transparency = farmPart.Transparency
+                        local status = transparency == 0 and "LOCKED" or "UNLOCKED"
+                        
+                        message = message .. string.format("  %s:\n", lockModel.Name)
+                        message = message .. string.format("    Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
+                        message = message .. string.format("    Size: %s\n", tostring(size))
+                        message = message .. string.format("    Transparency: %s (%s)\n", tostring(transparency), status)
+                        message = message .. "\n"
+                    end
+                end
+                if i >= 3 then break end -- Limit to 3 locks
+            end
+        else
+            message = message .. "  No locks folder found\n\n"
+        end
+        
+        -- Show farm split information
+        message = message .. "📦 FARM SPLIT INFORMATION:\n"
+        local farmSplitCount = 0
+        local function scanForFarmSplits(parent)
+            for _, child in ipairs(parent:GetChildren()) do
+                if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
+                    if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                        farmSplitCount = farmSplitCount + 1
+                        if farmSplitCount <= 3 then -- Show first 3
+                            local pos = child.Position
+                            local size = child.Size
+                            message = message .. string.format("  %s:\n", child.Name)
+                            message = message .. string.format("    Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
+                            message = message .. string.format("    Size: %s\n", tostring(size))
+                            message = message .. "\n"
+                        end
+                    end
+                end
+                scanForFarmSplits(child)
+            end
+        end
+        scanForFarmSplits(island)
+        
+        if farmSplitCount == 0 then
+            message = message .. "  No farm splits found\n"
+        elseif farmSplitCount > 3 then
+            message = message .. string.format("  ... and %d more farm splits\n", farmSplitCount - 3)
+        end
+        
+        WindUI:Notify({ Title = "📐 CFrame Info", Content = message, Duration = 12 })
     end
 })
 
