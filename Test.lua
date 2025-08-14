@@ -731,114 +731,6 @@ local function debugTileLockRelationship()
     WindUI:Notify({ Title = "🔍 Tile Lock Debug", Content = message, Duration = 10 })
 end
 
--- Function to map pets to their farm split tiles
-local function mapPetsToFarmTiles()
-    local islandName = getAssignedIslandName()
-    if not islandName then return {} end
-    
-    local islandNumber = getIslandNumberFromName(islandName)
-    local farmParts = getFarmParts(islandNumber)
-    
-    local petTileMap = {}
-    
-    -- Map eggs in PlayerBuiltBlocks
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                local eggType = model:GetAttribute("EggType") or model:GetAttribute("Type") or "Unknown"
-                
-                -- Find the closest farm tile for this egg
-                local closestTileIndex = nil
-                local closestDistance = math.huge
-                
-                for i, farmPart in ipairs(farmParts) do
-                    local tilePos = farmPart.Position
-                    local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                    local yDistance = math.abs(modelPos.Y - tilePos.Y)
-                    
-                    -- Use combined distance for finding closest tile
-                    local totalDistance = xzDistance + yDistance
-                    if totalDistance < closestDistance then
-                        closestDistance = totalDistance
-                        closestTileIndex = i
-                    end
-                end
-                
-                -- If egg is close enough to a tile, map it
-                if closestTileIndex and closestDistance < 12.0 then -- Increased range for better matching
-                    table.insert(petTileMap, {
-                        tileIndex = closestTileIndex,
-                        tileName = farmParts[closestTileIndex].Name,
-                        tilePosition = farmParts[closestTileIndex].Position,
-                        petName = model.Name,
-                        petType = "Egg",
-                        petTypeDetail = eggType,
-                        position = modelPos,
-                        source = "PlayerBuiltBlocks",
-                        distance = closestDistance
-                    })
-                end
-            end
-        end
-    end
-    
-    -- Map fully hatched pets in workspace.Pets
-    local playerPets = getPlayerPetsInWorkspace()
-    for _, petInfo in ipairs(playerPets) do
-        local petPos = petInfo.position
-        
-        -- Find the closest farm tile for this pet
-        local closestTileIndex = nil
-        local closestDistance = math.huge
-        
-        for i, farmPart in ipairs(farmParts) do
-            local tilePos = farmPart.Position
-            local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
-            local yDistance = math.abs(petPos.Y - tilePos.Y)
-            
-            -- Use combined distance for finding closest tile
-            local totalDistance = xzDistance + yDistance
-            if totalDistance < closestDistance then
-                closestDistance = totalDistance
-                closestTileIndex = i
-            end
-        end
-        
-        -- If pet is close enough to a tile, map it
-        if closestTileIndex and closestDistance < 12.0 then -- Increased range for better matching
-            table.insert(petTileMap, {
-                tileIndex = closestTileIndex,
-                tileName = farmParts[closestTileIndex].Name,
-                tilePosition = farmParts[closestTileIndex].Position,
-                petName = petInfo.name,
-                petType = "Pet",
-                petTypeDetail = "Hatched",
-                position = petPos,
-                source = "workspace.Pets",
-                distance = closestDistance
-            })
-        end
-    end
-    
-    return petTileMap
-end
-
--- Function to check if there are any eggs available for placement
-local function hasAvailableEggsForPlacement()
-    local eggContainer = getEggContainer()
-    if not eggContainer then return false end
-    
-    for _, child in ipairs(eggContainer:GetChildren()) do
-        if #child:GetChildren() == 0 then -- No subfolder = available egg
-            return true
-        end
-    end
-    
-    return false
-end
-
 local function getPetUID()
     if not LocalPlayer then return nil end
     
@@ -1823,13 +1715,6 @@ local function updateAvailableEggs()
     end
     
     placeStatusData.availableEggs = #availableEggs
-    
-    -- Also check if there are eggs in inventory that aren't being detected
-    local hasEggsInInventory = hasAvailableEggsForPlacement()
-    if hasEggsInInventory and #availableEggs == 0 then
-        placeStatusData.lastAction = "⚠️ Eggs in inventory but not detected in available list"
-    end
-    
     updatePlaceStatusParagraph()
 end
 
@@ -1843,7 +1728,64 @@ local function updateAvailableTiles()
     local occupiedTiles = 0
     local lockedTiles = 0
     
-    -- Count locked tiles for status display
+    -- Create a map of occupied farm split positions
+    local occupiedPositions = {}
+    
+    -- Check eggs in PlayerBuiltBlocks
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                -- Find the closest farm split to this egg
+                local closestPart = nil
+                local closestDistance = math.huge
+                
+                for _, part in ipairs(farmParts) do
+                    local modelPos = model:GetPivot().Position
+                    local tilePos = part.Position
+                    local distance = (modelPos - tilePos).Magnitude
+                    
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestPart = part
+                    end
+                end
+                
+                -- If egg is close enough to a farm split, mark it as occupied
+                if closestPart and closestDistance <= 6.0 then
+                    occupiedPositions[closestPart.Position] = "egg"
+                    occupiedTiles = occupiedTiles + 1
+                end
+            end
+        end
+    end
+    
+    -- Check pets in workspace
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        -- Find the closest farm split to this pet
+        local closestPart = nil
+        local closestDistance = math.huge
+        
+        for _, part in ipairs(farmParts) do
+            local petPos = petInfo.position
+            local tilePos = part.Position
+            local distance = (petPos - tilePos).Magnitude
+            
+            if distance < closestDistance then
+                closestDistance = distance
+                closestPart = part
+            end
+        end
+        
+        -- If pet is close enough to a farm split, mark it as occupied
+        if closestPart and closestDistance <= 6.0 then
+            occupiedPositions[closestPart.Position] = "pet"
+            occupiedTiles = occupiedTiles + 1
+        end
+    end
+    
+    -- Count locked tiles
     local art = workspace:FindFirstChild("Art")
     if art then
         local island = art:FindFirstChild(islandName)
@@ -1862,32 +1804,9 @@ local function updateAvailableTiles()
         end
     end
     
+    -- Find available tiles (not occupied by eggs or pets)
     for i, part in ipairs(farmParts) do
-        -- Check if tile is actually available (not occupied) with more lenient radius
-        local isOccupied = false
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        if playerBuiltBlocks then
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") then
-                    local modelPos = model:GetPivot().Position
-                    local tilePos = part.Position
-                    
-                    -- Separate X/Z and Y axis checks
-                    local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                    local yDistance = math.abs(modelPos.Y - tilePos.Y)
-                    
-                    -- X/Z: 4 studs radius (tile is 8x8, so 4 studs from center)
-                    -- Y: 8 studs radius (allow eggs placed above/below tile)
-                    if xzDistance < 4.0 and yDistance < 8.0 then
-                        isOccupied = true
-                        occupiedTiles = occupiedTiles + 1
-                        break
-                    end
-                end
-            end
-        end
-        
-        if not isOccupied then
+        if not occupiedPositions[part.Position] then
             table.insert(availableTiles, { part = part, index = i })
         end
     end
@@ -1931,9 +1850,39 @@ Tabs.PlaceTab:Button({
         local occupiedTiles = 0
         local lockedTiles = 0
         
-        -- Count occupied tiles using the mapping function
-        local petTileMap = mapPetsToFarmTiles()
-        occupiedTiles = #petTileMap
+        -- Count occupied tiles (both eggs and fully hatched pets)
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") then
+                    for _, part in ipairs(farmParts) do
+                        local modelPos = model:GetPivot().Position
+                        local tilePos = part.Position
+                        local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                        local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                        if xzDistance < 4.0 and yDistance < 8.0 then
+                            occupiedTiles = occupiedTiles + 1
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Count tiles occupied by fully hatched pets
+        local playerPets = getPlayerPetsInWorkspace()
+        for _, petInfo in ipairs(playerPets) do
+            for _, part in ipairs(farmParts) do
+                local petPos = petInfo.position
+                local tilePos = part.Position
+                local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
+                local yDistance = math.abs(petPos.Y - tilePos.Y)
+                if xzDistance < 4.0 and yDistance < 8.0 then
+                    occupiedTiles = occupiedTiles + 1
+                    break
+                end
+            end
+        end
         
         -- Count locked tiles
         local art = workspace:FindFirstChild("Art")
@@ -2102,206 +2051,108 @@ Tabs.PlaceTab:Button({
 })
 
 Tabs.PlaceTab:Button({
-    Title = "🗺️ Show Pet Tile Map",
-    Desc = "Show which pets are on which farm tiles (occupied tiles)",
-    Callback = function()
-        local petTileMap = mapPetsToFarmTiles()
-        
-        if #petTileMap == 0 then
-            WindUI:Notify({ Title = "🗺️ Pet Tile Map", Content = "No pets found on farm tiles!", Duration = 5 })
-            return
-        end
-        
-        local message = "🗺️ PET TILE MAPPING:\n\n"
-        message = message .. string.format("📊 Total Occupied Tiles: %d\n\n", #petTileMap)
-        
-        -- Sort by tile index for better readability
-        table.sort(petTileMap, function(a, b) return a.tileIndex < b.tileIndex end)
-        
-        for i, mapping in ipairs(petTileMap) do
-            local pos = mapping.position
-            local tilePos = mapping.tilePosition
-            
-            message = message .. string.format("📍 Tile %d (%s):\n", mapping.tileIndex, mapping.tileName)
-            message = message .. string.format("  🐾 Pet: %s (%s)\n", mapping.petName, mapping.petType)
-            if mapping.petType == "Egg" then
-                message = message .. string.format("  🥚 Type: %s\n", mapping.petTypeDetail)
-            end
-            message = message .. string.format("  📍 Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
-            message = message .. string.format("  🏠 Source: %s\n", mapping.source)
-            if mapping.distance then
-                message = message .. string.format("  📏 Distance: %.2f\n", mapping.distance)
-            end
-            message = message .. "\n"
-            
-            -- Limit to first 8 mappings to avoid message overflow
-            if i >= 8 then
-                message = message .. string.format("... and %d more occupied tiles\n", #petTileMap - 8)
-                break
-            end
-        end
-        
-        -- Show summary
-        local eggCount = 0
-        local petCount = 0
-        for _, mapping in ipairs(petTileMap) do
-            if mapping.petType == "Egg" then
-                eggCount = eggCount + 1
-            else
-                petCount = petCount + 1
-            end
-        end
-        
-        message = message .. string.format("📈 Summary: %d eggs, %d pets on tiles", eggCount, petCount)
-        
-        WindUI:Notify({ Title = "🗺️ Pet Tile Map", Content = message, Duration = 15 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "✅ Show Available Tiles",
-    Desc = "Show which farm tiles are available for placing pets",
+    Title = "🔍 Show Tile Mapping",
+    Desc = "Show which farm splits are occupied by eggs or pets",
     Callback = function()
         local islandName = getAssignedIslandName()
         if not islandName then
-            WindUI:Notify({ Title = "✅ Available Tiles", Content = "No island assigned!", Duration = 3 })
+            WindUI:Notify({ Title = "🔍 Tile Mapping", Content = "No island assigned!", Duration = 3 })
             return
         end
         
         local islandNumber = getIslandNumberFromName(islandName)
         local farmParts = getFarmParts(islandNumber)
-        local petTileMap = mapPetsToFarmTiles()
         
-        -- Create a set of occupied tile indices
-        local occupiedTileIndices = {}
-        for _, mapping in ipairs(petTileMap) do
-            occupiedTileIndices[mapping.tileIndex] = true
-        end
+        local message = string.format("🏝️ Island: %s\n\n", islandName)
+        message = message .. "🔍 TILE MAPPING:\n"
         
-        -- Find available tiles
-        local availableTiles = {}
-        for i, farmPart in ipairs(farmParts) do
-            if not occupiedTileIndices[i] then
-                table.insert(availableTiles, {
-                    index = i,
-                    name = farmPart.Name,
-                    position = farmPart.Position
-                })
+        -- Create a map of occupied farm split positions
+        local occupiedPositions = {}
+        
+        -- Check eggs in PlayerBuiltBlocks
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") then
+                    -- Find the closest farm split to this egg
+                    local closestPart = nil
+                    local closestDistance = math.huge
+                    
+                    for _, part in ipairs(farmParts) do
+                        local modelPos = model:GetPivot().Position
+                        local tilePos = part.Position
+                        local distance = (modelPos - tilePos).Magnitude
+                        
+                        if distance < closestDistance then
+                            closestDistance = distance
+                            closestPart = part
+                        end
+                    end
+                    
+                    -- If egg is close enough to a farm split, mark it as occupied
+                    if closestPart and closestDistance <= 6.0 then
+                        occupiedPositions[closestPart.Position] = {
+                            type = "egg",
+                            name = model.Name,
+                            distance = closestDistance
+                        }
+                    end
+                end
             end
         end
         
-        if #availableTiles == 0 then
-            WindUI:Notify({ Title = "✅ Available Tiles", Content = "No available tiles found! All tiles are occupied.", Duration = 5 })
-            return
+        -- Check pets in workspace
+        local playerPets = getPlayerPetsInWorkspace()
+        for _, petInfo in ipairs(playerPets) do
+            -- Find the closest farm split to this pet
+            local closestPart = nil
+            local closestDistance = math.huge
+            
+            for _, part in ipairs(farmParts) do
+                local petPos = petInfo.position
+                local tilePos = part.Position
+                local distance = (petPos - tilePos).Magnitude
+                
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPart = part
+                end
+            end
+            
+            -- If pet is close enough to a farm split, mark it as occupied
+            if closestPart and closestDistance <= 6.0 then
+                occupiedPositions[closestPart.Position] = {
+                    type = "pet",
+                    name = petInfo.name,
+                    distance = closestDistance
+                }
+            end
         end
         
-        local message = "✅ AVAILABLE TILES:\n\n"
-        message = message .. string.format("📊 Total Available: %d out of %d tiles\n\n", #availableTiles, #farmParts)
+        -- Show mapping
+        local occupiedCount = 0
+        local availableCount = 0
         
-        -- Sort by tile index for better readability
-        table.sort(availableTiles, function(a, b) return a.index < b.index end)
-        
-        for i, tile in ipairs(availableTiles) do
-            local pos = tile.position
-            message = message .. string.format("📍 Tile %d (%s):\n", tile.index, tile.name)
-            message = message .. string.format("  📍 Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
-            message = message .. "  ✅ AVAILABLE FOR PLACEMENT\n\n"
+        for i, part in ipairs(farmParts) do
+            local occupied = occupiedPositions[part.Position]
+            if occupied then
+                occupiedCount = occupiedCount + 1
+                message = message .. string.format("🔒 %s: %s (%s) - %.1f studs\n", 
+                    part.Name, occupied.type, occupied.name, occupied.distance)
+            else
+                availableCount = availableCount + 1
+                message = message .. string.format("✅ %s: AVAILABLE\n", part.Name)
+            end
             
-            -- Limit to first 10 tiles to avoid message overflow
             if i >= 10 then
-                message = message .. string.format("... and %d more available tiles\n", #availableTiles - 10)
+                message = message .. string.format("... and %d more tiles\n", #farmParts - 10)
                 break
             end
         end
         
-        message = message .. string.format("🎯 Ready to place pets on %d tiles!", #availableTiles)
+        message = message .. string.format("\n📊 Summary: %d occupied, %d available", occupiedCount, availableCount)
         
-        WindUI:Notify({ Title = "✅ Available Tiles", Content = message, Duration = 15 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "🔄 Check Auto Place Status",
-    Desc = "Show current status of Auto Place system",
-    Callback = function()
-        local message = "🔄 AUTO PLACE STATUS:\n\n"
-        
-        -- Check if Auto Place is enabled
-        message = message .. string.format("⚙️ Auto Place Enabled: %s\n", autoPlaceEnabled and "✅ Yes" or "❌ No")
-        
-        -- Check available eggs
-        local availableEggsCount = #availableEggs
-        message = message .. string.format("🥚 Available Eggs: %d\n", availableEggsCount)
-        
-        -- Check available tiles
-        local availableTilesCount = #availableTiles
-        message = message .. string.format("📦 Available Tiles: %d\n", availableTilesCount)
-        
-        -- Check if there are eggs in inventory
-        local hasEggsInInventory = hasAvailableEggsForPlacement()
-        message = message .. string.format("📋 Eggs in Inventory: %s\n", hasEggsInInventory and "✅ Yes" or "❌ No")
-        
-        -- Show current status
-        message = message .. string.format("\n📊 Current Status:\n")
-        message = message .. string.format("  Last Action: %s\n", placeStatusData.lastAction or "None")
-        message = message .. string.format("  Total Placed: %d\n", placeStatusData.totalPlaces or 0)
-        
-        -- Show what's preventing placement
-        if autoPlaceEnabled then
-            if availableEggsCount == 0 and hasEggsInInventory then
-                message = message .. "\n⚠️ Issue: Eggs in inventory but not in available list"
-            elseif availableTilesCount == 0 then
-                message = message .. "\n⚠️ Issue: No available tiles"
-            elseif availableEggsCount == 0 and not hasEggsInInventory then
-                message = message .. "\n⚠️ Issue: No eggs available for placement"
-            else
-                message = message .. "\n✅ Ready to place eggs!"
-            end
-        end
-        
-        WindUI:Notify({ Title = "🔄 Auto Place Status", Content = message, Duration = 10 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "🔍 Show Placement Logic",
-    Desc = "Show step-by-step how the placement system works",
-    Callback = function()
-        local message = "🔍 PLACEMENT LOGIC EXPLANATION:\n\n"
-        
-        message = message .. "📋 HOW IT WORKS:\n"
-        message = message .. "1️⃣ Get list of available eggs\n"
-        message = message .. "2️⃣ Get list of available tiles\n"
-        message = message .. "3️⃣ For each tile in order:\n"
-        message = message .. "   🔍 Check if tile is occupied:\n"
-        message = message .. "      • Look for eggs in PlayerBuiltBlocks\n"
-        message = message .. "      • Look for pets in workspace.Pets\n"
-        message = message .. "   ✅ If tile is FREE → Place egg\n"
-        message = message .. "   ⏭️ If tile is OCCUPIED → Skip to next tile\n"
-        message = message .. "4️⃣ Continue until no more eggs or tiles\n\n"
-        
-        -- Show current state
-        local availableEggsCount = #availableEggs
-        local availableTilesCount = #availableTiles
-        local petTileMap = mapPetsToFarmTiles()
-        local occupiedTilesCount = #petTileMap
-        
-        message = message .. "📊 CURRENT STATE:\n"
-        message = message .. string.format("🥚 Available Eggs: %d\n", availableEggsCount)
-        message = message .. string.format("📦 Available Tiles: %d\n", availableTilesCount)
-        message = message .. string.format("🔒 Occupied Tiles: %d\n", occupiedTilesCount)
-        
-        if availableEggsCount > 0 and availableTilesCount > 0 then
-            message = message .. "\n✅ READY TO PLACE!\n"
-            message = message .. "System will try to place eggs on free tiles only.\n"
-            message = message .. "Occupied tiles will be automatically skipped."
-        elseif availableEggsCount == 0 then
-            message = message .. "\n⚠️ NO EGGS AVAILABLE"
-        elseif availableTilesCount == 0 then
-            message = message .. "\n⚠️ NO TILES AVAILABLE"
-        end
-        
-        WindUI:Notify({ Title = "🔍 Placement Logic", Content = message, Duration = 12 })
+        WindUI:Notify({ Title = "🔍 Tile Mapping", Content = message, Duration = 12 })
     end
 })
 
@@ -2516,7 +2367,17 @@ local function placeEggInstantly(eggInfo, tileInfo)
 end
 
 local function attemptPlacement()
-    if #availableEggs == 0 or #availableTiles == 0 then return end
+    if #availableEggs == 0 then 
+        placeStatusData.lastAction = "No eggs available to place"
+        updatePlaceStatusParagraph()
+        return 
+    end
+    
+    if #availableTiles == 0 then 
+        placeStatusData.lastAction = "No available tiles to place on"
+        updatePlaceStatusParagraph()
+        return 
+    end
     
     -- Place eggs on available tiles (limit to prevent lag)
     local placed = 0
@@ -2529,7 +2390,6 @@ local function attemptPlacement()
         -- Double-check tile is still available before placing
         local tileInfo = availableTiles[1]
         local isStillAvailable = true
-        local skipReason = nil
         
         if tileInfo then
             local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
@@ -2546,7 +2406,6 @@ local function attemptPlacement()
                         -- X/Z: 4 studs radius, Y: 8 studs radius
                         if xzDistance < 4.0 and yDistance < 8.0 then
                             isStillAvailable = false
-                            skipReason = "occupied by egg: " .. model.Name
                             break
                         end
                     end
@@ -2567,7 +2426,6 @@ local function attemptPlacement()
                     -- X/Z: 4 studs radius, Y: 8 studs radius
                     if xzDistance < 4.0 and yDistance < 8.0 then
                         isStillAvailable = false
-                        skipReason = "occupied by pet: " .. petInfo.name
                         break
                     end
                 end
@@ -2577,16 +2435,13 @@ local function attemptPlacement()
         if isStillAvailable then
             if placeEggInstantly(availableEggs[1], availableTiles[1]) then
                 placed = placed + 1
-                placeStatusData.lastAction = "✅ Placed egg on tile " .. tostring(tileInfo.index)
                 task.wait(0.2) -- Longer delay between successful placements
             else
                 -- Placement failed, tile was removed from availableTiles
-                placeStatusData.lastAction = "❌ Failed to place on tile " .. tostring(tileInfo.index)
                 task.wait(0.1) -- Quick retry
             end
         else
-            -- Tile is no longer available, remove it and skip to next
-            placeStatusData.lastAction = "⏭️ Skipping tile " .. tostring(tileInfo.index) .. " - " .. (skipReason or "occupied")
+            -- Tile is no longer available, remove it
             table.remove(availableTiles, 1)
             placeStatusData.availableTiles = #availableTiles
             updatePlaceStatusParagraph()
@@ -2594,10 +2449,13 @@ local function attemptPlacement()
     end
     
     if placed > 0 then
-        placeStatusData.lastAction = "🎉 Placed " .. tostring(placed) .. " eggs successfully"
+        placeStatusData.lastAction = "Placed " .. tostring(placed) .. " eggs"
         updatePlaceStatusParagraph()
     elseif attempts > 0 then
-        placeStatusData.lastAction = "⚠️ Tried " .. tostring(attempts) .. " placements, no success"
+        placeStatusData.lastAction = "Tried " .. tostring(attempts) .. " placements, no success"
+        updatePlaceStatusParagraph()
+    else
+        placeStatusData.lastAction = "Ready - waiting for eggs and tiles"
         updatePlaceStatusParagraph()
     end
 end
@@ -2638,18 +2496,27 @@ local function setupPlacementMonitoring()
         table.insert(placeConnections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
     end
     
-    -- Less frequent periodic updates to reduce lag
+    -- Monitor for pets in workspace (when pets hatch and appear in workspace.Pets)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        local function onPetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            updateAvailableTiles()
+            attemptPlacement()
+        end
+        
+        table.insert(placeConnections, workspacePets.ChildAdded:Connect(onPetChanged))
+        table.insert(placeConnections, workspacePets.ChildRemoved:Connect(onPetChanged))
+    end
+    
+    -- More frequent periodic updates to handle continuous placement
     local updateThread = task.spawn(function()
         while autoPlaceEnabled do
             updateAvailableEggs()
             updateAvailableTiles()
-            
-            -- Always try to place eggs if we have them, even if no new eggs came in
-            if #availableEggs > 0 and #availableTiles > 0 then
-                attemptPlacement()
-            end
-            
-            task.wait(3) -- Update every 3 seconds instead of 1
+            attemptPlacement()
+            task.wait(1.5) -- Update every 1.5 seconds for better responsiveness
         end
     end)
     
