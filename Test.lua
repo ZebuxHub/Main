@@ -606,20 +606,25 @@ end
 
 local function findAvailableFarmPart(farmParts, minDistance)
     if not farmParts or #farmParts == 0 then return nil end
-    -- Shuffle to distribute placement
-    local indices = {}
-    for i = 1, #farmParts do indices[i] = i end
-    for i = #indices, 2, -1 do
-        local j = math.random(1, i)
-        indices[i], indices[j] = indices[j], indices[i]
-    end
-    for _, idx in ipairs(indices) do
-        local part = farmParts[idx]
+    
+    -- First, collect all available parts
+    local availableParts = {}
+    for _, part in ipairs(farmParts) do
         if not isFarmTileOccupied(part, minDistance) then
-            return part
+            table.insert(availableParts, part)
         end
     end
-    return nil
+    
+    -- If no available parts, return nil
+    if #availableParts == 0 then return nil end
+    
+    -- Shuffle available parts to distribute placement
+    for i = #availableParts, 2, -1 do
+        local j = math.random(1, i)
+        availableParts[i], availableParts[j] = availableParts[j], availableParts[i]
+    end
+    
+    return availableParts[1]
 end
 
 -- Player helpers for proximity-based placement
@@ -2011,6 +2016,14 @@ local function updateAvailableTiles()
     placeStatusData.lastAction = string.format("Found %d available tiles out of %d unlocked (locked: %d, occupied: %d)", 
         #availableTiles, totalTiles, lockedTiles, occupiedTiles)
     
+    -- Debug warning if no available tiles
+    if #availableTiles == 0 then
+        warn("Auto Place Debug: No available tiles found!")
+        warn("Total tiles: " .. totalTiles .. ", Locked: " .. lockedTiles .. ", Occupied: " .. occupiedTiles)
+    else
+        warn("Auto Place Debug: Found " .. #availableTiles .. " available tiles")
+    end
+    
     updatePlaceStatusParagraph()
 end
 
@@ -2235,12 +2248,14 @@ local function attemptPlacement()
     if #availableEggs == 0 then 
         placeStatusData.lastAction = "No eggs available to place"
         updatePlaceStatusParagraph()
+        warn("Auto Place stopped: No eggs available")
         return 
     end
     
     if #availableTiles == 0 then 
         placeStatusData.lastAction = "No available tiles to place on"
         updatePlaceStatusParagraph()
+        warn("Auto Place stopped: No available tiles")
         return 
     end
     
@@ -3499,3 +3514,4 @@ end)
 Window:OnClose(function()
     print("UI closed.")
 end)
+
