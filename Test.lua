@@ -1654,76 +1654,6 @@ local beltConnections = {}
 local lastBeltChildren = {}
 local buyingInProgress = false
 
-Tabs.AutoTab:Button({
-    Title = "🔧 Debug Auto Buy Status",
-    Desc = "Check why auto buy might be stopping",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        local activeBelt = getActiveBelt(islandName)
-        local netWorth = getPlayerNetWorth()
-        
-        local message = string.format("🏝️ Island: %s\n", tostring(islandName or "None"))
-        message = message .. string.format("💰 NetWorth: %s\n", tostring(netWorth))
-        message = message .. string.format("🔄 Auto Buy Enabled: %s\n", tostring(autoBuyEnabled))
-        message = message .. string.format("🧵 Auto Buy Thread: %s\n", tostring(autoBuyThread ~= nil))
-        
-        if activeBelt then
-            local children = {}
-            for _, inst in ipairs(activeBelt:GetChildren()) do
-                if inst:IsA("Model") then table.insert(children, inst) end
-            end
-            message = message .. string.format("🥚 Belt Eggs: %d\n", #children)
-        else
-            message = message .. "🥚 Belt: None found\n"
-        end
-        
-        message = message .. string.format("🔗 Belt Connections: %d\n", #beltConnections)
-        message = message .. string.format("🛒 Buying In Progress: %s\n", tostring(buyingInProgress))
-        
-        -- Additional debugging for auto buy issues
-        message = message .. string.format("🎯 Selected Eggs: %d\n", table.getn(selectedTypeSet) or 0)
-        message = message .. string.format("🧬 Selected Mutations: %d\n", table.getn(selectedMutationSet) or 0)
-        message = message .. string.format("⏰ Last Action: %s", tostring(statusData.lastAction or "None"))
-        
-        WindUI:Notify({ Title = "🔧 Auto Buy Debug", Content = message, Duration = 10 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🔧 Debug Auto Buy Logic",
-    Desc = "Test auto buy logic with current eggs",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        local activeBelt = getActiveBelt(islandName)
-        local netWorth = getPlayerNetWorth()
-        
-        if not activeBelt then
-            WindUI:Notify({ Title = "❌ Debug Failed", Content = "No active belt found!", Duration = 3 })
-            return
-        end
-        
-        local message = "🔍 Auto Buy Logic Test:\n"
-        local testedEggs = 0
-        local validEggs = 0
-        
-        for _, inst in ipairs(activeBelt:GetChildren()) do
-            if inst:IsA("Model") then
-                testedEggs = testedEggs + 1
-                local ok, uid, price = shouldBuyEggInstance(inst, netWorth)
-                if ok then
-                    validEggs = validEggs + 1
-                    message = message .. string.format("✅ %s: $%s\n", uid, tostring(price))
-                else
-                    message = message .. string.format("❌ %s: Not valid\n", inst.Name)
-                end
-            end
-        end
-        
-        message = message .. string.format("\n📊 Results: %d/%d eggs valid", validEggs, testedEggs)
-        WindUI:Notify({ Title = "🔍 Logic Test", Content = message, Duration = 8 })
-    end
-})
-
 local function cleanupBeltConnections()
     for _, conn in ipairs(beltConnections) do
         pcall(function() conn:Disconnect() end)
@@ -2335,16 +2265,22 @@ end
 
 local function attemptPlacement()
     if #availableEggs == 0 then 
-        placeStatusData.lastAction = "No eggs available to place"
+        placeStatusData.lastAction = "No eggs available to place - stopping Auto Place"
         updatePlaceStatusParagraph()
         warn("Auto Place stopped: No eggs available")
+        -- Stop Auto Place when no eggs available
+        autoPlaceEnabled = false
+        WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped - No eggs available", Duration = 3 })
         return 
     end
     
     if #availableTiles == 0 then 
-        placeStatusData.lastAction = "No available tiles to place on"
+        placeStatusData.lastAction = "No available tiles to place on - stopping Auto Place"
         updatePlaceStatusParagraph()
         warn("Auto Place stopped: No available tiles")
+        -- Stop Auto Place when no tiles available
+        autoPlaceEnabled = false
+        WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped - No tiles available", Duration = 3 })
         return 
     end
     
