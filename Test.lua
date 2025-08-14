@@ -731,6 +731,76 @@ local function debugTileLockRelationship()
     WindUI:Notify({ Title = "🔍 Tile Lock Debug", Content = message, Duration = 10 })
 end
 
+-- Function to map pets to their farm split tiles
+local function mapPetsToFarmTiles()
+    local islandName = getAssignedIslandName()
+    if not islandName then return {} end
+    
+    local islandNumber = getIslandNumberFromName(islandName)
+    local farmParts = getFarmParts(islandNumber)
+    
+    local petTileMap = {}
+    
+    -- Map eggs in PlayerBuiltBlocks
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local eggType = model:GetAttribute("EggType") or model:GetAttribute("Type") or "Unknown"
+                
+                for i, farmPart in ipairs(farmParts) do
+                    local tilePos = farmPart.Position
+                    local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
+                    local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                    
+                    if xzDistance < 4.0 and yDistance < 8.0 then
+                        table.insert(petTileMap, {
+                            tileIndex = i,
+                            tileName = farmPart.Name,
+                            tilePosition = tilePos,
+                            petName = model.Name,
+                            petType = "Egg",
+                            petTypeDetail = eggType,
+                            position = modelPos,
+                            source = "PlayerBuiltBlocks"
+                        })
+                        break
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Map fully hatched pets in workspace.Pets
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        
+        for i, farmPart in ipairs(farmParts) do
+            local tilePos = farmPart.Position
+            local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
+            local yDistance = math.abs(petPos.Y - tilePos.Y)
+            
+            if xzDistance < 4.0 and yDistance < 8.0 then
+                table.insert(petTileMap, {
+                    tileIndex = i,
+                    tileName = farmPart.Name,
+                    tilePosition = tilePos,
+                    petName = petInfo.name,
+                    petType = "Pet",
+                    petTypeDetail = "Hatched",
+                    position = petPos,
+                    source = "workspace.Pets"
+                })
+                break
+            end
+        end
+    end
+    
+    return petTileMap
+end
+
 local function getPetUID()
     if not LocalPlayer then return nil end
     
@@ -1816,39 +1886,9 @@ Tabs.PlaceTab:Button({
         local occupiedTiles = 0
         local lockedTiles = 0
         
-        -- Count occupied tiles (both eggs and fully hatched pets)
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        if playerBuiltBlocks then
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") then
-                    for _, part in ipairs(farmParts) do
-                        local modelPos = model:GetPivot().Position
-                        local tilePos = part.Position
-                        local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                        local yDistance = math.abs(modelPos.Y - tilePos.Y)
-                        if xzDistance < 4.0 and yDistance < 8.0 then
-                            occupiedTiles = occupiedTiles + 1
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        
-        -- Count tiles occupied by fully hatched pets
-        local playerPets = getPlayerPetsInWorkspace()
-        for _, petInfo in ipairs(playerPets) do
-            for _, part in ipairs(farmParts) do
-                local petPos = petInfo.position
-                local tilePos = part.Position
-                local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
-                local yDistance = math.abs(petPos.Y - tilePos.Y)
-                if xzDistance < 4.0 and yDistance < 8.0 then
-                    occupiedTiles = occupiedTiles + 1
-                    break
-                end
-            end
-        end
+        -- Count occupied tiles using the mapping function
+        local petTileMap = mapPetsToFarmTiles()
+        occupiedTiles = #petTileMap
         
         -- Count locked tiles
         local art = workspace:FindFirstChild("Art")
@@ -2013,6 +2053,122 @@ Tabs.PlaceTab:Button({
         message = message .. string.format("\n🥚 Eggs in PlayerBuiltBlocks: %d\n", eggCount)
         
         WindUI:Notify({ Title = "🐾 Pet Info", Content = message, Duration = 10 })
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "🗺️ Show Pet Tile Map",
+    Desc = "Show which pets are on which farm tiles (occupied tiles)",
+    Callback = function()
+        local petTileMap = mapPetsToFarmTiles()
+        
+        if #petTileMap == 0 then
+            WindUI:Notify({ Title = "🗺️ Pet Tile Map", Content = "No pets found on farm tiles!", Duration = 5 })
+            return
+        end
+        
+        local message = "🗺️ PET TILE MAPPING:\n\n"
+        message = message .. string.format("📊 Total Occupied Tiles: %d\n\n", #petTileMap)
+        
+        -- Sort by tile index for better readability
+        table.sort(petTileMap, function(a, b) return a.tileIndex < b.tileIndex end)
+        
+        for i, mapping in ipairs(petTileMap) do
+            local pos = mapping.position
+            local tilePos = mapping.tilePosition
+            
+            message = message .. string.format("📍 Tile %d (%s):\n", mapping.tileIndex, mapping.tileName)
+            message = message .. string.format("  🐾 Pet: %s (%s)\n", mapping.petName, mapping.petType)
+            if mapping.petType == "Egg" then
+                message = message .. string.format("  🥚 Type: %s\n", mapping.petTypeDetail)
+            end
+            message = message .. string.format("  📍 Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
+            message = message .. string.format("  🏠 Source: %s\n", mapping.source)
+            message = message .. "\n"
+            
+            -- Limit to first 8 mappings to avoid message overflow
+            if i >= 8 then
+                message = message .. string.format("... and %d more occupied tiles\n", #petTileMap - 8)
+                break
+            end
+        end
+        
+        -- Show summary
+        local eggCount = 0
+        local petCount = 0
+        for _, mapping in ipairs(petTileMap) do
+            if mapping.petType == "Egg" then
+                eggCount = eggCount + 1
+            else
+                petCount = petCount + 1
+            end
+        end
+        
+        message = message .. string.format("📈 Summary: %d eggs, %d pets on tiles", eggCount, petCount)
+        
+        WindUI:Notify({ Title = "🗺️ Pet Tile Map", Content = message, Duration = 15 })
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "✅ Show Available Tiles",
+    Desc = "Show which farm tiles are available for placing pets",
+    Callback = function()
+        local islandName = getAssignedIslandName()
+        if not islandName then
+            WindUI:Notify({ Title = "✅ Available Tiles", Content = "No island assigned!", Duration = 3 })
+            return
+        end
+        
+        local islandNumber = getIslandNumberFromName(islandName)
+        local farmParts = getFarmParts(islandNumber)
+        local petTileMap = mapPetsToFarmTiles()
+        
+        -- Create a set of occupied tile indices
+        local occupiedTileIndices = {}
+        for _, mapping in ipairs(petTileMap) do
+            occupiedTileIndices[mapping.tileIndex] = true
+        end
+        
+        -- Find available tiles
+        local availableTiles = {}
+        for i, farmPart in ipairs(farmParts) do
+            if not occupiedTileIndices[i] then
+                table.insert(availableTiles, {
+                    index = i,
+                    name = farmPart.Name,
+                    position = farmPart.Position
+                })
+            end
+        end
+        
+        if #availableTiles == 0 then
+            WindUI:Notify({ Title = "✅ Available Tiles", Content = "No available tiles found! All tiles are occupied.", Duration = 5 })
+            return
+        end
+        
+        local message = "✅ AVAILABLE TILES:\n\n"
+        message = message .. string.format("📊 Total Available: %d out of %d tiles\n\n", #availableTiles, #farmParts)
+        
+        -- Sort by tile index for better readability
+        table.sort(availableTiles, function(a, b) return a.index < b.index end)
+        
+        for i, tile in ipairs(availableTiles) do
+            local pos = tile.position
+            message = message .. string.format("📍 Tile %d (%s):\n", tile.index, tile.name)
+            message = message .. string.format("  📍 Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
+            message = message .. "  ✅ AVAILABLE FOR PLACEMENT\n\n"
+            
+            -- Limit to first 10 tiles to avoid message overflow
+            if i >= 10 then
+                message = message .. string.format("... and %d more available tiles\n", #availableTiles - 10)
+                break
+            end
+        end
+        
+        message = message .. string.format("🎯 Ready to place pets on %d tiles!", #availableTiles)
+        
+        WindUI:Notify({ Title = "✅ Available Tiles", Content = message, Duration = 15 })
     end
 })
 
