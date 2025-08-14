@@ -1244,9 +1244,6 @@ local function runAutoHatch()
     while autoHatchEnabled do
         -- Check priority - if Auto Place is running and has priority, pause hatching
         if autoPlaceEnabled and automationPriority == "Place" then
-            -- Check if Auto Place actually has work to do
-            -- Note: updateAvailableEggs and updateAvailableTiles are called later in the function
-            
             -- Simple priority check - if Auto Place is enabled and has priority, pause hatching
             hatchStatus.last = "Paused - Auto Place has priority"
             updateHatchStatus()
@@ -2390,16 +2387,15 @@ end
 local function runAutoPlace()
     while autoPlaceEnabled do
         -- Check priority - if Auto Hatch is running and has priority, pause placing
-        -- But allow Auto Place to work if Auto Hatch has no eggs to work with
         if autoHatchEnabled and automationPriority == "Hatch" then
             local owned = collectOwnedEggs()
             local readyEggs = filterReadyEggs(owned)
             
             if #readyEggs > 0 then
-            placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-            updatePlaceStatusParagraph()
-            task.wait(1.0)
-            return
+                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
+                updatePlaceStatusParagraph()
+                task.wait(1.0)
+                continue -- Use continue instead of return to keep the loop running
             else
                 -- Auto Hatch has no eggs to work with, so Auto Place can work
                 placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
@@ -2968,14 +2964,16 @@ Tabs.PriorityTab:Paragraph({
 
 local priorityDropdown = Tabs.PriorityTab:Dropdown({
     Title = "🎯 Choose Priority",
-    Desc = "Select which automation has priority",
-    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
-    Value = "⚡ Auto Hatch First",
+    Desc = "Select which automation has priority (or leave unselected for no priority)",
+    Values = { "❌ No Priority", "⚡ Auto Hatch First", "🏠 Auto Place First" },
+    Value = "❌ No Priority",
     Callback = function(selection)
         if selection == "⚡ Auto Hatch First" then
             automationPriority = "Hatch"
-        else
+        elseif selection == "🏠 Auto Place First" then
             automationPriority = "Place"
+        else
+            automationPriority = "None"
         end
         WindUI:Notify({ 
             Title = "🎯 Priority Set", 
@@ -2997,7 +2995,18 @@ local priorityStatusParagraph = Tabs.PriorityTab:Paragraph({
 local function updatePriorityStatus()
     if priorityStatusParagraph and priorityStatusParagraph.SetDesc then
         local lines = {}
-        table.insert(lines, string.format("🎯 Current Priority: %s", automationPriority == "Hatch" and "Auto Hatch First" or "Auto Place First"))
+        
+        -- Show current priority
+        local priorityText
+        if automationPriority == "Hatch" then
+            priorityText = "Auto Hatch First"
+        elseif automationPriority == "Place" then
+            priorityText = "Auto Place First"
+        else
+            priorityText = "No Priority (Both work independently)"
+        end
+        table.insert(lines, string.format("🎯 Current Priority: %s", priorityText))
+        
         table.insert(lines, string.format("⚡ Auto Hatch: %s", autoHatchEnabled and "✅ Enabled" or "❌ Disabled"))
         table.insert(lines, string.format("🏠 Auto Place: %s", autoPlaceEnabled and "✅ Enabled" or "❌ Disabled"))
         
