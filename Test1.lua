@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Window
 local Window = WindUI:CreateWindow({
-    Title = "Build A Zoo1",
+    Title = "Build A Zoo",
     Icon = "app-window-mac",
     IconThemed = true,
     Author = "Zebux",
@@ -1897,82 +1897,82 @@ local function updateAvailableEggs()
     updatePlaceStatusParagraph()
 end
 
-local function updateAvailableTiles()
+-- Comprehensive tile scanning system
+local function scanAllTilesAndModels()
     local islandName = getAssignedIslandName()
     local islandNumber = getIslandNumberFromName(islandName)
     local farmParts = getFarmParts(islandNumber)
     
-    availableTiles = {}
+    local tileMap = {}
     local totalTiles = #farmParts
     local occupiedTiles = 0
     local lockedTiles = 0
     
-    -- Create a map of occupied farm split positions
-    local occupiedPositions = {}
+    -- Initialize all tiles as available
+    for i, part in ipairs(farmParts) do
+        local surfacePos = Vector3.new(
+            part.Position.X,
+            part.Position.Y + (part.Size.Y / 2), -- Top surface
+            part.Position.Z
+        )
+        tileMap[surfacePos] = {
+            part = part,
+            index = i,
+            available = true,
+            occupiedBy = nil,
+            distance = 0
+        }
+    end
     
-    -- Check eggs in PlayerBuiltBlocks
+    -- Scan all floating models in PlayerBuiltBlocks
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
     if playerBuiltBlocks then
         for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
             if model:IsA("Model") then
-                -- Find the closest farm split to this egg
-                local closestPart = nil
-                local closestDistance = math.huge
+                local modelPos = model:GetPivot().Position
                 
-                for _, part in ipairs(farmParts) do
-                    local modelPos = model:GetPivot().Position
-                    local tilePos = part.Position
-                    local distance = (modelPos - tilePos).Magnitude
-                    
-                    if distance < closestDistance then
-                        closestDistance = distance
-                        closestPart = part
+                -- Find which tile this model occupies
+                for surfacePos, tileInfo in pairs(tileMap) do
+                    if tileInfo.available then
+                        -- Calculate distance to surface position
+                        local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
+                        local yDistance = math.abs(modelPos.Y - surfacePos.Y)
+                        
+                        -- If model is within placement range
+                        if xzDistance < 4.0 and yDistance < 8.0 then
+                            tileInfo.available = false
+                            tileInfo.occupiedBy = "egg"
+                            tileInfo.distance = xzDistance
+                            occupiedTiles = occupiedTiles + 1
+                            break -- This tile is occupied, move to next model
+                        end
                     end
-                end
-                
-                -- If egg is close enough to a farm split, mark it as occupied
-                if closestPart and closestDistance <= 6.0 then
-                    -- Use surface position for consistency
-                    local surfacePos = Vector3.new(
-                        closestPart.Position.X,
-                        closestPart.Position.Y + (closestPart.Size.Y / 2),
-                        closestPart.Position.Z
-                    )
-                    occupiedPositions[surfacePos] = "egg"
-                    occupiedTiles = occupiedTiles + 1
                 end
             end
         end
     end
     
-    -- Check pets in workspace
+    -- Scan all pets in workspace.Pets
     local playerPets = getPlayerPetsInWorkspace()
     for _, petInfo in ipairs(playerPets) do
-        -- Find the closest farm split to this pet
-        local closestPart = nil
-        local closestDistance = math.huge
+        local petPos = petInfo.position
         
-        for _, part in ipairs(farmParts) do
-            local petPos = petInfo.position
-            local tilePos = part.Position
-            local distance = (petPos - tilePos).Magnitude
-            
-            if distance < closestDistance then
-                closestDistance = distance
-                closestPart = part
+        -- Find which tile this pet occupies
+        for surfacePos, tileInfo in pairs(tileMap) do
+            if tileInfo.available then
+                -- Calculate distance to surface position
+                local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
+                local yDistance = math.abs(petPos.Y - surfacePos.Y)
+                
+                -- If pet is within placement range
+                if xzDistance < 4.0 and yDistance < 8.0 then
+                    tileInfo.available = false
+                    tileInfo.occupiedBy = "pet"
+                    tileInfo.distance = xzDistance
+                    occupiedTiles = occupiedTiles + 1
+                    break -- This tile is occupied, move to next pet
+                end
             end
-        end
-        
-        -- If pet is close enough to a farm split, mark it as occupied
-        if closestPart and closestDistance <= 6.0 then
-            -- Use surface position for consistency
-            local surfacePos = Vector3.new(
-                closestPart.Position.X,
-                closestPart.Position.Y + (closestPart.Size.Y / 2),
-                closestPart.Position.Z
-            )
-            occupiedPositions[surfacePos] = "pet"
-            occupiedTiles = occupiedTiles + 1
         end
     end
     
@@ -1995,16 +1995,22 @@ local function updateAvailableTiles()
         end
     end
     
-    -- Find available tiles (not occupied by eggs or pets)
-    for i, part in ipairs(farmParts) do
-        -- Use surface position for consistency
-        local surfacePos = Vector3.new(
-            part.Position.X,
-            part.Position.Y + (part.Size.Y / 2),
-            part.Position.Z
-        )
-        if not occupiedPositions[surfacePos] then
-            table.insert(availableTiles, { part = part, index = i })
+    return tileMap, totalTiles, occupiedTiles, lockedTiles
+end
+
+local function updateAvailableTiles()
+    local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels()
+    
+    availableTiles = {}
+    
+    -- Collect all available tiles
+    for surfacePos, tileInfo in pairs(tileMap) do
+        if tileInfo.available then
+            table.insert(availableTiles, { 
+                part = tileInfo.part, 
+                index = tileInfo.index,
+                surfacePos = surfacePos
+            })
         end
     end
     
@@ -2016,14 +2022,6 @@ local function updateAvailableTiles()
     -- Debug info
     placeStatusData.lastAction = string.format("Found %d available tiles out of %d unlocked (locked: %d, occupied: %d)", 
         #availableTiles, totalTiles, lockedTiles, occupiedTiles)
-    
-    -- Debug warning if no available tiles
-    if #availableTiles == 0 then
-        warn("Auto Place Debug: No available tiles found!")
-        warn("Total tiles: " .. totalTiles .. ", Locked: " .. lockedTiles .. ", Occupied: " .. occupiedTiles)
-    else
-        warn("Auto Place Debug: Found " .. #availableTiles .. " available tiles")
-    end
     
     updatePlaceStatusParagraph()
 end
@@ -2528,6 +2526,66 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
             placeStatusData.lastAction = "Stopped"
             updatePlaceStatusParagraph()
         end
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "🧮 Math Scan Test",
+    Desc = "Test the mathematical tile scanning system",
+    Callback = function()
+        local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels()
+        
+        local availableCount = 0
+        for surfacePos, tileInfo in pairs(tileMap) do
+            if tileInfo.available then
+                availableCount = availableCount + 1
+            end
+        end
+        
+        local message = string.format("🧮 Mathematical Scan Results:\n")
+        message = message .. string.format("📊 Total Tiles: %d\n", totalTiles)
+        message = message .. string.format("✅ Available: %d\n", availableCount)
+        message = message .. string.format("❌ Occupied: %d\n", occupiedTiles)
+        message = message .. string.format("🔒 Locked: %d\n", lockedTiles)
+        message = message .. string.format("📈 Efficiency: %.1f%%", (availableCount / totalTiles) * 100)
+        
+        WindUI:Notify({ Title = "🧮 Math Scan", Content = message, Duration = 5 })
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "🔍 Show Tile Mapping",
+    Desc = "Display which farm splits are occupied by which eggs or pets",
+    Callback = function()
+        local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels()
+        
+        local message = string.format("🏝️ Island: %s\n", getAssignedIslandName() or "Unknown")
+        message = message .. string.format("📊 Total Tiles: %d | 🔒 Locked: %d | ❌ Occupied: %d\n\n", 
+            totalTiles, lockedTiles, occupiedTiles)
+        
+        local availableCount = 0
+        local occupiedCount = 0
+        
+        for surfacePos, tileInfo in pairs(tileMap) do
+            if tileInfo.available then
+                availableCount = availableCount + 1
+                message = message .. string.format("✅ Tile %d: AVAILABLE\n", tileInfo.index)
+            else
+                occupiedCount = occupiedCount + 1
+                message = message .. string.format("❌ Tile %d: Occupied by %s (Distance: %.1f)\n", 
+                    tileInfo.index, tileInfo.occupiedBy, tileInfo.distance)
+            end
+            
+            -- Limit message length
+            if availableCount + occupiedCount >= 10 then
+                message = message .. "... (showing first 10)\n"
+                break
+            end
+        end
+        
+        message = message .. string.format("\n📈 Summary: %d available, %d occupied", availableCount, occupiedCount)
+        
+        WindUI:Notify({ Title = "🔍 Tile Mapping", Content = message, Duration = 10 })
     end
 })
 
