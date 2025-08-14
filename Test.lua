@@ -34,6 +34,7 @@ Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
+Tabs.PriorityTab = Tabs.MainSection:Tab({ Title = "🎯 | Priority"})
 Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
@@ -1244,8 +1245,9 @@ local function runAutoHatch()
         -- Check priority - if Auto Place is running and has priority, pause hatching
         if autoPlaceEnabled and automationPriority == "Place" then
             -- Check if Auto Place actually has work to do
-            -- Note: We'll check available eggs/tiles later when functions are defined
+            -- Note: updateAvailableEggs and updateAvailableTiles are called later in the function
             
+            -- Simple priority check - if Auto Place is enabled and has priority, pause hatching
             hatchStatus.last = "Paused - Auto Place has priority"
             updateHatchStatus()
             task.wait(1.0)
@@ -1363,34 +1365,7 @@ Tabs.HatchTab:Button({
     end
 })
 
--- Priority system UI
-Tabs.HatchTab:Section({ Title = "🎯 Priority Settings", Icon = "target" })
-
-Tabs.HatchTab:Paragraph({
-    Title = "🎯 Automation Priority",
-    Desc = "Choose which automation should work when both Auto Hatch and Auto Place are enabled",
-    Image = "target",
-    ImageSize = 18,
-})
-
-local priorityDropdown = Tabs.HatchTab:Dropdown({
-    Title = "🎯 Choose Priority",
-    Desc = "Select which automation has priority",
-    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
-    Value = "⚡ Auto Hatch First",
-    Callback = function(selection)
-        if selection == "⚡ Auto Hatch First" then
-            automationPriority = "Hatch"
-        else
-            automationPriority = "Place"
-        end
-        WindUI:Notify({ 
-            Title = "🎯 Priority Set", 
-            Content = "Priority set to: " .. selection, 
-            Duration = 3 
-        })
-    end
-})
+-- Priority system moved to dedicated Priority tab
 
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
@@ -1507,43 +1482,9 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-Tabs.AutoTab:Button({
-    Title = "🔄 Refresh Mutation List",
-    Desc = "Update the mutation list if it's not showing all mutations",
-    Callback = function()
-        loadMutationConfig()
-        if mutationDropdown and mutationDropdown.Refresh then
-            mutationDropdown:Refresh(buildMutationList())
-        end
-        updateStatusParagraph()
-        WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Selection",
-    Desc = "Show what eggs and mutations are currently selected",
-    Callback = function()
-        local eggTypes = {}
-        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
-        table.sort(eggTypes)
-        
-        local mutations = {}
-        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
-        table.sort(mutations)
-        
-        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
-        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
-        
-        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
-    end
-})
-
-
 
 local autoBuyEnabled = false
 local autoBuyThread = nil
-
 
 
 -- Status tracking
@@ -2466,14 +2407,14 @@ local function runAutoPlace()
         end
         
         -- Check if we have eggs and tiles to work with
-        -- Note: updateAvailableEggs and updateAvailableTiles are called later in the function
+        updateAvailableEggs()
+        updateAvailableTiles()
         
         if #availableEggs == 0 or #availableTiles == 0 then
-            placeStatusData.lastAction = "No eggs or tiles available - stopping Auto Place"
+            placeStatusData.lastAction = "No eggs or tiles available - pausing Auto Place"
             updatePlaceStatusParagraph()
-            -- Stop Auto Place and allow Auto Hatch to work
-            autoPlaceEnabled = false
-            WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped - No work available", Duration = 3 })
+            -- Pause Auto Place temporarily instead of stopping completely
+            task.wait(2.0) -- Wait 2 seconds before checking again
             return
         end
         
@@ -2776,34 +2717,6 @@ Tabs.PlaceTab:Button({
     end
 })
 
-Tabs.PlaceTab:Button({
-    Title = "🔧 Debug Auto Unlock Status",
-    Desc = "Check auto unlock system status",
-    Callback = function()
-        local lockedTiles = getLockedTiles()
-        local netWorth = getPlayerNetWorth()
-        local affordableCount = 0
-        
-        for _, lockInfo in ipairs(lockedTiles) do
-            local cost = tonumber(lockInfo.cost) or 0
-            if netWorth >= cost then
-                affordableCount = affordableCount + 1
-            end
-        end
-        
-        local message = string.format("🔓 Auto Unlock Debug:\n")
-        message = message .. string.format("🏝️ Island: %s\n", getAssignedIslandName() or "None")
-        message = message .. string.format("💰 NetWorth: %s\n", tostring(netWorth))
-        message = message .. string.format("🔒 Total Locks: %d\n", #lockedTiles)
-        message = message .. string.format("💸 Affordable: %d\n", affordableCount)
-        message = message .. string.format("🔄 Auto Unlock Enabled: %s\n", tostring(autoUnlockEnabled))
-        message = message .. string.format("🧵 Auto Unlock Thread: %s\n", tostring(autoUnlockThread ~= nil))
-        message = message .. string.format("⏰ Last Action: %s", tostring(unlockStatusData.lastAction or "None"))
-        
-        WindUI:Notify({ Title = "🔧 Auto Unlock Debug", Content = message, Duration = 8 })
-    end
-})
-
 -- Auto Delete functionality
 local autoDeleteEnabled = false
 local autoDeleteThread = nil
@@ -3002,6 +2915,76 @@ Window:OnClose(function()
 end)
 
 
+-- ============ Priority Management ============
+Tabs.PriorityTab:Section({ Title = "🎯 Automation Priority", Icon = "target" })
+
+Tabs.PriorityTab:Paragraph({
+    Title = "🎯 Priority System",
+    Desc = "Control which automation takes priority when both Auto Hatch and Auto Place are enabled",
+    Image = "target",
+    ImageSize = 18,
+})
+
+local priorityDropdown = Tabs.PriorityTab:Dropdown({
+    Title = "🎯 Choose Priority",
+    Desc = "Select which automation has priority",
+    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
+    Value = "⚡ Auto Hatch First",
+    Callback = function(selection)
+        if selection == "⚡ Auto Hatch First" then
+            automationPriority = "Hatch"
+        else
+            automationPriority = "Place"
+        end
+        WindUI:Notify({ 
+            Title = "🎯 Priority Set", 
+            Content = "Priority set to: " .. selection, 
+            Duration = 3 
+        })
+    end
+})
+
+Tabs.PriorityTab:Section({ Title = "📊 Status", Icon = "info" })
+
+local priorityStatusParagraph = Tabs.PriorityTab:Paragraph({
+    Title = "🎯 Priority Status",
+    Desc = "Current automation status and priority information",
+    Image = "activity",
+    ImageSize = 18,
+})
+
+local function updatePriorityStatus()
+    if priorityStatusParagraph and priorityStatusParagraph.SetDesc then
+        local lines = {}
+        table.insert(lines, string.format("🎯 Current Priority: %s", automationPriority == "Hatch" and "Auto Hatch First" or "Auto Place First"))
+        table.insert(lines, string.format("⚡ Auto Hatch: %s", autoHatchEnabled and "✅ Enabled" or "❌ Disabled"))
+        table.insert(lines, string.format("🏠 Auto Place: %s", autoPlaceEnabled and "✅ Enabled" or "❌ Disabled"))
+        
+        -- Check what work is available
+        if autoHatchEnabled then
+            local owned = collectOwnedEggs()
+            local readyEggs = filterReadyEggs(owned)
+            table.insert(lines, string.format("🥚 Hatch Work: %d ready eggs", #readyEggs))
+        end
+        
+        if autoPlaceEnabled then
+            table.insert(lines, string.format("🥚 Place Work: %d available eggs", #availableEggs or 0))
+            table.insert(lines, string.format("🏠 Place Work: %d available tiles", #availableTiles or 0))
+        end
+        
+        priorityStatusParagraph:SetDesc(table.concat(lines, "\n"))
+    end
+end
+
+Tabs.PriorityTab:Button({
+    Title = "🔄 Refresh Status",
+    Desc = "Update the priority status display",
+    Callback = function()
+        updatePriorityStatus()
+        WindUI:Notify({ Title = "🎯 Priority", Content = "Status refreshed!", Duration = 3 })
+    end
+})
+
 -- ============ Auto Claim Dino (every 10 minutes) ============
 local autoDinoEnabled = false
 local autoDinoThread = nil
@@ -3127,24 +3110,6 @@ Tabs.PackTab:Button({
         else
             WindUI:Notify({ Title = "🦕 Claim Dino", Content = "Cannot claim: " .. reason, Duration = 3 })
         end
-    end
-})
-
-Tabs.PackTab:Button({
-    Title = "🔍 Check Dino Status",
-    Desc = "Check current dino pack status",
-    Callback = function()
-        local claimText = getDinoClaimText() or "Unknown"
-        local progressText = getDinoProgressText() or "Unknown"
-        local canClaim, reason = canClaimDino()
-        
-        local message = string.format("🦕 Dino Pack Status:\n")
-        message = message .. string.format("📊 Claim Text: %s\n", claimText)
-        message = message .. string.format("⏰ Progress: %s\n", progressText)
-        message = message .. string.format("✅ Can Claim: %s\n", tostring(canClaim))
-        message = message .. string.format("💬 Reason: %s", reason)
-        
-        WindUI:Notify({ Title = "🔍 Dino Status", Content = message, Duration = 8 })
     end
 })
 
