@@ -1938,8 +1938,8 @@ local function scanAllTilesAndModels()
                         local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
                         local yDistance = math.abs(modelPos.Y - surfacePos.Y)
                         
-                        -- If model is within placement range
-                        if xzDistance < 4.0 and yDistance < 8.0 then
+                        -- If model is within placement range (more generous to avoid missing)
+                        if xzDistance < 4.0 and yDistance < 20.0 then
                             tileInfo.available = false
                             tileInfo.occupiedBy = "egg"
                             tileInfo.distance = xzDistance
@@ -1964,8 +1964,8 @@ local function scanAllTilesAndModels()
                 local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
                 local yDistance = math.abs(petPos.Y - surfacePos.Y)
                 
-                -- If pet is within placement range
-                if xzDistance < 4.0 and yDistance < 8.0 then
+                -- If pet is within placement range (more generous to avoid missing)
+                if xzDistance < 4.0 and yDistance < 20.0 then
                     tileInfo.available = false
                     tileInfo.occupiedBy = "pet"
                     tileInfo.distance = xzDistance
@@ -2104,7 +2104,7 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 -- Calculate surface position (same as placement logic)
                 local surfacePos = Vector3.new(
                     tilePos.X,
-                    tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+                    tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
                     tilePos.Z
                 )
                 
@@ -2128,12 +2128,12 @@ local function placeEggInstantly(eggInfo, tileInfo)
         local petPos = petInfo.position
         local tilePos = tilePart.Position
         
-                        -- Calculate surface position (same as placement logic)
-                local surfacePos = Vector3.new(
-                    tilePos.X,
-                    tilePos.Y + 12, -- Eggs float 12 studs above tile surface
-                    tilePos.Z
-                )
+        -- Calculate surface position (same as placement logic)
+        local surfacePos = Vector3.new(
+            tilePos.X,
+            tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+            tilePos.Z
+        )
         
         -- Separate X/Z and Y axis checks
         local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
@@ -2275,7 +2275,7 @@ local function attemptPlacement()
     -- Place eggs on available tiles (limit to prevent lag)
     local placed = 0
     local attempts = 0
-    local maxAttempts = math.min(#availableEggs, #availableTiles, 5) -- Limit to 5 attempts max
+    local maxAttempts = math.min(#availableEggs, #availableTiles, 1) -- Limit to 5 attempts max
     
     while #availableEggs > 0 and #availableTiles > 0 and attempts < maxAttempts do
         attempts = attempts + 1
@@ -2292,12 +2292,12 @@ local function attemptPlacement()
                         local modelPos = model:GetPivot().Position
                         local tilePos = tileInfo.part.Position
                         
-                                            -- Calculate surface position (same as placement logic)
-                    local surfacePos = Vector3.new(
-                        tilePos.X,
-                        tilePos.Y + 12, -- Eggs float 12 studs above tile surface
-                        tilePos.Z
-                    )
+                        -- Calculate surface position (same as placement logic)
+                        local surfacePos = Vector3.new(
+                            tilePos.X,
+                            tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+                            tilePos.Z
+                        )
                         
                         -- Separate X/Z and Y axis checks
                         local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
