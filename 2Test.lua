@@ -50,6 +50,7 @@ local autoHatchEnabled = false
 local antiAFKEnabled = false
 local antiAFKConnection = nil
 local autoHatchThread = nil
+local automationPriority = "Hatch" -- "Hatch" or "Place"
 
 -- Egg config loader
 local eggConfig = {}
@@ -1240,13 +1241,21 @@ end
 
 local function runAutoHatch()
     while autoHatchEnabled do
+        -- Check priority - if Auto Place is running and has priority, pause hatching
+        if autoPlaceEnabled and automationPriority == "Place" then
+            hatchStatus.last = "Paused - Auto Place has priority"
+            updateHatchStatus()
+            task.wait(1.0)
+            return
+        end
+        
         local ok, err = pcall(function()
             hatchStatus.last = "Scanning"
             updateHatchStatus()
             local owned = collectOwnedEggs()
             hatchStatus.owned = #owned
             if #owned == 0 then
-                hatchStatus.last = "No owned eggs"
+                hatchStatus.last = "No owned eggs - Auto Place can work now"
                 updateHatchStatus()
                 task.wait(1.0)
                 return
@@ -1254,7 +1263,7 @@ local function runAutoHatch()
             local eggs = filterReadyEggs(owned)
             hatchStatus.ready = #eggs
             if #eggs == 0 then
-                hatchStatus.last = "Owned but not ready"
+                hatchStatus.last = "Owned but not ready - Auto Place can work now"
                 updateHatchStatus()
                 task.wait(0.8)
                 return
@@ -1267,6 +1276,13 @@ local function runAutoHatch()
                 return (pa - me).Magnitude < (pb - me).Magnitude
             end)
             for _, m in ipairs(eggs) do
+                -- Check priority again before each hatch
+                if autoPlaceEnabled and automationPriority == "Place" then
+                    hatchStatus.last = "Paused - Auto Place has priority"
+                    updateHatchStatus()
+                    return
+                end
+                
                 hatchStatus.lastModel = m.Name
                 hatchStatus.lastEggType = getEggTypeFromModel(m)
                 hatchStatus.last = "Moving to hatch"
@@ -1293,6 +1309,11 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Callback = function(state)
         autoHatchEnabled = state
         if state and not autoHatchThread then
+            -- Check if Auto Place is running and we have lower priority
+            if autoPlaceEnabled and automationPriority == "Place" then
+                WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Auto Place has priority - Hatch paused", Duration = 3 })
+                return
+            end
             autoHatchThread = task.spawn(function()
                 runAutoHatch()
                 autoHatchThread = nil
@@ -1339,7 +1360,34 @@ Tabs.HatchTab:Button({
     end
 })
 
--- Priority system moved to dedicated Priority tab
+-- Priority system UI
+Tabs.HatchTab:Section({ Title = "🎯 Priority Settings", Icon = "target" })
+
+Tabs.HatchTab:Paragraph({
+    Title = "🎯 Automation Priority",
+    Desc = "Choose which automation should work when both Auto Hatch and Auto Place are enabled",
+    Image = "target",
+    ImageSize = 18,
+})
+
+local priorityDropdown = Tabs.HatchTab:Dropdown({
+    Title = "🎯 Choose Priority",
+    Desc = "Select which automation has priority",
+    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
+    Value = "⚡ Auto Hatch First",
+    Callback = function(selection)
+        if selection == "⚡ Auto Hatch First" then
+            automationPriority = "Hatch"
+        else
+            automationPriority = "Place"
+        end
+        WindUI:Notify({ 
+            Title = "🎯 Priority Set", 
+            Content = "Priority set to: " .. selection, 
+            Duration = 3 
+        })
+    end
+})
 
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
@@ -1453,15 +1501,46 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
         table.sort(keys)
         statusData.selectedMutations = table.concat(keys, ", ")
         updateStatusParagraph()
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "🔄 Refresh Mutation List",
+    Desc = "Update the mutation list if it's not showing all mutations",
+    Callback = function()
+        loadMutationConfig()
+        if mutationDropdown and mutationDropdown.Refresh then
+            mutationDropdown:Refresh(buildMutationList())
+        end
+        updateStatusParagraph()
+        WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "🔍 Debug Selection",
+    Desc = "Show what eggs and mutations are currently selected",
+    Callback = function()
+        local eggTypes = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
+        table.sort(eggTypes)
         
-        -- Debug: Show what was selected
-        print("Mutations selected:", table.concat(keys, ", "))
+        local mutations = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
+        table.sort(mutations)
+        
+        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
+        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
+        
+        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
     end
 })
 
 
+
 local autoBuyEnabled = false
 local autoBuyThread = nil
+
 
 
 -- Status tracking
@@ -1721,7 +1800,7 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
 
 
 
--- Continuous monitoring system for eggs and tiles
+-- Event-driven Auto Place functionality
 local placeConnections = {}
 local placingInProgress = false
 local availableEggs = {} -- Track available eggs to place
@@ -1926,35 +2005,29 @@ local function scanAllTilesAndModels()
 end
 
 local function updateAvailableTiles()
-    local islandName = getAssignedIslandName()
-    local islandNumber = getIslandNumberFromName(islandName)
-    local farmParts = getFarmParts(islandNumber)
+    local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels()
     
     availableTiles = {}
     
-    -- Simple approach: check each farm part for occupancy
-    for i, farmPart in ipairs(farmParts) do
-        if not isFarmTileOccupied(farmPart, 6) then
+    -- Collect all available tiles
+    for surfacePos, tileInfo in pairs(tileMap) do
+        if tileInfo.available then
             table.insert(availableTiles, { 
-                part = farmPart, 
-                index = i,
-                surfacePos = Vector3.new(
-                    farmPart.Position.X,
-                    farmPart.Position.Y + 12, -- Eggs float 12 studs above tile surface
-                    farmPart.Position.Z
-                )
+                part = tileInfo.part, 
+                index = tileInfo.index,
+                surfacePos = surfacePos
             })
         end
     end
     
     placeStatusData.availableTiles = #availableTiles
-    placeStatusData.totalTiles = #farmParts
-    placeStatusData.occupiedTiles = #farmParts - #availableTiles
-    placeStatusData.lockedTiles = 0 -- Will be calculated separately if needed
+    placeStatusData.totalTiles = totalTiles
+    placeStatusData.occupiedTiles = occupiedTiles
+    placeStatusData.lockedTiles = lockedTiles
     
     -- Debug info
-    placeStatusData.lastAction = string.format("Found %d available tiles out of %d total", 
-        #availableTiles, #farmParts)
+    placeStatusData.lastAction = string.format("Found %d available tiles out of %d unlocked (locked: %d, occupied: %d)", 
+        #availableTiles, totalTiles, lockedTiles, occupiedTiles)
     
     updatePlaceStatusParagraph()
 end
@@ -2192,22 +2265,16 @@ end
 
 local function attemptPlacement()
     if #availableEggs == 0 then 
-        placeStatusData.lastAction = "No eggs available to place - stopping Auto Place"
+        placeStatusData.lastAction = "No eggs available to place"
         updatePlaceStatusParagraph()
         warn("Auto Place stopped: No eggs available")
-        -- Stop Auto Place when no eggs available
-        autoPlaceEnabled = false
-        WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped - No eggs available", Duration = 3 })
         return 
     end
     
     if #availableTiles == 0 then 
-        placeStatusData.lastAction = "No available tiles to place on - stopping Auto Place"
+        placeStatusData.lastAction = "No available tiles to place on"
         updatePlaceStatusParagraph()
         warn("Auto Place stopped: No available tiles")
-        -- Stop Auto Place when no tiles available
-        autoPlaceEnabled = false
-        WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped - No tiles available", Duration = 3 })
         return 
     end
     
@@ -2307,54 +2374,86 @@ local function attemptPlacement()
 end
 
 local function setupPlacementMonitoring()
-    -- Continuous monitoring thread
-    local monitorThread = task.spawn(function()
+    -- Monitor for new eggs in PlayerGui.Data.Egg
+    local eggContainer = getEggContainer()
+    if eggContainer then
+        local function onEggAdded(child)
+            if not autoPlaceEnabled then return end
+            if #child:GetChildren() == 0 then -- No subfolder = available egg
+                task.wait(0.2) -- Wait for attributes to be set
+                updateAvailableEggs()
+                attemptPlacement()
+            end
+        end
+        
+        local function onEggRemoved(child)
+            if not autoPlaceEnabled then return end
+            updateAvailableEggs()
+        end
+        
+        table.insert(placeConnections, eggContainer.ChildAdded:Connect(onEggAdded))
+        table.insert(placeConnections, eggContainer.ChildRemoved:Connect(onEggRemoved))
+    end
+    
+    -- Monitor for new tiles becoming available (when pets are removed from PlayerBuiltBlocks)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        local function onBlockChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            updateAvailableTiles()
+            attemptPlacement()
+        end
+        
+        table.insert(placeConnections, playerBuiltBlocks.ChildAdded:Connect(onBlockChanged))
+        table.insert(placeConnections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
+    end
+    
+    -- Monitor for pets in workspace (when pets hatch and appear in workspace.Pets)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        local function onPetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            updateAvailableTiles()
+            attemptPlacement()
+        end
+        
+        table.insert(placeConnections, workspacePets.ChildAdded:Connect(onPetChanged))
+        table.insert(placeConnections, workspacePets.ChildRemoved:Connect(onPetChanged))
+    end
+    
+    -- More frequent periodic updates to handle continuous placement
+    local updateThread = task.spawn(function()
         while autoPlaceEnabled do
-            -- Update eggs and tiles
             updateAvailableEggs()
             updateAvailableTiles()
-            
-            -- Check if we have work to do
-            if #availableEggs > 0 and #availableTiles > 0 then
-                placeStatusData.lastAction = "⚡ Placing eggs..."
-                updatePlaceStatusParagraph()
-                
-                -- Place eggs
-                local workDone = 0
-                while #availableEggs > 0 and #availableTiles > 0 and autoPlaceEnabled do
-                    if attemptPlacement() then
-                        workDone = workDone + 1
-                        task.wait(0.2) -- Small delay between placements
-                    else
-                        break -- No more work possible
-                    end
-                end
-                
-                placeStatusData.lastAction = string.format("✅ Placed %d eggs", workDone)
-                updatePlaceStatusParagraph()
-            else
-                placeStatusData.lastAction = "⏳ Waiting for eggs and tiles..."
-                updatePlaceStatusParagraph()
-            end
-            
-            task.wait(1.0) -- Check every second
+            attemptPlacement()
+            task.wait(1.5) -- Update every 1.5 seconds for better responsiveness
         end
     end)
     
-    table.insert(placeConnections, { disconnect = function() monitorThread = nil end })
+    table.insert(placeConnections, { disconnect = function() updateThread = nil end })
 end
 
 local function runAutoPlace()
     while autoPlaceEnabled do
-        -- Check if we have eggs and tiles to work with
-        updateAvailableEggs()
-        updateAvailableTiles()
-        
-        if #availableEggs == 0 or #availableTiles == 0 then
-            placeStatusData.lastAction = "No eggs or tiles available - pausing Auto Place"
+        -- Check priority - if Auto Hatch is running and has priority, pause placing
+        -- But allow Auto Place to work if Auto Hatch has no eggs to work with
+        if autoHatchEnabled and automationPriority == "Hatch" then
+            local owned = collectOwnedEggs()
+            local readyEggs = filterReadyEggs(owned)
+            
+            if #readyEggs > 0 then
+            placeStatusData.lastAction = "Paused - Auto Hatch has priority"
             updatePlaceStatusParagraph()
-            task.wait(2.0) -- Wait 2 seconds before checking again
-            continue
+            task.wait(1.0)
+            return
+            else
+                -- Auto Hatch has no eggs to work with, so Auto Place can work
+                placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
+                updatePlaceStatusParagraph()
+            end
         end
         
         local islandName = getAssignedIslandName()
@@ -2376,6 +2475,22 @@ local function runAutoPlace()
         
         -- Wait until disabled or island changes
         while autoPlaceEnabled do
+            -- Check priority again during monitoring
+            if autoHatchEnabled and automationPriority == "Hatch" then
+                local owned = collectOwnedEggs()
+                local readyEggs = filterReadyEggs(owned)
+                
+                if #readyEggs > 0 then
+                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
+                updatePlaceStatusParagraph()
+                return
+                else
+                    -- Auto Hatch has no eggs to work with, so Auto Place can work
+                    placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
+                    updatePlaceStatusParagraph()
+                end
+            end
+            
             local currentIsland = getAssignedIslandName()
             if currentIsland ~= islandName then
                 break -- Island changed, restart monitoring
@@ -2394,6 +2509,11 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
+            -- Check if Auto Hatch is running and we have lower priority
+            if autoHatchEnabled and automationPriority == "Hatch" then
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Auto Hatch has priority - Place paused", Duration = 3 })
+                return
+            end
             -- Reset counters
             placeStatusData.totalPlaces = countPlacedPets()
             placeStatusData.availableEggs = 0
@@ -2636,34 +2756,30 @@ Tabs.PlaceTab:Button({
 })
 
 Tabs.PlaceTab:Button({
-    Title = "🔍 Debug Tile Scanning",
-    Desc = "Check why tiles aren't being found",
+    Title = "🔧 Debug Auto Unlock Status",
+    Desc = "Check auto unlock system status",
     Callback = function()
-        local islandName = getAssignedIslandName()
-        local islandNumber = getIslandNumberFromName(islandName)
-        local farmParts = getFarmParts(islandNumber)
+        local lockedTiles = getLockedTiles()
+        local netWorth = getPlayerNetWorth()
+        local affordableCount = 0
         
-        local message = string.format("🏝️ Island: %s (Number: %s)\n", tostring(islandName), tostring(islandNumber))
-        message = message .. string.format("📊 Total Farm Parts: %d\n", #farmParts)
-        
-        if #farmParts > 0 then
-            local availableCount = 0
-            for i, farmPart in ipairs(farmParts) do
-                if not isFarmTileOccupied(farmPart, 6) then
-                    availableCount = availableCount + 1
-                end
+        for _, lockInfo in ipairs(lockedTiles) do
+            local cost = tonumber(lockInfo.cost) or 0
+            if netWorth >= cost then
+                affordableCount = affordableCount + 1
             end
-            message = message .. string.format("✅ Available Tiles: %d\n", availableCount)
-            message = message .. string.format("❌ Occupied Tiles: %d\n", #farmParts - availableCount)
-        else
-            message = message .. "❌ No farm parts found!"
         end
         
-        WindUI:Notify({ 
-            Title = "🔍 Tile Debug", 
-            Content = message, 
-            Duration = 5 
-        })
+        local message = string.format("🔓 Auto Unlock Debug:\n")
+        message = message .. string.format("🏝️ Island: %s\n", getAssignedIslandName() or "None")
+        message = message .. string.format("💰 NetWorth: %s\n", tostring(netWorth))
+        message = message .. string.format("🔒 Total Locks: %d\n", #lockedTiles)
+        message = message .. string.format("💸 Affordable: %d\n", affordableCount)
+        message = message .. string.format("🔄 Auto Unlock Enabled: %s\n", tostring(autoUnlockEnabled))
+        message = message .. string.format("🧵 Auto Unlock Thread: %s\n", tostring(autoUnlockThread ~= nil))
+        message = message .. string.format("⏰ Last Action: %s", tostring(unlockStatusData.lastAction or "None"))
+        
+        WindUI:Notify({ Title = "🔧 Auto Unlock Debug", Content = message, Duration = 8 })
     end
 })
 
@@ -2865,8 +2981,6 @@ Window:OnClose(function()
 end)
 
 
-
-
 -- ============ Auto Claim Dino (every 10 minutes) ============
 local autoDinoEnabled = false
 local autoDinoThread = nil
@@ -2995,6 +3109,24 @@ Tabs.PackTab:Button({
     end
 })
 
+Tabs.PackTab:Button({
+    Title = "🔍 Check Dino Status",
+    Desc = "Check current dino pack status",
+    Callback = function()
+        local claimText = getDinoClaimText() or "Unknown"
+        local progressText = getDinoProgressText() or "Unknown"
+        local canClaim, reason = canClaimDino()
+        
+        local message = string.format("🦕 Dino Pack Status:\n")
+        message = message .. string.format("📊 Claim Text: %s\n", claimText)
+        message = message .. string.format("⏰ Progress: %s\n", progressText)
+        message = message .. string.format("✅ Can Claim: %s\n", tostring(canClaim))
+        message = message .. string.format("💬 Reason: %s", reason)
+        
+        WindUI:Notify({ Title = "🔍 Dino Status", Content = message, Duration = 8 })
+    end
+})
+
 -- ============ Shop / Auto Upgrade ============
 Tabs.ShopTab:Section({ Title = "🛒 Auto Upgrade Conveyor", Icon = "arrow-up" })
 local shopStatus = { lastAction = "Ready to upgrade!", upgradesTried = 0, upgradesDone = 0 }
@@ -3109,11 +3241,6 @@ pcall(function()
     local fruitSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
     if fruitSystem then
         fruitUI = fruitSystem(Tabs, WindUI, LocalPlayer, ReplicatedStorage, Players)
-        
-        -- Register fruit UI elements immediately after creation
-        if fruitUI then
-            -- Will be registered later when zooConfig is available
-        end
     else
         Tabs.FruitTab:Paragraph({
             Title = "🍎 Fruit Store System",
@@ -3151,7 +3278,7 @@ local function registerConfigElements()
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
-
+        zooConfig:Register("automationPriority", priorityDropdown)
     end
 end
 
@@ -3193,35 +3320,10 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         zooConfig:Save()
-        
-        -- Debug: Show what's being saved
-        local mutationCount = 0
-        for _ in pairs(selectedMutationSet) do
-            mutationCount = mutationCount + 1
-        end
-        
-        local eggCount = 0
-        for _ in pairs(selectedTypeSet) do
-            eggCount = eggCount + 1
-        end
-        
-        local placeEggCount = #selectedEggTypes
-        
-        local message = "All your settings have been saved! 🎉"
-        if mutationCount > 0 then
-            message = message .. string.format("\n🧬 Mutations: %d", mutationCount)
-        end
-        if eggCount > 0 then
-            message = message .. string.format("\n🥚 Eggs: %d", eggCount)
-        end
-        if placeEggCount > 0 then
-            message = message .. string.format("\n🏠 Place Eggs: %d", placeEggCount)
-        end
-        
         WindUI:Notify({ 
             Title = "💾 Settings Saved", 
-            Content = message, 
-            Duration = 5 
+            Content = "All your settings have been saved! 🎉", 
+            Duration = 3 
         })
     end
 })
@@ -3231,39 +3333,10 @@ Tabs.SaveTab:Button({
     Desc = "Load your saved settings",
     Callback = function()
         zooConfig:Load()
-        
-        -- Restore all selections after manual load
-        task.wait(0.1)
-        -- Note: restoreAllSelections is called automatically in the auto-load function
-        
-        -- Debug: Show what's been loaded
-        local mutationCount = 0
-        for _ in pairs(selectedMutationSet) do
-            mutationCount = mutationCount + 1
-        end
-        
-        local eggCount = 0
-        for _ in pairs(selectedTypeSet) do
-            eggCount = eggCount + 1
-        end
-        
-        local placeEggCount = #selectedEggTypes
-        
-        local message = "Your settings have been loaded! 🎉"
-        if mutationCount > 0 then
-            message = message .. string.format("\n🧬 Mutations: %d", mutationCount)
-        end
-        if eggCount > 0 then
-            message = message .. string.format("\n🥚 Eggs: %d", eggCount)
-        end
-        if placeEggCount > 0 then
-            message = message .. string.format("\n🏠 Place Eggs: %d", placeEggCount)
-        end
-        
         WindUI:Notify({ 
             Title = "📂 Settings Loaded", 
-            Content = message, 
-            Duration = 5 
+            Content = "Your settings have been loaded! 🎉", 
+            Duration = 3 
         })
     end
 })
@@ -3314,92 +3387,12 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Function to restore mutation selection after loading
-local function restoreMutationSelection()
-    if mutationDropdown and selectedMutationSet then
-        local selectedMutations = {}
-        for mutation in pairs(selectedMutationSet) do
-            table.insert(selectedMutations, mutation)
-        end
-        if #selectedMutations > 0 then
-            -- Update the dropdown to show selected mutations
-            if mutationDropdown.SetValue then
-                mutationDropdown:SetValue(selectedMutations)
-            end
-            -- Update status display
-            statusData.selectedMutations = table.concat(selectedMutations, ", ")
-            updateStatusParagraph()
-            print("Restored mutations:", table.concat(selectedMutations, ", "))
-        end
-    end
-end
-
--- Function to restore all dropdown selections after loading
-local function restoreAllSelections()
-    -- Restore mutation selection
-    if mutationDropdown and selectedMutationSet then
-        local selectedMutations = {}
-        for mutation in pairs(selectedMutationSet) do
-            table.insert(selectedMutations, mutation)
-        end
-        if #selectedMutations > 0 then
-            if mutationDropdown.SetValue then
-                mutationDropdown:SetValue(selectedMutations)
-            end
-            statusData.selectedMutations = table.concat(selectedMutations, ", ")
-            updateStatusParagraph()
-            print("Restored mutations:", table.concat(selectedMutations, ", "))
-        end
-    end
-    
-    -- Restore egg selection
-    if eggDropdown and selectedTypeSet then
-        local selectedEggs = {}
-        for eggType in pairs(selectedTypeSet) do
-            table.insert(selectedEggs, eggType)
-        end
-        if #selectedEggs > 0 then
-            if eggDropdown.SetValue then
-                eggDropdown:SetValue(selectedEggs)
-            end
-            statusData.selectedTypes = table.concat(selectedEggs, ", ")
-            updateStatusParagraph()
-            print("Restored eggs:", table.concat(selectedEggs, ", "))
-        end
-    end
-    
-    -- Restore place egg selection
-    if placeEggDropdown and selectedEggTypes then
-        if #selectedEggTypes > 0 then
-            if placeEggDropdown.SetValue then
-                placeEggDropdown:SetValue(selectedEggTypes)
-            end
-            placeStatusData.selectedEggs = #selectedEggTypes
-            updatePlaceStatusParagraph()
-            print("Restored place eggs:", table.concat(selectedEggTypes, ", "))
-        end
-    end
-    
-
-end
-
 -- Register config elements and auto-load when script starts
 task.spawn(function()
-    task.wait(2) -- Wait longer for external modules to load
+    task.wait(1) -- Wait a bit for UI to fully load
     registerConfigElements() -- Register all UI elements for config
-    
-    -- Re-register fruit UI elements if they were loaded after initial registration
-    if fruitUI and zooConfig then
-        zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
-        zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
-        zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
-    end
-    
     if zooConfig then
         zooConfig:Load()
-        -- Restore all selections after loading
-        task.wait(0.5) -- Small delay to ensure UI is ready
-        restoreAllSelections()
         WindUI:Notify({ 
             Title = "📂 Auto-Load", 
             Content = "Your saved settings have been loaded! 🎉", 
