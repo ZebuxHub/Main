@@ -1541,7 +1541,14 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         or eggInstance:GetAttribute("Name")
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
-    if not selectedTypeSet[eggType] then return false, nil, nil end
+    
+    -- If no eggs are selected, buy all eggs
+    if not selectedTypeSet or not next(selectedTypeSet) then
+        -- Buy all eggs (no type filter)
+    else
+        -- Only buy selected egg types
+        if not selectedTypeSet[eggType] then return false, nil, nil end
+    end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
@@ -1556,7 +1563,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
                 return false, nil, nil
             end
         else
-            -- If mutations are selected but egg has no mutation, don't buy
+            -- If mutations are selected but egg has no mutation, skip this egg
             return false, nil, nil
         end
     end
