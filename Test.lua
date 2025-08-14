@@ -34,7 +34,6 @@ Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
-Tabs.PriorityTab = Tabs.MainSection:Tab({ Title = "🎯 | Priority"})
 Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
@@ -51,7 +50,6 @@ local autoHatchEnabled = false
 local antiAFKEnabled = false
 local antiAFKConnection = nil
 local autoHatchThread = nil
-local automationPriority = "Hatch" -- "Hatch" or "Place"
 
 -- Egg config loader
 local eggConfig = {}
@@ -1242,33 +1240,24 @@ end
 
 local function runAutoHatch()
     while autoHatchEnabled do
-        -- Check priority - if Auto Place is running and has priority, pause hatching
-        if autoPlaceEnabled and automationPriority == "Place" then
-            -- Simple priority check - if Auto Place is enabled and has priority, pause hatching
-            hatchStatus.last = "Paused - Auto Place has priority"
-            updateHatchStatus()
-            task.wait(1.0)
-            continue -- Use continue instead of return to keep the loop running
-        end
-        
         local ok, err = pcall(function()
             hatchStatus.last = "Scanning"
             updateHatchStatus()
             local owned = collectOwnedEggs()
             hatchStatus.owned = #owned
             if #owned == 0 then
-                hatchStatus.last = "No owned eggs - Auto Place can work now"
+                hatchStatus.last = "No owned eggs"
                 updateHatchStatus()
                 task.wait(1.0)
-                return -- Return from pcall, not continue
+                return
             end
             local eggs = filterReadyEggs(owned)
             hatchStatus.ready = #eggs
             if #eggs == 0 then
-                hatchStatus.last = "Owned but not ready - Auto Place can work now"
+                hatchStatus.last = "Owned but not ready"
                 updateHatchStatus()
                 task.wait(0.8)
-                return -- Return from pcall, not continue
+                return
             end
             -- Try nearest first
             local me = getPlayerRootPosition()
@@ -1278,13 +1267,6 @@ local function runAutoHatch()
                 return (pa - me).Magnitude < (pb - me).Magnitude
             end)
             for _, m in ipairs(eggs) do
-                -- Check priority again before each hatch
-                if autoPlaceEnabled and automationPriority == "Place" then
-                    hatchStatus.last = "Paused - Auto Place has priority"
-                    updateHatchStatus()
-                    return
-                end
-                
                 hatchStatus.lastModel = m.Name
                 hatchStatus.lastEggType = getEggTypeFromModel(m)
                 hatchStatus.last = "Moving to hatch"
@@ -1311,11 +1293,6 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Callback = function(state)
         autoHatchEnabled = state
         if state and not autoHatchThread then
-            -- Check if Auto Place is running and we have lower priority
-            if autoPlaceEnabled and automationPriority == "Place" then
-                WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Auto Place has priority - Hatch paused", Duration = 3 })
-                return
-            end
             autoHatchThread = task.spawn(function()
                 runAutoHatch()
                 autoHatchThread = nil
@@ -2386,23 +2363,6 @@ end
 
 local function runAutoPlace()
     while autoPlaceEnabled do
-        -- Check priority - if Auto Hatch is running and has priority, pause placing
-        if autoHatchEnabled and automationPriority == "Hatch" then
-            local owned = collectOwnedEggs()
-            local readyEggs = filterReadyEggs(owned)
-            
-            if #readyEggs > 0 then
-                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-                updatePlaceStatusParagraph()
-                task.wait(1.0)
-                continue -- Use continue instead of return to keep the loop running
-            else
-                -- Auto Hatch has no eggs to work with, so Auto Place can work
-                placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
-                updatePlaceStatusParagraph()
-            end
-        end
-        
         -- Check if we have eggs and tiles to work with
         updateAvailableEggs()
         updateAvailableTiles()
@@ -2410,17 +2370,8 @@ local function runAutoPlace()
         if #availableEggs == 0 or #availableTiles == 0 then
             placeStatusData.lastAction = "No eggs or tiles available - pausing Auto Place"
             updatePlaceStatusParagraph()
-            
-            -- Smart handoff: if Auto Hatch is enabled but not running, start it
-            if autoHatchEnabled and not autoHatchThread then
-                placeStatusData.lastAction = "No work - enabling Auto Hatch"
-                updatePlaceStatusParagraph()
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "No work - Auto Hatch can take over", Duration = 3 })
-            end
-            
-            -- Pause Auto Place temporarily instead of stopping completely
             task.wait(2.0) -- Wait 2 seconds before checking again
-            continue -- Use continue to keep the loop running
+            continue
         end
         
         local islandName = getAssignedIslandName()
@@ -2442,22 +2393,6 @@ local function runAutoPlace()
         
         -- Wait until disabled or island changes
         while autoPlaceEnabled do
-            -- Check priority again during monitoring
-            if autoHatchEnabled and automationPriority == "Hatch" then
-                local owned = collectOwnedEggs()
-                local readyEggs = filterReadyEggs(owned)
-                
-                if #readyEggs > 0 then
-                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-                updatePlaceStatusParagraph()
-                return
-                else
-                    -- Auto Hatch has no eggs to work with, so Auto Place can work
-                    placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
-                    updatePlaceStatusParagraph()
-                end
-            end
-            
             local currentIsland = getAssignedIslandName()
             if currentIsland ~= islandName then
                 break -- Island changed, restart monitoring
@@ -2476,11 +2411,6 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
-            -- Check if Auto Hatch is running and we have lower priority
-            if autoHatchEnabled and automationPriority == "Hatch" then
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Auto Hatch has priority - Place paused", Duration = 3 })
-                return
-            end
             -- Reset counters
             placeStatusData.totalPlaces = countPlacedPets()
             placeStatusData.availableEggs = 0
@@ -2952,88 +2882,7 @@ Window:OnClose(function()
 end)
 
 
--- ============ Priority Management ============
-Tabs.PriorityTab:Section({ Title = "🎯 Automation Priority", Icon = "target" })
 
-Tabs.PriorityTab:Paragraph({
-    Title = "🎯 Priority System",
-    Desc = "Control which automation takes priority when both Auto Hatch and Auto Place are enabled",
-    Image = "target",
-    ImageSize = 18,
-})
-
-local priorityDropdown = Tabs.PriorityTab:Dropdown({
-    Title = "🎯 Choose Priority",
-    Desc = "Select which automation has priority (or leave unselected for no priority)",
-    Values = { "❌ No Priority", "⚡ Auto Hatch First", "🏠 Auto Place First" },
-    Value = "❌ No Priority",
-    Callback = function(selection)
-        if selection == "⚡ Auto Hatch First" then
-            automationPriority = "Hatch"
-        elseif selection == "🏠 Auto Place First" then
-            automationPriority = "Place"
-        else
-            automationPriority = "None"
-        end
-        WindUI:Notify({ 
-            Title = "🎯 Priority Set", 
-            Content = "Priority set to: " .. selection, 
-            Duration = 3 
-        })
-    end
-})
-
-Tabs.PriorityTab:Section({ Title = "📊 Status", Icon = "info" })
-
-local priorityStatusParagraph = Tabs.PriorityTab:Paragraph({
-    Title = "🎯 Priority Status",
-    Desc = "Current automation status and priority information",
-    Image = "activity",
-    ImageSize = 18,
-})
-
-local function updatePriorityStatus()
-    if priorityStatusParagraph and priorityStatusParagraph.SetDesc then
-        local lines = {}
-        
-        -- Show current priority
-        local priorityText
-        if automationPriority == "Hatch" then
-            priorityText = "Auto Hatch First"
-        elseif automationPriority == "Place" then
-            priorityText = "Auto Place First"
-        else
-            priorityText = "No Priority (Both work independently)"
-        end
-        table.insert(lines, string.format("🎯 Current Priority: %s", priorityText))
-        
-        table.insert(lines, string.format("⚡ Auto Hatch: %s", autoHatchEnabled and "✅ Enabled" or "❌ Disabled"))
-        table.insert(lines, string.format("🏠 Auto Place: %s", autoPlaceEnabled and "✅ Enabled" or "❌ Disabled"))
-        
-        -- Check what work is available
-        if autoHatchEnabled then
-            local owned = collectOwnedEggs()
-            local readyEggs = filterReadyEggs(owned)
-            table.insert(lines, string.format("🥚 Hatch Work: %d ready eggs", #readyEggs))
-        end
-        
-        if autoPlaceEnabled then
-            table.insert(lines, string.format("🥚 Place Work: %d available eggs", #availableEggs or 0))
-            table.insert(lines, string.format("🏠 Place Work: %d available tiles", #availableTiles or 0))
-        end
-        
-        priorityStatusParagraph:SetDesc(table.concat(lines, "\n"))
-    end
-end
-
-Tabs.PriorityTab:Button({
-    Title = "🔄 Refresh Status",
-    Desc = "Update the priority status display",
-    Callback = function()
-        updatePriorityStatus()
-        WindUI:Notify({ Title = "🎯 Priority", Content = "Status refreshed!", Duration = 3 })
-    end
-})
 
 -- ============ Auto Claim Dino (every 10 minutes) ============
 local autoDinoEnabled = false
@@ -3313,14 +3162,13 @@ local function registerConfigElements()
         zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        zooConfig:Register("automationPriority", priorityDropdown)
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
-        zooConfig:Register("automationPriority", priorityDropdown)
+
     end
 end
 
@@ -3386,7 +3234,6 @@ Tabs.SaveTab:Button({
         if placeEggCount > 0 then
             message = message .. string.format("\n🏠 Place Eggs: %d", placeEggCount)
         end
-        message = message .. string.format("\n🎯 Priority: %s", automationPriority)
         
         WindUI:Notify({ 
             Title = "💾 Settings Saved", 
@@ -3429,7 +3276,6 @@ Tabs.SaveTab:Button({
         if placeEggCount > 0 then
             message = message .. string.format("\n🏠 Place Eggs: %d", placeEggCount)
         end
-        message = message .. string.format("\n🎯 Priority: %s", automationPriority)
         
         WindUI:Notify({ 
             Title = "📂 Settings Loaded", 
@@ -3551,21 +3397,7 @@ local function restoreAllSelections()
         end
     end
     
-    -- Restore priority selection
-    if priorityDropdown then
-        local priorityValue
-        if automationPriority == "Hatch" then
-            priorityValue = "⚡ Auto Hatch First"
-        elseif automationPriority == "Place" then
-            priorityValue = "🏠 Auto Place First"
-        else
-            priorityValue = "❌ No Priority"
-        end
-        if priorityDropdown.SetValue then
-            priorityDropdown:SetValue(priorityValue)
-        end
-        print("Restored priority:", priorityValue)
-    end
+
 end
 
 -- Register config elements and auto-load when script starts
