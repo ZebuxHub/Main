@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Window
 local Window = WindUI:CreateWindow({
-    Title = "Build A Zoo",
+    Title = "Build A Zoo1",
     Icon = "app-window-mac",
     IconThemed = true,
     Author = "Zebux",
