@@ -3604,6 +3604,21 @@ end)
 local bugReport = ""
 local suggestion = ""
 
+-- Get place name function
+local function getPlaceName()
+    local success, result = pcall(function()
+        local marketplaceService = game:GetService("MarketplaceService")
+        local productInfo = marketplaceService:GetProductInfo(game.PlaceId)
+        return productInfo.Name
+    end)
+    
+    if success and result then
+        return result
+    else
+        return "Unknown Game"
+    end
+end
+
 -- Webhook functions (define first)
 local function sendBugWebhook(content)
     local webhookUrl = "https://discord.com/api/webhooks/1405492160949911603/hTXMSUqB5QgrOXiynMqPKBOypcZJ2IjnfU9YVe0tVKMb8rluV6wTV9U3QMn2mO7WYndF"
@@ -3702,8 +3717,9 @@ Tabs.BugTab:Button({
         local playerId = LocalPlayer.UserId
         local timestamp = os.date("%Y-%m-%d %H:%M:%S")
         
+        local placeName = getPlaceName()
         local content = string.format("```🐛 BUG REPORT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 Player: %s (%d)\n🎮 Game: %s\n🆔 Place ID: %d\n⏰ Time: %s\n\n📝 Bug Description:\n%s\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━```", 
-            playerName, playerId, game.Name, game.PlaceId, timestamp, bugReport)
+            playerName, playerId, placeName, game.PlaceId, timestamp, bugReport)
         
         sendBugWebhook(content)
         bugReport = ""
@@ -3741,8 +3757,9 @@ Tabs.BugTab:Button({
         local playerId = LocalPlayer.UserId
         local timestamp = os.date("%Y-%m-%d %H:%M:%S")
         
+        local placeName = getPlaceName()
         local content = string.format("```💡 FEATURE SUGGESTION\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 Player: %s (%d)\n🎮 Game: %s\n🆔 Place ID: %d\n⏰ Time: %s\n\n💭 Suggestion:\n%s\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━```", 
-            playerName, playerId, game.Name, game.PlaceId, timestamp, suggestion)
+            playerName, playerId, placeName, game.PlaceId, timestamp, suggestion)
         
         sendSuggestionWebhook(content)
         suggestion = ""
