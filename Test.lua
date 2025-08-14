@@ -749,24 +749,36 @@ local function mapPetsToFarmTiles()
                 local modelPos = model:GetPivot().Position
                 local eggType = model:GetAttribute("EggType") or model:GetAttribute("Type") or "Unknown"
                 
+                -- Find the closest farm tile for this egg
+                local closestTileIndex = nil
+                local closestDistance = math.huge
+                
                 for i, farmPart in ipairs(farmParts) do
                     local tilePos = farmPart.Position
                     local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
                     local yDistance = math.abs(modelPos.Y - tilePos.Y)
                     
-                    if xzDistance < 4.0 and yDistance < 8.0 then
-                        table.insert(petTileMap, {
-                            tileIndex = i,
-                            tileName = farmPart.Name,
-                            tilePosition = tilePos,
-                            petName = model.Name,
-                            petType = "Egg",
-                            petTypeDetail = eggType,
-                            position = modelPos,
-                            source = "PlayerBuiltBlocks"
-                        })
-                        break
+                    -- Use combined distance for finding closest tile
+                    local totalDistance = xzDistance + yDistance
+                    if totalDistance < closestDistance then
+                        closestDistance = totalDistance
+                        closestTileIndex = i
                     end
+                end
+                
+                -- If egg is close enough to a tile, map it
+                if closestTileIndex and closestDistance < 12.0 then -- Increased range for better matching
+                    table.insert(petTileMap, {
+                        tileIndex = closestTileIndex,
+                        tileName = farmParts[closestTileIndex].Name,
+                        tilePosition = farmParts[closestTileIndex].Position,
+                        petName = model.Name,
+                        petType = "Egg",
+                        petTypeDetail = eggType,
+                        position = modelPos,
+                        source = "PlayerBuiltBlocks",
+                        distance = closestDistance
+                    })
                 end
             end
         end
@@ -777,28 +789,54 @@ local function mapPetsToFarmTiles()
     for _, petInfo in ipairs(playerPets) do
         local petPos = petInfo.position
         
+        -- Find the closest farm tile for this pet
+        local closestTileIndex = nil
+        local closestDistance = math.huge
+        
         for i, farmPart in ipairs(farmParts) do
             local tilePos = farmPart.Position
             local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
             local yDistance = math.abs(petPos.Y - tilePos.Y)
             
-            if xzDistance < 4.0 and yDistance < 8.0 then
-                table.insert(petTileMap, {
-                    tileIndex = i,
-                    tileName = farmPart.Name,
-                    tilePosition = tilePos,
-                    petName = petInfo.name,
-                    petType = "Pet",
-                    petTypeDetail = "Hatched",
-                    position = petPos,
-                    source = "workspace.Pets"
-                })
-                break
+            -- Use combined distance for finding closest tile
+            local totalDistance = xzDistance + yDistance
+            if totalDistance < closestDistance then
+                closestDistance = totalDistance
+                closestTileIndex = i
             end
+        end
+        
+        -- If pet is close enough to a tile, map it
+        if closestTileIndex and closestDistance < 12.0 then -- Increased range for better matching
+            table.insert(petTileMap, {
+                tileIndex = closestTileIndex,
+                tileName = farmParts[closestTileIndex].Name,
+                tilePosition = farmParts[closestTileIndex].Position,
+                petName = petInfo.name,
+                petType = "Pet",
+                petTypeDetail = "Hatched",
+                position = petPos,
+                source = "workspace.Pets",
+                distance = closestDistance
+            })
         end
     end
     
     return petTileMap
+end
+
+-- Function to check if there are any eggs available for placement
+local function hasAvailableEggsForPlacement()
+    local eggContainer = getEggContainer()
+    if not eggContainer then return false end
+    
+    for _, child in ipairs(eggContainer:GetChildren()) do
+        if #child:GetChildren() == 0 then -- No subfolder = available egg
+            return true
+        end
+    end
+    
+    return false
 end
 
 local function getPetUID()
@@ -1785,6 +1823,13 @@ local function updateAvailableEggs()
     end
     
     placeStatusData.availableEggs = #availableEggs
+    
+    -- Also check if there are eggs in inventory that aren't being detected
+    local hasEggsInInventory = hasAvailableEggsForPlacement()
+    if hasEggsInInventory and #availableEggs == 0 then
+        placeStatusData.lastAction = "⚠️ Eggs in inventory but not detected in available list"
+    end
+    
     updatePlaceStatusParagraph()
 end
 
@@ -2084,6 +2129,9 @@ Tabs.PlaceTab:Button({
             end
             message = message .. string.format("  📍 Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
             message = message .. string.format("  🏠 Source: %s\n", mapping.source)
+            if mapping.distance then
+                message = message .. string.format("  📏 Distance: %.2f\n", mapping.distance)
+            end
             message = message .. "\n"
             
             -- Limit to first 8 mappings to avoid message overflow
@@ -2169,6 +2217,49 @@ Tabs.PlaceTab:Button({
         message = message .. string.format("🎯 Ready to place pets on %d tiles!", #availableTiles)
         
         WindUI:Notify({ Title = "✅ Available Tiles", Content = message, Duration = 15 })
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "🔄 Check Auto Place Status",
+    Desc = "Show current status of Auto Place system",
+    Callback = function()
+        local message = "🔄 AUTO PLACE STATUS:\n\n"
+        
+        -- Check if Auto Place is enabled
+        message = message .. string.format("⚙️ Auto Place Enabled: %s\n", autoPlaceEnabled and "✅ Yes" or "❌ No")
+        
+        -- Check available eggs
+        local availableEggsCount = #availableEggs
+        message = message .. string.format("🥚 Available Eggs: %d\n", availableEggsCount)
+        
+        -- Check available tiles
+        local availableTilesCount = #availableTiles
+        message = message .. string.format("📦 Available Tiles: %d\n", availableTilesCount)
+        
+        -- Check if there are eggs in inventory
+        local hasEggsInInventory = hasAvailableEggsForPlacement()
+        message = message .. string.format("📋 Eggs in Inventory: %s\n", hasEggsInInventory and "✅ Yes" or "❌ No")
+        
+        -- Show current status
+        message = message .. string.format("\n📊 Current Status:\n")
+        message = message .. string.format("  Last Action: %s\n", placeStatusData.lastAction or "None")
+        message = message .. string.format("  Total Placed: %d\n", placeStatusData.totalPlaces or 0)
+        
+        -- Show what's preventing placement
+        if autoPlaceEnabled then
+            if availableEggsCount == 0 and hasEggsInInventory then
+                message = message .. "\n⚠️ Issue: Eggs in inventory but not in available list"
+            elseif availableTilesCount == 0 then
+                message = message .. "\n⚠️ Issue: No available tiles"
+            elseif availableEggsCount == 0 and not hasEggsInInventory then
+                message = message .. "\n⚠️ Issue: No eggs available for placement"
+            else
+                message = message .. "\n✅ Ready to place eggs!"
+            end
+        end
+        
+        WindUI:Notify({ Title = "🔄 Auto Place Status", Content = message, Duration = 10 })
     end
 })
 
@@ -2504,7 +2595,12 @@ local function setupPlacementMonitoring()
         while autoPlaceEnabled do
             updateAvailableEggs()
             updateAvailableTiles()
-            attemptPlacement()
+            
+            -- Always try to place eggs if we have them, even if no new eggs came in
+            if #availableEggs > 0 and #availableTiles > 0 then
+                attemptPlacement()
+            end
+            
             task.wait(3) -- Update every 3 seconds instead of 1
         end
     end)
