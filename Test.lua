@@ -783,16 +783,29 @@ local function mapPetsToFarmTiles()
             local yDistance = math.abs(petPos.Y - tilePos.Y)
             
             if xzDistance < 4.0 and yDistance < 8.0 then
-                table.insert(petTileMap, {
-                    tileIndex = i,
-                    tileName = farmPart.Name,
-                    tilePosition = tilePos,
-                    petName = petInfo.name,
-                    petType = "Pet",
-                    petTypeDetail = "Hatched",
-                    position = petPos,
-                    source = "workspace.Pets"
-                })
+                -- Check if this pet was already counted as an egg (same position)
+                local alreadyCounted = false
+                for _, existingMapping in ipairs(petTileMap) do
+                    if existingMapping.tileIndex == i and existingMapping.source == "PlayerBuiltBlocks" then
+                        -- If there's already an egg at this tile, don't count the pet
+                        -- This prevents double-counting when an egg hatches into a pet at the same location
+                        alreadyCounted = true
+                        break
+                    end
+                end
+                
+                if not alreadyCounted then
+                    table.insert(petTileMap, {
+                        tileIndex = i,
+                        tileName = farmPart.Name,
+                        tilePosition = tilePos,
+                        petName = petInfo.name,
+                        petType = "Pet",
+                        petTypeDetail = "Hatched",
+                        position = petPos,
+                        source = "workspace.Pets"
+                    })
+                end
                 break
             end
         end
@@ -2172,6 +2185,49 @@ Tabs.PlaceTab:Button({
     end
 })
 
+Tabs.PlaceTab:Button({
+    Title = "🔄 Check Auto Place Status",
+    Desc = "Show current status of Auto Place system",
+    Callback = function()
+        local message = "🔄 AUTO PLACE STATUS:\n\n"
+        
+        -- Check if Auto Place is enabled
+        message = message .. string.format("⚙️ Auto Place Enabled: %s\n", autoPlaceEnabled and "✅ Yes" or "❌ No")
+        
+        -- Check available eggs
+        local availableEggsCount = #availableEggs
+        message = message .. string.format("🥚 Available Eggs: %d\n", availableEggsCount)
+        
+        -- Check available tiles
+        local availableTilesCount = #availableTiles
+        message = message .. string.format("📦 Available Tiles: %d\n", availableTilesCount)
+        
+        -- Check if there are eggs in inventory
+        local hasEggsInInventory = hasAvailableEggsForPlacement()
+        message = message .. string.format("📋 Eggs in Inventory: %s\n", hasEggsInInventory and "✅ Yes" or "❌ No")
+        
+        -- Show current status
+        message = message .. string.format("\n📊 Current Status:\n")
+        message = message .. string.format("  Last Action: %s\n", placeStatusData.lastAction or "None")
+        message = message .. string.format("  Total Placed: %d\n", placeStatusData.totalPlaces or 0)
+        
+        -- Show what's preventing placement
+        if autoPlaceEnabled then
+            if availableEggsCount == 0 and hasEggsInInventory then
+                message = message .. "\n⚠️ Issue: Eggs in inventory but not in available list"
+            elseif availableTilesCount == 0 then
+                message = message .. "\n⚠️ Issue: No available tiles"
+            elseif availableEggsCount == 0 and not hasEggsInInventory then
+                message = message .. "\n⚠️ Issue: No eggs available for placement"
+            else
+                message = message .. "\n✅ Ready to place eggs!"
+            end
+        end
+        
+        WindUI:Notify({ Title = "🔄 Auto Place Status", Content = message, Duration = 10 })
+    end
+})
+
 local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
@@ -2463,6 +2519,20 @@ local function attemptPlacement()
     end
 end
 
+-- Function to check if there are any eggs available for placement
+local function hasAvailableEggsForPlacement()
+    local eggContainer = getEggContainer()
+    if not eggContainer then return false end
+    
+    for _, child in ipairs(eggContainer:GetChildren()) do
+        if #child:GetChildren() == 0 then -- No subfolder = available egg
+            return true
+        end
+    end
+    
+    return false
+end
+
 local function setupPlacementMonitoring()
     -- Monitor for new eggs in PlayerGui.Data.Egg
     local eggContainer = getEggContainer()
@@ -2504,7 +2574,12 @@ local function setupPlacementMonitoring()
         while autoPlaceEnabled do
             updateAvailableEggs()
             updateAvailableTiles()
-            attemptPlacement()
+            
+            -- Always try to place eggs if we have them, even if no new eggs came in
+            if #availableEggs > 0 and #availableTiles > 0 then
+                attemptPlacement()
+            end
+            
             task.wait(3) -- Update every 3 seconds instead of 1
         end
     end)
