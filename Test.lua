@@ -253,26 +253,16 @@ local function getEggMutation(eggUID)
                             if mutateText and mutateText:IsA("TextLabel") then
                                 local mutationText = mutateText.Text
                                 if mutationText and mutationText ~= "" then
-                                    warn("Found mutation for " .. eggUID .. ": " .. mutationText)
                                     return mutationText
-                                else
-                                    warn("No mutation text found for " .. eggUID .. " (empty or nil)")
                                 end
-                            else
-                                warn("No Mutate TextLabel found for " .. eggUID)
                             end
-                        else
-                            warn("No GUI/EggGUI found for " .. eggUID)
                         end
-                    else
-                        warn("No RootPart found for " .. eggUID)
                     end
                 end
             end
         end
     end
     
-    warn("Egg " .. eggUID .. " not found on any conveyor belt")
     return nil
 end
 
@@ -581,12 +571,20 @@ local function isFarmTileOccupied(farmPart, minDistance)
     local center = getTileCenterPosition(farmPart)
     if not center then return true end
     
+    -- Calculate surface position (same as placement logic)
+    local surfacePosition = Vector3.new(
+        center.X,
+        center.Y + (farmPart.Size.Y / 2), -- Top surface
+        center.Z
+    )
+    
     -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
     local models = getPetModelsOverlappingTile(farmPart)
     if #models > 0 then
         for _, model in ipairs(models) do
             local pivotPos = model:GetPivot().Position
-            if (pivotPos - center).Magnitude <= minDistance then
+            -- Check distance to surface position instead of center
+            if (pivotPos - surfacePosition).Magnitude <= minDistance then
                 return true
             end
         end
@@ -596,7 +594,8 @@ local function isFarmTileOccupied(farmPart, minDistance)
     local playerPets = getPlayerPetsInWorkspace()
     for _, petInfo in ipairs(playerPets) do
         local petPos = petInfo.position
-        if (petPos - center).Magnitude <= minDistance then
+        -- Check distance to surface position instead of center
+        if (petPos - surfacePosition).Magnitude <= minDistance then
             return true
         end
     end
@@ -1594,11 +1593,9 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     -- Now check mutation if mutations are selected
     if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutation(eggInstance.Name)
-        warn("Checking egg " .. eggInstance.Name .. " - mutation result: " .. tostring(eggMutation))
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
-            warn("Skipping egg " .. eggInstance.Name .. " - no mutation found (user selected mutations)")
             return false, nil, nil
         end
         -- Check if egg has a selected mutation
@@ -1606,16 +1603,11 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         local mappedEggMutation = eggMutation
         if string.lower(eggMutation) == "dino" then
             mappedEggMutation = "Jurassic"
-            warn("Mapping egg mutation from 'Dino' to 'Jurassic'")
         end
         
         if not selectedMutationSet[mappedEggMutation] then
-            warn("Skipping egg " .. eggInstance.Name .. " - mutation " .. mappedEggMutation .. " not in selected list")
             return false, nil, nil
         end
-        warn("Egg " .. eggInstance.Name .. " has valid mutation: " .. eggMutation)
-    else
-        warn("No mutations selected - buying any egg type")
     end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
@@ -1669,15 +1661,8 @@ local function buyEggInstantly(eggInstance)
     if buyingInProgress then return end
     buyingInProgress = true
     
-    warn("=== BUY ATTEMPT ===")
-    warn("Egg: " .. eggInstance.Name)
-    warn("Selected eggs: " .. (next(selectedTypeSet) and "YES" or "NO"))
-    warn("Selected mutations: " .. (next(selectedMutationSet) and "YES" or "NO"))
-    
     local netWorth = getPlayerNetWorth()
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
-    
-    warn("Should buy result: " .. tostring(ok))
     
     if ok then
         statusData.lastUID = uid
@@ -1691,8 +1676,6 @@ local function buyEggInstantly(eggInstance)
         statusData.lastAction = "Bought + Focused UID " .. tostring(uid)
         updateStatusParagraph()
     end
-    
-    buyingInProgress = false
     
     buyingInProgress = false
 end
@@ -1949,7 +1932,13 @@ local function updateAvailableTiles()
                 
                 -- If egg is close enough to a farm split, mark it as occupied
                 if closestPart and closestDistance <= 6.0 then
-                    occupiedPositions[closestPart.Position] = "egg"
+                    -- Use surface position for consistency
+                    local surfacePos = Vector3.new(
+                        closestPart.Position.X,
+                        closestPart.Position.Y + (closestPart.Size.Y / 2),
+                        closestPart.Position.Z
+                    )
+                    occupiedPositions[surfacePos] = "egg"
                     occupiedTiles = occupiedTiles + 1
                 end
             end
@@ -1976,7 +1965,13 @@ local function updateAvailableTiles()
         
         -- If pet is close enough to a farm split, mark it as occupied
         if closestPart and closestDistance <= 6.0 then
-            occupiedPositions[closestPart.Position] = "pet"
+            -- Use surface position for consistency
+            local surfacePos = Vector3.new(
+                closestPart.Position.X,
+                closestPart.Position.Y + (closestPart.Size.Y / 2),
+                closestPart.Position.Z
+            )
+            occupiedPositions[surfacePos] = "pet"
             occupiedTiles = occupiedTiles + 1
         end
     end
@@ -2002,7 +1997,13 @@ local function updateAvailableTiles()
     
     -- Find available tiles (not occupied by eggs or pets)
     for i, part in ipairs(farmParts) do
-        if not occupiedPositions[part.Position] then
+        -- Use surface position for consistency
+        local surfacePos = Vector3.new(
+            part.Position.X,
+            part.Position.Y + (part.Size.Y / 2),
+            part.Position.Z
+        )
+        if not occupiedPositions[surfacePos] then
             table.insert(availableTiles, { part = part, index = i })
         end
     end
