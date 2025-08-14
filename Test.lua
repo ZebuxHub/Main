@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Window
 local Window = WindUI:CreateWindow({
-    Title = "Build A Zoo 1",
+    Title = "Build A Zoo",
     Icon = "app-window-mac",
     IconThemed = true,
     Author = "Zebux",
@@ -425,15 +425,34 @@ local function isFarmTileOccupied(farmPart, minDistance)
     minDistance = minDistance or 6
     local center = getTileCenterPosition(farmPart)
     if not center then return true end
+    
+    -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
     local models = getPetModelsOverlappingTile(farmPart)
-    if #models == 0 then return false end
-    -- If any pet pivot lies within minDistance of center, treat as occupied
-    for _, model in ipairs(models) do
-        local pivotPos = model:GetPivot().Position
-        if (pivotPos - center).Magnitude <= minDistance then
-            return true
+    if #models > 0 then
+        for _, model in ipairs(models) do
+            local pivotPos = model:GetPivot().Position
+            if (pivotPos - center).Magnitude <= minDistance then
+                return true
+            end
         end
     end
+    
+    -- Check for fully hatched pets in workspace.Pets
+    local playerPets = getPlayerPetConfigurations()
+    local workspacePets = workspace:FindFirstChild("Pets")
+    
+    if workspacePets and #playerPets > 0 then
+        for _, petConfig in ipairs(playerPets) do
+            local petModel = workspacePets:FindFirstChild(petConfig.name)
+            if petModel and petModel:IsA("Model") then
+                local pivotPos = petModel:GetPivot().Position
+                if (pivotPos - center).Magnitude <= minDistance then
+                    return true
+                end
+            end
+        end
+    end
+    
     return false
 end
 
@@ -688,6 +707,69 @@ local function getPetUID()
     end
     
     return eggName
+end
+
+-- Get all pet configurations that the player owns
+local function getPlayerPetConfigurations()
+    local petConfigs = {}
+    
+    if not LocalPlayer then return petConfigs end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return petConfigs end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return petConfigs end
+    
+    local petsFolder = data:FindFirstChild("Pets")
+    if not petsFolder then return petConfigs end
+    
+    -- Get all pet configurations
+    for _, petConfig in ipairs(petsFolder:GetChildren()) do
+        if petConfig:IsA("Configuration") then
+            table.insert(petConfigs, {
+                name = petConfig.Name,
+                config = petConfig
+            })
+        end
+    end
+    
+    return petConfigs
+end
+
+-- Check if a pet exists in workspace.Pets by configuration name
+local function findPetInWorkspace(petConfigName)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if not workspacePets then return nil end
+    
+    local petModel = workspacePets:FindFirstChild(petConfigName)
+    if petModel and petModel:IsA("Model") then
+        return petModel
+    end
+    
+    return nil
+end
+
+-- Get all player's pets that exist in workspace
+local function getPlayerPetsInWorkspace()
+    local petsInWorkspace = {}
+    local playerPets = getPlayerPetConfigurations()
+    local workspacePets = workspace:FindFirstChild("Pets")
+    
+    if not workspacePets then return petsInWorkspace end
+    
+    for _, petConfig in ipairs(playerPets) do
+        local petModel = workspacePets:FindFirstChild(petConfig.name)
+        if petModel and petModel:IsA("Model") then
+            table.insert(petsInWorkspace, {
+                name = petConfig.name,
+                model = petModel,
+                position = petModel:GetPivot().Position
+            })
+        end
+    end
+    
+    return petsInWorkspace
 end
 
 -- Available Egg helpers (Auto Place)
@@ -1741,7 +1823,7 @@ Tabs.PlaceTab:Button({
         local occupiedTiles = 0
         local lockedTiles = 0
         
-        -- Count occupied tiles
+        -- Count occupied tiles (both eggs and fully hatched pets)
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
             for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
@@ -1756,6 +1838,21 @@ Tabs.PlaceTab:Button({
                             break
                         end
                     end
+                end
+            end
+        end
+        
+        -- Count tiles occupied by fully hatched pets
+        local playerPets = getPlayerPetsInWorkspace()
+        for _, petInfo in ipairs(playerPets) do
+            for _, part in ipairs(farmParts) do
+                local petPos = petInfo.position
+                local tilePos = part.Position
+                local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
+                local yDistance = math.abs(petPos.Y - tilePos.Y)
+                if xzDistance < 4.0 and yDistance < 8.0 then
+                    occupiedTiles = occupiedTiles + 1
+                    break
                 end
             end
         end
@@ -1878,6 +1975,54 @@ Tabs.PlaceTab:Button({
     end
 })
 
+Tabs.PlaceTab:Button({
+    Title = "🐾 Show Pet Info",
+    Desc = "Display information about your pets and their locations",
+    Callback = function()
+        local message = "🐾 PET INFORMATION:\n\n"
+        
+        -- Show pet configurations
+        local petConfigs = getPlayerPetConfigurations()
+        message = message .. string.format("📋 Pet Configurations: %d\n", #petConfigs)
+        for i, petConfig in ipairs(petConfigs) do
+            message = message .. string.format("  %s\n", petConfig.name)
+            if i >= 5 then
+                message = message .. string.format("  ... and %d more\n", #petConfigs - 5)
+                break
+            end
+        end
+        
+        message = message .. "\n"
+        
+        -- Show pets in workspace
+        local petsInWorkspace = getPlayerPetsInWorkspace()
+        message = message .. string.format("🌍 Pets in Workspace: %d\n", #petsInWorkspace)
+        for i, petInfo in ipairs(petsInWorkspace) do
+            local pos = petInfo.position
+            message = message .. string.format("  %s: (%.1f, %.1f, %.1f)\n", 
+                petInfo.name, pos.X, pos.Y, pos.Z)
+            if i >= 5 then
+                message = message .. string.format("  ... and %d more\n", #petsInWorkspace - 5)
+                break
+            end
+        end
+        
+        -- Show eggs in PlayerBuiltBlocks
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        local eggCount = 0
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") then
+                    eggCount = eggCount + 1
+                end
+            end
+        end
+        message = message .. string.format("\n🥚 Eggs in PlayerBuiltBlocks: %d\n", eggCount)
+        
+        WindUI:Notify({ Title = "🐾 Pet Info", Content = message, Duration = 10 })
+    end
+})
+
 local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
@@ -1958,11 +2103,29 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 
                 -- X/Z: 4 studs radius, Y: 8 studs radius
                 if xzDistance < 4.0 and yDistance < 8.0 then
-                    placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied - skipping"
+                    placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied by egg - skipping"
                     placingInProgress = false
                     return false
                 end
             end
+        end
+    end
+    
+    -- Check for fully hatched pets in workspace.Pets
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        local tilePos = tilePart.Position
+        
+        -- Separate X/Z and Y axis checks
+        local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
+        local yDistance = math.abs(petPos.Y - tilePos.Y)
+        
+        -- X/Z: 4 studs radius, Y: 8 studs radius
+        if xzDistance < 4.0 and yDistance < 8.0 then
+            placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied by pet " .. petInfo.name .. " - skipping"
+            placingInProgress = false
+            return false
         end
     end
     
