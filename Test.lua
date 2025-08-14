@@ -1721,16 +1721,13 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
 
 
 
--- Wake-up monitoring system for eggs and tiles
+-- Continuous monitoring system for eggs and tiles
 local placeConnections = {}
 local placingInProgress = false
 local availableEggs = {} -- Track available eggs to place
 local availableTiles = {} -- Track available tiles
 local selectedEggTypes = {} -- Selected egg types for placement
 local tileMonitoringActive = false
-local systemAwake = false -- Track if system is currently awake
-local sleepDuration = 5.0 -- Sleep for 5 seconds when no work
-local wakeUpInterval = 2.0 -- Wake up every 2 seconds to check
 
 
 -- Auto Place status tracking
@@ -1982,11 +1979,6 @@ local function formatPlaceStatusDesc()
     if placeStatusData.selectedEggs then
         table.insert(lines, string.format("🎯 Selected Types: %d", placeStatusData.selectedEggs or 0))
     end
-    
-    -- Show wake/sleep status
-    local statusIcon = systemAwake and "⚡" or "😴"
-    local statusText = systemAwake and "AWAKE" or "SLEEPING"
-    table.insert(lines, string.format("%s System: %s", statusIcon, statusText))
     
     table.insert(lines, string.format("🔄 Status: %s", tostring(placeStatusData.lastAction or "Ready")))
     return table.concat(lines, "\n")
@@ -2315,24 +2307,19 @@ local function attemptPlacement()
 end
 
 local function setupPlacementMonitoring()
-    -- Wake-up monitoring thread
-    local wakeUpThread = task.spawn(function()
+    -- Continuous monitoring thread
+    local monitorThread = task.spawn(function()
         while autoPlaceEnabled do
-            -- Wake up and check for work
-            systemAwake = true
-            placeStatusData.lastAction = "🔍 Waking up to check for work..."
-            updatePlaceStatusParagraph()
-            
             -- Update eggs and tiles
             updateAvailableEggs()
             updateAvailableTiles()
             
             -- Check if we have work to do
             if #availableEggs > 0 and #availableTiles > 0 then
-                placeStatusData.lastAction = "⚡ Work found! Placing eggs..."
+                placeStatusData.lastAction = "⚡ Placing eggs..."
                 updatePlaceStatusParagraph()
                 
-                -- Stay awake and work
+                -- Place eggs
                 local workDone = 0
                 while #availableEggs > 0 and #availableTiles > 0 and autoPlaceEnabled do
                     if attemptPlacement() then
@@ -2343,22 +2330,18 @@ local function setupPlacementMonitoring()
                     end
                 end
                 
-                placeStatusData.lastAction = string.format("✅ Work complete! Placed %d eggs", workDone)
+                placeStatusData.lastAction = string.format("✅ Placed %d eggs", workDone)
                 updatePlaceStatusParagraph()
-                
-                -- Sleep for a bit after completing work
-                task.wait(sleepDuration)
             else
-                -- No work available, go back to sleep
-                placeStatusData.lastAction = "😴 No work available, going to sleep..."
+                placeStatusData.lastAction = "⏳ Waiting for eggs and tiles..."
                 updatePlaceStatusParagraph()
-                systemAwake = false
-                task.wait(sleepDuration)
             end
+            
+            task.wait(1.0) -- Check every second
         end
     end)
     
-    table.insert(placeConnections, { disconnect = function() wakeUpThread = nil end })
+    table.insert(placeConnections, { disconnect = function() monitorThread = nil end })
 end
 
 local function runAutoPlace()
