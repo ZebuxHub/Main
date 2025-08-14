@@ -3702,12 +3702,17 @@ Tabs.BugTab:Button({
         local playerId = LocalPlayer.UserId
         local timestamp = os.date("%Y-%m-%d %H:%M:%S")
         
-        local content = string.format("🐛 **Bug Report**\n\n**Player:** %s (%d)\n**Game:** %s (Place ID: %d)\n**Time:** %s\n\n**Bug Description:**\n%s", 
+        local content = string.format("```🐛 BUG REPORT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 Player: %s (%d)\n🎮 Game: %s\n🆔 Place ID: %d\n⏰ Time: %s\n\n📝 Bug Description:\n%s\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━```", 
             playerName, playerId, game.Name, game.PlaceId, timestamp, bugReport)
         
         sendBugWebhook(content)
         bugReport = ""
-        bugInput:SetValue("")
+        -- Clear input safely
+        if bugInput and bugInput.SetValue then
+            bugInput:SetValue("")
+        elseif bugInput and bugInput.SetText then
+            bugInput:SetText("")
+        end
     end
 })
 
@@ -3736,12 +3741,17 @@ Tabs.BugTab:Button({
         local playerId = LocalPlayer.UserId
         local timestamp = os.date("%Y-%m-%d %H:%M:%S")
         
-        local content = string.format("💡 **Feature Suggestion**\n\n**Player:** %s (%d)\n**Game:** %s (Place ID: %d)\n**Time:** %s\n\n**Suggestion:**\n%s", 
+        local content = string.format("```💡 FEATURE SUGGESTION\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 Player: %s (%d)\n🎮 Game: %s\n🆔 Place ID: %d\n⏰ Time: %s\n\n💭 Suggestion:\n%s\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━```", 
             playerName, playerId, game.Name, game.PlaceId, timestamp, suggestion)
         
         sendSuggestionWebhook(content)
         suggestion = ""
-        suggestionInput:SetValue("")
+        -- Clear input safely
+        if suggestionInput and suggestionInput.SetValue then
+            suggestionInput:SetValue("")
+        elseif suggestionInput and suggestionInput.SetText then
+            suggestionInput:SetText("")
+        end
     end
 })
 
