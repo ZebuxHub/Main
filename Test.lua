@@ -1492,6 +1492,80 @@ Tabs.AutoTab:Button({
     end
 })
 
+Tabs.AutoTab:Button({
+    Title = "🔍 Debug Egg Mutations",
+    Desc = "Show mutations of eggs currently on conveyor belts",
+    Callback = function()
+        local message = "🔍 EGG MUTATIONS ON BELTS:\n\n"
+        local eggCount = 0
+        
+        local islandName = getAssignedIslandName()
+        if not islandName then
+            WindUI:Notify({ Title = "🔍 Debug", Content = "No island assigned!", Duration = 3 })
+            return
+        end
+        
+        local art = workspace:FindFirstChild("Art")
+        if not art then
+            WindUI:Notify({ Title = "🔍 Debug", Content = "No Art folder found!", Duration = 3 })
+            return
+        end
+        
+        local island = art:FindFirstChild(islandName)
+        if not island then
+            WindUI:Notify({ Title = "🔍 Debug", Content = "Island not found!", Duration = 3 })
+            return
+        end
+        
+        local env = island:FindFirstChild("ENV")
+        if not env then
+            WindUI:Notify({ Title = "🔍 Debug", Content = "ENV not found!", Duration = 3 })
+            return
+        end
+        
+        local conveyor = env:FindFirstChild("Conveyor")
+        if not conveyor then
+            WindUI:Notify({ Title = "🔍 Debug", Content = "Conveyor not found!", Duration = 3 })
+            return
+        end
+        
+        -- Check all conveyor belts
+        for i = 1, 9 do
+            local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+            if conveyorBelt then
+                local belt = conveyorBelt:FindFirstChild("Belt")
+                if belt then
+                    for _, eggModel in ipairs(belt:GetChildren()) do
+                        if eggModel:IsA("Model") then
+                            eggCount = eggCount + 1
+                            local eggType = eggModel:GetAttribute("Type") or eggModel:GetAttribute("EggType") or eggModel:GetAttribute("Name") or "Unknown"
+                            local mutation = getEggMutation(eggModel.Name)
+                            
+                            if mutation then
+                                message = message .. string.format("🥚 %s (%s): 🧬 %s\n", eggModel.Name, eggType, mutation)
+                            else
+                                message = message .. string.format("🥚 %s (%s): ❌ No Mutation\n", eggModel.Name, eggType)
+                            end
+                            
+                            if eggCount >= 10 then
+                                message = message .. "... (showing first 10)\n"
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            if eggCount >= 10 then break end
+        end
+        
+        if eggCount == 0 then
+            message = message .. "No eggs found on conveyor belts"
+        end
+        
+        WindUI:Notify({ Title = "🔍 Egg Mutations", Content = message, Duration = 8 })
+    end
+})
+
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
