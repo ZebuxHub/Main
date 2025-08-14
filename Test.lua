@@ -2263,6 +2263,48 @@ Tabs.PlaceTab:Button({
     end
 })
 
+Tabs.PlaceTab:Button({
+    Title = "🔍 Show Placement Logic",
+    Desc = "Show step-by-step how the placement system works",
+    Callback = function()
+        local message = "🔍 PLACEMENT LOGIC EXPLANATION:\n\n"
+        
+        message = message .. "📋 HOW IT WORKS:\n"
+        message = message .. "1️⃣ Get list of available eggs\n"
+        message = message .. "2️⃣ Get list of available tiles\n"
+        message = message .. "3️⃣ For each tile in order:\n"
+        message = message .. "   🔍 Check if tile is occupied:\n"
+        message = message .. "      • Look for eggs in PlayerBuiltBlocks\n"
+        message = message .. "      • Look for pets in workspace.Pets\n"
+        message = message .. "   ✅ If tile is FREE → Place egg\n"
+        message = message .. "   ⏭️ If tile is OCCUPIED → Skip to next tile\n"
+        message = message .. "4️⃣ Continue until no more eggs or tiles\n\n"
+        
+        -- Show current state
+        local availableEggsCount = #availableEggs
+        local availableTilesCount = #availableTiles
+        local petTileMap = mapPetsToFarmTiles()
+        local occupiedTilesCount = #petTileMap
+        
+        message = message .. "📊 CURRENT STATE:\n"
+        message = message .. string.format("🥚 Available Eggs: %d\n", availableEggsCount)
+        message = message .. string.format("📦 Available Tiles: %d\n", availableTilesCount)
+        message = message .. string.format("🔒 Occupied Tiles: %d\n", occupiedTilesCount)
+        
+        if availableEggsCount > 0 and availableTilesCount > 0 then
+            message = message .. "\n✅ READY TO PLACE!\n"
+            message = message .. "System will try to place eggs on free tiles only.\n"
+            message = message .. "Occupied tiles will be automatically skipped."
+        elseif availableEggsCount == 0 then
+            message = message .. "\n⚠️ NO EGGS AVAILABLE"
+        elseif availableTilesCount == 0 then
+            message = message .. "\n⚠️ NO TILES AVAILABLE"
+        end
+        
+        WindUI:Notify({ Title = "🔍 Placement Logic", Content = message, Duration = 12 })
+    end
+})
+
 local function formatPlaceStatusDesc()
     local lines = {}
     table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
@@ -2487,6 +2529,7 @@ local function attemptPlacement()
         -- Double-check tile is still available before placing
         local tileInfo = availableTiles[1]
         local isStillAvailable = true
+        local skipReason = nil
         
         if tileInfo then
             local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
@@ -2503,6 +2546,7 @@ local function attemptPlacement()
                         -- X/Z: 4 studs radius, Y: 8 studs radius
                         if xzDistance < 4.0 and yDistance < 8.0 then
                             isStillAvailable = false
+                            skipReason = "occupied by egg: " .. model.Name
                             break
                         end
                     end
@@ -2523,6 +2567,7 @@ local function attemptPlacement()
                     -- X/Z: 4 studs radius, Y: 8 studs radius
                     if xzDistance < 4.0 and yDistance < 8.0 then
                         isStillAvailable = false
+                        skipReason = "occupied by pet: " .. petInfo.name
                         break
                     end
                 end
@@ -2532,13 +2577,16 @@ local function attemptPlacement()
         if isStillAvailable then
             if placeEggInstantly(availableEggs[1], availableTiles[1]) then
                 placed = placed + 1
+                placeStatusData.lastAction = "✅ Placed egg on tile " .. tostring(tileInfo.index)
                 task.wait(0.2) -- Longer delay between successful placements
             else
                 -- Placement failed, tile was removed from availableTiles
+                placeStatusData.lastAction = "❌ Failed to place on tile " .. tostring(tileInfo.index)
                 task.wait(0.1) -- Quick retry
             end
         else
-            -- Tile is no longer available, remove it
+            -- Tile is no longer available, remove it and skip to next
+            placeStatusData.lastAction = "⏭️ Skipping tile " .. tostring(tileInfo.index) .. " - " .. (skipReason or "occupied")
             table.remove(availableTiles, 1)
             placeStatusData.availableTiles = #availableTiles
             updatePlaceStatusParagraph()
@@ -2546,10 +2594,10 @@ local function attemptPlacement()
     end
     
     if placed > 0 then
-        placeStatusData.lastAction = "Placed " .. tostring(placed) .. " eggs"
+        placeStatusData.lastAction = "🎉 Placed " .. tostring(placed) .. " eggs successfully"
         updatePlaceStatusParagraph()
     elseif attempts > 0 then
-        placeStatusData.lastAction = "Tried " .. tostring(attempts) .. " placements, no success"
+        placeStatusData.lastAction = "⚠️ Tried " .. tostring(attempts) .. " placements, no success"
         updatePlaceStatusParagraph()
     end
 end
