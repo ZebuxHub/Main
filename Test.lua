@@ -1251,7 +1251,7 @@ local function runAutoHatch()
             hatchStatus.last = "Paused - Auto Place has priority"
             updateHatchStatus()
             task.wait(1.0)
-            return
+            continue -- Use continue instead of return to keep the loop running
         end
         
         local ok, err = pcall(function()
@@ -1263,7 +1263,7 @@ local function runAutoHatch()
                 hatchStatus.last = "No owned eggs - Auto Place can work now"
                 updateHatchStatus()
                 task.wait(1.0)
-                return
+                return -- Return from pcall, not continue
             end
             local eggs = filterReadyEggs(owned)
             hatchStatus.ready = #eggs
@@ -1271,7 +1271,7 @@ local function runAutoHatch()
                 hatchStatus.last = "Owned but not ready - Auto Place can work now"
                 updateHatchStatus()
                 task.wait(0.8)
-                return
+                return -- Return from pcall, not continue
             end
             -- Try nearest first
             local me = getPlayerRootPosition()
@@ -1949,29 +1949,35 @@ local function scanAllTilesAndModels()
 end
 
 local function updateAvailableTiles()
-    local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels()
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    local farmParts = getFarmParts(islandNumber)
     
     availableTiles = {}
     
-    -- Collect all available tiles
-    for surfacePos, tileInfo in pairs(tileMap) do
-        if tileInfo.available then
+    -- Simple approach: check each farm part for occupancy
+    for i, farmPart in ipairs(farmParts) do
+        if not isFarmTileOccupied(farmPart, 6) then
             table.insert(availableTiles, { 
-                part = tileInfo.part, 
-                index = tileInfo.index,
-                surfacePos = surfacePos
+                part = farmPart, 
+                index = i,
+                surfacePos = Vector3.new(
+                    farmPart.Position.X,
+                    farmPart.Position.Y + 12, -- Eggs float 12 studs above tile surface
+                    farmPart.Position.Z
+                )
             })
         end
     end
     
     placeStatusData.availableTiles = #availableTiles
-    placeStatusData.totalTiles = totalTiles
-    placeStatusData.occupiedTiles = occupiedTiles
-    placeStatusData.lockedTiles = lockedTiles
+    placeStatusData.totalTiles = #farmParts
+    placeStatusData.occupiedTiles = #farmParts - #availableTiles
+    placeStatusData.lockedTiles = 0 -- Will be calculated separately if needed
     
     -- Debug info
-    placeStatusData.lastAction = string.format("Found %d available tiles out of %d unlocked (locked: %d, occupied: %d)", 
-        #availableTiles, totalTiles, lockedTiles, occupiedTiles)
+    placeStatusData.lastAction = string.format("Found %d available tiles out of %d total", 
+        #availableTiles, #farmParts)
     
     updatePlaceStatusParagraph()
 end
@@ -2413,9 +2419,17 @@ local function runAutoPlace()
         if #availableEggs == 0 or #availableTiles == 0 then
             placeStatusData.lastAction = "No eggs or tiles available - pausing Auto Place"
             updatePlaceStatusParagraph()
+            
+            -- Smart handoff: if Auto Hatch is enabled but not running, start it
+            if autoHatchEnabled and not autoHatchThread then
+                placeStatusData.lastAction = "No work - enabling Auto Hatch"
+                updatePlaceStatusParagraph()
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "No work - Auto Hatch can take over", Duration = 3 })
+            end
+            
             -- Pause Auto Place temporarily instead of stopping completely
             task.wait(2.0) -- Wait 2 seconds before checking again
-            return
+            continue -- Use continue to keep the loop running
         end
         
         local islandName = getAssignedIslandName()
@@ -2713,6 +2727,38 @@ Tabs.PlaceTab:Button({
             Title = "🔓 Unlock Complete", 
             Content = string.format("Unlocked %d tiles! 🎉", unlockedCount), 
             Duration = 3 
+        })
+    end
+})
+
+Tabs.PlaceTab:Button({
+    Title = "🔍 Debug Tile Scanning",
+    Desc = "Check why tiles aren't being found",
+    Callback = function()
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        local farmParts = getFarmParts(islandNumber)
+        
+        local message = string.format("🏝️ Island: %s (Number: %s)\n", tostring(islandName), tostring(islandNumber))
+        message = message .. string.format("📊 Total Farm Parts: %d\n", #farmParts)
+        
+        if #farmParts > 0 then
+            local availableCount = 0
+            for i, farmPart in ipairs(farmParts) do
+                if not isFarmTileOccupied(farmPart, 6) then
+                    availableCount = availableCount + 1
+                end
+            end
+            message = message .. string.format("✅ Available Tiles: %d\n", availableCount)
+            message = message .. string.format("❌ Occupied Tiles: %d\n", #farmParts - availableCount)
+        else
+            message = message .. "❌ No farm parts found!"
+        end
+        
+        WindUI:Notify({ 
+            Title = "🔍 Tile Debug", 
+            Content = message, 
+            Duration = 5 
         })
     end
 })
