@@ -421,6 +421,69 @@ local function getPetModelsOverlappingTile(farmPart)
     return models
 end
 
+-- Get all pet configurations that the player owns
+local function getPlayerPetConfigurations()
+    local petConfigs = {}
+    
+    if not LocalPlayer then return petConfigs end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return petConfigs end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return petConfigs end
+    
+    local petsFolder = data:FindFirstChild("Pets")
+    if not petsFolder then return petConfigs end
+    
+    -- Get all pet configurations
+    for _, petConfig in ipairs(petsFolder:GetChildren()) do
+        if petConfig:IsA("Configuration") then
+            table.insert(petConfigs, {
+                name = petConfig.Name,
+                config = petConfig
+            })
+        end
+    end
+    
+    return petConfigs
+end
+
+-- Check if a pet exists in workspace.Pets by configuration name
+local function findPetInWorkspace(petConfigName)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if not workspacePets then return nil end
+    
+    local petModel = workspacePets:FindFirstChild(petConfigName)
+    if petModel and petModel:IsA("Model") then
+        return petModel
+    end
+    
+    return nil
+end
+
+-- Get all player's pets that exist in workspace
+local function getPlayerPetsInWorkspace()
+    local petsInWorkspace = {}
+    local playerPets = getPlayerPetConfigurations()
+    local workspacePets = workspace:FindFirstChild("Pets")
+    
+    if not workspacePets then return petsInWorkspace end
+    
+    for _, petConfig in ipairs(playerPets) do
+        local petModel = workspacePets:FindFirstChild(petConfig.name)
+        if petModel and petModel:IsA("Model") then
+            table.insert(petsInWorkspace, {
+                name = petConfig.name,
+                model = petModel,
+                position = petModel:GetPivot().Position
+            })
+        end
+    end
+    
+    return petsInWorkspace
+end
+
 local function isFarmTileOccupied(farmPart, minDistance)
     minDistance = minDistance or 6
     local center = getTileCenterPosition(farmPart)
@@ -438,18 +501,11 @@ local function isFarmTileOccupied(farmPart, minDistance)
     end
     
     -- Check for fully hatched pets in workspace.Pets
-    local playerPets = getPlayerPetConfigurations()
-    local workspacePets = workspace:FindFirstChild("Pets")
-    
-    if workspacePets and #playerPets > 0 then
-        for _, petConfig in ipairs(playerPets) do
-            local petModel = workspacePets:FindFirstChild(petConfig.name)
-            if petModel and petModel:IsA("Model") then
-                local pivotPos = petModel:GetPivot().Position
-                if (pivotPos - center).Magnitude <= minDistance then
-                    return true
-                end
-            end
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        if (petPos - center).Magnitude <= minDistance then
+            return true
         end
     end
     
@@ -707,69 +763,6 @@ local function getPetUID()
     end
     
     return eggName
-end
-
--- Get all pet configurations that the player owns
-local function getPlayerPetConfigurations()
-    local petConfigs = {}
-    
-    if not LocalPlayer then return petConfigs end
-    
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return petConfigs end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return petConfigs end
-    
-    local petsFolder = data:FindFirstChild("Pets")
-    if not petsFolder then return petConfigs end
-    
-    -- Get all pet configurations
-    for _, petConfig in ipairs(petsFolder:GetChildren()) do
-        if petConfig:IsA("Configuration") then
-            table.insert(petConfigs, {
-                name = petConfig.Name,
-                config = petConfig
-            })
-        end
-    end
-    
-    return petConfigs
-end
-
--- Check if a pet exists in workspace.Pets by configuration name
-local function findPetInWorkspace(petConfigName)
-    local workspacePets = workspace:FindFirstChild("Pets")
-    if not workspacePets then return nil end
-    
-    local petModel = workspacePets:FindFirstChild(petConfigName)
-    if petModel and petModel:IsA("Model") then
-        return petModel
-    end
-    
-    return nil
-end
-
--- Get all player's pets that exist in workspace
-local function getPlayerPetsInWorkspace()
-    local petsInWorkspace = {}
-    local playerPets = getPlayerPetConfigurations()
-    local workspacePets = workspace:FindFirstChild("Pets")
-    
-    if not workspacePets then return petsInWorkspace end
-    
-    for _, petConfig in ipairs(playerPets) do
-        local petModel = workspacePets:FindFirstChild(petConfig.name)
-        if petModel and petModel:IsA("Model") then
-            table.insert(petsInWorkspace, {
-                name = petConfig.name,
-                model = petModel,
-                position = petModel:GetPivot().Position
-            })
-        end
-    end
-    
-    return petsInWorkspace
 end
 
 -- Available Egg helpers (Auto Place)
@@ -2265,6 +2258,25 @@ local function attemptPlacement()
                             isStillAvailable = false
                             break
                         end
+                    end
+                end
+            end
+            
+            -- Check for fully hatched pets in workspace.Pets
+            if isStillAvailable then
+                local playerPets = getPlayerPetsInWorkspace()
+                for _, petInfo in ipairs(playerPets) do
+                    local petPos = petInfo.position
+                    local tilePos = tileInfo.part.Position
+                    
+                    -- Separate X/Z and Y axis checks
+                    local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
+                    local yDistance = math.abs(petPos.Y - tilePos.Y)
+                    
+                    -- X/Z: 4 studs radius, Y: 8 studs radius
+                    if xzDistance < 4.0 and yDistance < 8.0 then
+                        isStillAvailable = false
+                        break
                     end
                 end
             end
