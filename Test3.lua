@@ -3604,51 +3604,13 @@ end)
 local bugReport = ""
 local suggestion = ""
 
-Tabs.BugTab:Section({ Title = "🐛 Bug Report", Icon = "bug" })
-
-Tabs.BugTab:Paragraph({
-    Title = "🐛 Report Bugs",
-    Desc = "Found a bug? Let us know so we can fix it!",
-    Image = "bug",
-    ImageSize = 18,
-})
-
-local bugInput = Tabs.BugTab:Input({
-    Title = "🐛 Bug Description",
-    Desc = "Describe the bug you encountered in detail",
-    Value = "",
-    Callback = function(value)
-        -- Store the bug report
-        bugReport = value
-    end
-})
-
-Tabs.BugTab:Section({ Title = "💡 Suggestions", Icon = "lightbulb" })
-
-Tabs.BugTab:Paragraph({
-    Title = "💡 Feature Suggestions",
-    Desc = "Have an idea for a new feature? We'd love to hear it!",
-    Image = "lightbulb",
-    ImageSize = 18,
-})
-
-local suggestionInput = Tabs.BugTab:Input({
-    Title = "💡 Suggestion",
-    Desc = "Describe your feature suggestion",
-    Value = "",
-    Callback = function(value)
-        -- Store the suggestion
-        suggestion = value
-    end
-})
-
--- Webhook function
-local function sendWebhook(content)
-    local webhookUrl = "https://discord.com/api/webhooks/1405490831858602004/ZO2TseFzWHNIHc15WQi6BZoM-nr2qUl7kwfMIAXYDFqcrwlbYxyJoqSK-sMUsSaqngwq" -- Replace with your webhook URL
+-- Webhook functions (define first)
+local function sendBugWebhook(content)
+    local webhookUrl = "https://discord.com/api/webhooks/1405492160949911603/hTXMSUqB5QgrOXiynMqPKBOypcZJ2IjnfU9YVe0tVKMb8rluV6wTV9U3QMn2mO7WYndF"
     
     local data = {
         content = content,
-        username = "Build A Zoo Bot",
+        username = "Build A Zoo - Bug Reports",
         avatar_url = "https://www.roblox.com/asset-thumbnail/image?assetId=123456789&width=180&height=180&format=png"
     }
     
@@ -3669,16 +3631,66 @@ local function sendWebhook(content)
     end)
     
     if success then
-        WindUI:Notify({ Title = "✅ Success", Content = "Report sent successfully!", Duration = 3 })
+        WindUI:Notify({ Title = "✅ Bug Report Sent", Content = "Thank you for reporting the bug!", Duration = 3 })
     else
-        WindUI:Notify({ Title = "❌ Error", Content = "Failed to send report. Please try again.", Duration = 3 })
+        WindUI:Notify({ Title = "❌ Error", Content = "Failed to send bug report. Please try again.", Duration = 3 })
     end
 end
 
--- Variables to store reports (already declared above)
+local function sendSuggestionWebhook(content)
+    local webhookUrl = "https://discord.com/api/webhooks/1405490831858602004/ZO2TseFzWHNIHc15WQi6BZoM-nr2qUl7kwfMIAXYDFqcrwlbYxyJoqSK-sMUsSaqngwq"
+    
+    local data = {
+        content = content,
+        username = "Build A Zoo - Suggestions",
+        avatar_url = "https://www.roblox.com/asset-thumbnail/image?assetId=123456789&width=180&height=180&format=png"
+    }
+    
+    local success, response = pcall(function()
+        local http = game:GetService("HttpService")
+        local encoded = http:JSONEncode(data)
+        
+        local response = http:RequestAsync({
+            Url = webhookUrl,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = encoded
+        })
+        
+        return response
+    end)
+    
+    if success then
+        WindUI:Notify({ Title = "✅ Suggestion Sent", Content = "Thank you for your suggestion!", Duration = 3 })
+    else
+        WindUI:Notify({ Title = "❌ Error", Content = "Failed to send suggestion. Please try again.", Duration = 3 })
+    end
+end
+
+-- Professional header
+Tabs.BugTab:Paragraph({
+    Title = "🐛 Build A Zoo - Bug Report & Suggestions",
+    Desc = "Help us improve the script by reporting bugs and suggesting features",
+    Image = "bug",
+    ImageSize = 18,
+})
+
+-- Bug Report Section
+Tabs.BugTab:Section({ Title = "🐛 Bug Report", Icon = "alert-triangle" })
+
+local bugInput = Tabs.BugTab:Input({
+    Title = "🐛 Bug Description",
+    Desc = "Describe the bug you encountered in detail",
+    Value = "",
+    Callback = function(value)
+        bugReport = value
+    end
+})
 
 Tabs.BugTab:Button({
-    Title = "📤 Send Bug Report",
+    Title = "📤 Submit Bug Report",
     Desc = "Send your bug report to the developers",
     Callback = function()
         if bugReport == "" or bugReport:match("^%s*$") then
@@ -3688,18 +3700,31 @@ Tabs.BugTab:Button({
         
         local playerName = LocalPlayer.Name
         local playerId = LocalPlayer.UserId
+        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
         
-        local content = string.format("🐛 **Bug Report**\n\n**Player:** %s (%d)\n**Game:** Build A Zoo\n**Time:** %s\n\n**Bug Description:**\n%s", 
-            playerName, playerId, os.date("%Y-%m-%d %H:%M:%S"), bugReport)
+        local content = string.format("🐛 **Bug Report**\n\n**Player:** %s (%d)\n**Game:** %s (Place ID: %d)\n**Time:** %s\n\n**Bug Description:**\n%s", 
+            playerName, playerId, game.Name, game.PlaceId, timestamp, bugReport)
         
-        sendWebhook(content)
-        bugReport = "" -- Clear after sending
-        bugInput:SetValue("") -- Clear input
+        sendBugWebhook(content)
+        bugReport = ""
+        bugInput:SetValue("")
+    end
+})
+
+-- Suggestions Section
+Tabs.BugTab:Section({ Title = "💡 Feature Suggestions", Icon = "lightbulb" })
+
+local suggestionInput = Tabs.BugTab:Input({
+    Title = "💡 Feature Suggestion",
+    Desc = "Describe your feature suggestion in detail",
+    Value = "",
+    Callback = function(value)
+        suggestion = value
     end
 })
 
 Tabs.BugTab:Button({
-    Title = "📤 Send Suggestion",
+    Title = "📤 Submit Suggestion",
     Desc = "Send your feature suggestion to the developers",
     Callback = function()
         if suggestion == "" or suggestion:match("^%s*$") then
@@ -3709,47 +3734,18 @@ Tabs.BugTab:Button({
         
         local playerName = LocalPlayer.Name
         local playerId = LocalPlayer.UserId
+        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
         
-        local content = string.format("💡 **Feature Suggestion**\n\n**Player:** %s (%d)\n**Game:** Build A Zoo\n**Time:** %s\n\n**Suggestion:**\n%s", 
-            playerName, playerId, os.date("%Y-%m-%d %H:%M:%S"), suggestion)
+        local content = string.format("💡 **Feature Suggestion**\n\n**Player:** %s (%d)\n**Game:** %s (Place ID: %d)\n**Time:** %s\n\n**Suggestion:**\n%s", 
+            playerName, playerId, game.Name, game.PlaceId, timestamp, suggestion)
         
-        sendWebhook(content)
-        suggestion = "" -- Clear after sending
-        suggestionInput:SetValue("") -- Clear input
+        sendSuggestionWebhook(content)
+        suggestion = ""
+        suggestionInput:SetValue("")
     end
 })
 
-Tabs.BugTab:Button({
-    Title = "📤 Send Both",
-    Desc = "Send both bug report and suggestion at once",
-    Callback = function()
-        if (bugReport == "" or bugReport:match("^%s*$")) and (suggestion == "" or suggestion:match("^%s*$")) then
-            WindUI:Notify({ Title = "❌ Error", Content = "Please enter at least a bug report or suggestion!", Duration = 3 })
-            return
-        end
-        
-        local playerName = LocalPlayer.Name
-        local playerId = LocalPlayer.UserId
-        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-        
-        local content = string.format("📋 **User Report**\n\n**Player:** %s (%d)\n**Game:** Build A Zoo\n**Time:** %s\n\n", 
-            playerName, playerId, timestamp)
-        
-        if bugReport ~= "" and not bugReport:match("^%s*$") then
-            content = content .. string.format("🐛 **Bug Report:**\n%s\n\n", bugReport)
-        end
-        
-        if suggestion ~= "" and not suggestion:match("^%s*$") then
-            content = content .. string.format("💡 **Suggestion:**\n%s", suggestion)
-        end
-        
-        sendWebhook(content)
-        bugReport = "" -- Clear after sending
-        suggestion = "" -- Clear after sending
-        bugInput:SetValue("") -- Clear input
-        suggestionInput:SetValue("") -- Clear input
-    end
-})
+-- Webhook functions already defined above
 
 Window:OnClose(function()
     print("UI closed.")
