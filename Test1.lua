@@ -574,7 +574,7 @@ local function isFarmTileOccupied(farmPart, minDistance)
     -- Calculate surface position (same as placement logic)
     local surfacePosition = Vector3.new(
         center.X,
-        center.Y + (farmPart.Size.Y / 2), -- Top surface
+        center.Y + 12, -- Eggs float 12 studs above tile surface
         center.Z
     )
     
@@ -1399,10 +1399,10 @@ local function placePetAtPart(farmPart, petUID)
         return false
     end
     
-    -- Place pet on surface (top of the farm split tile)
+    -- Place pet on surface (12 studs above the farm split tile)
     local surfacePosition = Vector3.new(
         farmPart.Position.X,
-        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
+        farmPart.Position.Y + 12, -- Eggs float 12 studs above tile surface
         farmPart.Position.Z
     )
     
@@ -1912,7 +1912,7 @@ local function scanAllTilesAndModels()
     for i, part in ipairs(farmParts) do
         local surfacePos = Vector3.new(
             part.Position.X,
-            part.Position.Y + (part.Size.Y / 2), -- Top surface
+            part.Position.Y + 12, -- Eggs float 12 studs above tile surface
             part.Position.Z
         )
         tileMap[surfacePos] = {
@@ -2104,7 +2104,7 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 -- Calculate surface position (same as placement logic)
                 local surfacePos = Vector3.new(
                     tilePos.X,
-                    tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
+                    tilePos.Y + 12, -- Eggs float 12 studs above tile surface
                     tilePos.Z
                 )
                 
@@ -2128,12 +2128,12 @@ local function placeEggInstantly(eggInfo, tileInfo)
         local petPos = petInfo.position
         local tilePos = tilePart.Position
         
-        -- Calculate surface position (same as placement logic)
-        local surfacePos = Vector3.new(
-            tilePos.X,
-            tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
-            tilePos.Z
-        )
+                        -- Calculate surface position (same as placement logic)
+                local surfacePos = Vector3.new(
+                    tilePos.X,
+                    tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+                    tilePos.Z
+                )
         
         -- Separate X/Z and Y axis checks
         local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
@@ -2170,10 +2170,10 @@ local function placeEggInstantly(eggInfo, tileInfo)
         end
     end
     
-    -- Place egg on surface (top of the farm split tile)
+    -- Place egg on surface (12 studs above the farm split tile)
     local surfacePosition = Vector3.new(
         tilePart.Position.X,
-        tilePart.Position.Y + (tilePart.Size.Y / 2), -- Top surface
+        tilePart.Position.Y + 12, -- Eggs float 12 studs above tile surface
         tilePart.Position.Z
     )
     
@@ -2292,12 +2292,12 @@ local function attemptPlacement()
                         local modelPos = model:GetPivot().Position
                         local tilePos = tileInfo.part.Position
                         
-                        -- Calculate surface position (same as placement logic)
-                        local surfacePos = Vector3.new(
-                            tilePos.X,
-                            tilePos.Y + (tileInfo.part.Size.Y / 2), -- Top surface
-                            tilePos.Z
-                        )
+                                            -- Calculate surface position (same as placement logic)
+                    local surfacePos = Vector3.new(
+                        tilePos.X,
+                        tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+                        tilePos.Z
+                    )
                         
                         -- Separate X/Z and Y axis checks
                         local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
@@ -2322,7 +2322,7 @@ local function attemptPlacement()
                     -- Calculate surface position (same as placement logic)
                     local surfacePos = Vector3.new(
                         tilePos.X,
-                        tilePos.Y + (tileInfo.part.Size.Y / 2), -- Top surface
+                        tilePos.Y + 12, -- Eggs float 12 studs above tile surface
                         tilePos.Z
                     )
                     
