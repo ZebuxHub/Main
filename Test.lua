@@ -3363,21 +3363,35 @@ Tabs.SaveTab:Button({
     Callback = function()
         zooConfig:Save()
         
-        -- Debug: Show what mutations are selected
+        -- Debug: Show what's being saved
         local mutationCount = 0
         for _ in pairs(selectedMutationSet) do
             mutationCount = mutationCount + 1
         end
         
+        local eggCount = 0
+        for _ in pairs(selectedTypeSet) do
+            eggCount = eggCount + 1
+        end
+        
+        local placeEggCount = #selectedEggTypes
+        
         local message = "All your settings have been saved! 🎉"
         if mutationCount > 0 then
-            message = message .. string.format("\nMutations selected: %d", mutationCount)
+            message = message .. string.format("\n🧬 Mutations: %d", mutationCount)
         end
+        if eggCount > 0 then
+            message = message .. string.format("\n🥚 Eggs: %d", eggCount)
+        end
+        if placeEggCount > 0 then
+            message = message .. string.format("\n🏠 Place Eggs: %d", placeEggCount)
+        end
+        message = message .. string.format("\n🎯 Priority: %s", automationPriority)
         
         WindUI:Notify({ 
             Title = "💾 Settings Saved", 
             Content = message, 
-            Duration = 3 
+            Duration = 5 
         })
     end
 })
@@ -3388,21 +3402,39 @@ Tabs.SaveTab:Button({
     Callback = function()
         zooConfig:Load()
         
-        -- Debug: Show what mutations are loaded
+        -- Restore all selections after manual load
+        task.wait(0.1)
+        -- Note: restoreAllSelections is called automatically in the auto-load function
+        
+        -- Debug: Show what's been loaded
         local mutationCount = 0
         for _ in pairs(selectedMutationSet) do
             mutationCount = mutationCount + 1
         end
         
+        local eggCount = 0
+        for _ in pairs(selectedTypeSet) do
+            eggCount = eggCount + 1
+        end
+        
+        local placeEggCount = #selectedEggTypes
+        
         local message = "Your settings have been loaded! 🎉"
         if mutationCount > 0 then
-            message = message .. string.format("\nMutations loaded: %d", mutationCount)
+            message = message .. string.format("\n🧬 Mutations: %d", mutationCount)
         end
+        if eggCount > 0 then
+            message = message .. string.format("\n🥚 Eggs: %d", eggCount)
+        end
+        if placeEggCount > 0 then
+            message = message .. string.format("\n🏠 Place Eggs: %d", placeEggCount)
+        end
+        message = message .. string.format("\n🎯 Priority: %s", automationPriority)
         
         WindUI:Notify({ 
             Title = "📂 Settings Loaded", 
             Content = message, 
-            Duration = 3 
+            Duration = 5 
         })
     end
 })
@@ -3473,6 +3505,69 @@ local function restoreMutationSelection()
     end
 end
 
+-- Function to restore all dropdown selections after loading
+local function restoreAllSelections()
+    -- Restore mutation selection
+    if mutationDropdown and selectedMutationSet then
+        local selectedMutations = {}
+        for mutation in pairs(selectedMutationSet) do
+            table.insert(selectedMutations, mutation)
+        end
+        if #selectedMutations > 0 then
+            if mutationDropdown.SetValue then
+                mutationDropdown:SetValue(selectedMutations)
+            end
+            statusData.selectedMutations = table.concat(selectedMutations, ", ")
+            updateStatusParagraph()
+            print("Restored mutations:", table.concat(selectedMutations, ", "))
+        end
+    end
+    
+    -- Restore egg selection
+    if eggDropdown and selectedTypeSet then
+        local selectedEggs = {}
+        for eggType in pairs(selectedTypeSet) do
+            table.insert(selectedEggs, eggType)
+        end
+        if #selectedEggs > 0 then
+            if eggDropdown.SetValue then
+                eggDropdown:SetValue(selectedEggs)
+            end
+            statusData.selectedTypes = table.concat(selectedEggs, ", ")
+            updateStatusParagraph()
+            print("Restored eggs:", table.concat(selectedEggs, ", "))
+        end
+    end
+    
+    -- Restore place egg selection
+    if placeEggDropdown and selectedEggTypes then
+        if #selectedEggTypes > 0 then
+            if placeEggDropdown.SetValue then
+                placeEggDropdown:SetValue(selectedEggTypes)
+            end
+            placeStatusData.selectedEggs = #selectedEggTypes
+            updatePlaceStatusParagraph()
+            print("Restored place eggs:", table.concat(selectedEggTypes, ", "))
+        end
+    end
+    
+    -- Restore priority selection
+    if priorityDropdown then
+        local priorityValue
+        if automationPriority == "Hatch" then
+            priorityValue = "⚡ Auto Hatch First"
+        elseif automationPriority == "Place" then
+            priorityValue = "🏠 Auto Place First"
+        else
+            priorityValue = "❌ No Priority"
+        end
+        if priorityDropdown.SetValue then
+            priorityDropdown:SetValue(priorityValue)
+        end
+        print("Restored priority:", priorityValue)
+    end
+end
+
 -- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for external modules to load
@@ -3487,9 +3582,9 @@ task.spawn(function()
     
     if zooConfig then
         zooConfig:Load()
-        -- Restore mutation selection after loading
+        -- Restore all selections after loading
         task.wait(0.5) -- Small delay to ensure UI is ready
-        restoreMutationSelection()
+        restoreAllSelections()
         WindUI:Notify({ 
             Title = "📂 Auto-Load", 
             Content = "Your saved settings have been loaded! 🎉", 
