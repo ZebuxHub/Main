@@ -2103,9 +2103,16 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 local modelPos = model:GetPivot().Position
                 local tilePos = tilePart.Position
                 
+                -- Calculate surface position (same as placement logic)
+                local surfacePos = Vector3.new(
+                    tilePos.X,
+                    tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
+                    tilePos.Z
+                )
+                
                 -- Separate X/Z and Y axis checks
-                local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
+                local yDistance = math.abs(modelPos.Y - surfacePos.Y)
                 
                 -- X/Z: 4 studs radius, Y: 8 studs radius
                 if xzDistance < 4.0 and yDistance < 8.0 then
@@ -2123,9 +2130,16 @@ local function placeEggInstantly(eggInfo, tileInfo)
         local petPos = petInfo.position
         local tilePos = tilePart.Position
         
+        -- Calculate surface position (same as placement logic)
+        local surfacePos = Vector3.new(
+            tilePos.X,
+            tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
+            tilePos.Z
+        )
+        
         -- Separate X/Z and Y axis checks
-        local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
-        local yDistance = math.abs(petPos.Y - tilePos.Y)
+        local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
+        local yDistance = math.abs(petPos.Y - surfacePos.Y)
         
         -- X/Z: 4 studs radius, Y: 8 studs radius
         if xzDistance < 4.0 and yDistance < 8.0 then
@@ -2280,9 +2294,16 @@ local function attemptPlacement()
                         local modelPos = model:GetPivot().Position
                         local tilePos = tileInfo.part.Position
                         
+                        -- Calculate surface position (same as placement logic)
+                        local surfacePos = Vector3.new(
+                            tilePos.X,
+                            tilePos.Y + (tileInfo.part.Size.Y / 2), -- Top surface
+                            tilePos.Z
+                        )
+                        
                         -- Separate X/Z and Y axis checks
-                        local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                        local yDistance = math.abs(modelPos.Y - tilePos.Y)
+                        local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
+                        local yDistance = math.abs(modelPos.Y - surfacePos.Y)
                         
                         -- X/Z: 4 studs radius, Y: 8 studs radius
                         if xzDistance < 4.0 and yDistance < 8.0 then
@@ -2300,9 +2321,16 @@ local function attemptPlacement()
                     local petPos = petInfo.position
                     local tilePos = tileInfo.part.Position
                     
+                    -- Calculate surface position (same as placement logic)
+                    local surfacePos = Vector3.new(
+                        tilePos.X,
+                        tilePos.Y + (tileInfo.part.Size.Y / 2), -- Top surface
+                        tilePos.Z
+                    )
+                    
                     -- Separate X/Z and Y axis checks
-                    local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
-                    local yDistance = math.abs(petPos.Y - tilePos.Y)
+                    local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
+                    local yDistance = math.abs(petPos.Y - surfacePos.Y)
                     
                     -- X/Z: 4 studs radius, Y: 8 studs radius
                     if xzDistance < 4.0 and yDistance < 8.0 then
