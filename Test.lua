@@ -276,11 +276,7 @@ local function getEggMutation(eggUID)
     return nil
 end
 
--- Player helpers
-local function getAssignedIslandName()
-    if not LocalPlayer then return nil end
-    return LocalPlayer:GetAttribute("AssignedIslandName")
-end
+-- Player helpers (getAssignedIslandName moved earlier to fix undefined global error)
 
 local function getPlayerNetWorth()
     if not LocalPlayer then return 0 end
