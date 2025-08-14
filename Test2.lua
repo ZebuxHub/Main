@@ -34,6 +34,7 @@ Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
+Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
 -- Forward declarations for status used by UI callbacks defined below
@@ -1399,10 +1400,10 @@ local function placePetAtPart(farmPart, petUID)
         return false
     end
     
-    -- Place pet on surface (12 studs above the farm split tile)
+    -- Place pet on surface (top of the farm split tile)
     local surfacePosition = Vector3.new(
         farmPart.Position.X,
-        farmPart.Position.Y + 12, -- Eggs float 12 studs above tile surface
+        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
         farmPart.Position.Z
     )
     
@@ -2170,10 +2171,10 @@ local function placeEggInstantly(eggInfo, tileInfo)
         end
     end
     
-    -- Place egg on surface (12 studs above the farm split tile)
+    -- Place egg on surface (top of the farm split tile)
     local surfacePosition = Vector3.new(
         tilePart.Position.X,
-        tilePart.Position.Y + 12, -- Eggs float 12 studs above tile surface
+        tilePart.Position.Y + (tilePart.Size.Y / 2), -- Top surface
         tilePart.Position.Z
     )
     
@@ -3597,6 +3598,158 @@ task.spawn(function()
         })
     end
 end)
+
+-- ============ Bug Report / Suggestions ============
+-- Variables to store reports (declare first)
+local bugReport = ""
+local suggestion = ""
+
+Tabs.BugTab:Section({ Title = "🐛 Bug Report", Icon = "bug" })
+
+Tabs.BugTab:Paragraph({
+    Title = "🐛 Report Bugs",
+    Desc = "Found a bug? Let us know so we can fix it!",
+    Image = "bug",
+    ImageSize = 18,
+})
+
+local bugInput = Tabs.BugTab:Input({
+    Title = "🐛 Bug Description",
+    Desc = "Describe the bug you encountered in detail",
+    Value = "",
+    Callback = function(value)
+        -- Store the bug report
+        bugReport = value
+    end
+})
+
+Tabs.BugTab:Section({ Title = "💡 Suggestions", Icon = "lightbulb" })
+
+Tabs.BugTab:Paragraph({
+    Title = "💡 Feature Suggestions",
+    Desc = "Have an idea for a new feature? We'd love to hear it!",
+    Image = "lightbulb",
+    ImageSize = 18,
+})
+
+local suggestionInput = Tabs.BugTab:Input({
+    Title = "💡 Suggestion",
+    Desc = "Describe your feature suggestion",
+    Value = "",
+    Callback = function(value)
+        -- Store the suggestion
+        suggestion = value
+    end
+})
+
+-- Webhook function
+local function sendWebhook(content)
+    local webhookUrl = "https://discord.com/api/webhooks/1405490831858602004/ZO2TseFzWHNIHc15WQi6BZoM-nr2qUl7kwfMIAXYDFqcrwlbYxyJoqSK-sMUsSaqngwq" -- Replace with your webhook URL
+    
+    local data = {
+        content = content,
+        username = "Build A Zoo Bot",
+        avatar_url = "https://www.roblox.com/asset-thumbnail/image?assetId=123456789&width=180&height=180&format=png"
+    }
+    
+    local success, response = pcall(function()
+        local http = game:GetService("HttpService")
+        local encoded = http:JSONEncode(data)
+        
+        local response = http:RequestAsync({
+            Url = webhookUrl,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = encoded
+        })
+        
+        return response
+    end)
+    
+    if success then
+        WindUI:Notify({ Title = "✅ Success", Content = "Report sent successfully!", Duration = 3 })
+    else
+        WindUI:Notify({ Title = "❌ Error", Content = "Failed to send report. Please try again.", Duration = 3 })
+    end
+end
+
+-- Variables to store reports (already declared above)
+
+Tabs.BugTab:Button({
+    Title = "📤 Send Bug Report",
+    Desc = "Send your bug report to the developers",
+    Callback = function()
+        if bugReport == "" or bugReport:match("^%s*$") then
+            WindUI:Notify({ Title = "❌ Error", Content = "Please enter a bug description first!", Duration = 3 })
+            return
+        end
+        
+        local playerName = LocalPlayer.Name
+        local playerId = LocalPlayer.UserId
+        
+        local content = string.format("🐛 **Bug Report**\n\n**Player:** %s (%d)\n**Game:** Build A Zoo\n**Time:** %s\n\n**Bug Description:**\n%s", 
+            playerName, playerId, os.date("%Y-%m-%d %H:%M:%S"), bugReport)
+        
+        sendWebhook(content)
+        bugReport = "" -- Clear after sending
+        bugInput:SetValue("") -- Clear input
+    end
+})
+
+Tabs.BugTab:Button({
+    Title = "📤 Send Suggestion",
+    Desc = "Send your feature suggestion to the developers",
+    Callback = function()
+        if suggestion == "" or suggestion:match("^%s*$") then
+            WindUI:Notify({ Title = "❌ Error", Content = "Please enter a suggestion first!", Duration = 3 })
+            return
+        end
+        
+        local playerName = LocalPlayer.Name
+        local playerId = LocalPlayer.UserId
+        
+        local content = string.format("💡 **Feature Suggestion**\n\n**Player:** %s (%d)\n**Game:** Build A Zoo\n**Time:** %s\n\n**Suggestion:**\n%s", 
+            playerName, playerId, os.date("%Y-%m-%d %H:%M:%S"), suggestion)
+        
+        sendWebhook(content)
+        suggestion = "" -- Clear after sending
+        suggestionInput:SetValue("") -- Clear input
+    end
+})
+
+Tabs.BugTab:Button({
+    Title = "📤 Send Both",
+    Desc = "Send both bug report and suggestion at once",
+    Callback = function()
+        if (bugReport == "" or bugReport:match("^%s*$")) and (suggestion == "" or suggestion:match("^%s*$")) then
+            WindUI:Notify({ Title = "❌ Error", Content = "Please enter at least a bug report or suggestion!", Duration = 3 })
+            return
+        end
+        
+        local playerName = LocalPlayer.Name
+        local playerId = LocalPlayer.UserId
+        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+        
+        local content = string.format("📋 **User Report**\n\n**Player:** %s (%d)\n**Game:** Build A Zoo\n**Time:** %s\n\n", 
+            playerName, playerId, timestamp)
+        
+        if bugReport ~= "" and not bugReport:match("^%s*$") then
+            content = content .. string.format("🐛 **Bug Report:**\n%s\n\n", bugReport)
+        end
+        
+        if suggestion ~= "" and not suggestion:match("^%s*$") then
+            content = content .. string.format("💡 **Suggestion:**\n%s", suggestion)
+        end
+        
+        sendWebhook(content)
+        bugReport = "" -- Clear after sending
+        suggestion = "" -- Clear after sending
+        bugInput:SetValue("") -- Clear input
+        suggestionInput:SetValue("") -- Clear input
+    end
+})
 
 Window:OnClose(function()
     print("UI closed.")
