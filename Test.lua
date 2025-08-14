@@ -138,7 +138,14 @@ local function buildMutationList()
         -- Filter out meta keys like _index, __index, and any leading underscore entries
         if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
             local mutationName = val.Name or val.ID or val.Id or idStr
-            table.insert(mutations, tostring(mutationName))
+            mutationName = tostring(mutationName)
+            
+            -- Special mapping: if mutation ID is "Dino", display as "Jurassic"
+            if string.lower(idStr) == "dino" or string.lower(mutationName) == "dino" then
+                mutationName = "Jurassic"
+            end
+            
+            table.insert(mutations, mutationName)
         end
     end
     table.sort(mutations)
@@ -1588,8 +1595,15 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
             return false, nil, nil
         end
         -- Check if egg has a selected mutation
-        if not selectedMutationSet[eggMutation] then
-            warn("Skipping egg " .. eggInstance.Name .. " - mutation " .. eggMutation .. " not in selected list")
+        -- Handle special mapping: if egg mutation is "Dino", treat it as "Jurassic"
+        local mappedEggMutation = eggMutation
+        if string.lower(eggMutation) == "dino" then
+            mappedEggMutation = "Jurassic"
+            warn("Mapping egg mutation from 'Dino' to 'Jurassic'")
+        end
+        
+        if not selectedMutationSet[mappedEggMutation] then
+            warn("Skipping egg " .. eggInstance.Name .. " - mutation " .. mappedEggMutation .. " not in selected list")
             return false, nil, nil
         end
         warn("Egg " .. eggInstance.Name .. " has valid mutation: " .. eggMutation)
