@@ -158,10 +158,7 @@ local function tryCreateTextInput(parent, opts)
     return created
 end
 
-local function caseInsensitiveContains(hay, needle)
-    if type(hay) ~= "string" or type(needle) ~= "string" then return false end
-    return string.find(string.lower(hay), string.lower(needle), 1, true) ~= nil
-end
+-- Removed unused function caseInsensitiveContains
 
 local function getEggPriceById(eggId)
     local entry = eggConfig[eggId] or eggConfig[tonumber(eggId)]
@@ -1404,7 +1401,7 @@ local function placePetAtPart(farmPart, petUID)
     end)
     
     if not ok then
-        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(position) .. ": " .. tostring(err))
+        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(surfacePosition) .. ": " .. tostring(err))
         return false
     end
     
