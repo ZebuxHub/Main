@@ -54,6 +54,7 @@ local automationPriority = "Hatch" -- "Hatch" or "Place"
 local eggConfig = {}
 local conveyorConfig = {}
 local petFoodConfig = {}
+local mutationConfig = {}
 
 local function loadEggConfig()
     local ok, cfg = pcall(function()
@@ -94,6 +95,19 @@ local function loadPetFoodConfig()
         petFoodConfig = {}
     end
 end
+
+local function loadMutationConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResMutate")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        mutationConfig = cfg
+    else
+        mutationConfig = {}
+    end
+end
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
         local t = val.Type or val.Name or val.type or val.name
@@ -115,6 +129,20 @@ local function buildEggIdList()
     end
     table.sort(ids)
     return ids
+end
+
+local function buildMutationList()
+    local mutations = {}
+    for id, val in pairs(mutationConfig) do
+        local idStr = tostring(id)
+        -- Filter out meta keys like _index, __index, and any leading underscore entries
+        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+            local mutationName = val.Name or val.ID or val.Id or idStr
+            table.insert(mutations, tostring(mutationName))
+        end
+    end
+    table.sort(mutations)
+    return mutations
 end
 
 -- UI helpers
@@ -177,6 +205,54 @@ local function getEggPriceByType(eggType)
             end
         end
     end
+    return nil
+end
+
+-- Function to read mutation from egg GUI
+local function getEggMutation(eggUID)
+    if not eggUID then return nil end
+    
+    local islandName = getAssignedIslandName()
+    if not islandName then return nil end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return nil end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return nil end
+    
+    local conveyor = env:FindFirstChild("Conveyor")
+    if not conveyor then return nil end
+    
+    -- Check all conveyor belts
+    for i = 1, 9 do
+        local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+        if conveyorBelt then
+            local belt = conveyorBelt:FindFirstChild("Belt")
+            if belt then
+                local eggModel = belt:FindFirstChild(eggUID)
+                if eggModel and eggModel:IsA("Model") then
+                    local rootPart = eggModel:FindFirstChild("RootPart")
+                    if rootPart then
+                        local eggGUI = rootPart:FindFirstChild("GUI/EggGUI")
+                        if eggGUI then
+                            local mutateText = eggGUI:FindFirstChild("Mutate")
+                            if mutateText and mutateText:IsA("TextLabel") then
+                                local mutationText = mutateText.Text
+                                if mutationText and mutationText ~= "" then
+                                    return mutationText
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
     return nil
 end
 
@@ -1157,7 +1233,7 @@ local function runAutoHatch()
             local owned = collectOwnedEggs()
             hatchStatus.owned = #owned
             if #owned == 0 then
-                hatchStatus.last = "No owned eggs"
+                hatchStatus.last = "No owned eggs - Auto Place can work now"
                 updateHatchStatus()
                 task.wait(1.0)
                 return
@@ -1165,7 +1241,7 @@ local function runAutoHatch()
             local eggs = filterReadyEggs(owned)
             hatchStatus.ready = #eggs
             if #eggs == 0 then
-                hatchStatus.last = "Owned but not ready"
+                hatchStatus.last = "Owned but not ready - Auto Place can work now"
                 updateHatchStatus()
                 task.wait(0.8)
                 return
@@ -1303,11 +1379,17 @@ local function placePetAtPart(farmPart, petUID)
         return false
     end
     
-    local position = farmPart.Position
+    -- Place pet on surface (top of the farm split tile)
+    local surfacePosition = Vector3.new(
+        farmPart.Position.X,
+        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
+        farmPart.Position.Z
+    )
+    
     local args = {
         "Place",
         {
-            DST = vector.create(position.X, position.Y, position.Z),
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
             ID = petUID
         }
     }
@@ -1333,8 +1415,11 @@ end
 loadEggConfig()
 loadConveyorConfig()
 loadPetFoodConfig()
+loadMutationConfig()
 local eggIdList = buildEggIdList()
+local mutationList = buildMutationList()
 local selectedTypeSet = {}
+local selectedMutationSet = {}
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
@@ -1371,6 +1456,45 @@ eggDropdown = Tabs.AutoTab:Dropdown({
         end
 })
 
+local mutationDropdown
+mutationDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🧬 Pick Mutations",
+    Desc = "Choose which mutations to buy (leave empty to buy all)",
+    Values = mutationList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        selectedMutationSet = {}
+        if type(selection) == "table" then
+            for _, mutation in ipairs(selection) do
+                selectedMutationSet[tostring(mutation)] = true
+            end
+        elseif type(selection) == "string" then
+            selectedMutationSet[tostring(selection)] = true
+        end
+        -- update selected mutations display
+        local keys = {}
+        for k in pairs(selectedMutationSet) do table.insert(keys, k) end
+        table.sort(keys)
+        statusData.selectedMutations = table.concat(keys, ", ")
+        updateStatusParagraph()
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "🔄 Refresh Mutation List",
+    Desc = "Update the mutation list if it's not showing all mutations",
+    Callback = function()
+        loadMutationConfig()
+        if mutationDropdown and mutationDropdown.Refresh then
+            mutationDropdown:Refresh(buildMutationList())
+        end
+        updateStatusParagraph()
+        WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
+    end
+})
+
 local autoBuyEnabled = false
 local autoBuyThread = nil
 
@@ -1399,7 +1523,8 @@ local function formatStatusDesc()
     table.insert(lines, string.format("Island: %s", tostring(statusData.islandName or "?")))
     table.insert(lines, string.format("NetWorth: %s", tostring(statusData.netWorth)))
     table.insert(lines, string.format("Belt: %d eggs | Match %d | Can buy %d", statusData.eggsFound or 0, statusData.matchingFound or 0, statusData.affordableFound or 0))
-    if statusData.selectedTypes then table.insert(lines, "Selected: " .. statusData.selectedTypes) end
+    if statusData.selectedTypes then table.insert(lines, "Selected Eggs: " .. statusData.selectedTypes) end
+    if statusData.selectedMutations then table.insert(lines, "Selected Mutations: " .. statusData.selectedMutations) end
     if statusData.lastUID then table.insert(lines, "Last Buy: " .. tostring(statusData.lastUID)) end
     table.insert(lines, "Status: " .. tostring(statusData.lastAction))
     return table.concat(lines, "\n")
@@ -1424,6 +1549,21 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
     if type(price) ~= "number" then return false, nil, nil end
     if playerMoney < price then return false, nil, nil end
+    
+    -- Check mutation if mutations are selected
+    if selectedMutationSet and next(selectedMutationSet) then
+        local eggMutation = getEggMutation(eggInstance.Name)
+        if eggMutation then
+            -- If mutations are selected, only buy if egg has a selected mutation
+            if not selectedMutationSet[eggMutation] then
+                return false, nil, nil
+            end
+        else
+            -- If mutations are selected but egg has no mutation, don't buy
+            return false, nil, nil
+        end
+    end
+    
     return true, eggInstance.Name, price
 end
 
@@ -1823,338 +1963,6 @@ local function updateAvailableTiles()
     updatePlaceStatusParagraph()
 end
 
-Tabs.PlaceTab:Button({
-    Title = "🔄 Refresh Tiles",
-    Desc = "Check for empty tiles again",
-    Callback = function()
-        updateAvailableTiles()
-        WindUI:Notify({ Title = "🏠 Tile Refresh", Content = "Checked tiles again!", Duration = 3 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "🔍 Check Tile Status",
-    Desc = "Show detailed information about tiles (unlocked/locked/occupied)",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        if not islandName then
-            WindUI:Notify({ Title = "🔍 Tile Status", Content = "No island assigned!", Duration = 3 })
-            return
-        end
-        
-        local islandNumber = getIslandNumberFromName(islandName)
-        local farmParts = getFarmParts(islandNumber)
-        
-        -- Count different types of tiles
-        local totalTiles = #farmParts
-        local occupiedTiles = 0
-        local lockedTiles = 0
-        
-        -- Count occupied tiles (both eggs and fully hatched pets)
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        if playerBuiltBlocks then
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") then
-                    for _, part in ipairs(farmParts) do
-                        local modelPos = model:GetPivot().Position
-                        local tilePos = part.Position
-                        local xzDistance = math.sqrt((modelPos.X - tilePos.X)^2 + (modelPos.Z - tilePos.Z)^2)
-                        local yDistance = math.abs(modelPos.Y - tilePos.Y)
-                        if xzDistance < 4.0 and yDistance < 8.0 then
-                            occupiedTiles = occupiedTiles + 1
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        
-        -- Count tiles occupied by fully hatched pets
-        local playerPets = getPlayerPetsInWorkspace()
-        for _, petInfo in ipairs(playerPets) do
-            for _, part in ipairs(farmParts) do
-                local petPos = petInfo.position
-                local tilePos = part.Position
-                local xzDistance = math.sqrt((petPos.X - tilePos.X)^2 + (petPos.Z - tilePos.Z)^2)
-                local yDistance = math.abs(petPos.Y - tilePos.Y)
-                if xzDistance < 4.0 and yDistance < 8.0 then
-                    occupiedTiles = occupiedTiles + 1
-                    break
-                end
-            end
-        end
-        
-        -- Count locked tiles
-        local art = workspace:FindFirstChild("Art")
-        if art then
-            local island = art:FindFirstChild(islandName)
-            if island then
-                local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
-                if locksFolder then
-                    for _, lockModel in ipairs(locksFolder:GetChildren()) do
-                        if lockModel:IsA("Model") then
-                            local farmPart = lockModel:FindFirstChild("Farm")
-                            if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
-                                lockedTiles = lockedTiles + 1
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        local availableTiles = totalTiles - occupiedTiles
-        local message = string.format("🏝️ Island: %s\n📊 Total Unlocked: %d\n🔒 Locked: %d\n❌ Occupied: %d\n✅ Available: %d", 
-            islandName, totalTiles, lockedTiles, occupiedTiles, availableTiles)
-        
-        WindUI:Notify({ Title = "🔍 Tile Status", Content = message, Duration = 5 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "🔍 Debug Tile Locks",
-    Desc = "Show detailed relationship between farm splits and locks",
-    Callback = function()
-        debugTileLockRelationship()
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "📐 Show CFrame Info",
-    Desc = "Display CFrame and size information for locks and farm splits",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        if not islandName then
-            WindUI:Notify({ Title = "📐 CFrame Info", Content = "No island assigned!", Duration = 3 })
-            return
-        end
-        
-        local art = workspace:FindFirstChild("Art")
-        if not art then
-            WindUI:Notify({ Title = "📐 CFrame Info", Content = "No Art folder found!", Duration = 3 })
-            return
-        end
-        
-        local island = art:FindFirstChild(islandName)
-        if not island then
-            WindUI:Notify({ Title = "📐 CFrame Info", Content = "Island not found: " .. islandName, Duration = 3 })
-            return
-        end
-        
-        local message = string.format("🏝️ Island: %s\n\n", islandName)
-        
-        -- Show lock information
-        message = message .. "🔒 LOCK INFORMATION:\n"
-        local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
-        if locksFolder then
-            for i, lockModel in ipairs(locksFolder:GetChildren()) do
-                if lockModel:IsA("Model") then
-                    local farmPart = lockModel:FindFirstChild("Farm")
-                    if farmPart and farmPart:IsA("BasePart") then
-                        local pos = farmPart.Position
-                        local size = farmPart.Size
-                        local transparency = farmPart.Transparency
-                        local status = transparency == 0 and "LOCKED" or "UNLOCKED"
-                        
-                        message = message .. string.format("  %s:\n", lockModel.Name)
-                        message = message .. string.format("    Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
-                        message = message .. string.format("    Size: %s\n", tostring(size))
-                        message = message .. string.format("    Transparency: %s (%s)\n", tostring(transparency), status)
-                        message = message .. "\n"
-                    end
-                end
-                if i >= 3 then break end -- Limit to 3 locks
-            end
-        else
-            message = message .. "  No locks folder found\n\n"
-        end
-        
-        -- Show farm split information
-        message = message .. "📦 FARM SPLIT INFORMATION:\n"
-        local farmSplitCount = 0
-        local function scanForFarmSplits(parent)
-            for _, child in ipairs(parent:GetChildren()) do
-                if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
-                    if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                        farmSplitCount = farmSplitCount + 1
-                        if farmSplitCount <= 3 then -- Show first 3
-                            local pos = child.Position
-                            local size = child.Size
-                            message = message .. string.format("  %s:\n", child.Name)
-                            message = message .. string.format("    Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
-                            message = message .. string.format("    Size: %s\n", tostring(size))
-                            message = message .. "\n"
-                        end
-                    end
-                end
-                scanForFarmSplits(child)
-            end
-        end
-        scanForFarmSplits(island)
-        
-        if farmSplitCount == 0 then
-            message = message .. "  No farm splits found\n"
-        elseif farmSplitCount > 3 then
-            message = message .. string.format("  ... and %d more farm splits\n", farmSplitCount - 3)
-        end
-        
-        WindUI:Notify({ Title = "📐 CFrame Info", Content = message, Duration = 12 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "🐾 Show Pet Info",
-    Desc = "Display information about your pets and their locations",
-    Callback = function()
-        local message = "🐾 PET INFORMATION:\n\n"
-        
-        -- Show pet configurations
-        local petConfigs = getPlayerPetConfigurations()
-        message = message .. string.format("📋 Pet Configurations: %d\n", #petConfigs)
-        for i, petConfig in ipairs(petConfigs) do
-            message = message .. string.format("  %s\n", petConfig.name)
-            if i >= 5 then
-                message = message .. string.format("  ... and %d more\n", #petConfigs - 5)
-                break
-            end
-        end
-        
-        message = message .. "\n"
-        
-        -- Show pets in workspace
-        local petsInWorkspace = getPlayerPetsInWorkspace()
-        message = message .. string.format("🌍 Pets in Workspace: %d\n", #petsInWorkspace)
-        for i, petInfo in ipairs(petsInWorkspace) do
-            local pos = petInfo.position
-            message = message .. string.format("  %s: (%.1f, %.1f, %.1f)\n", 
-                petInfo.name, pos.X, pos.Y, pos.Z)
-            if i >= 5 then
-                message = message .. string.format("  ... and %d more\n", #petsInWorkspace - 5)
-                break
-            end
-        end
-        
-        -- Show eggs in PlayerBuiltBlocks
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        local eggCount = 0
-        if playerBuiltBlocks then
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") then
-                    eggCount = eggCount + 1
-                end
-            end
-        end
-        message = message .. string.format("\n🥚 Eggs in PlayerBuiltBlocks: %d\n", eggCount)
-        
-        WindUI:Notify({ Title = "🐾 Pet Info", Content = message, Duration = 10 })
-    end
-})
-
-Tabs.PlaceTab:Button({
-    Title = "🔍 Show Tile Mapping",
-    Desc = "Show which farm splits are occupied by eggs or pets",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        if not islandName then
-            WindUI:Notify({ Title = "🔍 Tile Mapping", Content = "No island assigned!", Duration = 3 })
-            return
-        end
-        
-        local islandNumber = getIslandNumberFromName(islandName)
-        local farmParts = getFarmParts(islandNumber)
-        
-        local message = string.format("🏝️ Island: %s\n\n", islandName)
-        message = message .. "🔍 TILE MAPPING:\n"
-        
-        -- Create a map of occupied farm split positions
-        local occupiedPositions = {}
-        
-        -- Check eggs in PlayerBuiltBlocks
-        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-        if playerBuiltBlocks then
-            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                if model:IsA("Model") then
-                    -- Find the closest farm split to this egg
-                    local closestPart = nil
-                    local closestDistance = math.huge
-                    
-                    for _, part in ipairs(farmParts) do
-                        local modelPos = model:GetPivot().Position
-                        local tilePos = part.Position
-                        local distance = (modelPos - tilePos).Magnitude
-                        
-                        if distance < closestDistance then
-                            closestDistance = distance
-                            closestPart = part
-                        end
-                    end
-                    
-                    -- If egg is close enough to a farm split, mark it as occupied
-                    if closestPart and closestDistance <= 6.0 then
-                        occupiedPositions[closestPart.Position] = {
-                            type = "egg",
-                            name = model.Name,
-                            distance = closestDistance
-                        }
-                    end
-                end
-            end
-        end
-        
-        -- Check pets in workspace
-        local playerPets = getPlayerPetsInWorkspace()
-        for _, petInfo in ipairs(playerPets) do
-            -- Find the closest farm split to this pet
-            local closestPart = nil
-            local closestDistance = math.huge
-            
-            for _, part in ipairs(farmParts) do
-                local petPos = petInfo.position
-                local tilePos = part.Position
-                local distance = (petPos - tilePos).Magnitude
-                
-                if distance < closestDistance then
-                    closestDistance = distance
-                    closestPart = part
-                end
-            end
-            
-            -- If pet is close enough to a farm split, mark it as occupied
-            if closestPart and closestDistance <= 6.0 then
-                occupiedPositions[closestPart.Position] = {
-                    type = "pet",
-                    name = petInfo.name,
-                    distance = closestDistance
-                }
-            end
-        end
-        
-        -- Show mapping
-        local occupiedCount = 0
-        local availableCount = 0
-        
-        for i, part in ipairs(farmParts) do
-            local occupied = occupiedPositions[part.Position]
-            if occupied then
-                occupiedCount = occupiedCount + 1
-                message = message .. string.format("🔒 %s: %s (%s) - %.1f studs\n", 
-                    part.Name, occupied.type, occupied.name, occupied.distance)
-            else
-                availableCount = availableCount + 1
-                message = message .. string.format("✅ %s: AVAILABLE\n", part.Name)
-            end
-            
-            if i >= 10 then
-                message = message .. string.format("... and %d more tiles\n", #farmParts - 10)
-                break
-            end
-        end
-        
-        message = message .. string.format("\n📊 Summary: %d occupied, %d available", occupiedCount, availableCount)
-        
-        WindUI:Notify({ Title = "🔍 Tile Mapping", Content = message, Duration = 12 })
-    end
-})
 
 local function formatPlaceStatusDesc()
     local lines = {}
@@ -2285,11 +2093,17 @@ local function placeEggInstantly(eggInfo, tileInfo)
         end
     end
     
-    -- Place egg
+    -- Place egg on surface (top of the farm split tile)
+    local surfacePosition = Vector3.new(
+        tilePart.Position.X,
+        tilePart.Position.Y + (tilePart.Size.Y / 2), -- Top surface
+        tilePart.Position.Z
+    )
+    
     local args = {
         "Place",
         {
-            DST = vector.create(tilePart.Position.X, tilePart.Position.Y, tilePart.Position.Z),
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
             ID = petUID
         }
     }
@@ -2526,11 +2340,21 @@ end
 local function runAutoPlace()
     while autoPlaceEnabled do
         -- Check priority - if Auto Hatch is running and has priority, pause placing
+        -- But allow Auto Place to work if Auto Hatch has no eggs to work with
         if autoHatchEnabled and automationPriority == "Hatch" then
-            placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-            updatePlaceStatusParagraph()
-            task.wait(1.0)
-            return
+            local owned = collectOwnedEggs()
+            local readyEggs = filterReadyEggs(owned)
+            
+            if #readyEggs > 0 then
+                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
+                updatePlaceStatusParagraph()
+                task.wait(1.0)
+                return
+            else
+                -- Auto Hatch has no eggs to work with, so Auto Place can work
+                placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
+                updatePlaceStatusParagraph()
+            end
         end
         
         local islandName = getAssignedIslandName()
@@ -2554,9 +2378,18 @@ local function runAutoPlace()
         while autoPlaceEnabled do
             -- Check priority again during monitoring
             if autoHatchEnabled and automationPriority == "Hatch" then
-                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-                updatePlaceStatusParagraph()
-                return
+                local owned = collectOwnedEggs()
+                local readyEggs = filterReadyEggs(owned)
+                
+                if #readyEggs > 0 then
+                    placeStatusData.lastAction = "Paused - Auto Hatch has priority"
+                    updatePlaceStatusParagraph()
+                    return
+                else
+                    -- Auto Hatch has no eggs to work with, so Auto Place can work
+                    placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
+                    updatePlaceStatusParagraph()
+                end
             end
             
             local currentIsland = getAssignedIslandName()
@@ -3520,6 +3353,7 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
         zooConfig:Register("selectedEggs", eggDropdown)
+        zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("selectedFruits", fruitDropdown)
         zooConfig:Register("onlyIfNoneOwned", onlyIfNoneOwnedToggle)
