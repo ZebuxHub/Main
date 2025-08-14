@@ -1621,18 +1621,7 @@ local function cleanupBeltConnections()
     beltConnections = {}
 end
 
-local function shouldBuyEggInstance(eggInstance, playerMoney)
-    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
-    local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
-    if not eggType then return false, nil, nil end
-    eggType = tostring(eggType)
-    if not selectedTypeSet[eggType] then return false, nil, nil end
-
-    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-    if type(price) ~= "number" then return false, nil, nil end
-    if playerMoney < price then return false, nil, nil end
-    return true, eggInstance.Name, price
-end
+-- Removed duplicate function - using the one with mutation logic above
 
 local function buyEggInstantly(eggInstance)
     if buyingInProgress then return end
