@@ -61,6 +61,14 @@ local function validateAndExecuteKey(keyToValidate)
     local response = KeyGuardLibrary.validateDefaultKey(keyToValidate)
     if response == trueData then
         print("✅ Key is valid - executing script...")
+        -- Show success notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "✅ Key Valid",
+                Content = "Key is valid! Loading Build A Zoo script...",
+                Duration = 3
+            })
+        end
         -- Build A Zoo: Auto Buy Egg using WindUI
 
 -- Load WindUI library (same as in Windui.lua)
@@ -3489,6 +3497,14 @@ end)
         return true
     else
         print("❌ Key is invalid")
+        -- Show invalid key notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "❌ Invalid Key",
+                Content = "The key you entered is invalid. Please check your key and try again.",
+                Duration = 5
+            })
+        end
         return false
     end
 end
@@ -3500,9 +3516,25 @@ if savedKey ~= "" then
     if validateAndExecuteKey(savedKey) then
         key = savedKey
         print("✅ Auto-loaded and executed with valid key")
+        -- Show auto-load success notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "🔄 Auto-Load Success",
+                Content = "Valid saved key found! Build A Zoo script loaded automatically.",
+                Duration = 3
+            })
+        end
         return -- Exit early since script is loaded
     else
         print("❌ Saved key is no longer valid")
+        -- Show auto-load failure notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "⚠️ Auto-Load Failed",
+                Content = "Saved key is no longer valid. Please enter a new key.",
+                Duration = 5
+            })
+        end
         -- Clear invalid key
         pcall(function()
             delfile("BuildAZoo_Key.txt")
@@ -3543,12 +3575,36 @@ local Checkkey = Tabs.KeySys:AddButton({
 		Title = "Check Key",
 		Description = "Enter Key before pressing this button",
 		Callback = function()
+				if key == "" or key == nil then
+					Fluent:Notify({
+						Title = "⚠️ No Key Entered",
+						Content = "Please enter a key in the input field first!",
+						Duration = 3
+					})
+					return
+				end
+				
+				-- Show validation in progress
+				Fluent:Notify({
+					Title = "🔍 Validating Key",
+					Content = "Checking if your key is valid...",
+					Duration = 2
+				})
+				
 				if validateAndExecuteKey(key) then
 					-- Save the valid key with timestamp
 					if saveKey(key) then
-						print("Key saved successfully! (Expires in 12 hours)")
+						Fluent:Notify({
+							Title = "💾 Key Saved",
+							Content = "Key saved successfully! (Expires in 12 hours)",
+							Duration = 3
+						})
 					else
-						print("Failed to save key")
+						Fluent:Notify({
+							Title = "⚠️ Save Failed",
+							Content = "Failed to save key, but script is still loaded.",
+							Duration = 3
+						})
 					end
 				end
 		end
@@ -3558,7 +3614,14 @@ local Getkey = Tabs.KeySys:AddButton({
 		Title = "Get Key",
 		Description = "Get Key here and past to browser",
 		Callback = function()
-				setclipboard(KeyGuardLibrary.getLink())
+				local keyLink = KeyGuardLibrary.getLink()
+				setclipboard(keyLink)
+				-- Show notification about what happened
+				Fluent:Notify({
+					Title = "🔗 Key Link Copied",
+					Content = "Key link has been copied to clipboard! Paste it in your browser to get your key.",
+					Duration = 5
+				})
 		end
 })
 
