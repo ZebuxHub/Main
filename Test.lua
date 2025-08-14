@@ -1243,6 +1243,9 @@ local function runAutoHatch()
     while autoHatchEnabled do
         -- Check priority - if Auto Place is running and has priority, pause hatching
         if autoPlaceEnabled and automationPriority == "Place" then
+            -- Check if Auto Place actually has work to do
+            -- Note: We'll check available eggs/tiles later when functions are defined
+            
             hatchStatus.last = "Paused - Auto Place has priority"
             updateHatchStatus()
             task.wait(1.0)
@@ -2460,6 +2463,18 @@ local function runAutoPlace()
                 placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
                 updatePlaceStatusParagraph()
             end
+        end
+        
+        -- Check if we have eggs and tiles to work with
+        -- Note: updateAvailableEggs and updateAvailableTiles are called later in the function
+        
+        if #availableEggs == 0 or #availableTiles == 0 then
+            placeStatusData.lastAction = "No eggs or tiles available - stopping Auto Place"
+            updatePlaceStatusParagraph()
+            -- Stop Auto Place and allow Auto Hatch to work
+            autoPlaceEnabled = false
+            WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped - No work available", Duration = 3 })
+            return
         end
         
         local islandName = getAssignedIslandName()
