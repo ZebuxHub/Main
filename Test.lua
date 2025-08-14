@@ -212,6 +212,12 @@ local function getEggPriceByType(eggType)
     return nil
 end
 
+-- Player helpers
+local function getAssignedIslandName()
+    if not LocalPlayer then return nil end
+    return LocalPlayer:GetAttribute("AssignedIslandName")
+end
+
 -- Function to read mutation from egg GUI
 local function getEggMutation(eggUID)
     if not eggUID then return nil end
