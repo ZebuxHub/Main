@@ -638,7 +638,8 @@ local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Max = 1000,
     Rounding = 0,
     Callback = function(value)
-        autoClaimDelay = math.clamp((tonumber(value) or 100) / 1000, 0, 2)
+        local numValue = tonumber(value) or 100
+        autoClaimDelay = math.clamp(numValue / 1000, 0, 2)
     end
 })
 
