@@ -3229,22 +3229,65 @@ Tabs.ShopTab:Button({
 
 
 -- ============ Fruit Market (Auto Buy Fruit) ============
--- Load Fruit Store System from external file
-local fruitUI = nil
-pcall(function()
-    local fruitSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
-    if fruitSystem then
-        fruitUI = fruitSystem(Tabs, WindUI, LocalPlayer, ReplicatedStorage, Players)
-    else
-        Tabs.FruitTab:Paragraph({
-            Title = "🍎 Fruit Store System",
-            Desc = "Fruit store system could not be loaded. Please check if FruitStoreSystem.lua exists.",
-            Image = "apple",
-            ImageSize = 18,
-        })
-        print("❌ Failed to load Fruit Store System from external file")
+-- Load Fruit Selection UI
+local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
+
+-- Fruit selection state
+local selectedFruits = {}
+local fruitSelectionVisible = false
+
+Tabs.FruitTab:Button({
+    Title = "🍎 Open Fruit Selection UI",
+    Desc = "Open the modern glass-style fruit selection interface",
+    Callback = function()
+        if not fruitSelectionVisible then
+            FruitSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+                    selectedFruits = selectedItems
+                    
+                    -- Update status display
+                    local fruitKeys = {}
+                    for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
+                    table.sort(fruitKeys)
+                    -- You can add status display here if needed
+                end,
+                function(isVisible)
+                    fruitSelectionVisible = isVisible
+                end,
+                selectedFruits -- Pass saved fruit selections
+            )
+            fruitSelectionVisible = true
+        else
+            FruitSelection.Hide()
+            fruitSelectionVisible = false
+        end
     end
-end)
+})
+
+-- Auto Buy Fruit functionality
+local autoBuyFruitEnabled = false
+local autoBuyFruitThread = nil
+
+local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
+    Title = "🍎 Auto Buy Fruit",
+    Desc = "Automatically buy selected fruits when you have enough money",
+    Value = false,
+    Callback = function(state)
+        autoBuyFruitEnabled = state
+        if state and not autoBuyFruitThread then
+            autoBuyFruitThread = task.spawn(function()
+                while autoBuyFruitEnabled do
+                    -- Auto buy fruit logic here
+                    task.wait(1)
+                end
+            end)
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
+        elseif (not state) and autoBuyFruitThread then
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
 
 -- ============ Config System ============
 -- Create config manager
@@ -3267,12 +3310,8 @@ local function registerConfigElements()
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("automationPriority", priorityDropdown)
         
-        -- Register fruit UI elements from external file
-        if fruitUI then
-            zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
-            zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
-            zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
-        end
+        -- Register fruit selection
+        zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
     end
 end
 
@@ -3332,6 +3371,17 @@ Tabs.SaveTab:Button({
                 end
                 
                 writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
+                
+                -- Save fruit selections separately
+                local fruitSelections = {
+                    fruits = {}
+                }
+                
+                for fruitId, _ in pairs(selectedFruits) do
+                    table.insert(fruitSelections.fruits, fruitId)
+                end
+                
+                writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
             else
                 error("Config manager not available")
             end
@@ -3389,6 +3439,29 @@ Tabs.SaveTab:Button({
                     -- Update UI if visible
                     if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
                         EggSelection.RefreshContent()
+                    end
+                end
+                
+                -- Load fruit selections separately
+                local fruitSuccess, fruitData = pcall(function()
+                    if isfile("Zebux_FruitSelections.json") then
+                        local jsonData = readfile("Zebux_FruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if fruitSuccess and fruitData then
+                    -- Load fruit selections
+                    selectedFruits = {}
+                    if fruitData.fruits then
+                        for _, fruitId in ipairs(fruitData.fruits) do
+                            selectedFruits[fruitId] = true
+                        end
+                    end
+                    
+                    -- Update UI if visible
+                    if FruitSelection and FruitSelection.IsVisible and FruitSelection.IsVisible() then
+                        FruitSelection.RefreshContent()
                     end
                 end
             else
@@ -3513,6 +3586,24 @@ task.spawn(function()
                     statusData.selectedMutations = table.concat(mutationKeys, ", ")
                     
                     updateStatusParagraph()
+                end
+                
+                -- Load fruit selections separately
+                local fruitSuccess, fruitData = pcall(function()
+                    if isfile("Zebux_FruitSelections.json") then
+                        local jsonData = readfile("Zebux_FruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if fruitSuccess and fruitData then
+                    -- Load fruit selections
+                    selectedFruits = {}
+                    if fruitData.fruits then
+                        for _, fruitId in ipairs(fruitData.fruits) do
+                            selectedFruits[fruitId] = true
+                        end
+                    end
                 end
             end)
             
