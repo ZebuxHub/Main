@@ -4,7 +4,7 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 -- Load Custom Egg Selector
-local createCustomEggSelector = require(script.Parent.CustomEggSelector)
+local createCustomEggSelector = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/Eggui.lua"))()
 
 -- Services
 local Players = game:GetService("Players")
