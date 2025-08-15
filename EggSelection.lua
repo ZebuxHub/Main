@@ -474,7 +474,6 @@ local function createSearchBar(parent)
     searchBox.TextSize = 14
     searchBox.Font = Enum.Font.Gotham
     searchBox.TextColor3 = colors.text
-    searchBox.PlaceholderTextColor3 = colors.textTertiary
     searchBox.TextXAlignment = Enum.TextXAlignment.Left
     searchBox.ClearTextOnFocus = false
     searchBox.Parent = searchContainer
@@ -677,12 +676,27 @@ function EggSelection.CreateUI()
         end
     end)
     
-    -- Dragging
-    MainFrame.InputBegan:Connect(function(input)
+    -- Dragging - Fixed to work properly
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundTransparency = 1
+    titleBar.Parent = MainFrame
+    
+    titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             isDragging = true
             dragStart = input.Position
             startPos = MainFrame.Position
+            
+            local connection
+            connection = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isDragging = false
+                    connection:Disconnect()
+                end
+            end)
         end
     end)
     
@@ -690,12 +704,6 @@ function EggSelection.CreateUI()
         if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
             local delta = input.Position - dragStart
             MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = false
         end
     end)
     
@@ -741,6 +749,8 @@ function EggSelection.Show(callback, toggleCallback)
         EggSelection.CreateUI()
     end
     
+    -- Wait a frame to ensure UI is created
+    task.wait()
     EggSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
