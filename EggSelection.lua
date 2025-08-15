@@ -10,102 +10,102 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- Hardcoded data (no more module scripts)
+-- Hardcoded data with actual Roblox asset IDs
 local EggData = {
     BasicEgg = {
         Name = "Basic Egg",
         Price = "100",
-        Icon = "🥚",
+        Icon = "rbxassetid://129248801621928",
         Rarity = 1
     },
     RareEgg = {
         Name = "Rare Egg", 
         Price = "500",
-        Icon = "🥚",
+        Icon = "rbxassetid://71012831091414",
         Rarity = 2
     },
     SuperRareEgg = {
         Name = "Super Rare Egg",
         Price = "2,500", 
-        Icon = "🥚",
+        Icon = "rbxassetid://93845452154351",
         Rarity = 2
     },
     EpicEgg = {
         Name = "Epic Egg",
         Price = "15,000",
-        Icon = "🥚", 
+        Icon = "rbxassetid://116395645531721", 
         Rarity = 2
     },
     LegendEgg = {
         Name = "Legend Egg",
         Price = "100,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://90834918351014",
         Rarity = 3
     },
     PrismaticEgg = {
         Name = "Prismatic Egg", 
         Price = "1,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://79960683434582",
         Rarity = 4
     },
     HyperEgg = {
         Name = "Hyper Egg",
         Price = "3,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://104958288296273",
         Rarity = 5
     },
     VoidEgg = {
         Name = "Void Egg",
         Price = "24,000,000", 
-        Icon = "🥚",
+        Icon = "rbxassetid://122396162708984",
         Rarity = 5
     },
     BowserEgg = {
         Name = "Bowser Egg",
         Price = "130,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://71500536051510",
         Rarity = 5
     },
     DemonEgg = {
         Name = "Demon Egg",
         Price = "400,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://126412407639969",
         Rarity = 5
     },
     BoneDragonEgg = {
         Name = "Bone Dragon Egg",
         Price = "2,000,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://83209913424562",
         Rarity = 5
     },
     UltraEgg = {
         Name = "Ultra Egg",
         Price = "10,000,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://83909590718799",
         Rarity = 6
     },
     DinoEgg = {
         Name = "Dino Egg",
         Price = "10,000,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://80783528632315",
         Rarity = 6
     },
     FlyEgg = {
         Name = "Fly Egg",
         Price = "999,999,999,999",
-        Icon = "🥚",
+        Icon = "rbxassetid://109240587278187",
         Rarity = 6
     },
     UnicornEgg = {
         Name = "Unicorn Egg",
         Price = "40,000,000,000",
-        Icon = "🥚",
+        Icon = "rbxassetid://123427249205445",
         Rarity = 6
     },
     AncientEgg = {
         Name = "Ancient Egg",
         Price = "999,999,999,999",
-        Icon = "🥚",
+        Icon = "rbxassetid://113910587565739",
         Rarity = 6
     }
 }
@@ -114,31 +114,31 @@ local MutationData = {
     Golden = {
         Name = "Golden",
         Price = "Premium",
-        Icon = "✨",
+        Icon = "rbxassetid://71012831091414", -- Using a golden-like icon
         Rarity = 10
     },
     Diamond = {
         Name = "Diamond",
         Price = "Premium", 
-        Icon = "💎",
+        Icon = "rbxassetid://79960683434582", -- Using a prismatic-like icon
         Rarity = 20
     },
     Electirc = {
         Name = "Electric",
         Price = "Premium",
-        Icon = "⚡",
+        Icon = "rbxassetid://104958288296273", -- Using a hyper-like icon
         Rarity = 50
     },
     Fire = {
         Name = "Fire",
         Price = "Premium",
-        Icon = "🔥",
+        Icon = "rbxassetid://126412407639969", -- Using a demon-like icon
         Rarity = 100
     },
     Dino = {
         Name = "Jurassic",
         Price = "Premium",
-        Icon = "🦕",
+        Icon = "rbxassetid://80783528632315", -- Using dino egg icon
         Rarity = 100
     }
 }
@@ -155,6 +155,7 @@ local startPos = nil
 local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
+local currentPage = "eggs" -- "eggs" or "mutations"
 
 -- Callback functions
 local onSelectionChanged = nil
@@ -169,7 +170,9 @@ local colors = {
     textSecondary = Color3.fromRGB(180, 180, 180),
     border = Color3.fromRGB(60, 60, 70),
     selected = Color3.fromRGB(100, 150, 255),
-    hover = Color3.fromRGB(40, 40, 45)
+    hover = Color3.fromRGB(40, 40, 45),
+    pageActive = Color3.fromRGB(100, 150, 255),
+    pageInactive = Color3.fromRGB(80, 80, 90)
 }
 
 -- Utility Functions
@@ -231,7 +234,7 @@ local function createGlassEffect(parent)
     return glass
 end
 
--- Create Item Button
+-- Create Item Button with ImageIcon
 local function createItemButton(itemId, itemData, parent)
     local button = Instance.new("TextButton")
     button.Name = itemId
@@ -244,15 +247,14 @@ local function createItemButton(itemId, itemData, parent)
     glass.Size = UDim2.new(1, -4, 1, -4)
     glass.Position = UDim2.new(0, 2, 0, 2)
     
-    local icon = Instance.new("TextLabel")
+    -- Create ImageIcon instead of TextLabel
+    local icon = Instance.new("ImageLabel")
     icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 40, 1, 0)
-    icon.Position = UDim2.new(0, 8, 0, 0)
+    icon.Size = UDim2.new(0, 40, 0, 40)
+    icon.Position = UDim2.new(0, 8, 0.5, -20)
     icon.BackgroundTransparency = 1
-    icon.Text = itemData.Icon
-    icon.TextSize = 24
-    icon.Font = Enum.Font.GothamBold
-    icon.TextColor3 = getRarityColor(itemData.Rarity)
+    icon.Image = itemData.Icon
+    icon.ScaleType = Enum.ScaleType.Fit
     icon.Parent = button
     
     local name = Instance.new("TextLabel")
@@ -324,6 +326,54 @@ local function createItemButton(itemId, itemData, parent)
     return button
 end
 
+-- Create Page Tabs
+local function createPageTabs(parent)
+    local tabContainer = Instance.new("Frame")
+    tabContainer.Name = "PageTabs"
+    tabContainer.Size = UDim2.new(1, 0, 0, 40)
+    tabContainer.BackgroundTransparency = 1
+    tabContainer.Parent = parent
+    
+    local eggsTab = Instance.new("TextButton")
+    eggsTab.Name = "EggsTab"
+    eggsTab.Size = UDim2.new(0.5, -4, 1, 0)
+    eggsTab.Position = UDim2.new(0, 0, 0, 0)
+    eggsTab.BackgroundTransparency = 1
+    eggsTab.Text = "🥚 Eggs"
+    eggsTab.TextSize = 14
+    eggsTab.Font = Enum.Font.GothamBold
+    eggsTab.TextColor3 = colors.pageActive
+    eggsTab.Parent = tabContainer
+    
+    local mutationsTab = Instance.new("TextButton")
+    mutationsTab.Name = "MutationsTab"
+    mutationsTab.Size = UDim2.new(0.5, -4, 1, 0)
+    mutationsTab.Position = UDim2.new(0.5, 4, 0, 0)
+    mutationsTab.BackgroundTransparency = 1
+    mutationsTab.Text = "✨ Mutations"
+    mutationsTab.TextSize = 14
+    mutationsTab.Font = Enum.Font.GothamBold
+    mutationsTab.TextColor3 = colors.pageInactive
+    mutationsTab.Parent = tabContainer
+    
+    -- Tab click events
+    eggsTab.MouseButton1Click:Connect(function()
+        currentPage = "eggs"
+        eggsTab.TextColor3 = colors.pageActive
+        mutationsTab.TextColor3 = colors.pageInactive
+        EggSelection.RefreshContent()
+    end)
+    
+    mutationsTab.MouseButton1Click:Connect(function()
+        currentPage = "mutations"
+        mutationsTab.TextColor3 = colors.pageActive
+        eggsTab.TextColor3 = colors.pageInactive
+        EggSelection.RefreshContent()
+    end)
+    
+    return tabContainer
+end
+
 -- Create UI
 function EggSelection.CreateUI()
     if ScreenGui then
@@ -392,11 +442,15 @@ function EggSelection.CreateUI()
     closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
     closeBtn.Parent = titleBar
     
+    -- Page Tabs
+    local pageTabs = createPageTabs(MainFrame)
+    pageTabs.Position = UDim2.new(0, 8, 0, 48)
+    
     -- Content Area
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, -16, 1, -56)
-    content.Position = UDim2.new(0, 8, 0, 48)
+    content.Size = UDim2.new(1, -16, 1, -96)
+    content.Position = UDim2.new(0, 8, 0, 96)
     content.BackgroundTransparency = 1
     content.Parent = MainFrame
     
@@ -413,47 +467,17 @@ function EggSelection.CreateUI()
     listLayout.Padding = UDim.new(0, 4)
     listLayout.Parent = scrollFrame
     
-    -- Add Eggs
-    local eggSection = Instance.new("TextLabel")
-    eggSection.Name = "EggSection"
-    eggSection.Size = UDim2.new(1, 0, 0, 30)
-    eggSection.BackgroundTransparency = 1
-    eggSection.Text = "🥚 EGGS"
-    eggSection.TextSize = 14
-    eggSection.Font = Enum.Font.GothamBold
-    eggSection.TextColor3 = colors.accent
-    eggSection.TextXAlignment = Enum.TextXAlignment.Left
-    eggSection.Parent = scrollFrame
-    
-    for eggId, eggData in pairs(EggData) do
-        createItemButton(eggId, eggData, scrollFrame)
-    end
-    
-    -- Add Mutations
-    local mutationSection = Instance.new("TextLabel")
-    mutationSection.Name = "MutationSection"
-    mutationSection.Size = UDim2.new(1, 0, 0, 30)
-    mutationSection.BackgroundTransparency = 1
-    mutationSection.Text = "✨ MUTATIONS"
-    mutationSection.TextSize = 14
-    mutationSection.Font = Enum.Font.GothamBold
-    mutationSection.TextColor3 = colors.accent
-    mutationSection.TextXAlignment = Enum.TextXAlignment.Left
-    mutationSection.Parent = scrollFrame
-    
-    for mutationId, mutationData in pairs(MutationData) do
-        createItemButton(mutationId, mutationData, scrollFrame)
-    end
-    
     -- Control Button Events
     minimizeBtn.MouseButton1Click:Connect(function()
         if isMinimized then
             MainFrame.Size = originalSize
             content.Visible = true
+            pageTabs.Visible = true
             isMinimized = false
         else
             MainFrame.Size = minimizedSize
             content.Visible = false
+            pageTabs.Visible = false
             isMinimized = true
         end
     end)
@@ -491,6 +515,32 @@ function EggSelection.CreateUI()
     return ScreenGui
 end
 
+-- Refresh Content based on current page
+function EggSelection.RefreshContent()
+    if not ScreenGui then return end
+    
+    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+    if not scrollFrame then return end
+    
+    -- Clear existing content
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Add content based on current page
+    if currentPage == "eggs" then
+        for eggId, eggData in pairs(EggData) do
+            createItemButton(eggId, eggData, scrollFrame)
+        end
+    else
+        for mutationId, mutationData in pairs(MutationData) do
+            createItemButton(mutationId, mutationData, scrollFrame)
+        end
+    end
+end
+
 -- Public Functions
 function EggSelection.Show(callback, toggleCallback)
     onSelectionChanged = callback
@@ -500,6 +550,7 @@ function EggSelection.Show(callback, toggleCallback)
         EggSelection.CreateUI()
     end
     
+    EggSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
 end
