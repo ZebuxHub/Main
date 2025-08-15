@@ -1,591 +1,516 @@
--- Custom Egg Selection UI for Build A Zoo
--- Replaces dropdown with visual egg selection interface
+-- Custom Egg Selector UI for Build A Zoo
+-- Replaces dropdown with visual grid selection
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Egg data from ResEgg
+-- Egg and mutation data
 local eggData = {
-    BasicEgg = {
-        Name = "Basic Egg",
-        Price = "100",
-        Icon = "rbxassetid://129248801621928",
-        ID = "BasicEgg"
-    },
-    RareEgg = {
-        Name = "Rare Egg", 
-        Price = "500",
-        Icon = "rbxassetid://71012831091414",
-        ID = "RareEgg"
-    },
-    SuperRareEgg = {
-        Name = "Super Rare Egg",
-        Price = "2,500", 
-        Icon = "rbxassetid://93845452154351",
-        ID = "SuperRareEgg"
-    },
-    EpicEgg = {
-        Name = "Epic Egg",
-        Price = "15,000",
-        Icon = "rbxassetid://116395645531721", 
-        ID = "EpicEgg"
-    },
-    LegendEgg = {
-        Name = "Legend Egg",
-        Price = "100,000",
-        Icon = "rbxassetid://90834918351014",
-        ID = "LegendEgg"
-    },
-    PrismaticEgg = {
-        Name = "Prismatic Egg", 
-        Price = "1,000,000",
-        Icon = "rbxassetid://79960683434582",
-        ID = "PrismaticEgg"
-    },
-    HyperEgg = {
-        Name = "Hyper Egg",
-        Price = "3,000,000", 
-        Icon = "rbxassetid://104958288296273",
-        ID = "HyperEgg"
-    },
-    VoidEgg = {
-        Name = "Void Egg",
-        Price = "24,000,000",
-        Icon = "rbxassetid://122396162708984",
-        ID = "VoidEgg"
-    },
-    BowserEgg = {
-        Name = "Bowser Egg",
-        Price = "130,000,000", 
-        Icon = "rbxassetid://71500536051510",
-        ID = "BowserEgg"
-    },
-    DemonEgg = {
-        Name = "Demon Egg",
-        Price = "400,000,000",
-        Icon = "rbxassetid://126412407639969", 
-        ID = "DemonEgg"
-    },
-    BoneDragonEgg = {
-        Name = "Bone Dragon Egg",
-        Price = "2,000,000,000",
-        Icon = "rbxassetid://83209913424562",
-        ID = "BoneDragonEgg"
-    },
-    UltraEgg = {
-        Name = "Ultra Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://83909590718799",
-        ID = "UltraEgg"
-    },
-    DinoEgg = {
-        Name = "Dino Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://80783528632315",
-        ID = "DinoEgg"
-    },
-    FlyEgg = {
-        Name = "Fly Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://109240587278187",
-        ID = "FlyEgg"
-    },
-    UnicornEgg = {
-        Name = "Unicorn Egg",
-        Price = "40,000,000,000",
-        Icon = "rbxassetid://123427249205445",
-        ID = "UnicornEgg"
-    },
-    AncientEgg = {
-        Name = "Ancient Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://113910587565739",
-        ID = "AncientEgg"
-    }
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+    HyperEgg = { Name = "Hyper Egg", Price = "3,000,000", Icon = "rbxassetid://104958288296273", Rarity = 5 },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 }
 }
 
--- Custom Egg Selection UI Class
-local CustomEggUI = {}
-CustomEggUI.__index = CustomEggUI
+local mutationData = {
+    Golden = { Name = "Golden", Color = Color3.fromHex("#ffc518"), Rarity = 10 },
+    Diamond = { Name = "Diamond", Color = Color3.fromHex("#07e6ff"), Rarity = 20 },
+    Electirc = { Name = "Electric", Color = Color3.fromHex("#aa55ff"), Rarity = 50 },
+    Fire = { Name = "Fire", Color = Color3.fromHex("#ff3d02"), Rarity = 100 },
+    Dino = { Name = "Jurassic", Color = Color3.fromHex("#AE75E7"), Rarity = 100 }
+}
 
-function CustomEggUI.new(parent, callback)
-    local self = setmetatable({}, CustomEggUI)
-    
-    self.parent = parent
-    self.callback = callback
-    self.selectedEggs = {}
-    self.isDragging = false
-    self.dragStart = nil
-    self.originalPosition = nil
-    
-    self:createUI()
-    self:setupDragging()
-    
-    return self
-end
+-- Selected items storage
+local selectedEggs = {}
+local selectedMutations = {}
 
-function CustomEggUI:createUI()
-    -- Main Frame
-    self.mainFrame = Instance.new("Frame")
-    self.mainFrame.Name = "CustomEggUI"
-    self.mainFrame.Size = UDim2.new(0, 400, 0, 500)
-    self.mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
-    self.mainFrame.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-    self.mainFrame.BorderSizePixel = 0
-    self.mainFrame.Parent = self.parent
+-- Create the main UI
+local function createCustomEggSelector()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "CustomEggSelector"
+    screenGui.Parent = game:GetService("CoreGui")
     
-    -- Corner radius
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = self.mainFrame
+    -- Main frame with parchment-like style
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 600, 0, 400)
+    mainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(245, 241, 235) -- Light beige
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
     
-    -- Drop shadow
-    local shadow = Instance.new("ImageLabel")
-    shadow.Name = "Shadow"
-    shadow.Size = UDim2.new(1, 20, 1, 20)
-    shadow.Position = UDim2.new(0, -10, 0, -10)
-    shadow.BackgroundTransparency = 1
-    shadow.Image = "rbxassetid://1316045217"
-    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = 0.6
-    shadow.ScaleType = Enum.ScaleType.Slice
-    shadow.SliceCenter = Rect.new(23, 23, 277, 277)
-    shadow.Parent = self.mainFrame
+    -- Border effect
+    local border = Instance.new("Frame")
+    border.Name = "Border"
+    border.Size = UDim2.new(1, 4, 1, 4)
+    border.Position = UDim2.new(0, -2, 0, -2)
+    border.BackgroundColor3 = Color3.fromRGB(101, 67, 33) -- Dark brown
+    border.BorderSizePixel = 0
+    border.Parent = mainFrame
     
-    -- Title Bar
-    self.titleBar = Instance.new("Frame")
-    self.titleBar.Name = "TitleBar"
-    self.titleBar.Size = UDim2.new(1, 0, 0, 50)
-    self.titleBar.Position = UDim2.new(0, 0, 0, 0)
-    self.titleBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    self.titleBar.BorderSizePixel = 0
-    self.titleBar.Parent = self.mainFrame
+    local innerBorder = Instance.new("Frame")
+    innerBorder.Name = "InnerBorder"
+    innerBorder.Size = UDim2.new(1, -4, 1, -4)
+    innerBorder.Position = UDim2.new(0, 2, 0, 2)
+    innerBorder.BackgroundColor3 = Color3.fromRGB(245, 241, 235)
+    innerBorder.BorderSizePixel = 0
+    innerBorder.Parent = border
     
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 12)
-    titleCorner.Parent = self.titleBar
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.BackgroundColor3 = Color3.fromRGB(101, 67, 33)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = innerBorder
     
-    -- Title Text
-    self.titleText = Instance.new("TextLabel")
-    self.titleText.Name = "Title"
-    self.titleText.Size = UDim2.new(1, -100, 1, 0)
-    self.titleText.Position = UDim2.new(0, 15, 0, 0)
-    self.titleText.BackgroundTransparency = 1
-    self.titleText.Text = "🥚 Select Eggs"
-    self.titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.titleText.TextScaled = true
-    self.titleText.Font = Enum.Font.GothamBold
-    self.titleText.Parent = self.titleBar
+    local titleText = Instance.new("TextLabel")
+    titleText.Name = "TitleText"
+    titleText.Size = UDim2.new(1, -80, 1, 0)
+    titleText.Position = UDim2.new(0, 10, 0, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "Egg Selection"
+    titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleText.TextScaled = true
+    titleText.Font = Enum.Font.GothamBold
+    titleText.Parent = titleBar
     
-    -- Close Button
-    self.closeButton = Instance.new("TextButton")
-    self.closeButton.Name = "CloseButton"
-    self.closeButton.Size = UDim2.new(0, 30, 0, 30)
-    self.closeButton.Position = UDim2.new(1, -40, 0, 10)
-    self.closeButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-    self.closeButton.BorderSizePixel = 0
-    self.closeButton.Text = "×"
-    self.closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.closeButton.TextScaled = true
-    self.closeButton.Font = Enum.Font.GothamBold
-    self.closeButton.Parent = self.titleBar
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -35, 0, 5)
+    closeButton.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Parent = titleBar
     
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 6)
-    closeCorner.Parent = self.closeButton
+    -- Minimize button
+    local minimizeButton = Instance.new("TextButton")
+    minimizeButton.Name = "MinimizeButton"
+    minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    minimizeButton.Position = UDim2.new(1, -70, 0, 5)
+    minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
+    minimizeButton.Text = "-"
+    minimizeButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    minimizeButton.TextScaled = true
+    minimizeButton.Font = Enum.Font.GothamBold
+    minimizeButton.Parent = titleBar
     
-    -- Minimize Button
-    self.minimizeButton = Instance.new("TextButton")
-    self.minimizeButton.Name = "MinimizeButton"
-    self.minimizeButton.Size = UDim2.new(0, 30, 0, 30)
-    self.minimizeButton.Position = UDim2.new(1, -75, 0, 10)
-    self.minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
-    self.minimizeButton.BorderSizePixel = 0
-    self.minimizeButton.Text = "−"
-    self.minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.minimizeButton.TextScaled = true
-    self.minimizeButton.Font = Enum.Font.GothamBold
-    self.minimizeButton.Parent = self.titleBar
+    -- Content area
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
+    contentFrame.Size = UDim2.new(1, -20, 1, -60)
+    contentFrame.Position = UDim2.new(0, 10, 0, 50)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Parent = innerBorder
     
-    local minimizeCorner = Instance.new("UICorner")
-    minimizeCorner.CornerRadius = UDim.new(0, 6)
-    minimizeCorner.Parent = self.minimizeButton
+    -- Tab buttons
+    local tabFrame = Instance.new("Frame")
+    tabFrame.Name = "TabFrame"
+    tabFrame.Size = UDim2.new(1, 0, 0, 40)
+    tabFrame.BackgroundTransparency = 1
+    tabFrame.Parent = contentFrame
     
-    -- Content Frame
-    self.contentFrame = Instance.new("Frame")
-    self.contentFrame.Name = "Content"
-    self.contentFrame.Size = UDim2.new(1, -20, 1, -70)
-    self.contentFrame.Position = UDim2.new(0, 10, 0, 60)
-    self.contentFrame.BackgroundTransparency = 1
-    self.contentFrame.Parent = self.mainFrame
+    local eggsTab = Instance.new("TextButton")
+    eggsTab.Name = "EggsTab"
+    eggsTab.Size = UDim2.new(0.5, -5, 1, 0)
+    eggsTab.Position = UDim2.new(0, 0, 0, 0)
+    eggsTab.BackgroundColor3 = Color3.fromRGB(101, 67, 33)
+    eggsTab.Text = "Eggs"
+    eggsTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+    eggsTab.TextScaled = true
+    eggsTab.Font = Enum.Font.GothamBold
+    eggsTab.Parent = tabFrame
     
-    -- Scroll Frame
-    self.scrollFrame = Instance.new("ScrollingFrame")
-    self.scrollFrame.Name = "ScrollFrame"
-    self.scrollFrame.Size = UDim2.new(1, 0, 1, -60)
-    self.scrollFrame.Position = UDim2.new(0, 0, 0, 0)
-    self.scrollFrame.BackgroundTransparency = 1
-    self.scrollFrame.BorderSizePixel = 0
-    self.scrollFrame.ScrollBarThickness = 6
-    self.scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    self.scrollFrame.Parent = self.contentFrame
+    local mutationsTab = Instance.new("TextButton")
+    mutationsTab.Name = "MutationsTab"
+    mutationsTab.Size = UDim2.new(0.5, -5, 1, 0)
+    mutationsTab.Position = UDim2.new(0.5, 5, 0, 0)
+    mutationsTab.BackgroundColor3 = Color3.fromRGB(169, 169, 169)
+    mutationsTab.Text = "Mutations"
+    mutationsTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+    mutationsTab.TextScaled = true
+    mutationsTab.Font = Enum.Font.GothamBold
+    mutationsTab.Parent = tabFrame
     
-    -- Grid Layout
+    -- Scroll frame for items
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Name = "ScrollFrame"
+    scrollFrame.Size = UDim2.new(1, 0, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 0, 0, 50)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.Parent = contentFrame
+    
+    -- Grid layout for items
     local gridLayout = Instance.new("UIGridLayout")
     gridLayout.CellSize = UDim2.new(0, 120, 0, 140)
     gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    gridLayout.Parent = self.scrollFrame
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    gridLayout.Parent = scrollFrame
     
-    -- Buttons Frame
-    self.buttonsFrame = Instance.new("Frame")
-    self.buttonsFrame.Name = "Buttons"
-    self.buttonsFrame.Size = UDim2.new(1, 0, 0, 50)
-    self.buttonsFrame.Position = UDim2.new(0, 0, 1, -50)
-    self.buttonsFrame.BackgroundTransparency = 1
-    self.buttonsFrame.Parent = self.contentFrame
+    -- Status text
+    local statusText = Instance.new("TextLabel")
+    statusText.Name = "StatusText"
+    statusText.Size = UDim2.new(1, 0, 0, 30)
+    statusText.Position = UDim2.new(0, 0, 1, -30)
+    statusText.BackgroundTransparency = 1
+    statusText.Text = "Selected: 0 eggs, 0 mutations"
+    statusText.TextColor3 = Color3.fromRGB(101, 67, 33)
+    statusText.TextScaled = true
+    statusText.Font = Enum.Font.Gotham
+    statusText.Parent = contentFrame
     
-    -- Select All Button
-    self.selectAllButton = Instance.new("TextButton")
-    self.selectAllButton.Name = "SelectAll"
-    self.selectAllButton.Size = UDim2.new(0, 100, 0, 35)
-    self.selectAllButton.Position = UDim2.new(0, 10, 0, 7)
-    self.selectAllButton.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
-    self.selectAllButton.BorderSizePixel = 0
-    self.selectAllButton.Text = "Select All"
-    self.selectAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.selectAllButton.TextScaled = true
-    self.selectAllButton.Font = Enum.Font.GothamBold
-    self.selectAllButton.Parent = self.buttonsFrame
-    
-    local selectAllCorner = Instance.new("UICorner")
-    selectAllCorner.CornerRadius = UDim.new(0, 8)
-    selectAllCorner.Parent = self.selectAllButton
-    
-    -- Clear All Button
-    self.clearAllButton = Instance.new("TextButton")
-    self.clearAllButton.Name = "ClearAll"
-    self.clearAllButton.Size = UDim2.new(0, 100, 0, 35)
-    self.clearAllButton.Position = UDim2.new(0, 120, 0, 7)
-    self.clearAllButton.BackgroundColor3 = Color3.fromRGB(244, 67, 54)
-    self.clearAllButton.BorderSizePixel = 0
-    self.clearAllButton.Text = "Clear All"
-    self.clearAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.clearAllButton.TextScaled = true
-    self.clearAllButton.Font = Enum.Font.GothamBold
-    self.clearAllButton.Parent = self.buttonsFrame
-    
-    local clearAllCorner = Instance.new("UICorner")
-    clearAllCorner.CornerRadius = UDim.new(0, 8)
-    clearAllCorner.Parent = self.clearAllButton
-    
-    -- Confirm Button
-    self.confirmButton = Instance.new("TextButton")
-    self.confirmButton.Name = "Confirm"
-    self.confirmButton.Size = UDim2.new(0, 100, 0, 35)
-    self.confirmButton.Position = UDim2.new(1, -110, 0, 7)
-    self.confirmButton.BackgroundColor3 = Color3.fromRGB(33, 150, 243)
-    self.confirmButton.BorderSizePixel = 0
-    self.confirmButton.Text = "Confirm"
-    self.confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.confirmButton.TextScaled = true
-    self.confirmButton.Font = Enum.Font.GothamBold
-    self.confirmButton.Parent = self.buttonsFrame
-    
-    local confirmCorner = Instance.new("UICorner")
-    confirmCorner.CornerRadius = UDim.new(0, 8)
-    confirmCorner.Parent = self.confirmButton
-    
-    -- Create egg buttons
-    self:createEggButtons()
-    self:setupConnections()
-end
-
-function CustomEggUI:createEggButtons()
-    self.eggButtons = {}
-    
-    for eggId, eggInfo in pairs(eggData) do
-        local eggButton = Instance.new("TextButton")
-        eggButton.Name = eggId
-        eggButton.Size = UDim2.new(0, 120, 0, 140)
-        eggButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        eggButton.BorderSizePixel = 0
-        eggButton.Text = ""
-        eggButton.Parent = self.scrollFrame
-        
-        local buttonCorner = Instance.new("UICorner")
-        buttonCorner.CornerRadius = UDim.new(0, 8)
-        buttonCorner.Parent = eggButton
-        
-        -- Border for selection
-        local border = Instance.new("UIStroke")
-        border.Color = Color3.fromRGB(200, 200, 200)
-        border.Thickness = 2
-        border.Parent = eggButton
-        
-        -- Egg Icon
-        local icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 60, 0, 60)
-        icon.Position = UDim2.new(0.5, -30, 0, 10)
-        icon.BackgroundTransparency = 1
-        icon.Image = eggInfo.Icon
-        icon.ImageRectSize = Vector2.new(100, 100)
-        icon.ImageRectOffset = Vector2.new(0, 0)
-        icon.Parent = eggButton
-        
-        -- Egg Name
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "Name"
-        nameLabel.Size = UDim2.new(1, -10, 0, 20)
-        nameLabel.Position = UDim2.new(0, 5, 0, 80)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = eggInfo.Name
-        nameLabel.TextColor3 = Color3.fromRGB(50, 50, 50)
-        nameLabel.TextScaled = true
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.Parent = eggButton
-        
-        -- Price
-        local priceLabel = Instance.new("TextLabel")
-        priceLabel.Name = "Price"
-        priceLabel.Size = UDim2.new(1, -10, 0, 20)
-        priceLabel.Position = UDim2.new(0, 5, 0, 100)
-        priceLabel.BackgroundTransparency = 1
-        priceLabel.Text = "$" .. eggInfo.Price
-        priceLabel.TextColor3 = Color3.fromRGB(76, 175, 80)
-        priceLabel.TextScaled = true
-        priceLabel.Font = Enum.Font.GothamBold
-        priceLabel.Parent = eggButton
-        
-        -- Selection indicator
-        local selectionIndicator = Instance.new("Frame")
-        selectionIndicator.Name = "SelectionIndicator"
-        selectionIndicator.Size = UDim2.new(1, 0, 1, 0)
-        selectionIndicator.Position = UDim2.new(0, 0, 0, 0)
-        selectionIndicator.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
-        selectionIndicator.BackgroundTransparency = 0.8
-        selectionIndicator.Visible = false
-        selectionIndicator.Parent = eggButton
-        
-        local indicatorCorner = Instance.new("UICorner")
-        indicatorCorner.CornerRadius = UDim.new(0, 8)
-        indicatorCorner.Parent = selectionIndicator
-        
-        -- Check mark
-        local checkMark = Instance.new("TextLabel")
-        checkMark.Name = "CheckMark"
-        checkMark.Size = UDim2.new(0, 30, 0, 30)
-        checkMark.Position = UDim2.new(1, -35, 0, 5)
-        checkMark.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
-        checkMark.BorderSizePixel = 0
-        checkMark.Text = "✓"
-        checkMark.TextColor3 = Color3.fromRGB(255, 255, 255)
-        checkMark.TextScaled = true
-        checkMark.Font = Enum.Font.GothamBold
-        checkMark.Visible = false
-        checkMark.Parent = eggButton
-        
-        local checkCorner = Instance.new("UICorner")
-        checkCorner.CornerRadius = UDim.new(0, 15)
-        checkCorner.Parent = checkMark
-        
-        -- Button click handler
-        eggButton.MouseButton1Click:Connect(function()
-            self:toggleEggSelection(eggId, eggButton)
-        end)
-        
-        self.eggButtons[eggId] = {
-            button = eggButton,
-            indicator = selectionIndicator,
-            checkMark = checkMark,
-            border = border
-        }
+    -- Create egg items
+    local function createEggItems()
+        for eggId, eggInfo in pairs(eggData) do
+            local eggFrame = Instance.new("Frame")
+            eggFrame.Name = eggId
+            eggFrame.Size = UDim2.new(0, 120, 0, 140)
+            eggFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            eggFrame.BorderSizePixel = 2
+            eggFrame.BorderColor3 = Color3.fromRGB(101, 67, 33)
+            eggFrame.Parent = scrollFrame
+            
+            -- Selection indicator
+            local selectionIndicator = Instance.new("Frame")
+            selectionIndicator.Name = "SelectionIndicator"
+            selectionIndicator.Size = UDim2.new(1, 0, 0, 4)
+            selectionIndicator.Position = UDim2.new(0, 0, 0, 0)
+            selectionIndicator.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
+            selectionIndicator.Visible = false
+            selectionIndicator.Parent = eggFrame
+            
+            -- Egg icon
+            local iconFrame = Instance.new("Frame")
+            iconFrame.Name = "IconFrame"
+            iconFrame.Size = UDim2.new(0, 60, 0, 60)
+            iconFrame.Position = UDim2.new(0.5, -30, 0, 10)
+            iconFrame.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+            iconFrame.BorderSizePixel = 1
+            iconFrame.BorderColor3 = Color3.fromRGB(200, 200, 200)
+            iconFrame.Parent = eggFrame
+            
+            local iconImage = Instance.new("ImageLabel")
+            iconImage.Name = "Icon"
+            iconImage.Size = UDim2.new(1, -4, 1, -4)
+            iconImage.Position = UDim2.new(0, 2, 0, 2)
+            iconImage.BackgroundTransparency = 1
+            iconImage.Image = eggInfo.Icon
+            iconImage.Parent = iconFrame
+            
+            -- Egg name
+            local nameText = Instance.new("TextLabel")
+            nameText.Name = "Name"
+            nameText.Size = UDim2.new(1, -10, 0, 20)
+            nameText.Position = UDim2.new(0, 5, 0, 75)
+            nameText.BackgroundTransparency = 1
+            nameText.Text = eggInfo.Name
+            nameText.TextColor3 = Color3.fromRGB(0, 0, 0)
+            nameText.TextScaled = true
+            nameText.Font = Enum.Font.Gotham
+            nameText.Parent = eggFrame
+            
+            -- Price
+            local priceText = Instance.new("TextLabel")
+            priceText.Name = "Price"
+            priceText.Size = UDim2.new(1, -10, 0, 20)
+            priceText.Position = UDim2.new(0, 5, 0, 95)
+            priceText.BackgroundTransparency = 1
+            priceText.Text = "$" .. eggInfo.Price
+            priceText.TextColor3 = Color3.fromRGB(40, 167, 69)
+            priceText.TextScaled = true
+            priceText.Font = Enum.Font.GothamBold
+            priceText.Parent = eggFrame
+            
+            -- Rarity indicator
+            local rarityFrame = Instance.new("Frame")
+            rarityFrame.Name = "Rarity"
+            rarityFrame.Size = UDim2.new(0, 20, 0, 20)
+            rarityFrame.Position = UDim2.new(1, -25, 0, 5)
+            rarityFrame.BackgroundColor3 = getRarityColor(eggInfo.Rarity)
+            rarityFrame.BorderSizePixel = 1
+            rarityFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            rarityFrame.Parent = eggFrame
+            
+            -- Click handler
+            eggFrame.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    toggleEggSelection(eggId, eggFrame)
+                end
+            end)
+        end
     end
     
-    -- Update canvas size
-    local gridLayout = self.scrollFrame:FindFirstChild("UIGridLayout")
-    if gridLayout then
-        local numEggs = 0
-        for _ in pairs(eggData) do
-            numEggs = numEggs + 1
+    -- Create mutation items
+    local function createMutationItems()
+        for mutationId, mutationInfo in pairs(mutationData) do
+            local mutationFrame = Instance.new("Frame")
+            mutationFrame.Name = mutationId
+            mutationFrame.Size = UDim2.new(0, 120, 0, 140)
+            mutationFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            mutationFrame.BorderSizePixel = 2
+            mutationFrame.BorderColor3 = Color3.fromRGB(101, 67, 33)
+            mutationFrame.Visible = false
+            mutationFrame.Parent = scrollFrame
+            
+            -- Selection indicator
+            local selectionIndicator = Instance.new("Frame")
+            selectionIndicator.Name = "SelectionIndicator"
+            selectionIndicator.Size = UDim2.new(1, 0, 0, 4)
+            selectionIndicator.Position = UDim2.new(0, 0, 0, 0)
+            selectionIndicator.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
+            selectionIndicator.Visible = false
+            selectionIndicator.Parent = mutationFrame
+            
+            -- Mutation color icon
+            local colorFrame = Instance.new("Frame")
+            colorFrame.Name = "ColorFrame"
+            colorFrame.Size = UDim2.new(0, 60, 0, 60)
+            colorFrame.Position = UDim2.new(0.5, -30, 0, 10)
+            colorFrame.BackgroundColor3 = mutationInfo.Color
+            colorFrame.BorderSizePixel = 2
+            colorFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            colorFrame.Parent = mutationFrame
+            
+            -- Mutation name
+            local nameText = Instance.new("TextLabel")
+            nameText.Name = "Name"
+            nameText.Size = UDim2.new(1, -10, 0, 20)
+            nameText.Position = UDim2.new(0, 5, 0, 75)
+            nameText.BackgroundTransparency = 1
+            nameText.Text = mutationInfo.Name
+            nameText.TextColor3 = Color3.fromRGB(0, 0, 0)
+            nameText.TextScaled = true
+            nameText.Font = Enum.Font.Gotham
+            nameText.Parent = mutationFrame
+            
+            -- Rarity
+            local rarityText = Instance.new("TextLabel")
+            rarityText.Name = "Rarity"
+            rarityText.Size = UDim2.new(1, -10, 0, 20)
+            rarityText.Position = UDim2.new(0, 5, 0, 95)
+            rarityText.BackgroundTransparency = 1
+            rarityText.Text = "Rarity: " .. mutationInfo.Rarity
+            rarityText.TextColor3 = Color3.fromRGB(101, 67, 33)
+            rarityText.TextScaled = true
+            rarityText.Font = Enum.Font.GothamBold
+            rarityText.Parent = mutationFrame
+            
+            -- Click handler
+            mutationFrame.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    toggleMutationSelection(mutationId, mutationFrame)
+                end
+            end)
+        end
+    end
+    
+    -- Helper function to get rarity color
+    local function getRarityColor(rarity)
+        local colors = {
+            [1] = Color3.fromRGB(169, 169, 169), -- Gray
+            [2] = Color3.fromRGB(0, 128, 0),     -- Green
+            [3] = Color3.fromRGB(0, 0, 255),     -- Blue
+            [4] = Color3.fromRGB(128, 0, 128),   -- Purple
+            [5] = Color3.fromRGB(255, 215, 0),   -- Gold
+            [6] = Color3.fromRGB(255, 0, 0),     -- Red
+            [10] = Color3.fromRGB(255, 215, 0),  -- Golden
+            [20] = Color3.fromRGB(0, 191, 255),  -- Diamond
+            [50] = Color3.fromRGB(138, 43, 226), -- Electric
+            [100] = Color3.fromRGB(255, 69, 0)   -- Fire
+        }
+        return colors[rarity] or Color3.fromRGB(169, 169, 169)
+    end
+    
+    -- Toggle egg selection
+    local function toggleEggSelection(eggId, eggFrame)
+        if selectedEggs[eggId] then
+            selectedEggs[eggId] = nil
+            eggFrame.SelectionIndicator.Visible = false
+        else
+            selectedEggs[eggId] = true
+            eggFrame.SelectionIndicator.Visible = true
+        end
+        updateStatusText()
+    end
+    
+    -- Toggle mutation selection
+    local function toggleMutationSelection(mutationId, mutationFrame)
+        if selectedMutations[mutationId] then
+            selectedMutations[mutationId] = nil
+            mutationFrame.SelectionIndicator.Visible = false
+        else
+            selectedMutations[mutationId] = true
+            mutationFrame.SelectionIndicator.Visible = true
+        end
+        updateStatusText()
+    end
+    
+    -- Update status text
+    local function updateStatusText()
+        local eggCount = 0
+        for _ in pairs(selectedEggs) do
+            eggCount = eggCount + 1
         end
         
-        local rows = math.ceil(numEggs / 3)
-        local canvasHeight = rows * 150 + (rows - 1) * 10
-        self.scrollFrame.CanvasSize = UDim2.new(0, 0, 0, canvasHeight)
-    end
-end
-
-function CustomEggUI:toggleEggSelection(eggId, eggButton)
-    local buttonData = self.eggButtons[eggId]
-    
-    if self.selectedEggs[eggId] then
-        -- Deselect
-        self.selectedEggs[eggId] = nil
-        buttonData.indicator.Visible = false
-        buttonData.checkMark.Visible = false
-        buttonData.border.Color = Color3.fromRGB(200, 200, 200)
-    else
-        -- Select
-        self.selectedEggs[eggId] = true
-        buttonData.indicator.Visible = true
-        buttonData.checkMark.Visible = true
-        buttonData.border.Color = Color3.fromRGB(76, 175, 80)
+        local mutationCount = 0
+        for _ in pairs(selectedMutations) do
+            mutationCount = mutationCount + 1
+        end
+        
+        statusText.Text = string.format("Selected: %d eggs, %d mutations", eggCount, mutationCount)
     end
     
-    -- Update button text
-    self:updateButtonText()
-end
-
-function CustomEggUI:updateButtonText()
-    local count = 0
-    for _ in pairs(self.selectedEggs) do
-        count = count + 1
-    end
+    -- Tab switching
+    eggsTab.MouseButton1Click:Connect(function()
+        eggsTab.BackgroundColor3 = Color3.fromRGB(101, 67, 33)
+        mutationsTab.BackgroundColor3 = Color3.fromRGB(169, 169, 169)
+        
+        -- Show eggs, hide mutations
+        for eggId, _ in pairs(eggData) do
+            local eggFrame = scrollFrame:FindFirstChild(eggId)
+            if eggFrame then
+                eggFrame.Visible = true
+            end
+        end
+        
+        for mutationId, _ in pairs(mutationData) do
+            local mutationFrame = scrollFrame:FindFirstChild(mutationId)
+            if mutationFrame then
+                mutationFrame.Visible = false
+            end
+        end
+    end)
     
-    if count == 0 then
-        self.confirmButton.Text = "Confirm"
-    else
-        self.confirmButton.Text = "Confirm (" .. count .. ")"
-    end
-end
-
-function CustomEggUI:setupConnections()
+    mutationsTab.MouseButton1Click:Connect(function()
+        mutationsTab.BackgroundColor3 = Color3.fromRGB(101, 67, 33)
+        eggsTab.BackgroundColor3 = Color3.fromRGB(169, 169, 169)
+        
+        -- Show mutations, hide eggs
+        for eggId, _ in pairs(eggData) do
+            local eggFrame = scrollFrame:FindFirstChild(eggId)
+            if eggFrame then
+                eggFrame.Visible = false
+            end
+        end
+        
+        for mutationId, _ in pairs(mutationData) do
+            local mutationFrame = scrollFrame:FindFirstChild(mutationId)
+            if mutationFrame then
+                mutationFrame.Visible = true
+            end
+        end
+    end)
+    
     -- Close button
-    self.closeButton.MouseButton1Click:Connect(function()
-        self:hide()
+    closeButton.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
     end)
     
     -- Minimize button
-    self.minimizeButton.MouseButton1Click:Connect(function()
-        self:minimize()
-    end)
-    
-    -- Select All button
-    self.selectAllButton.MouseButton1Click:Connect(function()
-        self:selectAll()
-    end)
-    
-    -- Clear All button
-    self.clearAllButton.MouseButton1Click:Connect(function()
-        self:clearAll()
-    end)
-    
-    -- Confirm button
-    self.confirmButton.MouseButton1Click:Connect(function()
-        self:confirm()
-    end)
-end
-
-function CustomEggUI:setupDragging()
-    self.titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.isDragging = true
-            self.dragStart = input.Position
-            self.originalPosition = self.mainFrame.Position
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and self.isDragging then
-            local delta = input.Position - self.dragStart
-            self.mainFrame.Position = UDim2.new(
-                self.originalPosition.X.Scale,
-                self.originalPosition.X.Offset + delta.X,
-                self.originalPosition.Y.Scale,
-                self.originalPosition.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.isDragging = false
-        end
-    end)
-end
-
-function CustomEggUI:selectAll()
-    for eggId, buttonData in pairs(self.eggButtons) do
-        self.selectedEggs[eggId] = true
-        buttonData.indicator.Visible = true
-        buttonData.checkMark.Visible = true
-        buttonData.border.Color = Color3.fromRGB(76, 175, 80)
-    end
-    self:updateButtonText()
-end
-
-function CustomEggUI:clearAll()
-    for eggId, buttonData in pairs(self.eggButtons) do
-        self.selectedEggs[eggId] = nil
-        buttonData.indicator.Visible = false
-        buttonData.checkMark.Visible = false
-        buttonData.border.Color = Color3.fromRGB(200, 200, 200)
-    end
-    self:updateButtonText()
-end
-
-function CustomEggUI:confirm()
-    if self.callback then
-        self.callback(self.selectedEggs)
-    end
-    self:hide()
-end
-
-function CustomEggUI:show()
-    self.mainFrame.Visible = true
-    self.mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
-end
-
-function CustomEggUI:hide()
-    self.mainFrame.Visible = false
-end
-
-function CustomEggUI:minimize()
-    if self.mainFrame.Size.Y.Offset > 100 then
-        -- Minimize
-        local tween = TweenService:Create(self.mainFrame, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 400, 0, 100)
-        })
-        tween:Play()
-        self.minimizeButton.Text = "□"
-    else
-        -- Restore
-        local tween = TweenService:Create(self.mainFrame, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 400, 0, 500)
-        })
-        tween:Play()
-        self.minimizeButton.Text = "−"
-    end
-end
-
-function CustomEggUI:getSelectedEggs()
-    return self.selectedEggs
-end
-
-function CustomEggUI:setSelectedEggs(selectedEggs)
-    self.selectedEggs = selectedEggs or {}
-    
-    -- Update UI
-    for eggId, buttonData in pairs(self.eggButtons) do
-        if self.selectedEggs[eggId] then
-            buttonData.indicator.Visible = true
-            buttonData.checkMark.Visible = true
-            buttonData.border.Color = Color3.fromRGB(76, 175, 80)
+    local isMinimized = false
+    minimizeButton.MouseButton1Click:Connect(function()
+        if isMinimized then
+            contentFrame.Visible = true
+            mainFrame.Size = UDim2.new(0, 600, 0, 400)
+            minimizeButton.Text = "-"
+            isMinimized = false
         else
-            buttonData.indicator.Visible = false
-            buttonData.checkMark.Visible = false
-            buttonData.border.Color = Color3.fromRGB(200, 200, 200)
+            contentFrame.Visible = false
+            mainFrame.Size = UDim2.new(0, 600, 0, 50)
+            minimizeButton.Text = "+"
+            isMinimized = true
         end
-    end
+    end)
     
-    self:updateButtonText()
+    -- Dragging functionality
+    local isDragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    
+    titleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = false
+        end
+    end)
+    
+    titleBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    -- Create items
+    createEggItems()
+    createMutationItems()
+    
+    -- Return functions for external access
+    return {
+        GetSelectedEggs = function()
+            return selectedEggs
+        end,
+        GetSelectedMutations = function()
+            return selectedMutations
+        end,
+        SetSelectedEggs = function(eggs)
+            selectedEggs = eggs or {}
+            -- Update visual indicators
+            for eggId, eggFrame in pairs(scrollFrame:GetChildren()) do
+                if eggData[eggId] then
+                    local indicator = eggFrame:FindFirstChild("SelectionIndicator")
+                    if indicator then
+                        indicator.Visible = selectedEggs[eggId] or false
+                    end
+                end
+            end
+            updateStatusText()
+        end,
+        SetSelectedMutations = function(mutations)
+            selectedMutations = mutations or {}
+            -- Update visual indicators
+            for mutationId, mutationFrame in pairs(scrollFrame:GetChildren()) do
+                if mutationData[mutationId] then
+                    local indicator = mutationFrame:FindFirstChild("SelectionIndicator")
+                    if indicator then
+                        indicator.Visible = selectedMutations[mutationId] or false
+                    end
+                end
+            end
+            updateStatusText()
+        end,
+        Destroy = function()
+            screenGui:Destroy()
+        end
+    }
 end
 
-return CustomEggUI
+-- Export the function
+return createCustomEggSelector
