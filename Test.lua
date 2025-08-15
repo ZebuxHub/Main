@@ -1435,22 +1435,22 @@ end
 
 -- Hardcoded Egg and Mutation Data
 local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "🥚", Rarity = 1 },
-    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "🥚", Rarity = 2 },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "🥚", Rarity = 2 },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "🥚", Rarity = 2 },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "🥚", Rarity = 3 },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "🥚", Rarity = 4 },
-    HyperEgg = { Name = "Hyper Egg", Price = "3,000,000", Icon = "🥚", Rarity = 5 },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "🥚", Rarity = 5 },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "🥚", Rarity = 5 },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "🥚", Rarity = 5 },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "🥚", Rarity = 5 },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "🥚", Rarity = 6 },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "🥚", Rarity = 6 },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "🥚", Rarity = 6 },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "🥚", Rarity = 6 },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "🥚", Rarity = 6 }
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+    HyperEgg = { Name = "Hyper Egg", Price = "3,000,000", Icon = "rbxassetid://104958288296273", Rarity = 5 },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 }
 }
 
 local MutationData = {
