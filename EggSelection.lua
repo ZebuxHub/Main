@@ -157,20 +157,20 @@ local searchText = ""
 local onSelectionChanged = nil
 local onToggleChanged = nil
 
--- macOS Dark Theme Colors
+-- macOS Dark Theme Colors - Improved for better readability
 local colors = {
-    background = Color3.fromRGB(28, 28, 30), -- Dark background
-    surface = Color3.fromRGB(44, 44, 46), -- Card surface
-    primary = Color3.fromRGB(10, 132, 255), -- Blue accent
+    background = Color3.fromRGB(18, 18, 20), -- Darker background for better contrast
+    surface = Color3.fromRGB(32, 32, 34), -- Lighter surface for cards
+    primary = Color3.fromRGB(0, 122, 255), -- Brighter blue accent
     secondary = Color3.fromRGB(88, 86, 214), -- Purple accent
-    text = Color3.fromRGB(255, 255, 255), -- White text
-    textSecondary = Color3.fromRGB(174, 174, 178), -- Gray text
-    textTertiary = Color3.fromRGB(99, 99, 102), -- Darker gray
-    border = Color3.fromRGB(58, 58, 60), -- Border color
-    selected = Color3.fromRGB(10, 132, 255), -- Selected blue
-    hover = Color3.fromRGB(58, 58, 60), -- Hover state
-    pageActive = Color3.fromRGB(10, 132, 255), -- Active tab
-    pageInactive = Color3.fromRGB(174, 174, 178), -- Inactive tab
+    text = Color3.fromRGB(255, 255, 255), -- Pure white text
+    textSecondary = Color3.fromRGB(200, 200, 200), -- Brighter gray text
+    textTertiary = Color3.fromRGB(150, 150, 150), -- Medium gray for placeholders
+    border = Color3.fromRGB(50, 50, 52), -- Slightly darker border
+    selected = Color3.fromRGB(0, 122, 255), -- Bright blue for selected
+    hover = Color3.fromRGB(45, 45, 47), -- Lighter hover state
+    pageActive = Color3.fromRGB(0, 122, 255), -- Bright blue for active tab
+    pageInactive = Color3.fromRGB(60, 60, 62), -- Darker gray for inactive tab
     close = Color3.fromRGB(255, 69, 58), -- Red close button
     minimize = Color3.fromRGB(255, 159, 10), -- Yellow minimize
     maximize = Color3.fromRGB(48, 209, 88) -- Green maximize
@@ -478,6 +478,19 @@ local function createSearchBar(parent)
     searchBox.ClearTextOnFocus = false
     searchBox.Parent = searchContainer
     
+    -- Set placeholder text color using a different approach
+    searchBox.Focused:Connect(function()
+        if searchBox.Text == "" then
+            searchBox.Text = ""
+        end
+    end)
+    
+    searchBox.FocusLost:Connect(function()
+        if searchBox.Text == "" then
+            searchBox.Text = ""
+        end
+    end)
+    
     -- Search functionality
     searchBox.Changed:Connect(function(prop)
         if prop == "Text" then
@@ -523,7 +536,7 @@ local function createPageTabs(parent)
     mutationsTab.Text = "✨ Mutations"
     mutationsTab.TextSize = 14
     mutationsTab.Font = Enum.Font.GothamSemibold
-    mutationsTab.TextColor3 = colors.textSecondary
+    mutationsTab.TextColor3 = colors.text
     mutationsTab.Parent = tabContainer
     
     local mutationsCorner = Instance.new("UICorner")
@@ -536,7 +549,7 @@ local function createPageTabs(parent)
         eggsTab.BackgroundColor3 = colors.pageActive
         eggsTab.TextColor3 = colors.text
         mutationsTab.BackgroundColor3 = colors.pageInactive
-        mutationsTab.TextColor3 = colors.textSecondary
+        mutationsTab.TextColor3 = colors.text
         -- Update search placeholder
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
@@ -550,7 +563,7 @@ local function createPageTabs(parent)
         mutationsTab.BackgroundColor3 = colors.pageActive
         mutationsTab.TextColor3 = colors.text
         eggsTab.BackgroundColor3 = colors.pageInactive
-        eggsTab.TextColor3 = colors.textSecondary
+        eggsTab.TextColor3 = colors.text
         -- Update search placeholder
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
@@ -737,13 +750,35 @@ function EggSelection.RefreshContent()
     for i, item in ipairs(sortedData) do
         local card = createItemCard(item.id, item.data, scrollFrame)
         card.LayoutOrder = i -- Ensure proper ordering
+        
+        -- Apply saved selection state
+        if selectedItems[item.id] then
+            local checkmark = card:FindFirstChild("Checkmark")
+            if checkmark then
+                checkmark.Visible = true
+            end
+            card.BackgroundColor3 = colors.selected
+        end
     end
 end
 
 -- Public Functions
-function EggSelection.Show(callback, toggleCallback)
+function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
+    
+    -- Apply saved selections if provided
+    if savedEggs then
+        for eggId, _ in pairs(savedEggs) do
+            selectedItems[eggId] = true
+        end
+    end
+    
+    if savedMutations then
+        for mutationId, _ in pairs(savedMutations) do
+            selectedItems[mutationId] = true
+        end
+    end
     
     if not ScreenGui then
         EggSelection.CreateUI()
@@ -790,6 +825,30 @@ end
 
 function EggSelection.IsVisible()
     return ScreenGui and ScreenGui.Enabled
+end
+
+function EggSelection.GetCurrentSelections()
+    return selectedItems
+end
+
+function EggSelection.UpdateSelections(eggs, mutations)
+    selectedItems = {}
+    
+    if eggs then
+        for eggId, _ in pairs(eggs) do
+            selectedItems[eggId] = true
+        end
+    end
+    
+    if mutations then
+        for mutationId, _ in pairs(mutations) do
+            selectedItems[mutationId] = true
+        end
+    end
+    
+    if ScreenGui then
+        EggSelection.RefreshContent()
+    end
 end
 
 return EggSelection
