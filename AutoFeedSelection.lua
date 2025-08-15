@@ -510,7 +510,7 @@ function AutoFeedSelection.CreateUI()
     
     -- Add UIPadding to ensure proper scrolling
     local padding = Instance.new("UIPadding")
-    padding.PaddingBottom = UDim2.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 8)
     padding.Parent = scrollFrame
     
     -- Auto-update canvas size when content changes
