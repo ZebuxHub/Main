@@ -827,8 +827,36 @@ end
 function EggSelection.RefreshContent()
     if not ScreenGui then return end
     
-    local scrollFrame = ScreenGui.MainFrame.Card.MainContent.Content.ScrollFrame
-    if not scrollFrame then return end
+    -- Debug: Check UI structure
+    local mainFrame = ScreenGui:FindFirstChild("MainFrame")
+    if not mainFrame then
+        warn("MainFrame not found")
+        return
+    end
+    
+    local card = mainFrame:FindFirstChild("Card")
+    if not card then
+        warn("Card not found")
+        return
+    end
+    
+    local mainContent = card:FindFirstChild("MainContent")
+    if not mainContent then
+        warn("MainContent not found")
+        return
+    end
+    
+    local content = mainContent:FindFirstChild("Content")
+    if not content then
+        warn("Content not found")
+        return
+    end
+    
+    local scrollFrame = content:FindFirstChild("ScrollFrame")
+    if not scrollFrame then 
+        warn("ScrollFrame not found in UI structure")
+        return 
+    end
     
     -- Clear existing content
     for _, child in pairs(scrollFrame:GetChildren()) do
@@ -881,7 +909,37 @@ function EggSelection.SetSelectedItems(items)
     selectedItems = items or {}
     
     if ScreenGui then
-        local scrollFrame = ScreenGui.MainFrame.Card.MainContent.Content.ScrollFrame
+        -- Debug: Check UI structure
+        local mainFrame = ScreenGui:FindFirstChild("MainFrame")
+        if not mainFrame then
+            warn("MainFrame not found in SetSelectedItems")
+            return
+        end
+        
+        local card = mainFrame:FindFirstChild("Card")
+        if not card then
+            warn("Card not found in SetSelectedItems")
+            return
+        end
+        
+        local mainContent = card:FindFirstChild("MainContent")
+        if not mainContent then
+            warn("MainContent not found in SetSelectedItems")
+            return
+        end
+        
+        local content = mainContent:FindFirstChild("Content")
+        if not content then
+            warn("Content not found in SetSelectedItems")
+            return
+        end
+        
+        local scrollFrame = content:FindFirstChild("ScrollFrame")
+        if not scrollFrame then 
+            warn("ScrollFrame not found in SetSelectedItems")
+            return 
+        end
+        
         for _, child in pairs(scrollFrame:GetChildren()) do
             if child:IsA("TextButton") then
                 local checkmark = child.Card.Checkmark
