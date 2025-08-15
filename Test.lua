@@ -13,7 +13,7 @@ local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
 -- Load Pet Placement Functions
-local PetPlacementFunctions = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSelection.luahttps://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/PetPlacementFunctions.lua"))()
+local PetPlacementFunctions = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/PetPlacementFunctions.lua"))()
 -- Window
 local Window = WindUI:CreateWindow({
     Title = "Build A Zoo",
