@@ -1470,36 +1470,6 @@ local selectedMutationSet = {}
 local eggSelectionVisible = false
 
 
-
-Tabs.AutoTab:Button({
-    Title = "🔄 Refresh Mutation List",
-    Desc = "Update the mutation list if it's not showing all mutations",
-    Callback = function()
-        loadMutationConfig()
-        updateStatusParagraph()
-        WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Selection",
-    Desc = "Show what eggs and mutations are currently selected",
-    Callback = function()
-        local eggTypes = {}
-        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
-        table.sort(eggTypes)
-        
-        local mutations = {}
-        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
-        table.sort(mutations)
-        
-        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
-        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
-        
-        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
-    end
-})
-
 Tabs.AutoTab:Button({
     Title = "🥚 Open Egg Selection UI",
     Desc = "Open the modern glass-style egg selection interface",
