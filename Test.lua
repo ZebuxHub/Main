@@ -52,526 +52,63 @@ local antiAFKConnection = nil
 local autoHatchThread = nil
 local automationPriority = "Hatch" -- "Hatch" or "Place"
 
--- Hard-coded config data
-local eggConfig = {
-	BasicEgg = {
-		ID = "BasicEgg";
-		Luck = 1;
-		Price = "100";
-		HatchTime = 5;
-		MutateBuyRate = 1;
-		Rarity = 1;
-		LootID = "L_CAPY_PET";
-		HatchLuck = 10;
-		Icon = "rbxassetid://129248801621928";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	RareEgg = {
-		ID = "RareEgg";
-		Luck = 2;
-		Price = "500";
-		HatchTime = 20;
-		MutateBuyRate = 1;
-		Rarity = 2;
-		LootID = "L_HOME_PET";
-		HatchLuck = 10;
-		Icon = "rbxassetid://71012831091414";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	SuperRareEgg = {
-		ID = "SuperRareEgg";
-		Luck = 5;
-		Price = "2,500";
-		HatchTime = 40;
-		MutateBuyRate = 1;
-		Rarity = 2;
-		LootID = "L_HOME_PET2";
-		HatchLuck = 5;
-		Icon = "rbxassetid://93845452154351";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	EpicEgg = {
-		ID = "EpicEgg";
-		Luck = 20;
-		Price = "15,000";
-		HatchTime = 120;
-		MutateBuyRate = 1;
-		Rarity = 2;
-		LootID = "L_COM_PET";
-		HatchLuck = 20;
-		Icon = "rbxassetid://116395645531721";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	LegendEgg = {
-		ID = "LegendEgg";
-		Luck = 100;
-		Price = "100,000";
-		HatchTime = 360;
-		MutateBuyRate = 1;
-		Rarity = 3;
-		LootID = "L_COM_PET";
-		HatchLuck = 100;
-		Icon = "rbxassetid://90834918351014";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	PrismaticEgg = {
-		ID = "PrismaticEgg";
-		Luck = 1000;
-		Price = "1,000,000";
-		HatchTime = 720;
-		MutateBuyRate = 1;
-		Rarity = 4;
-		LootID = "L_COM_PET2";
-		HatchLuck = 5;
-		Icon = "rbxassetid://79960683434582";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	HyperEgg = {
-		ID = "HyperEgg";
-		Luck = 5000;
-		Price = "3,000,000";
-		HatchTime = 2160;
-		MutateBuyRate = 1;
-		Rarity = 5;
-		LootID = "L_COM_PET2";
-		HatchLuck = 100;
-		Icon = "rbxassetid://104958288296273";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	VoidEgg = {
-		ID = "VoidEgg";
-		Luck = 8000;
-		Price = "24,000,000";
-		HatchTime = 2880;
-		MutateBuyRate = 1;
-		Rarity = 5;
-		LootID = "L_COM_PET3";
-		HatchLuck = 5;
-		Icon = "rbxassetid://122396162708984";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	BowserEgg = {
-		ID = "BowserEgg";
-		Luck = 12000;
-		Price = "130,000,000";
-		HatchTime = 4320;
-		MutateBuyRate = 1;
-		Rarity = 5;
-		LootID = "L_COM_PET3";
-		HatchLuck = 100;
-		Icon = "rbxassetid://71500536051510";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	DemonEgg = {
-		ID = "DemonEgg";
-		Luck = 16000;
-		Price = "400,000,000";
-		HatchTime = 5400;
-		MutateBuyRate = 1;
-		Rarity = 5;
-		LootID = "L_COM_PET4";
-		HatchLuck = 10;
-		Icon = "rbxassetid://126412407639969";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	BoneDragonEgg = {
-		ID = "BoneDragonEgg";
-		Luck = 24000;
-		Price = "2,000,000,000";
-		HatchTime = 7200;
-		MutateBuyRate = 0.8;
-		Rarity = 5;
-		LootID = "L_COM_PET5";
-		HatchLuck = 10;
-		Icon = "rbxassetid://83209913424562";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	UltraEgg = {
-		ID = "UltraEgg";
-		Luck = 50000;
-		Price = "10,000,000,000";
-		HatchTime = 14400;
-		MutateBuyRate = 0.6;
-		Rarity = 6;
-		LootID = "L_COM_PET6";
-		HatchLuck = 10;
-		Icon = "rbxassetid://83909590718799";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	DinoEgg = {
-		ID = "DinoEgg";
-		Luck = 80000;
-		Price = "10,000,000,000";
-		HatchTime = 14400;
-		MutateBuyRate = 1;
-		Rarity = 6;
-		LootID = "L_COM_DINOEGG";
-		HatchLuck = 10;
-		Icon = "rbxassetid://80783528632315";
-		ThingMutate = 10;
-		MutateLoot = "L_MUTATE_DINO";
-		Source = "Event";
-	};
-	FlyEgg = {
-		ID = "FlyEgg";
-		Luck = 10;
-		Price = "999,999,999,999";
-		HatchTime = 60;
-		MutateBuyRate = 1;
-		Rarity = 6;
-		LootID = "L_COM_FLYEGG";
-		HatchLuck = 10;
-		Icon = "rbxassetid://109240587278187";
-		ThingMutate = 20;
-		MutateLoot = "L_MUTATE";
-		Source = "Shop";
-	};
-	UnicornEgg = {
-		ID = "UnicornEgg";
-		Luck = 80000;
-		Price = "40,000,000,000";
-		HatchTime = 14400;
-		MutateBuyRate = 0.6;
-		Rarity = 6;
-		LootID = "L_COM_UNICORNEGG";
-		HatchLuck = 10;
-		Icon = "rbxassetid://123427249205445";
-		ThingMutate = "";
-		MutateLoot = "";
-		Source = "";
-	};
-	AncientEgg = {
-		ID = "AncientEgg";
-		Luck = 10;
-		Price = "999,999,999,999";
-		HatchTime = 60;
-		MutateBuyRate = 1;
-		Rarity = 6;
-		LootID = "L_COM_ANCIENTEGG";
-		HatchLuck = 10;
-		Icon = "rbxassetid://113910587565739";
-		ThingMutate = 20;
-		MutateLoot = "L_MUTATE_DINO";
-		Source = "Shop";
-	};
-}
-
+-- Egg config loader
+local eggConfig = {}
 local conveyorConfig = {}
+local petFoodConfig = {}
+local mutationConfig = {}
 
-local petFoodConfig = {
-	Strawberry = {
-		ID = "Strawberry";
-		Rarity = 1;
-		Index = 1;
-		Price = "5,000";
-		FeedValue = 600;
-		SellStock1 = 2;
-		SellStock2 = 5;
-		SellStockRate = 100;
-		RefreshLuck = "";
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 16;
-	};
-	Blueberry = {
-		ID = "Blueberry";
-		Rarity = 1;
-		Index = 2;
-		Price = "20,000";
-		FeedValue = 1250;
-		SellStock1 = 1;
-		SellStock2 = 3;
-		SellStockRate = 80;
-		RefreshLuck = "";
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 30;
-	};
-	Watermelon = {
-		ID = "Watermelon";
-		Rarity = 2;
-		Index = 3;
-		Price = "80,000";
-		FeedValue = 3200;
-		SellStock1 = 2;
-		SellStock2 = 5;
-		SellStockRate = 60;
-		RefreshLuck = "";
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 24;
-	};
-	Apple = {
-		ID = "Apple";
-		Rarity = 2;
-		Index = 4;
-		Price = "400,000";
-		FeedValue = 8000;
-		SellStock1 = 2;
-		SellStock2 = 5;
-		SellStockRate = 50;
-		RefreshLuck = "";
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 40;
-	};
-	Orange = {
-		ID = "Orange";
-		Rarity = 3;
-		Index = 5;
-		Price = "1,200,000";
-		FeedValue = 20000;
-		SellStock1 = 2;
-		SellStock2 = 4;
-		SellStockRate = 30;
-		RefreshLuck = "";
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 32;
-	};
-	Corn = {
-		ID = "Corn";
-		Rarity = 3;
-		Index = 6;
-		Price = "3,500,000";
-		FeedValue = 50000;
-		SellStock1 = 2;
-		SellStock2 = 4;
-		SellStockRate = 20;
-		RefreshLuck = "";
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 60;
-	};
-	Banana = {
-		ID = "Banana";
-		Rarity = 4;
-		Index = 7;
-		Price = "12,000,000";
-		FeedValue = 120000;
-		SellStock1 = 1;
-		SellStock2 = 4;
-		SellStockRate = 15;
-		RefreshLuck = 1;
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 90;
-	};
-	Grape = {
-		ID = "Grape";
-		Rarity = 4;
-		Index = 8;
-		Price = "50,000,000";
-		FeedValue = 300000;
-		SellStock1 = 1;
-		SellStock2 = 4;
-		SellStockRate = 12;
-		RefreshLuck = 1;
-		MutateRate = "";
-		MutateID = "";
-		EatTime = 200;
-	};
-	Pear = {
-		ID = "Pear";
-		Rarity = 5;
-		Index = 9;
-		Price = "200,000,000";
-		FeedValue = 800000;
-		SellStock1 = 1;
-		SellStock2 = 3;
-		SellStockRate = 8;
-		RefreshLuck = 1;
-		MutateRate = 10;
-		MutateID = "Golden";
-		EatTime = 180;
-	};
-	Pineapple = {
-		ID = "Pineapple";
-		Rarity = 5;
-		Index = 10;
-		Price = "600,000,000";
-		FeedValue = 1500000;
-		SellStock1 = 1;
-		SellStock2 = 3;
-		SellStockRate = 5;
-		RefreshLuck = 1;
-		MutateRate = 10;
-		MutateID = "Diamond";
-		EatTime = 280;
-	};
-	GoldMango = {
-		ID = "GoldMango";
-		Rarity = 6;
-		Index = 11;
-		Price = "2,000,000,000";
-		FeedValue = 4000000;
-		SellStock1 = 1;
-		SellStock2 = 2;
-		SellStockRate = 2;
-		RefreshLuck = 1;
-		MutateRate = 10;
-		MutateID = "Fire";
-		EatTime = 360;
-	};
-}
-
-local mutationConfig = {
-	Golden = {
-		ID = "Golden";
-		ProduceRate = 2;
-		SellRate = 2;
-		BuyRate = 3;
-		BigRate = 2;
-		TextColor = "ffc518";
-		Color1 = "204, 180, 61";
-		Color2 = "229, 229, 114";
-		Color3 = "216, 209, 130";
-		Neon1 = "";
-		Neon2 = "";
-		Neon3 = "";
-		RarityNum = 10;
-		HatchTimeScale = 2;
-		MinHatchTime = 180;
-	};
-	Diamond = {
-		ID = "Diamond";
-		ProduceRate = 3;
-		SellRate = 3;
-		BuyRate = 10;
-		BigRate = 3;
-		TextColor = "07e6ff";
-		Color1 = "76, 133, 153";
-		Color2 = "151, 184, 216";
-		Color3 = "153, 178, 191";
-		Neon1 = "";
-		Neon2 = "";
-		Neon3 = "";
-		RarityNum = 20;
-		HatchTimeScale = 3;
-		MinHatchTime = 240;
-	};
-	Electirc = {
-		ID = "Electirc";
-		ProduceRate = 5;
-		SellRate = 5;
-		BuyRate = 20;
-		BigRate = 4;
-		TextColor = "aa55ff";
-		Color1 = "12, 29, 63";
-		Color2 = "113, 57, 191";
-		Color3 = "38, 63, 127";
-		Neon1 = "";
-		Neon2 = "";
-		Neon3 = "";
-		RarityNum = 50;
-		HatchTimeScale = 4;
-		MinHatchTime = 300;
-	};
-	Fire = {
-		ID = "Fire";
-		ProduceRate = 10;
-		SellRate = 10;
-		BuyRate = 50;
-		BigRate = 5;
-		TextColor = "ff3d02";
-		Color1 = "204, 35, 20";
-		Color2 = "242, 86, 72";
-		Color3 = "229, 124, 114";
-		Neon1 = "";
-		Neon2 = "";
-		Neon3 = "";
-		RarityNum = 100;
-		HatchTimeScale = 4;
-		MinHatchTime = 360;
-	};
-	Dino = {
-		ID = "Dino";
-		ProduceRate = 10;
-		SellRate = 10;
-		BuyRate = 50;
-		BigRate = 6;
-		TextColor = "AE75E7";
-		Color1 = "";
-		Color2 = "96, 77, 199";
-		Color3 = "";
-		Neon1 = "";
-		Neon2 = 1;
-		Neon3 = "";
-		RarityNum = 100;
-		HatchTimeScale = 4;
-		MinHatchTime = 360;
-	};
-}
-
--- Helper function to parse price string to number
-local function parsePrice(priceStr)
-    if type(priceStr) == "number" then return priceStr end
-    if type(priceStr) ~= "string" then return 0 end
-    
-    -- Remove commas and convert to number
-    local cleanPrice = priceStr:gsub(",", "")
-    return tonumber(cleanPrice) or 0
-end
-
--- Function to sort eggs by price
-local function sortEggsByPrice(eggs, ascending)
-    local sortedEggs = {}
-    for _, eggId in ipairs(eggs) do
-        table.insert(sortedEggs, eggId)
-    end
-    
-    table.sort(sortedEggs, function(a, b)
-        local priceA = parsePrice(eggConfig[a] and eggConfig[a].Price or "0")
-        local priceB = parsePrice(eggConfig[b] and eggConfig[b].Price or "0")
-        
-        if ascending then
-            return priceA < priceB
-        else
-            return priceA > priceB
-        end
+local function loadEggConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResEgg")
+        return require(module)
     end)
-    
-    return sortedEggs
+    if ok and type(cfg) == "table" then
+        eggConfig = cfg
+    else
+        eggConfig = {}
+    end
 end
 
--- Function to build fruit list from hard-coded data
-local function buildFruitList()
-    local fruits = {}
-    for id, val in pairs(petFoodConfig) do
-        local idStr = tostring(id)
-        -- Filter out meta keys like _index, __index, and any leading underscore entries
-        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
-            local fruitName = val.Name or val.ID or val.Id or idStr
-            fruitName = tostring(fruitName)
-            table.insert(fruits, fruitName)
-        end
+local idToTypeMap = {}
+local function loadConveyorConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResConveyor")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        conveyorConfig = cfg
+    else
+        conveyorConfig = {}
     end
-    table.sort(fruits)
-    return fruits
+end
+
+local function loadPetFoodConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResPetFood")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        petFoodConfig = cfg
+    else
+        petFoodConfig = {}
+    end
+end
+
+local function loadMutationConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResMutate")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        mutationConfig = cfg
+    else
+        mutationConfig = {}
+    end
 end
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
@@ -581,10 +118,7 @@ local function getTypeFromConfig(key, val)
     return tostring(key)
 end
 
--- Global variable for egg type mapping
-local idToTypeMap = {}
-
-local function buildEggIdList(sortBy)
+local function buildEggIdList()
     idToTypeMap = {}
     local ids = {}
     for id, val in pairs(eggConfig) do
@@ -595,16 +129,7 @@ local function buildEggIdList(sortBy)
             idToTypeMap[idStr] = getTypeFromConfig(id, val)
         end
     end
-    
-    -- Sort based on preference
-    if sortBy == "price_low" then
-        ids = sortEggsByPrice(ids, true) -- ascending
-    elseif sortBy == "price_high" then
-        ids = sortEggsByPrice(ids, false) -- descending
-    else
-        table.sort(ids) -- alphabetical
-    end
-    
+    table.sort(ids)
     return ids
 end
 
@@ -670,45 +195,22 @@ end
 
 local function getEggPriceByType(eggType)
     local target = tostring(eggType)
-    
-    -- First, try to find by exact ID match in hard-coded config
-    if eggConfig[target] then
-        local price = eggConfig[target].Price
-        if price then
-            -- Parse price string to number (e.g., "3,000,000" -> 3000000)
-            if type(price) == "string" then
-                return parsePrice(price)
-            elseif type(price) == "number" then
-                return price
-            end
-        end
-    end
-    
-    -- If not found by exact ID, search through all config entries
     for key, value in pairs(eggConfig) do
         if type(value) == "table" then
             local t = value.Type or value.Name or value.type or value.name or tostring(key)
             if tostring(t) == target then
                 local price = value.Price or value.price or value.Cost or value.cost
-                if price then
-                    -- Parse price string to number
-                    if type(price) == "string" then
-                        return parsePrice(price)
-                    elseif type(price) == "number" then
-                        return price
-                    end
-                end
+                if type(price) == "number" then return price end
+                if type(value.Base) == "table" and type(value.Base.Price) == "number" then return value.Base.Price end
+            end
+        else
+            if tostring(key) == target then
+                -- primitive mapping, try id-based
+                local price = getEggPriceById(key)
+                if type(price) == "number" then return price end
             end
         end
     end
-    
-    -- Debug: Log what we're looking for
-    print("🔍 Price lookup failed for egg type:", target)
-    print("🔍 Available egg types in config:")
-    for key, value in pairs(eggConfig) do
-        print("  - " .. tostring(key))
-    end
-    
     return nil
 end
 
@@ -1932,79 +1434,465 @@ local function placePetAtPart(farmPart, petUID)
 end
 
 -- UI state
-local eggIdList = buildEggIdList() -- Default alphabetical
+loadEggConfig()
+loadConveyorConfig()
+loadPetFoodConfig()
+loadMutationConfig()
+local eggIdList = buildEggIdList()
 local mutationList = buildMutationList()
-local fruitList = buildFruitList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
-local selectedFruitSet = {}
-local currentEggSort = "alphabetical" -- "alphabetical", "price_low", "price_high"
 
+-- Create alternative egg selection UI
+local eggSelectionUI = nil
+local eggSelectionWindow = nil
+local selectedEggs = {}
 
-
-local eggDropdown
-eggDropdown = Tabs.AutoTab:Dropdown({
-    Title = "🥚 Pick Eggs",
-    Desc = "Choose which eggs to buy",
-    Values = eggIdList,
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selection)
-        selectedTypeSet = {}
-        local function addTypeFor(idStr)
-            -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
-            selectedTypeSet[idStr] = true
-            -- Also include the mapped Type from config (if available and different)
-            local mappedType = idToTypeMap[idStr]
-            if mappedType and tostring(mappedType) ~= idStr then
-                selectedTypeSet[tostring(mappedType)] = true
+-- Function to create the alternative egg selection UI
+local function createEggSelectionUI()
+    if eggSelectionUI then
+        eggSelectionUI:Destroy()
+        eggSelectionUI = nil
+        eggSelectionWindow = nil
+        return
+    end
+    
+    -- Create the alternative UI window
+    eggSelectionWindow = WindUI:CreateWindow({
+        Title = "🥚 Egg Selection",
+        Icon = "egg",
+        IconThemed = true,
+        Author = "Zebux",
+        Folder = "Zebux",
+        Size = UDim2.fromOffset(800, 600),
+        Transparent = true,
+        Theme = "Dark",
+    })
+    
+    local eggTabs = {}
+    eggTabs.MainSection = eggSelectionWindow:Section({ Title = "🥚 Select Eggs", Opened = true })
+    eggTabs.EggTab = eggTabs.MainSection:Tab({ Title = "🥚 | Eggs"})
+    eggTabs.MutationTab = eggTabs.MainSection:Tab({ Title = "🧬 | Mutations"})
+    
+    -- Status section
+    eggTabs.EggTab:Section({ Title = "📊 Selection Status", Icon = "info" })
+    
+    local selectionStatusParagraph = eggTabs.EggTab:Paragraph({
+        Title = "🥚 Selection Status",
+        Desc = "No eggs selected",
+        Image = "shopping-bag",
+        ImageSize = 18,
+    })
+    
+    local function updateSelectionStatus()
+        local selectedCount = 0
+        local selectedNames = {}
+        for eggId, isSelected in pairs(selectedEggs) do
+            if isSelected then
+                selectedCount = selectedCount + 1
+                table.insert(selectedNames, eggId)
             end
         end
-        if type(selection) == "table" then
-            for _, id in ipairs(selection) do
-                addTypeFor(tostring(id))
-            end
-        elseif type(selection) == "string" then
-            addTypeFor(tostring(selection))
+        
+        local desc = string.format("Selected: %d eggs\n", selectedCount)
+        if #selectedNames > 0 then
+            desc = desc .. "Selected: " .. table.concat(selectedNames, ", ")
+        else
+            desc = desc .. "No eggs selected"
         end
-        -- update selected types display
-        local keys = {}
-        for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-        table.sort(keys)
-        statusData.selectedTypes = table.concat(keys, ", ")
-        updateStatusParagraph()
+        
+        if selectionStatusParagraph and selectionStatusParagraph.SetDesc then
+            selectionStatusParagraph:SetDesc(desc)
+        end
+    end
+    
+    -- Search and filter section
+    eggTabs.EggTab:Section({ Title = "🔍 Search & Filter", Icon = "search" })
+    
+    local searchInput = eggTabs.EggTab:Input({
+        Title = "🔍 Search Eggs",
+        Desc = "Type to search for specific eggs",
+        Value = "",
+        Placeholder = "Enter egg name...",
+        Callback = function(searchText)
+            -- This will be implemented to filter the egg buttons
+            WindUI:Notify({
+                Title = "🔍 Search",
+                Content = "Search functionality coming soon!",
+                Duration = 2
+            })
+        end
+    })
+    
+    -- Quick selection buttons
+    eggTabs.EggTab:Button({
+        Title = "💰 Select by Price Range",
+        Desc = "Select eggs within a specific price range",
+        Icon = "dollar-sign",
+        Callback = function()
+            WindUI:Notify({
+                Title = "💰 Price Filter",
+                Content = "Price range selection coming soon!",
+                Duration = 2
+            })
+        end
+    })
+    
+    -- Create egg selection buttons with icons and prices
+    eggTabs.EggTab:Section({ Title = "🥚 Available Eggs", Icon = "egg" })
+    
+    -- Group eggs by rarity
+    local rarityGroups = {
+        [1] = { name = "Common", color = "White", eggs = {} },
+        [2] = { name = "Uncommon", color = "Green", eggs = {} },
+        [3] = { name = "Rare", color = "Blue", eggs = {} },
+        [4] = { name = "Epic", color = "Purple", eggs = {} },
+        [5] = { name = "Legendary", color = "Orange", eggs = {} },
+        [6] = { name = "Mythical", color = "Red", eggs = {} },
+    }
+    
+    -- Sort eggs by rarity
+    for eggId, eggData in pairs(eggConfig) do
+        if type(eggData) == "table" and eggData.Rarity then
+            local rarity = eggData.Rarity
+            if rarityGroups[rarity] then
+                table.insert(rarityGroups[rarity].eggs, {
+                    id = eggId,
+                    data = eggData
+                })
+            end
+        end
+    end
+    
+    -- Create UI for each rarity group
+    for rarity, group in pairs(rarityGroups) do
+        if #group.eggs > 0 then
+            eggTabs.EggTab:Section({ Title = group.name .. " Eggs", Icon = "egg" })
+            
+            -- Sort eggs by price within each rarity
+            table.sort(group.eggs, function(a, b)
+                local priceA = tonumber(string.gsub(a.data.Price or "0", ",", "")) or 0
+                local priceB = tonumber(string.gsub(b.data.Price or "0", ",", "")) or 0
+                return priceA < priceB
+            end)
+            
+            -- Create egg selection buttons
+            for _, eggInfo in ipairs(group.eggs) do
+                local eggId = eggInfo.id
+                local eggData = eggInfo.data
+                local price = eggData.Price or "Unknown"
+                local icon = eggData.Icon or "egg"
+                local luck = eggData.Luck or 0
+                local hatchTime = eggData.HatchTime or 0
+                
+                -- Create button with egg info and icon
+                local eggButton
+                eggButton = eggTabs.EggTab:Button({
+                    Title = eggId,
+                    Desc = string.format("💰 Price: %s | 🍀 Luck: %d | ⏰ Hatch Time: %d min", price, luck, hatchTime),
+                    Icon = "egg",
+                    Callback = function()
+                        -- Toggle selection
+                        selectedEggs[eggId] = not selectedEggs[eggId]
+                        
+                        -- Update button appearance
+                        if selectedEggs[eggId] then
+                            eggButton:SetTitle("✅ " .. eggId)
+                            WindUI:Notify({
+                                Title = "🥚 Egg Selected",
+                                Content = eggId .. " has been selected!",
+                                Duration = 2
+                            })
+                        else
+                            eggButton:SetTitle(eggId)
+                            WindUI:Notify({
+                                Title = "🥚 Egg Deselected",
+                                Content = eggId .. " has been deselected!",
+                                Duration = 2
+                            })
+                        end
+                        
+                        updateSelectionStatus()
+                    end
+                })
+                
+                -- Set initial state
+                if selectedTypeSet[eggId] then
+                    selectedEggs[eggId] = true
+                    eggButton:SetTitle("✅ " .. eggId)
+                end
+            end
+        end
+    end
+    
+    -- Mutation selection
+    eggTabs.MutationTab:Section({ Title = "🧬 Select Mutations", Icon = "dna" })
+    
+    local mutationStatusParagraph = eggTabs.MutationTab:Paragraph({
+        Title = "🧬 Mutation Status",
+        Desc = "No mutations selected",
+        Image = "dna",
+        ImageSize = 18,
+    })
+    
+    local selectedMutations = {}
+    
+    local function updateMutationStatus()
+        local selectedCount = 0
+        local selectedNames = {}
+        for mutationId, isSelected in pairs(selectedMutations) do
+            if isSelected then
+                selectedCount = selectedCount + 1
+                table.insert(selectedNames, mutationId)
+            end
+        end
+        
+        local desc = string.format("Selected: %d mutations\n", selectedCount)
+        if #selectedNames > 0 then
+            desc = desc .. "Selected: " .. table.concat(selectedNames, ", ")
+        else
+            desc = desc .. "No mutations selected"
+        end
+        
+        if mutationStatusParagraph and mutationStatusParagraph.SetDesc then
+            mutationStatusParagraph:SetDesc(desc)
+        end
+    end
+    
+    -- Create mutation selection buttons
+    for mutationId, mutationData in pairs(mutationConfig) do
+        if type(mutationData) == "table" and mutationId ~= "__index" then
+            local rarityNum = mutationData.RarityNum or 0
+            local produceRate = mutationData.ProduceRate or 1
+            local sellRate = mutationData.SellRate or 1
+            local textColor = mutationData.TextColor or "ffffff"
+            
+            local mutationButton = eggTabs.MutationTab:Button({
+                Title = mutationId,
+                Desc = string.format("⭐ Rarity: %d | ⚡ Produce: %dx | 💰 Sell: %dx", rarityNum, produceRate, sellRate),
+                Icon = "dna",
+                Callback = function()
+                    -- Toggle selection
+                    selectedMutations[mutationId] = not selectedMutations[mutationId]
+                    
+                    -- Update button appearance
+                    if selectedMutations[mutationId] then
+                        mutationButton:SetTitle("✅ " .. mutationId)
+                        WindUI:Notify({
+                            Title = "🧬 Mutation Selected",
+                            Content = mutationId .. " has been selected!",
+                            Duration = 2
+                        })
+                    else
+                        mutationButton:SetTitle(mutationId)
+                        WindUI:Notify({
+                            Title = "🧬 Mutation Deselected",
+                            Content = mutationId .. " has been deselected!",
+                            Duration = 2
+                        })
+                    end
+                    
+                    updateMutationStatus()
+                end
+            })
+            
+            -- Set initial state
+            if selectedMutationSet[mutationId] then
+                selectedMutations[mutationId] = true
+                mutationButton:SetTitle("✅ " .. mutationId)
+            end
+        end
+    end
+    
+    -- Action buttons
+    eggTabs.EggTab:Section({ Title = "⚡ Actions", Icon = "settings" })
+    
+    eggTabs.EggTab:Button({
+        Title = "✅ Apply Selection",
+        Desc = "Apply the current selection to the main script",
+        Callback = function()
+            -- Update the main script's selected types
+            selectedTypeSet = {}
+            for eggId, isSelected in pairs(selectedEggs) do
+                if isSelected then
+                    selectedTypeSet[eggId] = true
+                end
+            end
+            
+            -- Update the main script's selected mutations
+            selectedMutationSet = {}
+            for mutationId, isSelected in pairs(selectedMutations) do
+                if isSelected then
+                    selectedMutationSet[mutationId] = true
+                end
+            end
+            
+            -- Update main script status
+            local keys = {}
+            for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+            table.sort(keys)
+            statusData.selectedTypes = table.concat(keys, ", ")
+            
+            local mutationKeys = {}
+            for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+            table.sort(mutationKeys)
+            statusData.selectedMutations = table.concat(mutationKeys, ", ")
+            
+            updateStatusParagraph()
+            
+            WindUI:Notify({
+                Title = "✅ Selection Applied",
+                Content = "Egg and mutation selection has been applied to the main script!",
+                Duration = 3
+            })
+            
+            -- Close the selection UI
+            createEggSelectionUI()
+        end
+    })
+    
+    eggTabs.EggTab:Button({
+        Title = "🔄 Select All Eggs",
+        Desc = "Select all available eggs",
+        Callback = function()
+            for eggId, _ in pairs(eggConfig) do
+                if type(eggConfig[eggId]) == "table" and eggConfig[eggId].Rarity then
+                    selectedEggs[eggId] = true
+                end
+            end
+            updateSelectionStatus()
+            WindUI:Notify({
+                Title = "🔄 All Selected",
+                Content = "All eggs have been selected!",
+                Duration = 2
+            })
+        end
+    })
+    
+    eggTabs.EggTab:Button({
+        Title = "❌ Clear Selection",
+        Desc = "Clear all egg selections",
+        Callback = function()
+            selectedEggs = {}
+            updateSelectionStatus()
+            WindUI:Notify({
+                Title = "❌ Selection Cleared",
+                Content = "All egg selections have been cleared!",
+                Duration = 2
+            })
+        end
+    })
+    
+    eggTabs.EggTab:Button({
+        Title = "💾 Save Selection",
+        Desc = "Save current selection for future use",
+        Icon = "save",
+        Callback = function()
+            -- Save selection to config
+            if _G.zooConfig then
+                _G.zooConfig:Save()
+                WindUI:Notify({
+                    Title = "💾 Selection Saved",
+                    Content = "Your egg selection has been saved!",
+                    Duration = 3
+                })
+            end
+        end
+    })
+    
+    eggTabs.EggTab:Button({
+        Title = "📂 Load Saved Selection",
+        Desc = "Load previously saved selection",
+        Icon = "folder-open",
+        Callback = function()
+            -- Load selection from config
+            if _G.zooConfig then
+                _G.zooConfig:Load()
+                WindUI:Notify({
+                    Title = "📂 Selection Loaded",
+                    Content = "Your saved selection has been loaded!",
+                    Duration = 3
+                })
+            end
+        end
+    })
+    
+    eggTabs.EggTab:Button({
+        Title = "❌ Close",
+        Desc = "Close the egg selection UI",
+        Icon = "x",
+        Callback = function()
+            createEggSelectionUI()
+        end
+    })
+    
+    -- Initialize status
+    updateSelectionStatus()
+    updateMutationStatus()
+    
+    -- Add a draggable open button for the egg selection UI
+    eggSelectionWindow:EditOpenButton({
+        Title = "🥚 Egg Selection",
+        Icon = "egg",
+        CornerRadius = UDim.new(0, 16),
+        StrokeThickness = 2,
+        Color = ColorSequence.new(
+            Color3.fromHex("FF6B6B"), 
+            Color3.fromHex("4ECDC4")
+        ),
+        Draggable = true,
+    })
+    
+    eggSelectionUI = eggSelectionWindow
+end
+
+-- Replace the dropdown with a button
+Tabs.AutoTab:Button({
+    Title = "🥚 Select Eggs",
+    Desc = "Open egg selection UI with icons, prices, and names",
+    Icon = "egg",
+    Callback = function()
+        createEggSelectionUI()
     end
 })
 
--- Egg sorting dropdown
-local eggSortDropdown = Tabs.AutoTab:Dropdown({
-    Title = "📊 Sort Eggs By",
-    Desc = "Choose how to sort the egg list",
-    Values = { "Alphabetical", "Price: Low to High", "Price: High to Low" },
-    Value = "Alphabetical",
-    Callback = function(selection)
-        if selection == "Alphabetical" then
-            currentEggSort = "alphabetical"
-        elseif selection == "Price: Low to High" then
-            currentEggSort = "price_low"
-        elseif selection == "Price: High to Low" then
-            currentEggSort = "price_high"
-        end
-        
-        -- Refresh egg dropdown with new sorting
-        local newEggList = buildEggIdList(currentEggSort)
-        if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(newEggList)
-        end
-        
-        WindUI:Notify({ 
-            Title = "📊 Egg Sort", 
-            Content = "Egg list sorted by: " .. selection, 
-            Duration = 3 
-        })
-    end
-})
+
+
+-- Remove the old dropdown code
+-- local eggDropdown
+-- eggDropdown = Tabs.AutoTab:Dropdown({
+--     Title = "🥚 Pick Eggs",
+--     Desc = "Choose which eggs to buy",
+--     Values = eggIdList,
+--     Value = {},
+--     Multi = true,
+--     AllowNone = true,
+--     Callback = function(selection)
+--         selectedTypeSet = {}
+--         local function addTypeFor(idStr)
+--             -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+--             selectedTypeSet[idStr] = true
+--             -- Also include the mapped Type from config (if available and different)
+--             local mappedType = idToTypeMap[idStr]
+--             if mappedType and tostring(mappedType) ~= idStr then
+--                 selectedTypeSet[tostring(mappedType)] = true
+--             end
+--         end
+--         if type(selection) == "table" then
+--             for _, id in ipairs(selection) do
+--                 addTypeFor(tostring(id))
+--             end
+--         elseif type(selection) == "string" then
+--             addTypeFor(tostring(selection))
+--         end
+--         -- update selected types display
+--         local keys = {}
+--         for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+--         table.sort(keys)
+--         statusData.selectedTypes = table.concat(keys, ", ")
+--         updateStatusParagraph()
+--     end
+-- })
 
 local mutationDropdown
 mutationDropdown = Tabs.AutoTab:Dropdown({
@@ -2033,21 +1921,15 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
 })
 
 Tabs.AutoTab:Button({
-    Title = "🔄 Refresh Lists",
-    Desc = "Refresh all dropdown lists with current data",
+    Title = "🔄 Refresh Mutation List",
+    Desc = "Update the mutation list if it's not showing all mutations",
     Callback = function()
-        -- Refresh mutation list
+        loadMutationConfig()
         if mutationDropdown and mutationDropdown.Refresh then
             mutationDropdown:Refresh(buildMutationList())
         end
-        
-        -- Refresh egg list with current sort
-        if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(buildEggIdList(currentEggSort))
-        end
-        
         updateStatusParagraph()
-        WindUI:Notify({ Title = "🔄 Refresh", Content = "All lists refreshed!", Duration = 3 })
+        WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
     end
 })
 
@@ -2072,12 +1954,8 @@ Tabs.AutoTab:Button({
 
 
 
-
-
 local autoBuyEnabled = false
 local autoBuyThread = nil
-
-
 
 
 
@@ -2129,18 +2007,9 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
     
-    -- Debug: Log egg type found
-    print("🔍 Found egg type:", eggType)
-    
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
-        if not selectedTypeSet[eggType] then 
-            print("❌ Egg type not selected:", eggType)
-            return false, nil, nil 
-        end
-        print("✅ Egg type selected:", eggType)
-    else
-        print("ℹ️ No eggs selected, buying all types")
+    if not selectedTypeSet[eggType] then return false, nil, nil end
     end
     
     -- Now check mutation if mutations are selected
@@ -2149,7 +2018,6 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
-            print("❌ Mutations selected but egg has no mutation")
             return false, nil, nil
         end
         -- Check if egg has a selected mutation
@@ -2160,73 +2028,16 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         end
         
         if not selectedMutationSet[mappedEggMutation] then
-            print("❌ Egg mutation not selected:", eggMutation, "->", mappedEggMutation)
             return false, nil, nil
         end
-        print("✅ Egg mutation selected:", eggMutation, "->", mappedEggMutation)
-    else
-        print("ℹ️ No mutations selected, buying all mutations")
     end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-    if type(price) ~= "number" then 
-        print("❌ Invalid price:", price)
-        return false, nil, nil 
-    end
-    if playerMoney < price then 
-        print("❌ Not enough money:", playerMoney, "<", price)
-        return false, nil, nil 
-    end
+    if type(price) ~= "number" then return false, nil, nil end
+    if playerMoney < price then return false, nil, nil end
     
-    print("✅ Should buy egg:", eggInstance.Name, "Type:", eggType, "Price:", price)
     return true, eggInstance.Name, price
 end
-
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Auto Buy",
-    Desc = "Test auto buy system and show current status",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        local activeBelt = getActiveBelt(islandName)
-        local netWorth = getPlayerNetWorth()
-        
-        local message = "🔍 Auto Buy Debug:\n"
-        message = message .. "🏝️ Island: " .. tostring(islandName or "None") .. "\n"
-        message = message .. "💰 NetWorth: " .. tostring(netWorth) .. "\n"
-        message = message .. "🔄 Auto Buy Enabled: " .. tostring(autoBuyEnabled) .. "\n"
-        message = message .. "🧵 Auto Buy Thread: " .. tostring(autoBuyThread ~= nil) .. "\n"
-        
-        if activeBelt then
-            local children = {}
-            for _, inst in ipairs(activeBelt:GetChildren()) do
-                if inst:IsA("Model") then table.insert(children, inst) end
-            end
-            message = message .. "🥚 Eggs on Belt: " .. #children .. "\n"
-            
-            -- Test first egg
-            if #children > 0 then
-                local firstEgg = children[1]
-                local eggType = firstEgg:GetAttribute("Type") or firstEgg:GetAttribute("EggType") or firstEgg:GetAttribute("Name")
-                local price = firstEgg:GetAttribute("Price")
-                message = message .. "🥚 First Egg: " .. tostring(firstEgg.Name) .. "\n"
-                message = message .. "📝 Type: " .. tostring(eggType) .. "\n"
-                message = message .. "💰 Price: " .. tostring(price) .. "\n"
-                
-                -- Test if we should buy it
-                local shouldBuy, uid, eggPrice = shouldBuyEggInstance(firstEgg, netWorth)
-                message = message .. "✅ Should Buy: " .. tostring(shouldBuy) .. "\n"
-                if shouldBuy then
-                    message = message .. "🆔 UID: " .. tostring(uid) .. "\n"
-                    message = message .. "💵 Price: " .. tostring(eggPrice) .. "\n"
-                end
-            end
-        else
-            message = message .. "❌ No active belt found\n"
-        end
-        
-        WindUI:Notify({ Title = "🔍 Auto Buy Debug", Content = message, Duration = 8 })
-    end
-})
 
 local function buyEggByUID(eggUID)
     local args = {
@@ -2437,11 +2248,14 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
 local function getEggOptions()
     local eggOptions = {}
     
-    -- Use hard-coded egg config
-    for id, data in pairs(eggConfig) do
-        if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
-            local eggName = data.Type or data.Name or id
-            table.insert(eggOptions, eggName)
+    -- Try to get from ResEgg config first
+    local eggConfig = loadEggConfig()
+    if eggConfig then
+        for id, data in pairs(eggConfig) do
+            if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
+                local eggName = data.Type or data.Name or id
+                table.insert(eggOptions, eggName)
+            end
         end
     end
     
@@ -2464,7 +2278,7 @@ local function getEggOptions()
     return eggOptions
 end
 
--- Egg selection dropdown for placement
+-- Egg selection dropdown
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "🥚 Pick Pet Types",
     Desc = "Choose which pets to place",
@@ -3874,15 +3688,13 @@ local function registerConfigElements()
         zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        zooConfig:Register("eggSortOrder", eggSortDropdown)
-        zooConfig:Register("automationPriority", priorityDropdown)
-        
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
+        zooConfig:Register("automationPriority", priorityDropdown)
     end
 end
 
