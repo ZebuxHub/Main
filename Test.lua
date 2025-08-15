@@ -3317,10 +3317,9 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                                      local success = pcall(function()
                                          -- Fire the fruit buying remote
                                          local args = {
-                                             "BuyFruit",
                                              fruitId
                                          }
-                                         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                                         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
                                      end)
                                      
                                      if success then
