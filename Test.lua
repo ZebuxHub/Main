@@ -3274,12 +3274,6 @@ Tabs.FruitTab:Button({
                     -- Handle selection changes
                     selectedFruits = selectedItems
                     
-                    -- Debug: Print selected fruits
-                    print("Selected fruits updated:")
-                    for fruitId, _ in pairs(selectedFruits) do
-                        print("  - " .. fruitId)
-                    end
-                    
                     -- Update status display
                     local fruitKeys = {}
                     for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
@@ -3313,25 +3307,31 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          autoBuyFruitThread = task.spawn(function()
                  while autoBuyFruitEnabled do
                      -- Auto buy fruit logic
-                     print("Auto buy fruit loop - selectedFruits count:", selectedFruits and next(selectedFruits) and "has items" or "empty")
                      if selectedFruits and next(selectedFruits) then
+                         -- Check if fruit store UI is open (required for buying)
+                         local fruitStoreUI = LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("ScreenFoodStore")
+                         if not fruitStoreUI then
+                             WindUI:Notify({ 
+                                 Title = "🍎 Fruit Store", 
+                                 Content = "Please open the fruit store first!", 
+                                 Duration = 2 
+                             })
+                             task.wait(3) -- Wait longer before checking again
+                             return
+                         end
+                         
                          local netWorth = getPlayerNetWorth()
-                         print("Current net worth:", netWorth)
                          for fruitId, _ in pairs(selectedFruits) do
                              if FruitData[fruitId] then
                                  local fruitPrice = parsePrice(FruitData[fruitId].Price)
-                                 print("Checking fruit:", fruitId, "Price:", fruitPrice, "Can afford:", netWorth >= fruitPrice)
                                  if netWorth >= fruitPrice then
                                      -- Try to buy the fruit
-                                     print("Attempting to buy fruit:", fruitId)
                                      local success = pcall(function()
-                                         -- Fire the fruit buying remote
+                                         -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
                                          local args = {
                                              fruitId
                                          }
-                                         print("Firing remote with args:", table.concat(args, ", "))
                                          ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
-                                         print("Remote fired successfully")
                                      end)
                                      
                                      if success then
@@ -3352,8 +3352,8 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          end
                      end
                      task.wait(2) -- Wait 2 seconds between attempts
-                 end
-             end)
+        end
+    end)
             WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
         elseif (not state) and autoBuyFruitThread then
             WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
@@ -3690,8 +3690,8 @@ task.spawn(function()
                 WindUI:Notify({ 
                     Title = "⚠️ Config Error", 
                     Content = "Failed to load saved settings. Using defaults.", 
-                    Duration = 3 
-                })
+            Duration = 3 
+        })
             end
     end
 end)
