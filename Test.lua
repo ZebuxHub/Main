@@ -3353,6 +3353,35 @@ end
 local selectedFruits = {}
 local fruitSelectionVisible = false
 
+-- Fruit auto buy status
+local fruitAutoBuyStatus = {
+    lastAction = "Ready to buy fruits!",
+    totalBought = 0,
+    lastCheck = "Never",
+    storeOpen = false,
+    selectedCount = 0
+}
+
+-- Fruit auto buy status display
+local fruitStatusParagraph = Tabs.FruitTab:Paragraph({
+    Title = "🍎 Fruit Auto Buy Status",
+    Desc = "Ready to buy fruits!",
+    Image = "apple",
+    ImageSize = 18
+})
+
+local function updateFruitStatus()
+    if fruitStatusParagraph and fruitStatusParagraph.SetDesc then
+        local lines = {}
+        table.insert(lines, "🍎 Selected Fruits: " .. fruitAutoBuyStatus.selectedCount .. " fruits")
+        table.insert(lines, "🛒 Store Open: " .. (fruitAutoBuyStatus.storeOpen and "✅ Yes" or "❌ No"))
+        table.insert(lines, "📊 Total Bought: " .. tostring(fruitAutoBuyStatus.totalBought))
+        table.insert(lines, "🔄 Last Action: " .. fruitAutoBuyStatus.lastAction)
+        table.insert(lines, "⏰ Last Check: " .. fruitAutoBuyStatus.lastCheck)
+        fruitStatusParagraph:SetDesc(table.concat(lines, "\n"))
+    end
+end
+
 Tabs.FruitTab:Button({
     Title = "🍎 Open Fruit Selection UI",
     Desc = "Open the modern glass-style fruit selection interface",
@@ -3367,7 +3396,9 @@ Tabs.FruitTab:Button({
                     local fruitKeys = {}
                     for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
                     table.sort(fruitKeys)
-                    -- You can add status display here if needed
+                    
+                    fruitAutoBuyStatus.selectedCount = #fruitKeys
+                    updateFruitStatus()
                 end,
                 function(isVisible)
                     fruitSelectionVisible = isVisible
@@ -3397,14 +3428,17 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                  while autoBuyFruitEnabled do
                      -- Auto buy fruit logic
                      if selectedFruits and next(selectedFruits) then
+                         fruitAutoBuyStatus.lastAction = "Checking fruits..."
+                         fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                         updateFruitStatus()
                          -- Check if fruit store UI is open (required for buying)
                          local fruitStoreUI = getFoodStoreUI()
+                         fruitAutoBuyStatus.storeOpen = fruitStoreUI ~= nil
+                         
                          if not fruitStoreUI then
-                             WindUI:Notify({ 
-                                 Title = "🍎 Fruit Store", 
-                                 Content = "Please open the fruit store first!", 
-                                 Duration = 2 
-                             })
+                             fruitAutoBuyStatus.lastAction = "Store not open - please open fruit store first!"
+                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                             updateFruitStatus()
                              task.wait(3) -- Wait longer before checking again
                              return
                          end
@@ -3418,20 +3452,16 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                                  
                                  -- Check if fruit is in stock
                                  if not isFruitInStock(fruitId) then
-                                     WindUI:Notify({ 
-                                         Title = "🍎 Out of Stock", 
-                                         Content = fruitId .. " is out of stock!", 
-                                         Duration = 2 
-                                     })
+                                     fruitAutoBuyStatus.lastAction = fruitId .. " is out of stock!"
+                                     fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                                     updateFruitStatus()
                                      task.wait(0.5)
                                  else
                                      -- Check if player can afford it
                                      if netWorth < fruitPrice then
-                                         WindUI:Notify({ 
-                                             Title = "💰 Cannot Afford", 
-                                             Content = "Need $" .. fruitPrice .. " for " .. fruitId .. " (Have: $" .. netWorth .. ")", 
-                                             Duration = 2 
-                                         })
+                                         fruitAutoBuyStatus.lastAction = "Cannot afford " .. fruitId .. " (Need: $" .. fruitPrice .. ", Have: $" .. netWorth .. ")"
+                                         fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                                         updateFruitStatus()
                                          task.wait(0.5)
                                      else
                                          -- Try to buy the fruit
@@ -3445,17 +3475,14 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                                          
                                          if success then
                                              boughtAny = true
-                                             WindUI:Notify({ 
-                                                 Title = "🍎 Fruit Bought", 
-                                                 Content = "Bought " .. fruitId .. " for $" .. fruitPrice, 
-                                                 Duration = 2 
-                                             })
+                                             fruitAutoBuyStatus.totalBought = fruitAutoBuyStatus.totalBought + 1
+                                             fruitAutoBuyStatus.lastAction = "Bought " .. fruitId .. " for $" .. fruitPrice
+                                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                                             updateFruitStatus()
                                          else
-                                             WindUI:Notify({ 
-                                                 Title = "❌ Fruit Buy Failed", 
-                                                 Content = "Failed to buy " .. fruitId, 
-                                                 Duration = 2 
-                                             })
+                                             fruitAutoBuyStatus.lastAction = "Failed to buy " .. fruitId
+                                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                                             updateFruitStatus()
                                          end
                                          
                                          task.wait(0.5) -- Wait between each fruit purchase
@@ -3466,17 +3493,28 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          
                          -- If no fruits were bought, wait longer before next attempt
                          if not boughtAny then
+                             fruitAutoBuyStatus.lastAction = "No fruits bought - waiting for stock/money"
+                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                             updateFruitStatus()
                              task.wait(2)
                          else
                              task.wait(1) -- Shorter wait if we bought something
                          end
+                     else
+                         fruitAutoBuyStatus.lastAction = "No fruits selected - please select fruits first!"
+                         fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+                         updateFruitStatus()
+                         task.wait(2)
                      end
-                     task.wait(2) -- Wait 2 seconds between attempts
         end
     end)
-            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
-        elseif (not state) and autoBuyFruitThread then
-            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
+                         fruitAutoBuyStatus.lastAction = "Auto buy started! 🎉"
+             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+             updateFruitStatus()
+         elseif (not state) and autoBuyFruitThread then
+             fruitAutoBuyStatus.lastAction = "Auto buy stopped"
+             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
+             updateFruitStatus()
         end
     end
 })
