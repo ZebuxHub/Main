@@ -3252,6 +3252,7 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
     if zooConfig then
+        -- Only register simple UI elements that don't cause serialization issues
         zooConfig:Register("autoBuyEnabled", autoBuyToggle)
         zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
         zooConfig:Register("autoHatchEnabled", autoHatchToggle)
@@ -3262,34 +3263,14 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
+        zooConfig:Register("automationPriority", priorityDropdown)
+        
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
-        zooConfig:Register("automationPriority", priorityDropdown)
-        
-        -- Custom config for egg selection
-        zooConfig:Register("selectedEggs", function()
-            return selectedTypeSet
-        end, function(value)
-            selectedTypeSet = value or {}
-            -- Update the UI when settings are loaded
-            if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
-                EggSelection.RefreshContent()
-            end
-        end)
-        
-        zooConfig:Register("selectedMutations", function()
-            return selectedMutationSet
-        end, function(value)
-            selectedMutationSet = value or {}
-            -- Update the UI when settings are loaded
-            if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
-                EggSelection.RefreshContent()
-            end
-        end)
     end
 end
 
@@ -3333,6 +3314,22 @@ Tabs.SaveTab:Button({
         local success, err = pcall(function()
             if zooConfig then
                 zooConfig:Save()
+                
+                -- Save egg selections separately using writefile
+                local eggSelections = {
+                    eggs = {},
+                    mutations = {}
+                }
+                
+                for eggId, _ in pairs(selectedTypeSet) do
+                    table.insert(eggSelections.eggs, eggId)
+                end
+                
+                for mutationId, _ in pairs(selectedMutationSet) do
+                    table.insert(eggSelections.mutations, mutationId)
+                end
+                
+                writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
             else
                 error("Config manager not available")
             end
@@ -3361,6 +3358,37 @@ Tabs.SaveTab:Button({
         local success, err = pcall(function()
             if zooConfig then
                 zooConfig:Load()
+                
+                -- Load egg selections separately
+                local success, data = pcall(function()
+                    if isfile("Zebux_EggSelections.json") then
+                        local jsonData = readfile("Zebux_EggSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if success and data then
+                    -- Load egg selections
+                    selectedTypeSet = {}
+                    if data.eggs then
+                        for _, eggId in ipairs(data.eggs) do
+                            selectedTypeSet[eggId] = true
+                        end
+                    end
+                    
+                    -- Load mutation selections
+                    selectedMutationSet = {}
+                    if data.mutations then
+                        for _, mutationId in ipairs(data.mutations) do
+                            selectedMutationSet[mutationId] = true
+                        end
+                    end
+                    
+                    -- Update UI if visible
+                    if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
+                        EggSelection.RefreshContent()
+                    end
+                end
             else
                 error("Config manager not available")
             end
@@ -3441,27 +3469,53 @@ task.spawn(function()
         warn("Failed to register config elements: " .. tostring(err))
     end
     
-    -- Safe loading with error handling
-    if zooConfig then
-        local loadSuccess, loadErr = pcall(function()
-            zooConfig:Load()
-        end)
-        
-        if loadSuccess then
-            WindUI:Notify({ 
-                Title = "📂 Auto-Load", 
-                Content = "Your saved settings have been loaded! 🎉", 
-                Duration = 3 
-            })
-        else
-            warn("Failed to load config: " .. tostring(loadErr))
-            WindUI:Notify({ 
-                Title = "⚠️ Config Error", 
-                Content = "Failed to load saved settings. Using defaults.", 
-                Duration = 3 
-            })
+            -- Safe loading with error handling
+        if zooConfig then
+            local loadSuccess, loadErr = pcall(function()
+                zooConfig:Load()
+                
+                -- Load egg selections separately
+                local success, data = pcall(function()
+                    if isfile("Zebux_EggSelections.json") then
+                        local jsonData = readfile("Zebux_EggSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if success and data then
+                    -- Load egg selections
+                    selectedTypeSet = {}
+                    if data.eggs then
+                        for _, eggId in ipairs(data.eggs) do
+                            selectedTypeSet[eggId] = true
+                        end
+                    end
+                    
+                    -- Load mutation selections
+                    selectedMutationSet = {}
+                    if data.mutations then
+                        for _, mutationId in ipairs(data.mutations) do
+                            selectedMutationSet[mutationId] = true
+                        end
+                    end
+                end
+            end)
+            
+            if loadSuccess then
+                WindUI:Notify({ 
+                    Title = "📂 Auto-Load", 
+                    Content = "Your saved settings have been loaded! 🎉", 
+                    Duration = 3 
+                })
+            else
+                warn("Failed to load config: " .. tostring(loadErr))
+                WindUI:Notify({ 
+                    Title = "⚠️ Config Error", 
+                    Content = "Failed to load saved settings. Using defaults.", 
+                    Duration = 3 
+                })
+            end
         end
-    end
 end)
 
 
