@@ -569,7 +569,8 @@ end
 
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
-        local t = val.Type or val.Name or val.type or val.name
+        -- For our hard-coded config, use ID field first, then fall back to others
+        local t = val.ID or val.Type or val.Name or val.type or val.name
         if t ~= nil then return tostring(t) end
     end
     return tostring(key)
@@ -1980,20 +1981,6 @@ eggDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-local eggPriceInput = Tabs.AutoTab:Input({
-    Title = "💰 Min Price",
-    Desc = "Show eggs with price >= this value",
-    Value = "1000000",
-    Visible = false,
-    Callback = function(value)
-        local minPrice = tonumber(value) or 0
-        eggIdList = buildEggIdList("price", minPrice)
-        eggDropdown:Refresh(eggIdList)
-    end
-})
-
-
-
 local eggFilterDropdown = Tabs.AutoTab:Dropdown({
     Title = "🔍 Filter Eggs",
     Desc = "Filter eggs by price",
@@ -2001,11 +1988,10 @@ local eggFilterDropdown = Tabs.AutoTab:Dropdown({
     Value = "All Eggs",
     Callback = function(selection)
         if selection == "By Price" then
-            -- Show price input
-            eggPriceInput:SetValue("1000000") -- Default 1M
-            eggPriceInput:SetVisible(true)
+            -- Filter by price (1M default)
+            eggIdList = buildEggIdList("price", 1000000)
+            eggDropdown:Refresh(eggIdList)
         else
-            eggPriceInput:SetVisible(false)
             -- Refresh with no filter
             eggIdList = buildEggIdList()
             eggDropdown:Refresh(eggIdList)
@@ -2016,7 +2002,7 @@ local eggFilterDropdown = Tabs.AutoTab:Dropdown({
 Tabs.AutoTab:Divider()
 
 -- Filter UI for Mutations
-Tabs.AutoTab:Section({ Title = "🧬 Mutation Filters", Icon = "filter" })
+Tabs.AutoTab:Section({ Title = "🧬 Mutation Selection", Icon = "filter" })
 
 local mutationDropdown
 mutationDropdown = Tabs.AutoTab:Dropdown({
@@ -2044,105 +2030,7 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-local mutationRarityDropdown = Tabs.AutoTab:Dropdown({
-    Title = "⭐ Rarity",
-    Desc = "Filter by mutation rarity",
-    Values = { "10", "20", "50", "100" },
-    Value = "10",
-    Visible = false,
-    Callback = function(selection)
-        local rarity = tonumber(selection) or 10
-        -- Filter mutations by RarityNum
-        local filtered = {}
-        for id, val in pairs(mutationConfig) do
-            if val.RarityNum == rarity then
-                table.insert(filtered, id)
-            end
-        end
-        table.sort(filtered)
-        mutationDropdown:Refresh(filtered)
-    end
-})
-
-local mutationFilterDropdown = Tabs.AutoTab:Dropdown({
-    Title = "🔍 Filter Mutations",
-    Desc = "Filter mutations by rarity",
-    Values = { "All Mutations", "By Rarity" },
-    Value = "All Mutations",
-    Callback = function(selection)
-        if selection == "By Rarity" then
-            mutationRarityDropdown:SetVisible(true)
-        else
-            mutationRarityDropdown:SetVisible(false)
-            -- Refresh with no filter
-            mutationList = buildMutationList()
-            mutationDropdown:Refresh(mutationList)
-        end
-    end
-})
-
 Tabs.AutoTab:Divider()
-
-Tabs.AutoTab:Button({
-    Title = "🔄 Refresh Lists",
-    Desc = "Refresh all dropdown lists",
-    Callback = function()
-        eggIdList = buildEggIdList()
-        mutationList = buildMutationList()
-        fruitList = buildFruitList()
-        eggDropdown:Refresh(eggIdList)
-        mutationDropdown:Refresh(mutationList)
-        updateStatusParagraph()
-        WindUI:Notify({ Title = "🔄 Auto Buy", Content = "All lists refreshed!", Duration = 3 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "💰 Show Affordable Eggs",
-    Desc = "Show only eggs you can afford",
-    Callback = function()
-        local netWorth = getPlayerNetWorth()
-        eggIdList = buildEggIdList("price", 0, netWorth)
-        eggDropdown:Refresh(eggIdList)
-        WindUI:Notify({ Title = "💰 Auto Buy", Content = "Showing affordable eggs!", Duration = 3 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "⭐ Show Rare Eggs",
-    Desc = "Show only rare eggs (Rarity 4+)",
-    Callback = function()
-        local filtered = {}
-        for id, val in pairs(eggConfig) do
-            if val.Rarity and val.Rarity >= 4 then
-                table.insert(filtered, id)
-            end
-        end
-        table.sort(filtered)
-        eggDropdown:Refresh(filtered)
-        WindUI:Notify({ Title = "⭐ Auto Buy", Content = "Showing rare eggs!", Duration = 3 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Selection",
-    Desc = "Show what eggs and mutations are currently selected",
-    Callback = function()
-        local eggTypes = {}
-        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
-        table.sort(eggTypes)
-        
-        local mutations = {}
-        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
-        table.sort(mutations)
-        
-        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
-        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
-        
-        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
-    end
-})
-
 
 
 local autoBuyEnabled = false
@@ -3840,7 +3728,7 @@ Tabs.ShopTab:Button({
 
 -- ============ Fruit Market (Auto Buy Fruit) ============
 -- Create Fruit Store UI with hard-coded data
-Tabs.FruitTab:Section({ Title = "🔍 Fruit Filters", Icon = "filter" })
+Tabs.FruitTab:Section({ Title = "🍎 Fruit Selection", Icon = "filter" })
 
 -- Create fruit dropdown with hard-coded data
 local fruitDropdown
@@ -3865,54 +3753,6 @@ fruitDropdown = Tabs.FruitTab:Dropdown({
         for k in pairs(selectedFruitSet) do table.insert(keys, k) end
         table.sort(keys)
         WindUI:Notify({ Title = "🍎 Fruit Selection", Content = "Selected: " .. table.concat(keys, ", "), Duration = 3 })
-    end
-})
-
-local fruitPriceInput = Tabs.FruitTab:Input({
-    Title = "💰 Min Price",
-    Desc = "Show fruits with price >= this value",
-    Value = "1000000",
-    Visible = false,
-    Callback = function(value)
-        local minPrice = tonumber(value) or 0
-        fruitList = buildFruitList("price", minPrice)
-        fruitDropdown:Refresh(fruitList)
-    end
-})
-
-local fruitRarityDropdown = Tabs.FruitTab:Dropdown({
-    Title = "⭐ Rarity",
-    Desc = "Filter by fruit rarity",
-    Values = { "1", "2", "3", "4", "5", "6" },
-    Value = "1",
-    Visible = false,
-    Callback = function(selection)
-        local rarity = tonumber(selection) or 1
-        fruitList = buildFruitList("rarity", rarity)
-        fruitDropdown:Refresh(fruitList)
-    end
-})
-
-local fruitFilterDropdown = Tabs.FruitTab:Dropdown({
-    Title = "🔍 Filter Fruits",
-    Desc = "Filter fruits by price or rarity",
-    Values = { "All Fruits", "By Price", "By Rarity" },
-    Value = "All Fruits",
-    Callback = function(selection)
-        if selection == "By Price" then
-            fruitPriceInput:SetValue("1000000") -- Default 1M
-            fruitPriceInput:SetVisible(true)
-            fruitRarityDropdown:SetVisible(false)
-        elseif selection == "By Rarity" then
-            fruitPriceInput:SetVisible(false)
-            fruitRarityDropdown:SetVisible(true)
-        else
-            fruitPriceInput:SetVisible(false)
-            fruitRarityDropdown:SetVisible(false)
-            -- Refresh with no filter
-            fruitList = buildFruitList()
-            fruitDropdown:Refresh(fruitList)
-        end
     end
 })
 
@@ -3945,33 +3785,6 @@ local autoFruitToggle = Tabs.FruitTab:Toggle({
     end
 })
 
-Tabs.FruitTab:Button({
-    Title = "💰 Show Affordable Fruits",
-    Desc = "Show only fruits you can afford",
-    Callback = function()
-        local netWorth = getPlayerNetWorth()
-        fruitList = buildFruitList("price", 0, netWorth)
-        fruitDropdown:Refresh(fruitList)
-        WindUI:Notify({ Title = "💰 Fruit Store", Content = "Showing affordable fruits!", Duration = 3 })
-    end
-})
-
-Tabs.FruitTab:Button({
-    Title = "⭐ Show Rare Fruits",
-    Desc = "Show only rare fruits (Rarity 4+)",
-    Callback = function()
-        local filtered = {}
-        for id, val in pairs(petFoodConfig) do
-            if val.Rarity and val.Rarity >= 4 then
-                table.insert(filtered, id)
-            end
-        end
-        table.sort(filtered)
-        fruitDropdown:Refresh(filtered)
-        WindUI:Notify({ Title = "⭐ Fruit Store", Content = "Showing rare fruits!", Duration = 3 })
-    end
-})
-
 -- Create fruitUI object for config compatibility
 local fruitUI = {
     autoFruitToggle = autoFruitToggle,
@@ -3999,12 +3812,7 @@ local function registerConfigElements()
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("eggFilterType", eggFilterDropdown)
-        zooConfig:Register("eggMinPrice", eggPriceInput)
-        zooConfig:Register("mutationFilterType", mutationFilterDropdown)
-        zooConfig:Register("mutationRarity", mutationRarityDropdown)
-        zooConfig:Register("fruitFilterType", fruitFilterDropdown)
-        zooConfig:Register("fruitMinPrice", fruitPriceInput)
-        zooConfig:Register("fruitRarity", fruitRarityDropdown)
+
         -- Register fruit UI elements
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
