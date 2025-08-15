@@ -1,4 +1,68 @@
--- Build A Zoo: Auto Buy Egg using WindUI
+local KeyGuardLibrary = loadstring(game:HttpGet("https://cdn.keyguardian.org/library/v1.0.0.lua"))()
+local trueData = "dc1b4162f4f1402abff55d0514e4aa9c"
+local falseData = "99420f1506774a2192975f4e270e78b3"
+
+
+KeyGuardLibrary.Set({
+	publicToken = "8336ddf50c0746359b04047ff8e226f7",
+	privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+	trueData = trueData,
+	falseData = falseData,
+})
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local key = ""
+
+-- Load saved key from file
+local function loadSavedKey()
+    local success, result = pcall(function()
+        return readfile("BuildAZoo_Key.txt")
+    end)
+    if success and result and result ~= "" then
+        -- Parse saved data (key|timestamp)
+        local parts = result:split("|")
+        if #parts == 2 then
+            local savedKey = parts[1]
+            local savedTimestamp = tonumber(parts[2])
+            
+            -- Check if key has expired (12 hours = 43200 seconds)
+            local currentTime = os.time()
+            local timeDiff = currentTime - savedTimestamp
+            local expirationTime = 12 * 60 * 60 -- 12 hours in seconds
+            
+            if timeDiff < expirationTime then
+                print("Saved key is still valid (expires in " .. math.floor((expirationTime - timeDiff) / 3600) .. " hours)")
+                return savedKey
+            else
+                print("Saved key has expired")
+                -- Clear expired key
+                pcall(function()
+                    delfile("BuildAZoo_Key.txt")
+                end)
+                return ""
+            end
+        end
+    end
+    return ""
+end
+
+-- Save key to file with timestamp
+local function saveKey(keyToSave)
+    local currentTime = os.time()
+    local dataToSave = keyToSave .. "|" .. tostring(currentTime)
+    
+    local success = pcall(function()
+        writefile("BuildAZoo_Key.txt", dataToSave)
+    end)
+    return success
+end
+
+-- Function to handle key validation and auto-execution
+local function validateAndExecuteKey(keyToValidate)
+    local response = KeyGuardLibrary.validateDefaultKey(keyToValidate)
+    if response == trueData then
+        print("✅ Key is valid - executing script...")
+        -- Build A Zoo: Auto Buy Egg using WindUI
 
 -- Load WindUI library (same as in Windui.lua)
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -3366,7 +3430,7 @@ local fruitAutoBuyStatus = {
 local fruitStatusParagraph = Tabs.FruitTab:Paragraph({
     Title = "🍎 Fruit Auto Buy Status",
     Desc = "Ready to buy fruits!",
-    Image = "apple",
+                Image = "apple",
     ImageSize = 18
 })
 
@@ -3877,3 +3941,133 @@ end)
 Window:OnClose(function()
     print("UI closed.")
 end)
+        -- Show success notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "✅ Key Valid",
+                Content = "Key is valid! Loading Build A Zoo script...",
+                Duration = 3
+            })
+        end
+    
+        return false
+    end
+end
+
+-- Auto-load and validate saved key
+local savedKey = loadSavedKey()
+if savedKey ~= "" then
+    -- Auto-validate the saved key
+    if validateAndExecuteKey(savedKey) then
+        key = savedKey
+        print("✅ Auto-loaded and executed with valid key")
+        -- Show auto-load success notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "🔄 Auto-Load Success",
+                Content = "Valid saved key found! Build A Zoo script loaded automatically.",
+                Duration = 3
+            })
+        end
+        return -- Exit early since script is loaded
+    else
+        print("❌ Saved key is no longer valid")
+        -- Show auto-load failure notification
+        if Fluent then
+            Fluent:Notify({
+                Title = "⚠️ Auto-Load Failed",
+                Content = "Saved key is no longer valid. Please enter a new key.",
+                Duration = 5
+            })
+        end
+        -- Clear invalid key
+        pcall(function()
+            delfile("BuildAZoo_Key.txt")
+        end)
+        key = ""
+    end
+else
+    key = ""
+end
+
+local Window = Fluent:CreateWindow({
+		Title = "Key System",
+		SubTitle = "Zebux",
+		TabWidth = 160,
+		Size = UDim2.fromOffset(580, 340),
+		Acrylic = false,
+		Theme = "Dark",
+		MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+		KeySys = Window:AddTab({ Title = "Key System", Icon = "key" }),
+}
+
+local Entkey = Tabs.KeySys:AddInput("Input", {
+		Title = "Enter Key",
+		Description = "Enter Key Here",
+		Default = key, -- Auto-load saved key
+		Placeholder = "Enter key…",
+		Numeric = false,
+		Finished = false,
+		Callback = function(Value)
+				key = Value
+		end
+})
+
+local Checkkey = Tabs.KeySys:AddButton({
+		Title = "Check Key",
+		Description = "Enter Key before pressing this button",
+		Callback = function()
+				if key == "" or key == nil then
+					Fluent:Notify({
+						Title = "⚠️ No Key Entered",
+						Content = "Please enter a key in the input field first!",
+						Duration = 3
+					})
+					return
+				end
+				
+				-- Show validation in progress
+				Fluent:Notify({
+					Title = "🔍 Validating Key",
+					Content = "Checking if your key is valid...",
+					Duration = 2
+				})
+				
+				if validateAndExecuteKey(key) then
+					-- Save the valid key with timestamp
+					if saveKey(key) then
+						Fluent:Notify({
+							Title = "💾 Key Saved",
+							Content = "Key saved successfully! (Expires in 12 hours)",
+							Duration = 3
+						})
+					else
+						Fluent:Notify({
+							Title = "⚠️ Save Failed",
+							Content = "Failed to save key, but script is still loaded.",
+							Duration = 3
+						})
+					end
+				end
+		end
+})
+
+local Getkey = Tabs.KeySys:AddButton({
+		Title = "Get Key",
+		Description = "Get Key here and past to browser",
+		Callback = function()
+				local keyLink = KeyGuardLibrary.getLink()
+				setclipboard(keyLink)
+				-- Show notification about what happened
+				Fluent:Notify({
+					Title = "🔗 Key Link Copied",
+					Content = "Key link has been copied to clipboard! Paste it in your browser to get your key.",
+					Duration = 5
+				})
+		end
+})
+
+Window:SelectTab(1)
