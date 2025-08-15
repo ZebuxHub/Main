@@ -513,6 +513,13 @@ function AutoFeedSelection.CreateUI()
     padding.PaddingBottom = UDim2.new(0, 8)
     padding.Parent = scrollFrame
     
+    -- Auto-update canvas size when content changes
+    gridLayout.Changed:Connect(function(prop)
+        if prop == "AbsoluteContentSize" then
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, gridLayout.AbsoluteContentSize.Y + 16)
+        end
+    end)
+    
     -- Window Control Events
     local closeBtn = windowControls.CloseBtn
     local minimizeBtn = windowControls.MinimizeBtn
@@ -559,26 +566,33 @@ function AutoFeedSelection.CreateUI()
     titleBar.BackgroundTransparency = 1
     titleBar.Parent = MainFrame
     
+    local dragConnection = nil
+    
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             isDragging = true
             dragStart = input.Position
             startPos = MainFrame.Position
             
+            -- Create a local drag connection to avoid conflicts
+            dragConnection = UserInputService.InputChanged:Connect(function(dragInput)
+                if dragInput.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
+                    local delta = dragInput.Position - dragStart
+                    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                end
+            end)
+            
             local connection
             connection = input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     isDragging = false
+                    if dragConnection then
+                        dragConnection:Disconnect()
+                        dragConnection = nil
+                    end
                     connection:Disconnect()
                 end
             end)
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-            local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     
@@ -589,7 +603,13 @@ end
 function AutoFeedSelection.RefreshContent()
     if not ScreenGui then return end
     
-    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+    local mainFrame = ScreenGui:FindFirstChild("MainFrame")
+    if not mainFrame then return end
+    
+    local content = mainFrame:FindFirstChild("Content")
+    if not content then return end
+    
+    local scrollFrame = content:FindFirstChild("ScrollFrame")
     if not scrollFrame then return end
     
     -- Clear existing content
@@ -619,12 +639,21 @@ function AutoFeedSelection.RefreshContent()
             card.BackgroundColor3 = colors.selected
         end
     end
+    
+    -- Update canvas size for scrolling
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if gridLayout then
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, gridLayout.AbsoluteContentSize.Y + 16)
+    end
 end
 
 -- Public Functions
 function AutoFeedSelection.Show(callback, toggleCallback, savedFruits)
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
+    
+    -- Clear previous selections
+    selectedItems = {}
     
     -- Apply saved selections if provided
     if savedFruits then
@@ -633,15 +662,25 @@ function AutoFeedSelection.Show(callback, toggleCallback, savedFruits)
         end
     end
     
-    if not ScreenGui then
-        AutoFeedSelection.CreateUI()
+    -- Always recreate UI to ensure fresh state
+    if ScreenGui then
+        ScreenGui:Destroy()
+        ScreenGui = nil
     end
     
-    -- Wait a frame to ensure UI is created
-    task.wait()
-    AutoFeedSelection.RefreshContent()
-    ScreenGui.Enabled = true
-    ScreenGui.Parent = PlayerGui
+    AutoFeedSelection.CreateUI()
+    
+    -- Ensure UI is properly set up
+    if ScreenGui then
+        ScreenGui.Enabled = true
+        ScreenGui.Parent = PlayerGui
+        
+        -- Wait a frame to ensure UI is created, then refresh content
+        task.spawn(function()
+            task.wait(0.1)
+            AutoFeedSelection.RefreshContent()
+        end)
+    end
 end
 
 function AutoFeedSelection.Hide()
