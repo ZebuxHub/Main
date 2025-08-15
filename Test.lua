@@ -7,10 +7,95 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
+
+-- Egg Information System (for custom UI selection)
+local eggInfo = {
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928" },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414" },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351" },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721" },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014" },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582" },
+    HyperEgg = { Name = "Hyper Egg", Price = "3,000,000", Icon = "rbxassetid://104958288296273" },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984" },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510" },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969" },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562" },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799" },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315" },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187" },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445" },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739" }
+}
+
+-- Custom UI Selection System
+local function createEggSelectionUI(parent, title, callback)
+    local selectedEggs = {}
+    
+    local section = parent:Section({ Title = title, Icon = "egg" })
+    
+    -- Create egg selection buttons
+    for eggId, info in pairs(eggInfo) do
+        local button = section:Button({
+            Title = info.Name,
+            Desc = "💰 Price: " .. info.Price .. "\n🆔 ID: " .. eggId,
+            Callback = function()
+                if selectedEggs[eggId] then
+                    selectedEggs[eggId] = nil
+                    if button and button.SetTitle then
+                        button:SetTitle(info.Name .. " ❌")
+                    end
+                    WindUI:Notify({
+                        Title = "❌ Deselected",
+                        Content = "Removed " .. info.Name .. " from selection",
+                        Duration = 2
+                    })
+                else
+                    selectedEggs[eggId] = true
+                    if button and button.SetTitle then
+                        button:SetTitle(info.Name .. " ✅")
+                    end
+                    WindUI:Notify({
+                        Title = "✅ Selected",
+                        Content = "Added " .. info.Name .. " to selection",
+                        Duration = 2
+                    })
+                end
+                
+                -- Call the callback with current selection
+                if callback then
+                    local selectedList = {}
+                    for id, _ in pairs(selectedEggs) do
+                        table.insert(selectedList, id)
+                    end
+                    callback(selectedList)
+                end
+            end
+        })
+    end
+    
+    -- Clear selection button
+    section:Button({
+        Title = "🗑️ Clear Selection",
+        Desc = "Remove all selected eggs",
+        Callback = function()
+            selectedEggs = {}
+            WindUI:Notify({
+                Title = "🗑️ Cleared",
+                Content = "All selections cleared",
+                Duration = 2
+            })
+            if callback then
+                callback({})
+            end
+        end
+    })
+    
+    return selectedEggs
+end
 
 -- Window
 local Window = WindUI:CreateWindow({
@@ -41,6 +126,275 @@ Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 local statusData
 local function updateStatusParagraph() end
 local function updatePlaceStatusParagraph() end
+
+-- Custom Draggable UI System
+local customUI = {}
+local customUIVisible = false
+local customUIPosition = UDim2.new(0.5, -200, 0.5, -150)
+local customUISize = UDim2.new(0, 400, 0, 300)
+
+-- Create custom UI frame
+local function createCustomUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "CustomEggSelectionUI"
+    screenGui.Parent = game:GetService("CoreGui")
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = customUISize
+    mainFrame.Position = customUIPosition
+    mainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
+    
+    -- Make frame draggable
+    local userInputService = game:GetService("UserInputService")
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    local function updateDrag(input)
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    mainFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            local connection
+            connection = input.Changed:Connect(function()
+                if not dragging then
+                    connection:Disconnect()
+                else
+                    updateDrag(input)
+                end
+            end)
+        end
+    end)
+    
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "TitleLabel"
+    titleLabel.Size = UDim2.new(1, -60, 1, 0)
+    titleLabel.Position = UDim2.new(0, 10, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "🥚 Egg Selection"
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextScaled = true
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.Parent = titleBar
+    
+    -- Minimize button
+    local minimizeButton = Instance.new("TextButton")
+    minimizeButton.Name = "MinimizeButton"
+    minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    minimizeButton.Position = UDim2.new(1, -60, 0, 0)
+    minimizeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    minimizeButton.BorderSizePixel = 0
+    minimizeButton.Text = "−"
+    minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeButton.TextScaled = true
+    minimizeButton.Font = Enum.Font.GothamBold
+    minimizeButton.Parent = titleBar
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -30, 0, 0)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeButton.BorderSizePixel = 0
+    closeButton.Text = "×"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Parent = titleBar
+    
+    -- Content area
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
+    contentFrame.Size = UDim2.new(1, -20, 1, -40)
+    contentFrame.Position = UDim2.new(0, 10, 0, 30)
+    contentFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    contentFrame.BorderSizePixel = 0
+    contentFrame.Parent = mainFrame
+    
+    -- Scroll frame for eggs
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Name = "ScrollFrame"
+    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+    scrollFrame.Position = UDim2.new(0, 0, 0, 0)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.Parent = contentFrame
+    
+    -- UI List Layout
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Parent = scrollFrame
+    listLayout.Padding = UDim.new(0, 5)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    
+    -- Create egg buttons
+    local selectedEggs = {}
+    local eggButtons = {}
+    
+    for eggId, info in pairs(eggInfo) do
+        local eggButton = Instance.new("Frame")
+        eggButton.Name = eggId .. "Button"
+        eggButton.Size = UDim2.new(1, -10, 0, 50)
+        eggButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        eggButton.BorderSizePixel = 0
+        eggButton.Parent = scrollFrame
+        
+        local eggIcon = Instance.new("ImageLabel")
+        eggIcon.Name = "Icon"
+        eggIcon.Size = UDim2.new(0, 40, 0, 40)
+        eggIcon.Position = UDim2.new(0, 5, 0.5, -20)
+        eggIcon.BackgroundTransparency = 1
+        eggIcon.Image = info.Icon
+        eggIcon.Parent = eggButton
+        
+        local eggName = Instance.new("TextLabel")
+        eggName.Name = "Name"
+        eggName.Size = UDim2.new(1, -100, 0.5, 0)
+        eggName.Position = UDim2.new(0, 50, 0, 0)
+        eggName.BackgroundTransparency = 1
+        eggName.Text = info.Name
+        eggName.TextColor3 = Color3.fromRGB(255, 255, 255)
+        eggName.TextScaled = true
+        eggName.Font = Enum.Font.Gotham
+        eggName.Parent = eggButton
+        
+        local eggPrice = Instance.new("TextLabel")
+        eggPrice.Name = "Price"
+        eggPrice.Size = UDim2.new(1, -100, 0.5, 0)
+        eggPrice.Position = UDim2.new(0, 50, 0.5, 0)
+        eggPrice.BackgroundTransparency = 1
+        eggPrice.Text = "💰 " .. info.Price
+        eggPrice.TextColor3 = Color3.fromRGB(255, 215, 0)
+        eggPrice.TextScaled = true
+        eggPrice.Font = Enum.Font.Gotham
+        eggPrice.Parent = eggButton
+        
+        local selectButton = Instance.new("TextButton")
+        selectButton.Name = "SelectButton"
+        selectButton.Size = UDim2.new(0, 80, 0, 30)
+        selectButton.Position = UDim2.new(1, -85, 0.5, -15)
+        selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        selectButton.BorderSizePixel = 0
+        selectButton.Text = "Select"
+        selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        selectButton.TextScaled = true
+        selectButton.Font = Enum.Font.GothamBold
+        selectButton.Parent = eggButton
+        
+        -- Button functionality
+        selectButton.MouseButton1Click:Connect(function()
+            if selectedEggs[eggId] then
+                selectedEggs[eggId] = nil
+                selectButton.Text = "Select"
+                selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                eggButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            else
+                selectedEggs[eggId] = true
+                selectButton.Text = "Selected ✓"
+                selectButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+                eggButton.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+            end
+            
+            -- Update global selected eggs
+            customUI.selectedEggs = selectedEggs
+        end)
+        
+        eggButtons[eggId] = eggButton
+    end
+    
+    -- Button functionality
+    minimizeButton.MouseButton1Click:Connect(function()
+        if contentFrame.Visible then
+            contentFrame.Visible = false
+            mainFrame.Size = UDim2.new(0, 400, 0, 30)
+            minimizeButton.Text = "□"
+        else
+            contentFrame.Visible = true
+            mainFrame.Size = customUISize
+            minimizeButton.Text = "−"
+        end
+    end)
+    
+    closeButton.MouseButton1Click:Connect(function()
+        customUIVisible = false
+        screenGui:Destroy()
+    end)
+    
+    -- Save button
+    local saveButton = Instance.new("TextButton")
+    saveButton.Name = "SaveButton"
+    saveButton.Size = UDim2.new(0, 80, 0, 25)
+    saveButton.Position = UDim2.new(0, 10, 1, -30)
+    saveButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    saveButton.BorderSizePixel = 0
+    saveButton.Text = "Save"
+    saveButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    saveButton.TextScaled = true
+    saveButton.Font = Enum.Font.GothamBold
+    saveButton.Parent = contentFrame
+    
+    saveButton.MouseButton1Click:Connect(function()
+        -- Save selected eggs to config
+        if Window.ConfigManager then
+            local config = Window.ConfigManager:CreateConfig("CustomEggSelection")
+            config:Register("selectedEggs", {})
+            config:Save()
+            WindUI:Notify({
+                Title = "💾 Saved",
+                Content = "Egg selection saved!",
+                Duration = 3
+            })
+        end
+    end)
+    
+    customUI.frame = mainFrame
+    customUI.selectedEggs = selectedEggs
+    customUI.buttons = eggButtons
+    
+    return screenGui
+end
+
+-- Function to show/hide custom UI
+local function toggleCustomUI()
+    if customUIVisible then
+        customUIVisible = false
+        if customUI.frame and customUI.frame.Parent then
+            customUI.frame.Parent:Destroy()
+        end
+    else
+        customUIVisible = true
+        createCustomUI()
+    end
+end
 -- Auto state variables (declared early so close handler can reference)
 
 local autoFeedEnabled = false
@@ -1443,507 +1797,40 @@ local mutationList = buildMutationList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 
--- Create alternative egg selection UI
-local eggSelectionUI = nil
-local eggSelectionWindow = nil
-local selectedEggs = {}
-
--- Function to create the alternative egg selection UI
-local function createEggSelectionUI()
-    if eggSelectionUI then
-        eggSelectionUI:Destroy()
-        eggSelectionUI = nil
-        eggSelectionWindow = nil
-        return
-    end
-    
-    -- Create the alternative UI window
-    eggSelectionWindow = WindUI:CreateWindow({
-        Title = "🥚 Egg Selection",
-        Icon = "egg",
-        IconThemed = true,
-        Author = "Zebux",
-        Folder = "Zebux",
-        Size = UDim2.fromOffset(800, 600),
-        Transparent = true,
-        Theme = "Dark",
-    })
-    
-    -- Verify window was created successfully
-    if not eggSelectionWindow then
-        WindUI:Notify({
-            Title = "❌ Error",
-            Content = "Failed to create egg selection window",
-            Duration = 5
-        })
-        return
-    end
-    
-    local eggTabs = {}
-    
-    -- Create section with error handling
-    local success, section = pcall(function()
-        return eggSelectionWindow:Section({ Title = "🥚 Select Eggs", Opened = true })
-    end)
-    
-    if not success or not section then
-        WindUI:Notify({
-            Title = "❌ Error",
-            Content = "Failed to create section: " .. tostring(section),
-            Duration = 5
-        })
-        return
-    end
-    
-    eggTabs.MainSection = section
-    
-    -- Create tabs with error handling
-    local success2, eggTab = pcall(function()
-        return eggTabs.MainSection:Tab({ Title = "🥚 | Eggs"})
-    end)
-    
-    if not success2 or not eggTab then
-        WindUI:Notify({
-            Title = "❌ Error",
-            Content = "Failed to create egg tab: " .. tostring(eggTab),
-            Duration = 5
-        })
-        return
-    end
-    
-    eggTabs.EggTab = eggTab
-    eggTabs.MutationTab = eggTabs.MainSection:Tab({ Title = "🧬 | Mutations"})
-    
-    -- Verify tabs were created successfully
-    if not eggTabs.EggTab then
-        WindUI:Notify({
-            Title = "❌ Error",
-            Content = "Failed to create egg selection tabs",
-            Duration = 5
-        })
-        return
-    end
-    
-    -- Status section
-    eggTabs.EggTab:Section({ Title = "📊 Selection Status", Icon = "info" })
-    
-    local selectionStatusParagraph = eggTabs.EggTab:Paragraph({
-        Title = "🥚 Selection Status",
-        Desc = "No eggs selected",
-        Image = "shopping-bag",
-        ImageSize = 18,
-    })
-    
-    local function updateSelectionStatus()
-        local selectedCount = 0
-        local selectedNames = {}
-        for eggId, isSelected in pairs(selectedEggs) do
-            if isSelected then
-                selectedCount = selectedCount + 1
-                table.insert(selectedNames, eggId)
-            end
-        end
-        
-        local desc = string.format("Selected: %d eggs\n", selectedCount)
-        if #selectedNames > 0 then
-            desc = desc .. "Selected: " .. table.concat(selectedNames, ", ")
-        else
-            desc = desc .. "No eggs selected"
-        end
-        
-        if selectionStatusParagraph and selectionStatusParagraph.SetDesc then
-            selectionStatusParagraph:SetDesc(desc)
-        end
-    end
-    
-    -- Search and filter section
-    eggTabs.EggTab:Section({ Title = "🔍 Search & Filter", Icon = "search" })
-    
-    local searchInput = eggTabs.EggTab:Input({
-        Title = "🔍 Search Eggs",
-        Desc = "Type to search for specific eggs",
-        Value = "",
-        Placeholder = "Enter egg name...",
-        Callback = function(searchText)
-            -- This will be implemented to filter the egg buttons
-            WindUI:Notify({
-                Title = "🔍 Search",
-                Content = "Search functionality coming soon!",
-                Duration = 2
-            })
-        end
-    })
-    
-    -- Quick selection buttons
-    eggTabs.EggTab:Button({
-        Title = "💰 Select by Price Range",
-        Desc = "Select eggs within a specific price range",
-        Icon = "dollar-sign",
-        Callback = function()
-            WindUI:Notify({
-                Title = "💰 Price Filter",
-                Content = "Price range selection coming soon!",
-                Duration = 2
-            })
-        end
-    })
-    
-    -- Create egg selection buttons with icons and prices
-    eggTabs.EggTab:Section({ Title = "🥚 Available Eggs", Icon = "egg" })
-    
-    -- Group eggs by rarity
-    local rarityGroups = {
-        [1] = { name = "Common", color = "White", eggs = {} },
-        [2] = { name = "Uncommon", color = "Green", eggs = {} },
-        [3] = { name = "Rare", color = "Blue", eggs = {} },
-        [4] = { name = "Epic", color = "Purple", eggs = {} },
-        [5] = { name = "Legendary", color = "Orange", eggs = {} },
-        [6] = { name = "Mythical", color = "Red", eggs = {} },
-    }
-    
-    -- Sort eggs by rarity
-    for eggId, eggData in pairs(eggConfig) do
-        if type(eggData) == "table" and eggData.Rarity then
-            local rarity = eggData.Rarity
-            if rarityGroups[rarity] then
-                table.insert(rarityGroups[rarity].eggs, {
-                    id = eggId,
-                    data = eggData
-                })
-            end
-        end
-    end
-    
-    -- Create UI for each rarity group
-    for rarity, group in pairs(rarityGroups) do
-        if #group.eggs > 0 then
-            eggTabs.EggTab:Section({ Title = group.name .. " Eggs", Icon = "egg" })
-            
-            -- Sort eggs by price within each rarity
-            table.sort(group.eggs, function(a, b)
-                local priceA = tonumber(string.gsub(a.data.Price or "0", ",", "")) or 0
-                local priceB = tonumber(string.gsub(b.data.Price or "0", ",", "")) or 0
-                return priceA < priceB
-            end)
-            
-            -- Create egg selection buttons
-            for _, eggInfo in ipairs(group.eggs) do
-                local eggId = eggInfo.id
-                local eggData = eggInfo.data
-                local price = eggData.Price or "Unknown"
-                local icon = eggData.Icon or "egg"
-                local luck = eggData.Luck or 0
-                local hatchTime = eggData.HatchTime or 0
-                
-                -- Create button with egg info and icon
-                local eggButton
-                eggButton = eggTabs.EggTab:Button({
-                    Title = eggId,
-                    Desc = string.format("💰 Price: %s | 🍀 Luck: %d | ⏰ Hatch Time: %d min", price, luck, hatchTime),
-                    Icon = "egg",
-                    Callback = function()
-                        -- Toggle selection
-                        selectedEggs[eggId] = not selectedEggs[eggId]
-                        
-                        -- Update button appearance
-                        if selectedEggs[eggId] then
-                            eggButton:SetTitle("✅ " .. eggId)
-                            WindUI:Notify({
-                                Title = "🥚 Egg Selected",
-                                Content = eggId .. " has been selected!",
-                                Duration = 2
-                            })
-                        else
-                            eggButton:SetTitle(eggId)
-                            WindUI:Notify({
-                                Title = "🥚 Egg Deselected",
-                                Content = eggId .. " has been deselected!",
-                                Duration = 2
-                            })
-                        end
-                        
-                        updateSelectionStatus()
-                    end
-                })
-                
-                -- Set initial state
-                if selectedTypeSet[eggId] then
-                    selectedEggs[eggId] = true
-                    eggButton:SetTitle("✅ " .. eggId)
-                end
-            end
-        end
-    end
-    
-    -- Mutation selection
-    eggTabs.MutationTab:Section({ Title = "🧬 Select Mutations", Icon = "dna" })
-    
-    local mutationStatusParagraph = eggTabs.MutationTab:Paragraph({
-        Title = "🧬 Mutation Status",
-        Desc = "No mutations selected",
-        Image = "dna",
-        ImageSize = 18,
-    })
-    
-    local selectedMutations = {}
-    
-    local function updateMutationStatus()
-        local selectedCount = 0
-        local selectedNames = {}
-        for mutationId, isSelected in pairs(selectedMutations) do
-            if isSelected then
-                selectedCount = selectedCount + 1
-                table.insert(selectedNames, mutationId)
-            end
-        end
-        
-        local desc = string.format("Selected: %d mutations\n", selectedCount)
-        if #selectedNames > 0 then
-            desc = desc .. "Selected: " .. table.concat(selectedNames, ", ")
-        else
-            desc = desc .. "No mutations selected"
-        end
-        
-        if mutationStatusParagraph and mutationStatusParagraph.SetDesc then
-            mutationStatusParagraph:SetDesc(desc)
-        end
-    end
-    
-    -- Create mutation selection buttons
-    for mutationId, mutationData in pairs(mutationConfig) do
-        if type(mutationData) == "table" and mutationId ~= "__index" then
-            local rarityNum = mutationData.RarityNum or 0
-            local produceRate = mutationData.ProduceRate or 1
-            local sellRate = mutationData.SellRate or 1
-            local textColor = mutationData.TextColor or "ffffff"
-            
-            local mutationButton
-            mutationButton = eggTabs.MutationTab:Button({
-                Title = mutationId,
-                Desc = string.format("⭐ Rarity: %d | ⚡ Produce: %dx | 💰 Sell: %dx", rarityNum, produceRate, sellRate),
-                Icon = "dna",
-                Callback = function()
-                    -- Toggle selection
-                    selectedMutations[mutationId] = not selectedMutations[mutationId]
-                    
-                    -- Update button appearance
-                    if selectedMutations[mutationId] then
-                        mutationButton:SetTitle("✅ " .. mutationId)
-                        WindUI:Notify({
-                            Title = "🧬 Mutation Selected",
-                            Content = mutationId .. " has been selected!",
-                            Duration = 2
-                        })
-                    else
-                        mutationButton:SetTitle(mutationId)
-                        WindUI:Notify({
-                            Title = "🧬 Mutation Deselected",
-                            Content = mutationId .. " has been deselected!",
-                            Duration = 2
-                        })
-                    end
-                    
-                    updateMutationStatus()
-                end
-            })
-            
-            -- Set initial state
-            if selectedMutationSet[mutationId] then
-                selectedMutations[mutationId] = true
-                mutationButton:SetTitle("✅ " .. mutationId)
-            end
-        end
-    end
-    
-    -- Action buttons
-    eggTabs.EggTab:Section({ Title = "⚡ Actions", Icon = "settings" })
-    
-    eggTabs.EggTab:Button({
-        Title = "✅ Apply Selection",
-        Desc = "Apply the current selection to the main script",
-        Callback = function()
-            -- Update the main script's selected types
+local eggDropdown
+eggDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🥚 Pick Eggs",
+    Desc = "Choose which eggs to buy",
+    Values = eggIdList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+            Callback = function(selection)
             selectedTypeSet = {}
-            for eggId, isSelected in pairs(selectedEggs) do
-                if isSelected then
-                    selectedTypeSet[eggId] = true
+            local function addTypeFor(idStr)
+                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+                selectedTypeSet[idStr] = true
+                -- Also include the mapped Type from config (if available and different)
+                local mappedType = idToTypeMap[idStr]
+                if mappedType and tostring(mappedType) ~= idStr then
+                    selectedTypeSet[tostring(mappedType)] = true
                 end
             end
-            
-            -- Update the main script's selected mutations
-            selectedMutationSet = {}
-            for mutationId, isSelected in pairs(selectedMutations) do
-                if isSelected then
-                    selectedMutationSet[mutationId] = true
+            if type(selection) == "table" then
+                for _, id in ipairs(selection) do
+                    addTypeFor(tostring(id))
                 end
+            elseif type(selection) == "string" then
+                addTypeFor(tostring(selection))
             end
-            
-            -- Update main script status
+            -- update selected types display
             local keys = {}
             for k in pairs(selectedTypeSet) do table.insert(keys, k) end
             table.sort(keys)
             statusData.selectedTypes = table.concat(keys, ", ")
-            
-            local mutationKeys = {}
-            for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-            table.sort(mutationKeys)
-            statusData.selectedMutations = table.concat(mutationKeys, ", ")
-            
             updateStatusParagraph()
-            
-            WindUI:Notify({
-                Title = "✅ Selection Applied",
-                Content = "Egg and mutation selection has been applied to the main script!",
-                Duration = 3
-            })
-            
-            -- Close the selection UI
-            createEggSelectionUI()
         end
-    })
-    
-    eggTabs.EggTab:Button({
-        Title = "🔄 Select All Eggs",
-        Desc = "Select all available eggs",
-        Callback = function()
-            for eggId, _ in pairs(eggConfig) do
-                if type(eggConfig[eggId]) == "table" and eggConfig[eggId].Rarity then
-                    selectedEggs[eggId] = true
-                end
-            end
-            updateSelectionStatus()
-            WindUI:Notify({
-                Title = "🔄 All Selected",
-                Content = "All eggs have been selected!",
-                Duration = 2
-            })
-        end
-    })
-    
-    eggTabs.EggTab:Button({
-        Title = "❌ Clear Selection",
-        Desc = "Clear all egg selections",
-        Callback = function()
-            selectedEggs = {}
-            updateSelectionStatus()
-            WindUI:Notify({
-                Title = "❌ Selection Cleared",
-                Content = "All egg selections have been cleared!",
-                Duration = 2
-            })
-        end
-    })
-    
-    eggTabs.EggTab:Button({
-        Title = "💾 Save Selection",
-        Desc = "Save current selection for future use",
-        Icon = "save",
-        Callback = function()
-            -- Save selection to config
-            if _G.zooConfig then
-                _G.zooConfig:Save()
-                WindUI:Notify({
-                    Title = "💾 Selection Saved",
-                    Content = "Your egg selection has been saved!",
-                    Duration = 3
-                })
-            end
-        end
-    })
-    
-    eggTabs.EggTab:Button({
-        Title = "📂 Load Saved Selection",
-        Desc = "Load previously saved selection",
-        Icon = "folder-open",
-        Callback = function()
-            -- Load selection from config
-            if _G.zooConfig then
-                _G.zooConfig:Load()
-                WindUI:Notify({
-                    Title = "📂 Selection Loaded",
-                    Content = "Your saved selection has been loaded!",
-                    Duration = 3
-                })
-            end
-        end
-    })
-    
-    eggTabs.EggTab:Button({
-        Title = "❌ Close",
-        Desc = "Close the egg selection UI",
-        Icon = "x",
-        Callback = function()
-            createEggSelectionUI()
-        end
-    })
-    
-    -- Initialize status
-    updateSelectionStatus()
-    updateMutationStatus()
-    
-    -- Add a draggable open button for the egg selection UI
-    eggSelectionWindow:EditOpenButton({
-        Title = "🥚 Egg Selection",
-        Icon = "egg",
-        CornerRadius = UDim.new(0, 16),
-        StrokeThickness = 2,
-        Color = ColorSequence.new(
-            Color3.fromHex("FF6B6B"), 
-            Color3.fromHex("4ECDC4")
-        ),
-        Draggable = true,
-    })
-    
-    eggSelectionUI = eggSelectionWindow
-end
-
--- Replace the dropdown with a button
-Tabs.AutoTab:Button({
-    Title = "🥚 Select Eggs",
-    Desc = "Open egg selection UI with icons, prices, and names",
-    Icon = "egg",
-    Callback = function()
-        createEggSelectionUI()
-    end
 })
-
-
-
--- Remove the old dropdown code
--- local eggDropdown
--- eggDropdown = Tabs.AutoTab:Dropdown({
---     Title = "🥚 Pick Eggs",
---     Desc = "Choose which eggs to buy",
---     Values = eggIdList,
---     Value = {},
---     Multi = true,
---     AllowNone = true,
---     Callback = function(selection)
---         selectedTypeSet = {}
---         local function addTypeFor(idStr)
---             -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
---             selectedTypeSet[idStr] = true
---             -- Also include the mapped Type from config (if available and different)
---             local mappedType = idToTypeMap[idStr]
---             if mappedType and tostring(mappedType) ~= idStr then
---                 selectedTypeSet[tostring(mappedType)] = true
---             end
---         end
---         if type(selection) == "table" then
---             for _, id in ipairs(selection) do
---                 addTypeFor(tostring(id))
---             end
---         elseif type(selection) == "string" then
---             addTypeFor(tostring(selection))
---         end
---         -- update selected types display
---         local keys = {}
---         for k in pairs(selectedTypeSet) do table.insert(keys, k) end
---         table.sort(keys)
---         statusData.selectedTypes = table.concat(keys, ", ")
---         updateStatusParagraph()
---     end
--- })
 
 local mutationDropdown
 mutationDropdown = Tabs.AutoTab:Dropdown({
@@ -2003,6 +1890,19 @@ Tabs.AutoTab:Button({
     end
 })
 
+Tabs.AutoTab:Button({
+    Title = "🥚 Custom Egg Selection UI",
+    Desc = "Open custom draggable egg selection interface",
+    Callback = function()
+        toggleCustomUI()
+        WindUI:Notify({ 
+            Title = "🥚 Custom UI", 
+            Content = customUIVisible and "Custom egg selection UI opened!" or "Custom egg selection UI closed!", 
+            Duration = 3 
+        })
+    end
+})
+
 
 
 local autoBuyEnabled = false
@@ -2035,7 +1935,14 @@ local function formatStatusDesc()
     table.insert(lines, string.format("Island: %s", tostring(statusData.islandName or "?")))
     table.insert(lines, string.format("NetWorth: %s", tostring(statusData.netWorth)))
     table.insert(lines, string.format("Belt: %d eggs | Match %d | Can buy %d", statusData.eggsFound or 0, statusData.matchingFound or 0, statusData.affordableFound or 0))
-    if statusData.selectedTypes then table.insert(lines, "Selected Eggs: " .. statusData.selectedTypes) end
+    -- Show custom UI selection if available, otherwise show dropdown selection
+    local currentSelection = customUI.selectedEggs or selectedTypeSet
+    if currentSelection and next(currentSelection) then
+        local selectedKeys = {}
+        for k in pairs(currentSelection) do table.insert(selectedKeys, k) end
+        table.sort(selectedKeys)
+        table.insert(lines, "Selected Eggs: " .. table.concat(selectedKeys, ", "))
+    end
     if statusData.selectedMutations then table.insert(lines, "Selected Mutations: " .. statusData.selectedMutations) end
     if statusData.lastUID then table.insert(lines, "Last Buy: " .. tostring(statusData.lastUID)) end
     table.insert(lines, "Status: " .. tostring(statusData.lastAction))
@@ -2059,8 +1966,10 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     eggType = tostring(eggType)
     
     -- If eggs are selected, check if this is the type we want
-    if selectedTypeSet and next(selectedTypeSet) then
-    if not selectedTypeSet[eggType] then return false, nil, nil end
+    -- Use custom UI selection if available, otherwise fall back to dropdown selection
+    local currentSelection = customUI.selectedEggs or selectedTypeSet
+    if currentSelection and next(currentSelection) then
+        if not currentSelection[eggType] then return false, nil, nil end
     end
     
     -- Now check mutation if mutations are selected
@@ -3736,7 +3645,7 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        -- eggDropdown was replaced with button system, so we skip this registration
+        zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         -- Register fruit UI elements from external file
