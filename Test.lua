@@ -1474,6 +1474,16 @@ local function createEggSelectionUI()
     eggTabs.EggTab = eggTabs.MainSection:Tab({ Title = "🥚 | Eggs"})
     eggTabs.MutationTab = eggTabs.MainSection:Tab({ Title = "🧬 | Mutations"})
     
+    -- Verify tabs were created successfully
+    if not eggTabs.EggTab then
+        WindUI:Notify({
+            Title = "❌ Error",
+            Content = "Failed to create egg selection tabs",
+            Duration = 5
+        })
+        return
+    end
+    
     -- Status section
     eggTabs.EggTab:Section({ Title = "📊 Selection Status", Icon = "info" })
     
