@@ -592,7 +592,7 @@ function EggSelection.CreateUI()
     
     local gridLayout = Instance.new("UIGridLayout")
     gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
-    gridLayout.CellPadding = UDim.new(0, 8, 0, 8)
+    gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = scrollFrame
     
