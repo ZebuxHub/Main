@@ -52,64 +52,521 @@ local antiAFKConnection = nil
 local autoHatchThread = nil
 local automationPriority = "Hatch" -- "Hatch" or "Place"
 
--- Egg config loader
-local eggConfig = {}
-local conveyorConfig = {}
-local petFoodConfig = {}
-local mutationConfig = {}
+-- Hard-coded config data
+local eggConfig = {
+	BasicEgg = {
+		ID = "BasicEgg";
+		Luck = 1;
+		Price = "100";
+		HatchTime = 5;
+		MutateBuyRate = 1;
+		Rarity = 1;
+		LootID = "L_CAPY_PET";
+		HatchLuck = 10;
+		Icon = "rbxassetid://129248801621928";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	RareEgg = {
+		ID = "RareEgg";
+		Luck = 2;
+		Price = "500";
+		HatchTime = 20;
+		MutateBuyRate = 1;
+		Rarity = 2;
+		LootID = "L_HOME_PET";
+		HatchLuck = 10;
+		Icon = "rbxassetid://71012831091414";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	SuperRareEgg = {
+		ID = "SuperRareEgg";
+		Luck = 5;
+		Price = "2,500";
+		HatchTime = 40;
+		MutateBuyRate = 1;
+		Rarity = 2;
+		LootID = "L_HOME_PET2";
+		HatchLuck = 5;
+		Icon = "rbxassetid://93845452154351";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	EpicEgg = {
+		ID = "EpicEgg";
+		Luck = 20;
+		Price = "15,000";
+		HatchTime = 120;
+		MutateBuyRate = 1;
+		Rarity = 2;
+		LootID = "L_COM_PET";
+		HatchLuck = 20;
+		Icon = "rbxassetid://116395645531721";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	LegendEgg = {
+		ID = "LegendEgg";
+		Luck = 100;
+		Price = "100,000";
+		HatchTime = 360;
+		MutateBuyRate = 1;
+		Rarity = 3;
+		LootID = "L_COM_PET";
+		HatchLuck = 100;
+		Icon = "rbxassetid://90834918351014";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	PrismaticEgg = {
+		ID = "PrismaticEgg";
+		Luck = 1000;
+		Price = "1,000,000";
+		HatchTime = 720;
+		MutateBuyRate = 1;
+		Rarity = 4;
+		LootID = "L_COM_PET2";
+		HatchLuck = 5;
+		Icon = "rbxassetid://79960683434582";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	HyperEgg = {
+		ID = "HyperEgg";
+		Luck = 5000;
+		Price = "3,000,000";
+		HatchTime = 2160;
+		MutateBuyRate = 1;
+		Rarity = 5;
+		LootID = "L_COM_PET2";
+		HatchLuck = 100;
+		Icon = "rbxassetid://104958288296273";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	VoidEgg = {
+		ID = "VoidEgg";
+		Luck = 8000;
+		Price = "24,000,000";
+		HatchTime = 2880;
+		MutateBuyRate = 1;
+		Rarity = 5;
+		LootID = "L_COM_PET3";
+		HatchLuck = 5;
+		Icon = "rbxassetid://122396162708984";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	BowserEgg = {
+		ID = "BowserEgg";
+		Luck = 12000;
+		Price = "130,000,000";
+		HatchTime = 4320;
+		MutateBuyRate = 1;
+		Rarity = 5;
+		LootID = "L_COM_PET3";
+		HatchLuck = 100;
+		Icon = "rbxassetid://71500536051510";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	DemonEgg = {
+		ID = "DemonEgg";
+		Luck = 16000;
+		Price = "400,000,000";
+		HatchTime = 5400;
+		MutateBuyRate = 1;
+		Rarity = 5;
+		LootID = "L_COM_PET4";
+		HatchLuck = 10;
+		Icon = "rbxassetid://126412407639969";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	BoneDragonEgg = {
+		ID = "BoneDragonEgg";
+		Luck = 24000;
+		Price = "2,000,000,000";
+		HatchTime = 7200;
+		MutateBuyRate = 0.8;
+		Rarity = 5;
+		LootID = "L_COM_PET5";
+		HatchLuck = 10;
+		Icon = "rbxassetid://83209913424562";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	UltraEgg = {
+		ID = "UltraEgg";
+		Luck = 50000;
+		Price = "10,000,000,000";
+		HatchTime = 14400;
+		MutateBuyRate = 0.6;
+		Rarity = 6;
+		LootID = "L_COM_PET6";
+		HatchLuck = 10;
+		Icon = "rbxassetid://83909590718799";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	DinoEgg = {
+		ID = "DinoEgg";
+		Luck = 80000;
+		Price = "10,000,000,000";
+		HatchTime = 14400;
+		MutateBuyRate = 1;
+		Rarity = 6;
+		LootID = "L_COM_DINOEGG";
+		HatchLuck = 10;
+		Icon = "rbxassetid://80783528632315";
+		ThingMutate = 10;
+		MutateLoot = "L_MUTATE_DINO";
+		Source = "Event";
+	};
+	FlyEgg = {
+		ID = "FlyEgg";
+		Luck = 10;
+		Price = "999,999,999,999";
+		HatchTime = 60;
+		MutateBuyRate = 1;
+		Rarity = 6;
+		LootID = "L_COM_FLYEGG";
+		HatchLuck = 10;
+		Icon = "rbxassetid://109240587278187";
+		ThingMutate = 20;
+		MutateLoot = "L_MUTATE";
+		Source = "Shop";
+	};
+	UnicornEgg = {
+		ID = "UnicornEgg";
+		Luck = 80000;
+		Price = "40,000,000,000";
+		HatchTime = 14400;
+		MutateBuyRate = 0.6;
+		Rarity = 6;
+		LootID = "L_COM_UNICORNEGG";
+		HatchLuck = 10;
+		Icon = "rbxassetid://123427249205445";
+		ThingMutate = "";
+		MutateLoot = "";
+		Source = "";
+	};
+	AncientEgg = {
+		ID = "AncientEgg";
+		Luck = 10;
+		Price = "999,999,999,999";
+		HatchTime = 60;
+		MutateBuyRate = 1;
+		Rarity = 6;
+		LootID = "L_COM_ANCIENTEGG";
+		HatchLuck = 10;
+		Icon = "rbxassetid://113910587565739";
+		ThingMutate = 20;
+		MutateLoot = "L_MUTATE_DINO";
+		Source = "Shop";
+	};
+}
 
-local function loadEggConfig()
-    local ok, cfg = pcall(function()
-        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
-        local module = cfgFolder:WaitForChild("ResEgg")
-        return require(module)
-    end)
-    if ok and type(cfg) == "table" then
-        eggConfig = cfg
-    else
-        eggConfig = {}
-    end
-end
+local petFoodConfig = {
+	Strawberry = {
+		ID = "Strawberry";
+		Rarity = 1;
+		Index = 1;
+		Price = "5,000";
+		FeedValue = 600;
+		SellStock1 = 2;
+		SellStock2 = 5;
+		SellStockRate = 100;
+		RefreshLuck = "";
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 16;
+	};
+	Blueberry = {
+		ID = "Blueberry";
+		Rarity = 1;
+		Index = 2;
+		Price = "20,000";
+		FeedValue = 1250;
+		SellStock1 = 1;
+		SellStock2 = 3;
+		SellStockRate = 80;
+		RefreshLuck = "";
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 30;
+	};
+	Watermelon = {
+		ID = "Watermelon";
+		Rarity = 2;
+		Index = 3;
+		Price = "80,000";
+		FeedValue = 3200;
+		SellStock1 = 2;
+		SellStock2 = 5;
+		SellStockRate = 60;
+		RefreshLuck = "";
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 24;
+	};
+	Apple = {
+		ID = "Apple";
+		Rarity = 2;
+		Index = 4;
+		Price = "400,000";
+		FeedValue = 8000;
+		SellStock1 = 2;
+		SellStock2 = 5;
+		SellStockRate = 50;
+		RefreshLuck = "";
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 40;
+	};
+	Orange = {
+		ID = "Orange";
+		Rarity = 3;
+		Index = 5;
+		Price = "1,200,000";
+		FeedValue = 20000;
+		SellStock1 = 2;
+		SellStock2 = 4;
+		SellStockRate = 30;
+		RefreshLuck = "";
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 32;
+	};
+	Corn = {
+		ID = "Corn";
+		Rarity = 3;
+		Index = 6;
+		Price = "3,500,000";
+		FeedValue = 50000;
+		SellStock1 = 2;
+		SellStock2 = 4;
+		SellStockRate = 20;
+		RefreshLuck = "";
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 60;
+	};
+	Banana = {
+		ID = "Banana";
+		Rarity = 4;
+		Index = 7;
+		Price = "12,000,000";
+		FeedValue = 120000;
+		SellStock1 = 1;
+		SellStock2 = 4;
+		SellStockRate = 15;
+		RefreshLuck = 1;
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 90;
+	};
+	Grape = {
+		ID = "Grape";
+		Rarity = 4;
+		Index = 8;
+		Price = "50,000,000";
+		FeedValue = 300000;
+		SellStock1 = 1;
+		SellStock2 = 4;
+		SellStockRate = 12;
+		RefreshLuck = 1;
+		MutateRate = "";
+		MutateID = "";
+		EatTime = 200;
+	};
+	Pear = {
+		ID = "Pear";
+		Rarity = 5;
+		Index = 9;
+		Price = "200,000,000";
+		FeedValue = 800000;
+		SellStock1 = 1;
+		SellStock2 = 3;
+		SellStockRate = 8;
+		RefreshLuck = 1;
+		MutateRate = 10;
+		MutateID = "Golden";
+		EatTime = 180;
+	};
+	Pineapple = {
+		ID = "Pineapple";
+		Rarity = 5;
+		Index = 10;
+		Price = "600,000,000";
+		FeedValue = 1500000;
+		SellStock1 = 1;
+		SellStock2 = 3;
+		SellStockRate = 5;
+		RefreshLuck = 1;
+		MutateRate = 10;
+		MutateID = "Diamond";
+		EatTime = 280;
+	};
+	GoldMango = {
+		ID = "GoldMango";
+		Rarity = 6;
+		Index = 11;
+		Price = "2,000,000,000";
+		FeedValue = 4000000;
+		SellStock1 = 1;
+		SellStock2 = 2;
+		SellStockRate = 2;
+		RefreshLuck = 1;
+		MutateRate = 10;
+		MutateID = "Fire";
+		EatTime = 360;
+	};
+}
+
+local mutationConfig = {
+	Golden = {
+		ID = "Golden";
+		ProduceRate = 2;
+		SellRate = 2;
+		BuyRate = 3;
+		BigRate = 2;
+		TextColor = "ffc518";
+		Color1 = "204, 180, 61";
+		Color2 = "229, 229, 114";
+		Color3 = "216, 209, 130";
+		Neon1 = "";
+		Neon2 = "";
+		Neon3 = "";
+		RarityNum = 10;
+		HatchTimeScale = 2;
+		MinHatchTime = 180;
+	};
+	Diamond = {
+		ID = "Diamond";
+		ProduceRate = 3;
+		SellRate = 3;
+		BuyRate = 10;
+		BigRate = 3;
+		TextColor = "07e6ff";
+		Color1 = "76, 133, 153";
+		Color2 = "151, 184, 216";
+		Color3 = "153, 178, 191";
+		Neon1 = "";
+		Neon2 = "";
+		Neon3 = "";
+		RarityNum = 20;
+		HatchTimeScale = 3;
+		MinHatchTime = 240;
+	};
+	Electirc = {
+		ID = "Electirc";
+		ProduceRate = 5;
+		SellRate = 5;
+		BuyRate = 20;
+		BigRate = 4;
+		TextColor = "aa55ff";
+		Color1 = "12, 29, 63";
+		Color2 = "113, 57, 191";
+		Color3 = "38, 63, 127";
+		Neon1 = "";
+		Neon2 = "";
+		Neon3 = "";
+		RarityNum = 50;
+		HatchTimeScale = 4;
+		MinHatchTime = 300;
+	};
+	Fire = {
+		ID = "Fire";
+		ProduceRate = 10;
+		SellRate = 10;
+		BuyRate = 50;
+		BigRate = 5;
+		TextColor = "ff3d02";
+		Color1 = "204, 35, 20";
+		Color2 = "242, 86, 72";
+		Color3 = "229, 124, 114";
+		Neon1 = "";
+		Neon2 = "";
+		Neon3 = "";
+		RarityNum = 100;
+		HatchTimeScale = 4;
+		MinHatchTime = 360;
+	};
+	Dino = {
+		ID = "Dino";
+		ProduceRate = 10;
+		SellRate = 10;
+		BuyRate = 50;
+		BigRate = 6;
+		TextColor = "AE75E7";
+		Color1 = "";
+		Color2 = "96, 77, 199";
+		Color3 = "";
+		Neon1 = "";
+		Neon2 = 1;
+		Neon3 = "";
+		RarityNum = 100;
+		HatchTimeScale = 4;
+		MinHatchTime = 360;
+	};
+}
+
+local conveyorConfig = {} -- Keep empty for now, will be populated if needed
 
 local idToTypeMap = {}
-local function loadConveyorConfig()
-    local ok, cfg = pcall(function()
-        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
-        local module = cfgFolder:WaitForChild("ResConveyor")
-        return require(module)
-    end)
-    if ok and type(cfg) == "table" then
-        conveyorConfig = cfg
-    else
-        conveyorConfig = {}
+
+-- Price parsing function
+local function parsePrice(priceString)
+    if type(priceString) == "number" then
+        return priceString
+    elseif type(priceString) == "string" then
+        -- Remove commas and convert to number
+        local cleanPrice = priceString:gsub(",", "")
+        return tonumber(cleanPrice) or 0
     end
+    return 0
 end
 
-local function loadPetFoodConfig()
-    local ok, cfg = pcall(function()
-        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
-        local module = cfgFolder:WaitForChild("ResPetFood")
-        return require(module)
-    end)
-    if ok and type(cfg) == "table" then
-        petFoodConfig = cfg
-    else
-        petFoodConfig = {}
+-- Filter functions
+local function filterByPriceRange(items, minPrice, maxPrice)
+    local filtered = {}
+    for id, item in pairs(items) do
+        local price = parsePrice(item.Price)
+        if price >= minPrice and (maxPrice == nil or price <= maxPrice) then
+            table.insert(filtered, {id = id, item = item, price = price})
+        end
     end
+    -- Sort by price
+    table.sort(filtered, function(a, b) return a.price < b.price end)
+    return filtered
 end
 
-local function loadMutationConfig()
-    local ok, cfg = pcall(function()
-        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
-        local module = cfgFolder:WaitForChild("ResMutate")
-        return require(module)
-    end)
-    if ok and type(cfg) == "table" then
-        mutationConfig = cfg
-    else
-        mutationConfig = {}
+local function filterByRarity(items, rarity)
+    local filtered = {}
+    for id, item in pairs(items) do
+        if item.Rarity == rarity then
+            table.insert(filtered, {id = id, item = item, price = parsePrice(item.Price)})
+        end
     end
+    -- Sort by price
+    table.sort(filtered, function(a, b) return a.price < b.price end)
+    return filtered
 end
+
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
         local t = val.Type or val.Name or val.type or val.name
@@ -118,18 +575,35 @@ local function getTypeFromConfig(key, val)
     return tostring(key)
 end
 
-local function buildEggIdList()
+local function buildEggIdList(filterType, filterValue)
     idToTypeMap = {}
     local ids = {}
-    for id, val in pairs(eggConfig) do
-        local idStr = tostring(id)
-        -- Filter out meta keys like _index, __index, and any leading underscore entries
-        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
-            table.insert(ids, idStr)
-            idToTypeMap[idStr] = getTypeFromConfig(id, val)
+    
+    if filterType == "price" then
+        local filtered = filterByPriceRange(eggConfig, filterValue, nil)
+        for _, item in ipairs(filtered) do
+            table.insert(ids, item.id)
+            idToTypeMap[item.id] = getTypeFromConfig(item.id, item.item)
         end
+    elseif filterType == "rarity" then
+        local filtered = filterByRarity(eggConfig, filterValue)
+        for _, item in ipairs(filtered) do
+            table.insert(ids, item.id)
+            idToTypeMap[item.id] = getTypeFromConfig(item.id, item.item)
+        end
+    else
+        -- No filter, show all
+        for id, val in pairs(eggConfig) do
+            local idStr = tostring(id)
+            -- Filter out meta keys like _index, __index, and any leading underscore entries
+            if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+                table.insert(ids, idStr)
+                idToTypeMap[idStr] = getTypeFromConfig(id, val)
+            end
+        end
+        table.sort(ids)
     end
-    table.sort(ids)
+    
     return ids
 end
 
@@ -152,6 +626,33 @@ local function buildMutationList()
     end
     table.sort(mutations)
     return mutations
+end
+
+local function buildFruitList(filterType, filterValue)
+    local fruits = {}
+    
+    if filterType == "price" then
+        local filtered = filterByPriceRange(petFoodConfig, filterValue, nil)
+        for _, item in ipairs(filtered) do
+            table.insert(fruits, item.id)
+        end
+    elseif filterType == "rarity" then
+        local filtered = filterByRarity(petFoodConfig, filterValue)
+        for _, item in ipairs(filtered) do
+            table.insert(fruits, item.id)
+        end
+    else
+        -- No filter, show all
+        for id, val in pairs(petFoodConfig) do
+            local idStr = tostring(id)
+            if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+                table.insert(fruits, idStr)
+            end
+        end
+        table.sort(fruits)
+    end
+    
+    return fruits
 end
 
 -- UI helpers
@@ -1370,6 +1871,25 @@ Tabs.HatchTab:Paragraph({
     ImageSize = 18,
 })
 
+local priorityDropdown = Tabs.HatchTab:Dropdown({
+    Title = "🎯 Choose Priority",
+    Desc = "Select which automation has priority",
+    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
+    Value = "⚡ Auto Hatch First",
+    Callback = function(selection)
+        if selection == "⚡ Auto Hatch First" then
+            automationPriority = "Hatch"
+        else
+            automationPriority = "Place"
+        end
+        WindUI:Notify({ 
+            Title = "🎯 Priority Set", 
+            Content = "Priority set to: " .. selection, 
+            Duration = 3 
+        })
+    end
+})
+
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
     
@@ -1414,94 +1934,111 @@ local function placePetAtPart(farmPart, petUID)
     return true
 end
 
--- Hardcoded dropdown values for better config saving
-local hardcodedEggList = {
-    "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", 
-    "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", 
-    "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"
-}
-
-local hardcodedMutationList = {
-    "Golden", "Diamond", "Electirc", "Fire", "Dino"
-}
-
-local hardcodedFruitList = {
-    "Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", 
-    "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango"
-}
-
-local hardcodedPriorityList = {
-    "⚡ Auto Hatch First", "🏠 Auto Place First"
-}
-
 -- UI state
-loadEggConfig()
-loadConveyorConfig()
-loadPetFoodConfig()
-loadMutationConfig()
-
-local priorityDropdown = Tabs.HatchTab:Dropdown({
-    Title = "🎯 Choose Priority",
-    Desc = "Select which automation has priority",
-    Values = hardcodedPriorityList,
-    Value = "⚡ Auto Hatch First",
-    Callback = function(selection)
-        if selection == "⚡ Auto Hatch First" then
-            automationPriority = "Hatch"
-        else
-            automationPriority = "Place"
-        end
-        WindUI:Notify({ 
-            Title = "🎯 Priority Set", 
-            Content = "Priority set to: " .. selection, 
-            Duration = 3 
-        })
-    end
-})
-
+local eggIdList = buildEggIdList()
+local mutationList = buildMutationList()
+local fruitList = buildFruitList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
+local selectedFruitSet = {}
+
+-- Filter UI for Eggs
+Tabs.AutoTab:Section({ Title = "🔍 Egg Filters", Icon = "filter" })
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
     Title = "🥚 Pick Eggs",
     Desc = "Choose which eggs to buy",
-    Values = hardcodedEggList,
+    Values = eggIdList,
     Value = {},
     Multi = true,
     AllowNone = true,
-            Callback = function(selection)
-            selectedTypeSet = {}
-            local function addTypeFor(idStr)
-                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
-                selectedTypeSet[idStr] = true
-                -- Also include the mapped Type from config (if available and different)
-                local mappedType = idToTypeMap[idStr]
-                if mappedType and tostring(mappedType) ~= idStr then
-                    selectedTypeSet[tostring(mappedType)] = true
-                end
+    Callback = function(selection)
+        selectedTypeSet = {}
+        local function addTypeFor(idStr)
+            -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+            selectedTypeSet[idStr] = true
+            -- Also include the mapped Type from config (if available and different)
+            local mappedType = idToTypeMap[idStr]
+            if mappedType and tostring(mappedType) ~= idStr then
+                selectedTypeSet[tostring(mappedType)] = true
             end
-            if type(selection) == "table" then
-                for _, id in ipairs(selection) do
-                    addTypeFor(tostring(id))
-                end
-            elseif type(selection) == "string" then
-                addTypeFor(tostring(selection))
-            end
-            -- update selected types display
-            local keys = {}
-            for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-            table.sort(keys)
-            statusData.selectedTypes = table.concat(keys, ", ")
-            updateStatusParagraph()
         end
+        if type(selection) == "table" then
+            for _, id in ipairs(selection) do
+                addTypeFor(tostring(id))
+            end
+        elseif type(selection) == "string" then
+            addTypeFor(tostring(selection))
+        end
+        -- update selected types display
+        local keys = {}
+        for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+        table.sort(keys)
+        statusData.selectedTypes = table.concat(keys, ", ")
+        updateStatusParagraph()
+    end
 })
+
+local eggPriceInput = Tabs.AutoTab:Input({
+    Title = "💰 Min Price",
+    Desc = "Show eggs with price >= this value",
+    Value = "1000000",
+    Visible = false,
+    Callback = function(value)
+        local minPrice = tonumber(value) or 0
+        eggIdList = buildEggIdList("price", minPrice)
+        eggDropdown:Refresh(eggIdList)
+    end
+})
+
+local eggRarityDropdown = Tabs.AutoTab:Dropdown({
+    Title = "⭐ Rarity",
+    Desc = "Filter by egg rarity",
+    Values = { "1", "2", "3", "4", "5", "6" },
+    Value = "1",
+    Visible = false,
+    Callback = function(selection)
+        local rarity = tonumber(selection) or 1
+        eggIdList = buildEggIdList("rarity", rarity)
+        eggDropdown:Refresh(eggIdList)
+    end
+})
+
+local eggFilterDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🔍 Filter Eggs",
+    Desc = "Filter eggs by price or rarity",
+    Values = { "All Eggs", "By Price", "By Rarity" },
+    Value = "All Eggs",
+    Callback = function(selection)
+        if selection == "By Price" then
+            -- Show price input
+            eggPriceInput:SetValue("1000000") -- Default 1M
+            eggPriceInput:SetVisible(true)
+            eggRarityDropdown:SetVisible(false)
+        elseif selection == "By Rarity" then
+            eggPriceInput:SetVisible(false)
+            eggRarityDropdown:SetVisible(true)
+        else
+            eggPriceInput:SetVisible(false)
+            eggRarityDropdown:SetVisible(false)
+            -- Refresh with no filter
+            eggIdList = buildEggIdList()
+            eggDropdown:Refresh(eggIdList)
+        end
+    end
+})
+
+Tabs.AutoTab:Divider()
+
+-- Filter UI for Mutations
+Tabs.AutoTab:Section({ Title = "🧬 Mutation Filters", Icon = "filter" })
 
 local mutationDropdown
 mutationDropdown = Tabs.AutoTab:Dropdown({
     Title = "🧬 Pick Mutations",
     Desc = "Choose which mutations to buy (leave empty to buy all)",
-    Values = hardcodedMutationList,
+    Values = mutationList,
     Value = {},
     Multi = true,
     AllowNone = true,
@@ -1523,15 +2060,83 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-Tabs.AutoTab:Button({
-    Title = "🔄 Refresh Mutation List",
-    Desc = "Update the mutation list if it's not showing all mutations",
-    Callback = function()
-        if mutationDropdown and mutationDropdown.Refresh then
-            mutationDropdown:Refresh(hardcodedMutationList)
+local mutationRarityDropdown = Tabs.AutoTab:Dropdown({
+    Title = "⭐ Rarity",
+    Desc = "Filter by mutation rarity",
+    Values = { "10", "20", "50", "100" },
+    Value = "10",
+    Visible = false,
+    Callback = function(selection)
+        local rarity = tonumber(selection) or 10
+        -- Filter mutations by RarityNum
+        local filtered = {}
+        for id, val in pairs(mutationConfig) do
+            if val.RarityNum == rarity then
+                table.insert(filtered, id)
+            end
         end
+        table.sort(filtered)
+        mutationDropdown:Refresh(filtered)
+    end
+})
+
+local mutationFilterDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🔍 Filter Mutations",
+    Desc = "Filter mutations by rarity",
+    Values = { "All Mutations", "By Rarity" },
+    Value = "All Mutations",
+    Callback = function(selection)
+        if selection == "By Rarity" then
+            mutationRarityDropdown:SetVisible(true)
+        else
+            mutationRarityDropdown:SetVisible(false)
+            -- Refresh with no filter
+            mutationList = buildMutationList()
+            mutationDropdown:Refresh(mutationList)
+        end
+    end
+})
+
+Tabs.AutoTab:Divider()
+
+Tabs.AutoTab:Button({
+    Title = "🔄 Refresh Lists",
+    Desc = "Refresh all dropdown lists",
+    Callback = function()
+        eggIdList = buildEggIdList()
+        mutationList = buildMutationList()
+        fruitList = buildFruitList()
+        eggDropdown:Refresh(eggIdList)
+        mutationDropdown:Refresh(mutationList)
         updateStatusParagraph()
-        WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
+        WindUI:Notify({ Title = "🔄 Auto Buy", Content = "All lists refreshed!", Duration = 3 })
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "💰 Show Affordable Eggs",
+    Desc = "Show only eggs you can afford",
+    Callback = function()
+        local netWorth = getPlayerNetWorth()
+        eggIdList = buildEggIdList("price", 0, netWorth)
+        eggDropdown:Refresh(eggIdList)
+        WindUI:Notify({ Title = "💰 Auto Buy", Content = "Showing affordable eggs!", Duration = 3 })
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "⭐ Show Rare Eggs",
+    Desc = "Show only rare eggs (Rarity 4+)",
+    Callback = function()
+        local filtered = {}
+        for id, val in pairs(eggConfig) do
+            if val.Rarity and val.Rarity >= 4 then
+                table.insert(filtered, id)
+            end
+        end
+        table.sort(filtered)
+        eggDropdown:Refresh(filtered)
+        WindUI:Notify({ Title = "⭐ Auto Buy", Content = "Showing rare eggs!", Duration = 3 })
     end
 })
 
@@ -1850,18 +2455,15 @@ local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
 local function getEggOptions()
     local eggOptions = {}
     
-    -- Try to get from ResEgg config first
-    local eggConfig = loadEggConfig()
-    if eggConfig then
-        for id, data in pairs(eggConfig) do
-            if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
-                local eggName = data.Type or data.Name or id
-                table.insert(eggOptions, eggName)
-            end
+    -- Use hard-coded egg config
+    for id, data in pairs(eggConfig) do
+        if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
+            local eggName = data.Type or data.Name or id
+            table.insert(eggOptions, eggName)
         end
     end
     
-    -- Fallback: get from PlayerBuiltBlocks
+    -- Fallback: get from PlayerBuiltBlocks if no hard-coded data
     if #eggOptions == 0 then
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
@@ -1884,7 +2486,7 @@ end
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "🥚 Pick Pet Types",
     Desc = "Choose which pets to place",
-    Values = hardcodedEggList,
+    Values = eggIdList,
     Value = {},
     Multi = true,
     AllowNone = true,
@@ -3253,22 +3855,144 @@ Tabs.ShopTab:Button({
 
 
 -- ============ Fruit Market (Auto Buy Fruit) ============
--- Load Fruit Store System from external file
-local fruitUI = nil
-pcall(function()
-    local fruitSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
-    if fruitSystem then
-        fruitUI = fruitSystem(Tabs, WindUI, LocalPlayer, ReplicatedStorage, Players)
-    else
-        Tabs.FruitTab:Paragraph({
-            Title = "🍎 Fruit Store System",
-            Desc = "Fruit store system could not be loaded. Please check if FruitStoreSystem.lua exists.",
-            Image = "apple",
-            ImageSize = 18,
-        })
-        print("❌ Failed to load Fruit Store System from external file")
+-- Create Fruit Store UI with hard-coded data
+Tabs.FruitTab:Section({ Title = "🔍 Fruit Filters", Icon = "filter" })
+
+-- Create fruit dropdown with hard-coded data
+local fruitDropdown
+fruitDropdown = Tabs.FruitTab:Dropdown({
+    Title = "🍎 Pick Fruits",
+    Desc = "Choose which fruits to buy automatically",
+    Values = fruitList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        selectedFruitSet = {}
+        if type(selection) == "table" then
+            for _, fruit in ipairs(selection) do
+                selectedFruitSet[tostring(fruit)] = true
+            end
+        elseif type(selection) == "string" then
+            selectedFruitSet[tostring(selection)] = true
+        end
+        -- Update status
+        local keys = {}
+        for k in pairs(selectedFruitSet) do table.insert(keys, k) end
+        table.sort(keys)
+        WindUI:Notify({ Title = "🍎 Fruit Selection", Content = "Selected: " .. table.concat(keys, ", "), Duration = 3 })
     end
-end)
+})
+
+local fruitPriceInput = Tabs.FruitTab:Input({
+    Title = "💰 Min Price",
+    Desc = "Show fruits with price >= this value",
+    Value = "1000000",
+    Visible = false,
+    Callback = function(value)
+        local minPrice = tonumber(value) or 0
+        fruitList = buildFruitList("price", minPrice)
+        fruitDropdown:Refresh(fruitList)
+    end
+})
+
+local fruitRarityDropdown = Tabs.FruitTab:Dropdown({
+    Title = "⭐ Rarity",
+    Desc = "Filter by fruit rarity",
+    Values = { "1", "2", "3", "4", "5", "6" },
+    Value = "1",
+    Visible = false,
+    Callback = function(selection)
+        local rarity = tonumber(selection) or 1
+        fruitList = buildFruitList("rarity", rarity)
+        fruitDropdown:Refresh(fruitList)
+    end
+})
+
+local fruitFilterDropdown = Tabs.FruitTab:Dropdown({
+    Title = "🔍 Filter Fruits",
+    Desc = "Filter fruits by price or rarity",
+    Values = { "All Fruits", "By Price", "By Rarity" },
+    Value = "All Fruits",
+    Callback = function(selection)
+        if selection == "By Price" then
+            fruitPriceInput:SetValue("1000000") -- Default 1M
+            fruitPriceInput:SetVisible(true)
+            fruitRarityDropdown:SetVisible(false)
+        elseif selection == "By Rarity" then
+            fruitPriceInput:SetVisible(false)
+            fruitRarityDropdown:SetVisible(true)
+        else
+            fruitPriceInput:SetVisible(false)
+            fruitRarityDropdown:SetVisible(false)
+            -- Refresh with no filter
+            fruitList = buildFruitList()
+            fruitDropdown:Refresh(fruitList)
+        end
+    end
+})
+
+Tabs.FruitTab:Divider()
+
+-- Fruit store status
+Tabs.FruitTab:Section({ Title = "📊 Fruit Status", Icon = "info" })
+
+local fruitStatusParagraph = Tabs.FruitTab:Paragraph({
+    Title = "🍎 Fruit Store Status",
+    Desc = "Shows fruit buying progress",
+    Image = "apple",
+    ImageSize = 18,
+})
+
+local autoFruitEnabled = false
+local autoFruitThread = nil
+
+local autoFruitToggle = Tabs.FruitTab:Toggle({
+    Title = "🛒 Auto Buy Fruits",
+    Desc = "Automatically buys your selected fruits when they're available",
+    Value = false,
+    Callback = function(state)
+        autoFruitEnabled = state
+        if state then
+            WindUI:Notify({ Title = "🍎 Auto Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
+        else
+            WindUI:Notify({ Title = "🍎 Auto Fruit", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+Tabs.FruitTab:Button({
+    Title = "💰 Show Affordable Fruits",
+    Desc = "Show only fruits you can afford",
+    Callback = function()
+        local netWorth = getPlayerNetWorth()
+        fruitList = buildFruitList("price", 0, netWorth)
+        fruitDropdown:Refresh(fruitList)
+        WindUI:Notify({ Title = "💰 Fruit Store", Content = "Showing affordable fruits!", Duration = 3 })
+    end
+})
+
+Tabs.FruitTab:Button({
+    Title = "⭐ Show Rare Fruits",
+    Desc = "Show only rare fruits (Rarity 4+)",
+    Callback = function()
+        local filtered = {}
+        for id, val in pairs(petFoodConfig) do
+            if val.Rarity and val.Rarity >= 4 then
+                table.insert(filtered, id)
+            end
+        end
+        table.sort(filtered)
+        fruitDropdown:Refresh(filtered)
+        WindUI:Notify({ Title = "⭐ Fruit Store", Content = "Showing rare fruits!", Duration = 3 })
+    end
+})
+
+-- Create fruitUI object for config compatibility
+local fruitUI = {
+    autoFruitToggle = autoFruitToggle,
+    fruitDropdown = fruitDropdown
+}
 
 -- ============ Config System ============
 -- Create config manager
@@ -3290,11 +4014,18 @@ local function registerConfigElements()
         zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        -- Register fruit UI elements from external file
+        zooConfig:Register("eggFilterType", eggFilterDropdown)
+        zooConfig:Register("eggMinPrice", eggPriceInput)
+        zooConfig:Register("eggRarity", eggRarityDropdown)
+        zooConfig:Register("mutationFilterType", mutationFilterDropdown)
+        zooConfig:Register("mutationRarity", mutationRarityDropdown)
+        zooConfig:Register("fruitFilterType", fruitFilterDropdown)
+        zooConfig:Register("fruitMinPrice", fruitPriceInput)
+        zooConfig:Register("fruitRarity", fruitRarityDropdown)
+        -- Register fruit UI elements
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
-            zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
         zooConfig:Register("automationPriority", priorityDropdown)
     end
