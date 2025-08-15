@@ -113,26 +113,31 @@ local EggData = {
 local MutationData = {
     Golden = {
         Name = "Golden",
+        Price = "Premium",
         Icon = "✨",
         Rarity = 10
     },
     Diamond = {
         Name = "Diamond",
+        Price = "Premium", 
         Icon = "💎",
         Rarity = 20
     },
     Electirc = {
         Name = "Electric",
+        Price = "Premium",
         Icon = "⚡",
         Rarity = 50
     },
     Fire = {
         Name = "Fire",
+        Price = "Premium",
         Icon = "🔥",
         Rarity = 100
     },
     Dino = {
         Name = "Jurassic",
+        Price = "Premium",
         Icon = "🦕",
         Rarity = 100
     }
@@ -278,18 +283,17 @@ local function createGlassEffect(parent)
     return glass
 end
 
--- Create Item Button with ImageIcon
-local function createItemButton(itemId, itemData, parent)
-    local button = Instance.new("TextButton")
-    button.Name = itemId
-    button.Size = UDim2.new(1, 0, 0, 50)
-    button.BackgroundTransparency = 1
-    button.Text = ""
-    button.Parent = parent
+-- Create Item Card (3 per row, landscape design)
+local function createItemCard(itemId, itemData, parent)
+    local card = Instance.new("TextButton")
+    card.Name = itemId
+    card.Size = UDim2.new(0.33, -8, 0, 120) -- 3 per row with spacing
+    card.BackgroundTransparency = 1
+    card.Text = ""
+    card.Parent = parent
     
-    local glass = createGlassEffect(button)
-    glass.Size = UDim2.new(1, -4, 1, -4)
-    glass.Position = UDim2.new(0, 2, 0, 2)
+    local glass = createGlassEffect(card)
+    glass.Size = UDim2.new(1, 0, 1, 0)
     
     -- Create Icon (ImageLabel for eggs, TextLabel for mutations)
     local icon
@@ -300,52 +304,54 @@ local function createItemButton(itemId, itemData, parent)
     else
         icon = Instance.new("TextLabel")
         icon.Text = itemData.Icon
-        icon.TextSize = 24
+        icon.TextSize = 32
         icon.Font = Enum.Font.GothamBold
         icon.TextColor3 = getRarityColor(itemData.Rarity)
     end
     
     icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 40, 0, 40)
-    icon.Position = UDim2.new(0, 8, 0.5, -20)
+    icon.Size = UDim2.new(0, 50, 0, 50)
+    icon.Position = UDim2.new(0.5, -25, 0.2, 0)
     icon.BackgroundTransparency = 1
-    icon.Parent = button
+    icon.Parent = card
     
     local name = Instance.new("TextLabel")
     name.Name = "Name"
-    name.Size = UDim2.new(1, -120, 0.5, 0)
-    name.Position = UDim2.new(0, 56, 0, 0)
+    name.Size = UDim2.new(1, -16, 0, 20)
+    name.Position = UDim2.new(0, 8, 0.6, 0)
     name.BackgroundTransparency = 1
     name.Text = itemData.Name
-    name.TextSize = 14
+    name.TextSize = 12
     name.Font = Enum.Font.GothamSemibold
     name.TextColor3 = colors.text
-    name.TextXAlignment = Enum.TextXAlignment.Left
-    name.Parent = button
+    name.TextXAlignment = Enum.TextXAlignment.Center
+    name.TextWrapped = true
+    name.Parent = card
     
     local price = Instance.new("TextLabel")
     price.Name = "Price"
-    price.Size = UDim2.new(1, -120, 0.5, 0)
-    price.Position = UDim2.new(0, 56, 0.5, 0)
+    price.Size = UDim2.new(1, -16, 0, 16)
+    price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
     price.Text = "$" .. itemData.Price
-    price.TextSize = 12
+    price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
-    price.TextXAlignment = Enum.TextXAlignment.Left
-    price.Parent = button
+    price.TextXAlignment = Enum.TextXAlignment.Center
+    price.TextWrapped = true
+    price.Parent = card
     
     local checkmark = Instance.new("TextLabel")
     checkmark.Name = "Checkmark"
     checkmark.Size = UDim2.new(0, 20, 0, 20)
-    checkmark.Position = UDim2.new(1, -28, 0.5, -10)
+    checkmark.Position = UDim2.new(1, -24, 0, 4)
     checkmark.BackgroundTransparency = 1
     checkmark.Text = "✓"
     checkmark.TextSize = 16
     checkmark.Font = Enum.Font.GothamBold
     checkmark.TextColor3 = colors.selected
     checkmark.Visible = false
-    checkmark.Parent = button
+    checkmark.Parent = card
     
     -- Set initial selection state
     if selectedItems[itemId] then
@@ -354,20 +360,20 @@ local function createItemButton(itemId, itemData, parent)
     end
     
     -- Hover effect
-    button.MouseEnter:Connect(function()
+    card.MouseEnter:Connect(function()
         if not selectedItems[itemId] then
             TweenService:Create(glass, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
         end
     end)
     
-    button.MouseLeave:Connect(function()
+    card.MouseLeave:Connect(function()
         if not selectedItems[itemId] then
             TweenService:Create(glass, TweenInfo.new(0.2), {BackgroundColor3 = colors.glass}):Play()
         end
     end)
     
     -- Click effect
-    button.MouseButton1Click:Connect(function()
+    card.MouseButton1Click:Connect(function()
         if selectedItems[itemId] then
             selectedItems[itemId] = nil
             checkmark.Visible = false
@@ -383,14 +389,15 @@ local function createItemButton(itemId, itemData, parent)
         end
     end)
     
-    return button
+    return card
 end
 
 -- Create Search Bar
 local function createSearchBar(parent)
     local searchContainer = Instance.new("Frame")
     searchContainer.Name = "SearchContainer"
-    searchContainer.Size = UDim2.new(1, 0, 0, 40)
+    searchContainer.Size = UDim2.new(1, -16, 0, 40)
+    searchContainer.Position = UDim2.new(0, 8, 0, 0)
     searchContainer.BackgroundTransparency = 1
     searchContainer.Parent = parent
     
@@ -437,7 +444,8 @@ end
 local function createPageTabs(parent)
     local tabContainer = Instance.new("Frame")
     tabContainer.Name = "PageTabs"
-    tabContainer.Size = UDim2.new(1, 0, 0, 40)
+    tabContainer.Size = UDim2.new(1, -16, 0, 40)
+    tabContainer.Position = UDim2.new(0, 8, 0, 48)
     tabContainer.BackgroundTransparency = 1
     tabContainer.Parent = parent
     
@@ -503,13 +511,13 @@ function EggSelection.CreateUI()
     
     MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 350, 0, 500)
-    MainFrame.Position = UDim2.new(0.5, -175, 0.5, -250)
+    MainFrame.Size = UDim2.new(0, 600, 0, 400) -- Landscape design
+    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
     MainFrame.BackgroundTransparency = 1
     MainFrame.Parent = ScreenGui
     
     originalSize = MainFrame.Size
-    minimizedSize = UDim2.new(0, 350, 0, 60)
+    minimizedSize = UDim2.new(0, 600, 0, 60)
     
     local mainGlass = createGlassEffect(MainFrame)
     mainGlass.Size = UDim2.new(1, 0, 1, 0)
@@ -561,7 +569,6 @@ function EggSelection.CreateUI()
     
     -- Page Tabs
     local pageTabs = createPageTabs(MainFrame)
-    pageTabs.Position = UDim2.new(0, 8, 0, 48)
     
     -- Search Bar
     local searchBar = createSearchBar(MainFrame)
@@ -570,7 +577,7 @@ function EggSelection.CreateUI()
     -- Content Area
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, -16, 1, -136)
+    content.Size = UDim2.new(1, -16, 1, -144)
     content.Position = UDim2.new(0, 8, 0, 144)
     content.BackgroundTransparency = 1
     content.Parent = MainFrame
@@ -583,10 +590,11 @@ function EggSelection.CreateUI()
     scrollFrame.ScrollBarImageColor3 = colors.accent
     scrollFrame.Parent = content
     
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.SortOrder = Enum.SortOrder.Name
-    listLayout.Padding = UDim.new(0, 4)
-    listLayout.Parent = scrollFrame
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
+    gridLayout.CellPadding = UDim.new(0, 8, 0, 8)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.Parent = scrollFrame
     
     -- Control Button Events
     minimizeBtn.MouseButton1Click:Connect(function()
@@ -662,8 +670,9 @@ function EggSelection.RefreshContent()
     local sortedData = sortDataByPrice(filteredData)
     
     -- Add content
-    for _, item in ipairs(sortedData) do
-        createItemButton(item.id, item.data, scrollFrame)
+    for i, item in ipairs(sortedData) do
+        local card = createItemCard(item.id, item.data, scrollFrame)
+        card.LayoutOrder = i -- Ensure proper ordering
     end
 end
 
