@@ -1507,7 +1507,9 @@ Tabs.AutoTab:Button({
                 end,
                 function(isVisible)
                     eggSelectionVisible = isVisible
-                end
+                end,
+                selectedTypeSet, -- Pass saved egg selections
+                selectedMutationSet -- Pass saved mutation selections
             )
             eggSelectionVisible = true
         else
@@ -3498,6 +3500,19 @@ task.spawn(function()
                             selectedMutationSet[mutationId] = true
                         end
                     end
+                    
+                    -- Update status display with loaded selections
+                    local eggKeys = {}
+                    for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+                    table.sort(eggKeys)
+                    statusData.selectedTypes = table.concat(eggKeys, ", ")
+                    
+                    local mutationKeys = {}
+                    for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+                    table.sort(mutationKeys)
+                    statusData.selectedMutations = table.concat(mutationKeys, ", ")
+                    
+                    updateStatusParagraph()
                 end
             end)
             
