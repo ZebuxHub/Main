@@ -3250,6 +3250,95 @@ local FruitData = {
     VoltGinkgo = { Price = "80,000,000,000" }
 }
 
+-- Helper functions for fruit buying (from FruitStoreSystem.lua)
+local function getFoodStoreUI()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local gui = pg:FindFirstChild("ScreenFoodStore")
+    if not gui then return nil end
+    return gui
+end
+
+local function getFoodStoreLST()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local data = pg:FindFirstChild("Data")
+    if not data then return nil end
+    local store = data:FindFirstChild("FoodStore")
+    if not store then return nil end
+    local lst = store:FindFirstChild("LST")
+    return lst
+end
+
+local function candidateKeysForFruit(fruitName)
+    local keys = {}
+    local base = tostring(fruitName)
+    table.insert(keys, base)
+    table.insert(keys, string.upper(base))
+    table.insert(keys, string.lower(base))
+    do
+        local cleaned = base:gsub("%s+", "")
+        table.insert(keys, cleaned)
+    end
+    return keys
+end
+
+local function readStockFromLST(lst, fruitName)
+    if not lst then return nil end
+    local keys = candidateKeysForFruit(fruitName)
+    -- Prefer attributes
+    if lst.GetAttribute then
+        for _, key in ipairs(keys) do
+            local val = lst:GetAttribute(key)
+            if val ~= nil then
+                local num = tonumber(val)
+                if num ~= nil then return num end
+                -- sometimes boolean-like; treat true as 1
+                if type(val) == "boolean" then return val and 1 or 0 end
+            end
+        end
+    end
+    -- Fallback: child Value objects
+    for _, key in ipairs(keys) do
+        local child = lst:FindFirstChild(key)
+        if child and child:IsA("ValueBase") then
+            local num = tonumber(child.Value)
+            if num ~= nil then return num end
+        end
+    end
+    return nil
+end
+
+local function isFruitInStock(fruitName)
+    -- First, try attribute-based stock via Data.FoodStore.LST
+    local lst = getFoodStoreLST()
+    if lst then
+        local qty = readStockFromLST(lst, fruitName)
+        if qty ~= nil then return qty > 0 end
+    end
+    -- Fallback to UI if present
+    local gui = getFoodStoreUI()
+    if not gui then return false end
+    local root = gui:FindFirstChild("Root")
+    if not root then return false end
+    local frame = root:FindFirstChild("Frame")
+    if not frame then return false end
+    local scroller = frame:FindFirstChild("ScrollingFrame")
+    if not scroller then return false end
+    local item = scroller:FindFirstChild(fruitName)
+    if not item then return false end
+    local btn = item:FindFirstChild("ItemButton")
+    if not btn then return false end
+    local stock = btn:FindFirstChild("StockLabel")
+    if not stock or not stock:IsA("TextLabel") then return false end
+    local txt = tostring(stock.Text or "")
+    if txt == "" then return false end
+    -- Consider out-of-stock texts like "0" or words; treat any non-empty as available unless it matches 0
+    local num = tonumber(txt)
+    if num ~= nil then return num > 0 end
+    return true
+end
+
 -- Price parsing function
 local function parsePrice(priceStr)
     if type(priceStr) == "number" then
@@ -3309,7 +3398,7 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                      -- Auto buy fruit logic
                      if selectedFruits and next(selectedFruits) then
                          -- Check if fruit store UI is open (required for buying)
-                         local fruitStoreUI = LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("ScreenFoodStore")
+                         local fruitStoreUI = getFoodStoreUI()
                          if not fruitStoreUI then
                              WindUI:Notify({ 
                                  Title = "🍎 Fruit Store", 
@@ -3321,34 +3410,65 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          end
                          
                          local netWorth = getPlayerNetWorth()
+                         local boughtAny = false
+                         
                          for fruitId, _ in pairs(selectedFruits) do
                              if FruitData[fruitId] then
                                  local fruitPrice = parsePrice(FruitData[fruitId].Price)
-                                 if netWorth >= fruitPrice then
-                                     -- Try to buy the fruit
-                                     local success = pcall(function()
-                                         -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
-                                         local args = {
-                                             fruitId
-                                         }
-                                         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
-                                     end)
-                                     
-                                     if success then
+                                 
+                                 -- Check if fruit is in stock
+                                 if not isFruitInStock(fruitId) then
+                                     WindUI:Notify({ 
+                                         Title = "🍎 Out of Stock", 
+                                         Content = fruitId .. " is out of stock!", 
+                                         Duration = 2 
+                                     })
+                                     task.wait(0.5)
+                                 else
+                                     -- Check if player can afford it
+                                     if netWorth < fruitPrice then
                                          WindUI:Notify({ 
-                                             Title = "🍎 Fruit Bought", 
-                                             Content = "Bought " .. fruitId .. " for $" .. fruitPrice, 
+                                             Title = "💰 Cannot Afford", 
+                                             Content = "Need $" .. fruitPrice .. " for " .. fruitId .. " (Have: $" .. netWorth .. ")", 
                                              Duration = 2 
                                          })
+                                         task.wait(0.5)
                                      else
-                                         WindUI:Notify({ 
-                                             Title = "❌ Fruit Buy Failed", 
-                                             Content = "Failed to buy " .. fruitId, 
-                                             Duration = 2 
-                                         })
+                                         -- Try to buy the fruit
+                                         local success = pcall(function()
+                                             -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
+                                             local args = {
+                                                 fruitId
+                                             }
+                                             ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+                                         end)
+                                         
+                                         if success then
+                                             boughtAny = true
+                                             WindUI:Notify({ 
+                                                 Title = "🍎 Fruit Bought", 
+                                                 Content = "Bought " .. fruitId .. " for $" .. fruitPrice, 
+                                                 Duration = 2 
+                                             })
+                                         else
+                                             WindUI:Notify({ 
+                                                 Title = "❌ Fruit Buy Failed", 
+                                                 Content = "Failed to buy " .. fruitId, 
+                                                 Duration = 2 
+                                             })
+                                         end
+                                         
+                                         task.wait(0.5) -- Wait between each fruit purchase
                                      end
                                  end
                              end
+                         end
+                         
+                         -- If no fruits were bought, wait longer before next attempt
+                         if not boughtAny then
+                             task.wait(2)
+                         else
+                             task.wait(1) -- Shorter wait if we bought something
                          end
                      end
                      task.wait(2) -- Wait 2 seconds between attempts
