@@ -3519,6 +3519,225 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     end
 })
 
+-- ============ Auto Feed System ============
+-- Load Auto Feed UI
+local AutoFeedSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSelection.lua"))()
+
+-- Auto feed state
+local selectedFeedFruits = {}
+local autoFeedSelectionVisible = false
+local autoFeedEnabled = false
+local autoFeedThread = nil
+
+-- Auto feed status
+local autoFeedStatus = {
+    lastAction = "Ready to feed pets!",
+    totalFed = 0,
+    lastCheck = "Never",
+    petsFound = 0,
+    selectedCount = 0
+}
+
+-- Auto feed status display
+local autoFeedStatusParagraph = Tabs.AutoFeedTab:Paragraph({
+    Title = "🍎 Auto Feed Status",
+    Desc = "Ready to feed pets!",
+    Image = "apple",
+    ImageSize = 18
+})
+
+local function updateAutoFeedStatus()
+    if autoFeedStatusParagraph and autoFeedStatusParagraph.SetDesc then
+        local lines = {}
+        table.insert(lines, "🍎 Selected Fruits: " .. autoFeedStatus.selectedCount .. " fruits")
+        table.insert(lines, "🐾 Pets Found: " .. tostring(autoFeedStatus.petsFound))
+        table.insert(lines, "📊 Total Fed: " .. tostring(autoFeedStatus.totalFed))
+        table.insert(lines, "🔄 Last Action: " .. autoFeedStatus.lastAction)
+        table.insert(lines, "⏰ Last Check: " .. autoFeedStatus.lastCheck)
+        autoFeedStatusParagraph:SetDesc(table.concat(lines, "\n"))
+    end
+end
+
+-- Helper functions for auto feed
+local function getBigPets()
+    local pets = {}
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then return pets end
+    
+    for _, petModel in pairs(petsFolder:GetChildren()) do
+        if petModel:IsA("Model") then
+            local rootPart = petModel:FindFirstChild("RootPart")
+            if rootPart then
+                local bigValue = rootPart:GetAttribute("BigValue")
+                if bigValue then
+                    table.insert(pets, {
+                        model = petModel,
+                        name = bigValue,
+                        rootPart = rootPart
+                    })
+                end
+            end
+        end
+    end
+    
+    return pets
+end
+
+local function isPetEating(petModel)
+    local rootPart = petModel:FindFirstChild("RootPart")
+    if not rootPart then return false end
+    
+    local gui = rootPart:FindFirstChild("GUI")
+    if not gui then return false end
+    
+    local bigPetGUI = gui:FindFirstChild("BigPetGUI")
+    if not bigPetGUI then return false end
+    
+    local feed = bigPetGUI:FindFirstChild("Feed")
+    if not feed then return false end
+    
+    local txt = feed:FindFirstChild("TXT")
+    if not txt or not txt:IsA("TextLabel") then return false end
+    
+    local timeText = tostring(txt.Text or "")
+    return timeText == "00:00"
+end
+
+local function equipFruit(fruitName)
+    local args = {
+        "Focus",
+        fruitName
+    }
+    local success = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    return success
+end
+
+local function feedPet(petName)
+    local args = {
+        "Feed",
+        petName
+    }
+    local success = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
+    end)
+    return success
+end
+
+-- Auto feed logic
+local function runAutoFeed()
+    while autoFeedEnabled do
+        local ok, err = pcall(function()
+            local bigPets = getBigPets()
+            autoFeedStatus.petsFound = #bigPets
+            autoFeedStatus.lastCheck = os.date("%H:%M:%S")
+            
+            if #bigPets == 0 then
+                autoFeedStatus.lastAction = "No big pets found!"
+                updateAutoFeedStatus()
+                task.wait(2)
+                return
+            end
+            
+            if not selectedFeedFruits or not next(selectedFeedFruits) then
+                autoFeedStatus.lastAction = "No fruits selected for feeding!"
+                updateAutoFeedStatus()
+                task.wait(2)
+                return
+            end
+            
+            for _, pet in ipairs(bigPets) do
+                if isPetEating(pet.model) then
+                    for fruitName, _ in pairs(selectedFeedFruits) do
+                        if equipFruit(fruitName) then
+                            task.wait(0.2)
+                            if feedPet(pet.name) then
+                                autoFeedStatus.totalFed = autoFeedStatus.totalFed + 1
+                                autoFeedStatus.lastAction = "Fed " .. pet.name .. " with " .. fruitName
+                                updateAutoFeedStatus()
+                                task.wait(0.5)
+                                break
+                            else
+                                autoFeedStatus.lastAction = "Failed to feed " .. pet.name
+                                updateAutoFeedStatus()
+                            end
+                        else
+                            autoFeedStatus.lastAction = "Failed to equip " .. fruitName
+                            updateAutoFeedStatus()
+                        end
+                    end
+                end
+            end
+            
+            autoFeedStatus.lastAction = "No pets available for feeding"
+            updateAutoFeedStatus()
+            
+            task.wait(2)
+        end)
+        
+        if not ok then
+            autoFeedStatus.lastAction = "Error: " .. tostring(err)
+            updateAutoFeedStatus()
+            task.wait(1)
+        end
+    end
+end
+
+Tabs.AutoFeedTab:Button({
+    Title = "🍎 Open Feed Fruit Selection UI",
+    Desc = "Open the modern glass-style fruit selection interface for feeding",
+    Callback = function()
+        if not autoFeedSelectionVisible then
+            AutoFeedSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+                    selectedFeedFruits = selectedItems
+                    
+                    -- Update status display
+                    local fruitKeys = {}
+                    for k in pairs(selectedFeedFruits) do table.insert(fruitKeys, k) end
+                    table.sort(fruitKeys)
+                    
+                    autoFeedStatus.selectedCount = #fruitKeys
+                    updateAutoFeedStatus()
+                end,
+                function(isVisible)
+                    autoFeedSelectionVisible = isVisible
+                end,
+                selectedFeedFruits -- Pass saved fruit selections
+            )
+            autoFeedSelectionVisible = true
+        else
+            AutoFeedSelection.Hide()
+            autoFeedSelectionVisible = false
+        end
+    end
+})
+
+-- Auto Feed Toggle
+local autoFeedToggle = Tabs.AutoFeedTab:Toggle({
+    Title = "🍎 Auto Feed Pets",
+    Desc = "Automatically feed big pets with selected fruits when they're hungry",
+    Value = false,
+    Callback = function(state)
+        autoFeedEnabled = state
+        if state and not autoFeedThread then
+            autoFeedThread = task.spawn(function()
+                runAutoFeed()
+                autoFeedThread = nil
+            end)
+            autoFeedStatus.lastAction = "Auto feed started! 🎉"
+            autoFeedStatus.lastCheck = os.date("%H:%M:%S")
+            updateAutoFeedStatus()
+        elseif (not state) and autoFeedThread then
+            autoFeedStatus.lastAction = "Auto feed stopped"
+            autoFeedStatus.lastCheck = os.date("%H:%M:%S")
+            updateAutoFeedStatus()
+        end
+    end
+})
+
 -- ============ Config System ============
 -- Create config manager
 local ConfigManager = Window.ConfigManager
@@ -3526,22 +3745,26 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
-    if zooConfig then
-        -- Only register simple UI elements that don't cause serialization issues
-        zooConfig:Register("autoBuyEnabled", autoBuyToggle)
-        zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
-        zooConfig:Register("autoHatchEnabled", autoHatchToggle)
-        zooConfig:Register("autoClaimEnabled", autoClaimToggle)
-        zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
-        zooConfig:Register("autoDinoEnabled", autoDinoToggle)
-        zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
-        zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
-        zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        zooConfig:Register("automationPriority", priorityDropdown)
-        
-        -- Register fruit selection
-        zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
+    if not zooConfig then return end
+    
+    local configs = {
+        {key = "autoBuyEnabled", value = autoBuyToggle},
+        {key = "autoPlaceEnabled", value = autoPlaceToggle},
+        {key = "autoHatchEnabled", value = autoHatchToggle},
+        {key = "autoClaimEnabled", value = autoClaimToggle},
+        {key = "autoUpgradeEnabled", value = autoUpgradeToggle},
+        {key = "autoDinoEnabled", value = autoDinoToggle},
+        {key = "autoDeleteEnabled", value = autoDeleteToggle},
+        {key = "autoDeleteSpeed", value = autoDeleteSpeedSlider},
+        {key = "autoClaimDelay", value = autoClaimDelaySlider},
+        {key = "selectedPlaceEggs", value = placeEggDropdown},
+        {key = "automationPriority", value = priorityDropdown},
+        {key = "autoBuyFruitEnabled", value = autoBuyFruitToggle},
+        {key = "autoFeedEnabled", value = autoFeedToggle}
+    }
+    
+    for _, config in ipairs(configs) do
+        zooConfig:Register(config.key, config.value)
     end
 end
 
