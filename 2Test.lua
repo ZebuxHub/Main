@@ -1469,9 +1469,49 @@ local function createEggSelectionUI()
         Theme = "Dark",
     })
     
+    -- Verify window was created successfully
+    if not eggSelectionWindow then
+        WindUI:Notify({
+            Title = "❌ Error",
+            Content = "Failed to create egg selection window",
+            Duration = 5
+        })
+        return
+    end
+    
     local eggTabs = {}
-    eggTabs.MainSection = eggSelectionWindow:Section({ Title = "🥚 Select Eggs", Opened = true })
-    eggTabs.EggTab = eggTabs.MainSection:Tab({ Title = "🥚 | Eggs"})
+    
+    -- Create section with error handling
+    local success, section = pcall(function()
+        return eggSelectionWindow:Section({ Title = "🥚 Select Eggs", Opened = true })
+    end)
+    
+    if not success or not section then
+        WindUI:Notify({
+            Title = "❌ Error",
+            Content = "Failed to create section: " .. tostring(section),
+            Duration = 5
+        })
+        return
+    end
+    
+    eggTabs.MainSection = section
+    
+    -- Create tabs with error handling
+    local success2, eggTab = pcall(function()
+        return eggTabs.MainSection:Tab({ Title = "🥚 | Eggs"})
+    end)
+    
+    if not success2 or not eggTab then
+        WindUI:Notify({
+            Title = "❌ Error",
+            Content = "Failed to create egg tab: " .. tostring(eggTab),
+            Duration = 5
+        })
+        return
+    end
+    
+    eggTabs.EggTab = eggTab
     eggTabs.MutationTab = eggTabs.MainSection:Tab({ Title = "🧬 | Mutations"})
     
     -- Verify tabs were created successfully
