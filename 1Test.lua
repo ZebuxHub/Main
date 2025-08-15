@@ -12,6 +12,8 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
+-- Load Pet Placement Functions
+local PetPlacementFunctions = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSelection.luahttps://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/PetPlacementFunctions.lua"))()
 -- Window
 local Window = WindUI:CreateWindow({
     Title = "Build A Zoo",
@@ -34,6 +36,7 @@ Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
+Tabs.AutoFeedTab = Tabs.MainSection:Tab({ Title = "🍎 | Auto Feed"})
 Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
@@ -350,349 +353,7 @@ local function getActiveBelt(islandName)
     return bestBelt
 end
 
--- Auto Place helpers
-local function getIslandNumberFromName(islandName)
-    if not islandName then return nil end
-    -- Extract number from island name (e.g., "Island_3" -> 3)
-    local match = string.match(islandName, "Island_(%d+)")
-    if match then
-        return tonumber(match)
-    end
-    -- Try other patterns
-    match = string.match(islandName, "(%d+)")
-    if match then
-        return tonumber(match)
-    end
-    return nil
-end
 
-local function getFarmParts(islandNumber)
-    if not islandNumber then return {} end
-    local art = workspace:FindFirstChild("Art")
-    if not art then return {} end
-    
-    local islandName = "Island_" .. tostring(islandNumber)
-    local island = art:FindFirstChild(islandName)
-    if not island then 
-        -- Try alternative naming patterns
-        for _, child in ipairs(art:GetChildren()) do
-            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
-                island = child
-                break
-            end
-        end
-        if not island then return {} end
-    end
-    
-    local farmParts = {}
-    local function scanForFarmParts(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
-                -- Additional validation: check if part is valid for placement
-                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                    table.insert(farmParts, child)
-                end
-            end
-            scanForFarmParts(child)
-        end
-    end
-    
-    scanForFarmParts(island)
-    
-    -- Filter out locked tiles by checking the Locks folder
-    local unlockedFarmParts = {}
-    local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
-    
-    if locksFolder then
-        -- Create a map of locked areas using CFrame and size
-        local lockedAreas = {}
-        for _, lockModel in ipairs(locksFolder:GetChildren()) do
-            if lockModel:IsA("Model") then
-                local farmPart = lockModel:FindFirstChild("Farm")
-                if farmPart and farmPart:IsA("BasePart") then
-                    -- Check if this lock is active (transparency = 0 means locked)
-                    if farmPart.Transparency == 0 then
-                        -- Store the lock's CFrame and size for area checking
-                        table.insert(lockedAreas, {
-                            cframe = farmPart.CFrame,
-                            size = farmPart.Size,
-                            position = farmPart.Position
-                        })
-                    end
-                end
-            end
-        end
-        
-        -- Check each farm part against locked areas
-        for _, farmPart in ipairs(farmParts) do
-            local isLocked = false
-            
-            for _, lockArea in ipairs(lockedAreas) do
-                -- Check if farm part is within the lock area
-                -- Use CFrame and size to determine if the farm part is covered by the lock
-                local farmPartPos = farmPart.Position
-                local lockCenter = lockArea.position
-                local lockSize = lockArea.size
-                
-                -- Calculate the bounds of the lock area
-                local lockHalfSize = lockSize / 2
-                local lockMinX = lockCenter.X - lockHalfSize.X
-                local lockMaxX = lockCenter.X + lockHalfSize.X
-                local lockMinZ = lockCenter.Z - lockHalfSize.Z
-                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
-                
-                -- Check if farm part is within the lock bounds
-                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
-                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
-                    isLocked = true
-                    break
-                end
-            end
-            
-            if not isLocked then
-                table.insert(unlockedFarmParts, farmPart)
-            end
-        end
-    else
-        -- If no locks folder found, assume all tiles are unlocked
-        unlockedFarmParts = farmParts
-    end
-    
-    return unlockedFarmParts
-end
-
--- Occupancy helpers (uses Model:GetPivot to detect nearby placed pets)
-local function isPetLikeModel(model)
-    if not model or not model:IsA("Model") then return false end
-    -- Common signals that a model is a pet or a placed unit
-    if model:FindFirstChildOfClass("Humanoid") then return true end
-    if model:FindFirstChild("AnimationController") then return true end
-    if model:GetAttribute("IsPet") or model:GetAttribute("PetType") or model:GetAttribute("T") then return true end
-    local lowerName = string.lower(model.Name)
-    if string.find(lowerName, "pet") or string.find(lowerName, "egg") then return true end
-    if CollectionService and (CollectionService:HasTag(model, "Pet") or CollectionService:HasTag(model, "IdleBigPet")) then
-        return true
-    end
-    return false
-end
-
-local function getTileCenterPosition(farmPart)
-    if not farmPart or not farmPart.IsA or not farmPart:IsA("BasePart") then return nil end
-    -- Middle of the farm tile (parts are 8x8x8)
-    return farmPart.Position
-end
-
-local function getPetModelsOverlappingTile(farmPart)
-    if not farmPart or not farmPart:IsA("BasePart") then return {} end
-    local centerCF = farmPart.CFrame
-    -- Slightly taller box to capture pets above the tile
-    local regionSize = Vector3.new(8, 14, 8)
-    local params = OverlapParams.new()
-    params.RespectCanCollide = false
-    -- Search within whole workspace, we will filter to models
-    local parts = workspace:GetPartBoundsInBox(centerCF, regionSize, params)
-    local modelMap = {}
-    for _, part in ipairs(parts) do
-        if part ~= farmPart then
-            local model = part:FindFirstAncestorOfClass("Model")
-            if model and not modelMap[model] and isPetLikeModel(model) then
-                modelMap[model] = true
-            end
-        end
-    end
-    local models = {}
-    for model in pairs(modelMap) do table.insert(models, model) end
-    return models
-end
-
--- Get all pet configurations that the player owns
-local function getPlayerPetConfigurations()
-    local petConfigs = {}
-    
-    if not LocalPlayer then return petConfigs end
-    
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return petConfigs end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return petConfigs end
-    
-    local petsFolder = data:FindFirstChild("Pets")
-    if not petsFolder then return petConfigs end
-    
-    -- Get all pet configurations
-    for _, petConfig in ipairs(petsFolder:GetChildren()) do
-        if petConfig:IsA("Configuration") then
-            table.insert(petConfigs, {
-                name = petConfig.Name,
-                config = petConfig
-            })
-        end
-    end
-    
-    return petConfigs
-end
-
--- Check if a pet exists in workspace.Pets by configuration name
-local function findPetInWorkspace(petConfigName)
-    local workspacePets = workspace:FindFirstChild("Pets")
-    if not workspacePets then return nil end
-    
-    local petModel = workspacePets:FindFirstChild(petConfigName)
-    if petModel and petModel:IsA("Model") then
-        return petModel
-    end
-    
-    return nil
-end
-
--- Get all player's pets that exist in workspace
-local function getPlayerPetsInWorkspace()
-    local petsInWorkspace = {}
-    local playerPets = getPlayerPetConfigurations()
-    local workspacePets = workspace:FindFirstChild("Pets")
-    
-    if not workspacePets then return petsInWorkspace end
-    
-    for _, petConfig in ipairs(playerPets) do
-        local petModel = workspacePets:FindFirstChild(petConfig.name)
-        if petModel and petModel:IsA("Model") then
-            table.insert(petsInWorkspace, {
-                name = petConfig.name,
-                model = petModel,
-                position = petModel:GetPivot().Position
-            })
-        end
-    end
-    
-    return petsInWorkspace
-end
-
-local function isFarmTileOccupied(farmPart, minDistance)
-    minDistance = minDistance or 6
-    local center = getTileCenterPosition(farmPart)
-    if not center then return true end
-    
-    -- Calculate surface position (same as placement logic)
-    local surfacePosition = Vector3.new(
-        center.X,
-        center.Y + 12, -- Eggs float 12 studs above tile surface
-        center.Z
-    )
-    
-    -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
-    local models = getPetModelsOverlappingTile(farmPart)
-    if #models > 0 then
-    for _, model in ipairs(models) do
-        local pivotPos = model:GetPivot().Position
-            -- Check distance to surface position instead of center
-            if (pivotPos - surfacePosition).Magnitude <= minDistance then
-            return true
-        end
-    end
-    end
-    
-    -- Check for fully hatched pets in workspace.Pets
-    local playerPets = getPlayerPetsInWorkspace()
-    for _, petInfo in ipairs(playerPets) do
-        local petPos = petInfo.position
-        -- Check distance to surface position instead of center
-        if (petPos - surfacePosition).Magnitude <= minDistance then
-            return true
-        end
-    end
-    
-    return false
-end
-
-local function findAvailableFarmPart(farmParts, minDistance)
-    if not farmParts or #farmParts == 0 then return nil end
-    
-    -- First, collect all available parts
-    local availableParts = {}
-    for _, part in ipairs(farmParts) do
-        if not isFarmTileOccupied(part, minDistance) then
-            table.insert(availableParts, part)
-        end
-    end
-    
-    -- If no available parts, return nil
-    if #availableParts == 0 then return nil end
-    
-    -- Shuffle available parts to distribute placement
-    for i = #availableParts, 2, -1 do
-        local j = math.random(1, i)
-        availableParts[i], availableParts[j] = availableParts[j], availableParts[i]
-    end
-    
-    return availableParts[1]
-end
-
--- Player helpers for proximity-based placement
-local function getPlayerRootPosition()
-    local character = LocalPlayer and LocalPlayer.Character
-    if not character then return nil end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
-    return hrp.Position
-end
-
-local function findAvailableFarmPartNearPosition(farmParts, minDistance, targetPosition)
-    if not targetPosition then return findAvailableFarmPart(farmParts, minDistance) end
-    if not farmParts or #farmParts == 0 then return nil end
-    -- Sort farm parts by distance to targetPosition and pick first unoccupied
-    local sorted = table.clone(farmParts)
-    table.sort(sorted, function(a, b)
-        return (a.Position - targetPosition).Magnitude < (b.Position - targetPosition).Magnitude
-    end)
-    for _, part in ipairs(sorted) do
-        if not isFarmTileOccupied(part, minDistance) then
-            return part
-        end
-    end
-    return nil
-end
-
--- Helper function to check if a specific tile position is unlocked
-local function isTileUnlocked(islandName, tilePosition)
-    if not islandName or not tilePosition then return false end
-    
-    local art = workspace:FindFirstChild("Art")
-    if not art then return true end -- Assume unlocked if no Art folder
-    
-    local island = art:FindFirstChild(islandName)
-    if not island then return true end -- Assume unlocked if island not found
-    
-    local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
-    if not locksFolder then return true end -- Assume unlocked if no locks folder
-    
-    -- Check if there's a lock covering this position
-    for _, lockModel in ipairs(locksFolder:GetChildren()) do
-        if lockModel:IsA("Model") then
-            local farmPart = lockModel:FindFirstChild("Farm")
-            if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
-                -- Check if tile position is within the lock area
-                local lockCenter = farmPart.Position
-                local lockSize = farmPart.Size
-                
-                -- Calculate the bounds of the lock area
-                local lockHalfSize = lockSize / 2
-                local lockMinX = lockCenter.X - lockHalfSize.X
-                local lockMaxX = lockCenter.X + lockHalfSize.X
-                local lockMinZ = lockCenter.Z - lockHalfSize.Z
-                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
-                
-                -- Check if tile position is within the lock bounds
-                if tilePosition.X >= lockMinX and tilePosition.X <= lockMaxX and
-                   tilePosition.Z >= lockMinZ and tilePosition.Z <= lockMaxZ then
-                    return false -- This tile is locked
-                end
-            end
-        end
-    end
-    
-    return true -- Tile is unlocked
-end
 
 -- Debug function to show the relationship between farm splits and locks
 local function debugTileLockRelationship()
@@ -888,45 +549,7 @@ local function listAvailableEggUIDs()
     return uids
 end
 
--- Enhanced pet validation based on the Pet module
-local function validatePetUID(petUID)
-    if not petUID or type(petUID) ~= "string" or petUID == "" then
-        return false, "Invalid PET UID"
-    end
-    
-    -- Check if pet exists in ReplicatedStorage.Pets (based on Pet module patterns)
-    local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
-    if petsFolder then
-        -- The Pet module shows pets are stored by their type (T attribute)
-        -- We might need to validate the pet type exists
-        return true, "Valid PET UID"
-    end
-    
-    return true, "PET UID found (pets folder not accessible)"
-end
 
--- Get pet information for better status display
-local function getPetInfo(petUID)
-    if not petUID then return nil end
-    
-    -- Try to get pet data from various sources
-    local petData = {
-        UID = petUID,
-        Type = nil,
-        Rarity = nil,
-        Level = nil,
-        Mutations = nil
-    }
-    
-    -- Check if we can get pet type from the UID
-    -- This might be stored in the player's data or we might need to parse it
-    if type(petUID) == "string" then
-        -- Some games store pet type in the UID itself
-        petData.Type = petUID
-    end
-    
-    return petData
-end
 
 -- ============ Auto Claim Money ============
 local autoClaimEnabled = false
@@ -1269,7 +892,7 @@ local function runAutoHatch()
                 return
             end
             -- Try nearest first
-            local me = getPlayerRootPosition()
+            local me = PetPlacementFunctions.getPlayerRootPosition()
             table.sort(eggs, function(a, b)
                 local pa = getModelPosition(a) or Vector3.new()
                 local pb = getModelPosition(b) or Vector3.new()
@@ -1345,7 +968,7 @@ Tabs.HatchTab:Button({
             WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs ready", Duration = 3 })
             return
         end
-        local me = getPlayerRootPosition() or Vector3.new()
+        local me = PetPlacementFunctions.getPlayerRootPosition() or Vector3.new()
         table.sort(eggs, function(a, b)
             local pa = getModelPosition(a) or Vector3.new()
             local pb = getModelPosition(b) or Vector3.new()
@@ -1389,49 +1012,7 @@ local priorityDropdown = Tabs.HatchTab:Dropdown({
     end
 })
 
-local function placePetAtPart(farmPart, petUID)
-    if not farmPart or not petUID then return false end
-    
-    -- Enhanced validation based on Pet module insights
-    if not farmPart:IsA("BasePart") then return false end
-    
-    local isValid, validationMsg = validatePetUID(petUID)
-    if not isValid then
-        warn("Pet validation failed: " .. validationMsg)
-        return false
-    end
-    
-    -- Place pet on surface (top of the farm split tile)
-    local surfacePosition = Vector3.new(
-        farmPart.Position.X,
-        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
-        farmPart.Position.Z
-    )
-    
-    local args = {
-        "Place",
-        {
-            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
-            ID = petUID
-        }
-    }
-    
-    local ok, err = pcall(function()
-        local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE")
-        if remote then
-            remote:FireServer(unpack(args))
-        else
-            error("CharacterRE remote not found")
-        end
-    end)
-    
-    if not ok then
-        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(surfacePosition) .. ": " .. tostring(err))
-        return false
-    end
-    
-    return true
-end
+
 
 -- Hardcoded Egg and Mutation Data
 local EggData = {
@@ -1900,8 +1481,8 @@ end
 -- Comprehensive tile scanning system
 local function scanAllTilesAndModels()
     local islandName = getAssignedIslandName()
-    local islandNumber = getIslandNumberFromName(islandName)
-    local farmParts = getFarmParts(islandNumber)
+    local islandNumber = PetPlacementFunctions.getIslandNumberFromName(islandName)
+    local farmParts = PetPlacementFunctions.getFarmParts(islandNumber)
     
     local tileMap = {}
     local totalTiles = #farmParts
@@ -1953,7 +1534,7 @@ local function scanAllTilesAndModels()
         end
         
     -- Scan all pets in workspace.Pets
-    local playerPets = getPlayerPetsInWorkspace()
+    local playerPets = PetPlacementFunctions.getPlayerPetsInWorkspace()
     for _, petInfo in ipairs(playerPets) do
         local petPos = petInfo.position
         
@@ -2093,58 +1674,11 @@ local function placeEggInstantly(eggInfo, tileInfo)
     local petUID = eggInfo.uid
     local tilePart = tileInfo.part
     
-    -- Final check: is tile still available?
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                local tilePos = tilePart.Position
-                
-                -- Calculate surface position (same as placement logic)
-                local surfacePos = Vector3.new(
-                    tilePos.X,
-                    tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
-                    tilePos.Z
-                )
-                
-                -- Separate X/Z and Y axis checks
-                local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
-                local yDistance = math.abs(modelPos.Y - surfacePos.Y)
-                
-                -- X/Z: 4 studs radius, Y: 8 studs radius
-                if xzDistance < 4.0 and yDistance < 8.0 then
-                    placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied by egg - skipping"
-                    placingInProgress = false
-                    return false
-                end
-            end
-        end
-    end
-    
-    -- Check for fully hatched pets in workspace.Pets
-    local playerPets = getPlayerPetsInWorkspace()
-    for _, petInfo in ipairs(playerPets) do
-        local petPos = petInfo.position
-        local tilePos = tilePart.Position
-        
-        -- Calculate surface position (same as placement logic)
-        local surfacePos = Vector3.new(
-            tilePos.X,
-            tilePos.Y + 12, -- Eggs float 12 studs above tile surface
-            tilePos.Z
-        )
-        
-        -- Separate X/Z and Y axis checks
-        local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
-        local yDistance = math.abs(petPos.Y - surfacePos.Y)
-        
-        -- X/Z: 4 studs radius, Y: 8 studs radius
-        if xzDistance < 4.0 and yDistance < 8.0 then
-            placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied by pet " .. petInfo.name .. " - skipping"
-            placingInProgress = false
-            return false
-        end
+    -- Check if tile is still available using PetPlacementFunctions
+    if PetPlacementFunctions.isFarmTileOccupied(tilePart, 6) then
+        placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied - skipping"
+        placingInProgress = false
+        return false
     end
     
     -- Equip egg to Deploy S2
@@ -2170,29 +1704,14 @@ local function placeEggInstantly(eggInfo, tileInfo)
         end
     end
     
-    -- Place egg on surface (top of the farm split tile)
-    local surfacePosition = Vector3.new(
-        tilePart.Position.X,
-        tilePart.Position.Y + (tilePart.Size.Y / 2), -- Top surface
-        tilePart.Position.Z
-    )
-    
-    local args = {
-        "Place",
-        {
-            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
-            ID = petUID
-        }
-    }
-    
-    local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
+    -- Use PetPlacementFunctions to place the pet
+    local success = PetPlacementFunctions.placePetAtPart(tilePart, petUID)
     
     if success then
         -- Verify placement
         task.wait(0.3)
         local placementConfirmed = false
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         
         if playerBuiltBlocks then
             for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
@@ -2285,58 +1804,8 @@ local function attemptPlacement()
         local isStillAvailable = true
         
         if tileInfo then
-            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-            if playerBuiltBlocks then
-                for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-                    if model:IsA("Model") then
-                        local modelPos = model:GetPivot().Position
-                        local tilePos = tileInfo.part.Position
-                        
-                        -- Calculate surface position (same as placement logic)
-                        local surfacePos = Vector3.new(
-                            tilePos.X,
-                            tilePos.Y + 12, -- Eggs float 12 studs above tile surface
-                            tilePos.Z
-                        )
-                        
-                        -- Separate X/Z and Y axis checks
-                        local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
-                        local yDistance = math.abs(modelPos.Y - surfacePos.Y)
-                        
-                        -- X/Z: 4 studs radius, Y: 8 studs radius
-                        if xzDistance < 4.0 and yDistance < 8.0 then
-                            isStillAvailable = false
-                            break
-                        end
-                    end
-                end
-            end
-            
-            -- Check for fully hatched pets in workspace.Pets
-            if isStillAvailable then
-                local playerPets = getPlayerPetsInWorkspace()
-                for _, petInfo in ipairs(playerPets) do
-                    local petPos = petInfo.position
-                    local tilePos = tileInfo.part.Position
-                    
-                    -- Calculate surface position (same as placement logic)
-                    local surfacePos = Vector3.new(
-                        tilePos.X,
-                        tilePos.Y + 12, -- Eggs float 12 studs above tile surface
-                        tilePos.Z
-                    )
-                    
-                    -- Separate X/Z and Y axis checks
-                    local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
-                    local yDistance = math.abs(petPos.Y - surfacePos.Y)
-                    
-                    -- X/Z: 4 studs radius, Y: 8 studs radius
-                    if xzDistance < 4.0 and yDistance < 8.0 then
-                        isStillAvailable = false
-                        break
-                    end
-                end
-            end
+            -- Use PetPlacementFunctions to check if tile is still available
+            isStillAvailable = not PetPlacementFunctions.isFarmTileOccupied(tileInfo.part, 6)
         end
         
         if isStillAvailable then
@@ -3440,9 +2909,9 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                              fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
                              updateFruitStatus()
                              task.wait(3) -- Wait longer before checking again
-                             return
-                         end
-                         
+        return
+    end
+    
                          local netWorth = getPlayerNetWorth()
                          local boughtAny = false
                          
@@ -3542,7 +3011,7 @@ local autoFeedStatus = {
 local autoFeedStatusParagraph = Tabs.AutoFeedTab:Paragraph({
     Title = "🍎 Auto Feed Status",
     Desc = "Ready to feed pets!",
-    Image = "apple",
+                Image = "apple",
     ImageSize = 18
 })
 
@@ -3745,26 +3214,25 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
-    if not zooConfig then return end
-    
-    local configs = {
-        {key = "autoBuyEnabled", value = autoBuyToggle},
-        {key = "autoPlaceEnabled", value = autoPlaceToggle},
-        {key = "autoHatchEnabled", value = autoHatchToggle},
-        {key = "autoClaimEnabled", value = autoClaimToggle},
-        {key = "autoUpgradeEnabled", value = autoUpgradeToggle},
-        {key = "autoDinoEnabled", value = autoDinoToggle},
-        {key = "autoDeleteEnabled", value = autoDeleteToggle},
-        {key = "autoDeleteSpeed", value = autoDeleteSpeedSlider},
-        {key = "autoClaimDelay", value = autoClaimDelaySlider},
-        {key = "selectedPlaceEggs", value = placeEggDropdown},
-        {key = "automationPriority", value = priorityDropdown},
-        {key = "autoBuyFruitEnabled", value = autoBuyFruitToggle},
-        {key = "autoFeedEnabled", value = autoFeedToggle}
-    }
-    
-    for _, config in ipairs(configs) do
-        zooConfig:Register(config.key, config.value)
+    if zooConfig then
+        -- Only register simple UI elements that don't cause serialization issues
+        zooConfig:Register("autoBuyEnabled", autoBuyToggle)
+        zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
+        zooConfig:Register("autoHatchEnabled", autoHatchToggle)
+        zooConfig:Register("autoClaimEnabled", autoClaimToggle)
+        zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
+        zooConfig:Register("autoDinoEnabled", autoDinoToggle)
+        zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
+        zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
+        zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
+        zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
+        zooConfig:Register("automationPriority", priorityDropdown)
+        
+        -- Register fruit selection
+        zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
+        
+        -- Register auto feed
+        zooConfig:Register("autoFeedEnabled", autoFeedToggle)
     end
 end
 
