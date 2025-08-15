@@ -12,30 +12,130 @@ local RunService = game:GetService("RunService")
 
 -- Hardcoded data with actual Roblox asset IDs
 local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
-    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
-    HyperEgg = { Name = "Hyper Egg", Price = "3,000,000", Icon = "rbxassetid://104958288296273", Rarity = 5 },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 }
+    BasicEgg = {
+        Name = "Basic Egg",
+        Price = "100",
+        Icon = "rbxassetid://129248801621928",
+        Rarity = 1
+    },
+    RareEgg = {
+        Name = "Rare Egg", 
+        Price = "500",
+        Icon = "rbxassetid://71012831091414",
+        Rarity = 2
+    },
+    SuperRareEgg = {
+        Name = "Super Rare Egg",
+        Price = "2,500", 
+        Icon = "rbxassetid://93845452154351",
+        Rarity = 2
+    },
+    EpicEgg = {
+        Name = "Epic Egg",
+        Price = "15,000",
+        Icon = "rbxassetid://116395645531721", 
+        Rarity = 2
+    },
+    LegendEgg = {
+        Name = "Legend Egg",
+        Price = "100,000",
+        Icon = "rbxassetid://90834918351014",
+        Rarity = 3
+    },
+    PrismaticEgg = {
+        Name = "Prismatic Egg", 
+        Price = "1,000,000",
+        Icon = "rbxassetid://79960683434582",
+        Rarity = 4
+    },
+    HyperEgg = {
+        Name = "Hyper Egg",
+        Price = "3,000,000",
+        Icon = "rbxassetid://104958288296273",
+        Rarity = 5
+    },
+    VoidEgg = {
+        Name = "Void Egg",
+        Price = "24,000,000", 
+        Icon = "rbxassetid://122396162708984",
+        Rarity = 5
+    },
+    BowserEgg = {
+        Name = "Bowser Egg",
+        Price = "130,000,000",
+        Icon = "rbxassetid://71500536051510",
+        Rarity = 5
+    },
+    DemonEgg = {
+        Name = "Demon Egg",
+        Price = "400,000,000",
+        Icon = "rbxassetid://126412407639969",
+        Rarity = 5
+    },
+    BoneDragonEgg = {
+        Name = "Bone Dragon Egg",
+        Price = "2,000,000,000",
+        Icon = "rbxassetid://83209913424562",
+        Rarity = 5
+    },
+    UltraEgg = {
+        Name = "Ultra Egg",
+        Price = "10,000,000,000",
+        Icon = "rbxassetid://83909590718799",
+        Rarity = 6
+    },
+    DinoEgg = {
+        Name = "Dino Egg",
+        Price = "10,000,000,000",
+        Icon = "rbxassetid://80783528632315",
+        Rarity = 6
+    },
+    FlyEgg = {
+        Name = "Fly Egg",
+        Price = "999,999,999,999",
+        Icon = "rbxassetid://109240587278187",
+        Rarity = 6
+    },
+    UnicornEgg = {
+        Name = "Unicorn Egg",
+        Price = "40,000,000,000",
+        Icon = "rbxassetid://123427249205445",
+        Rarity = 6
+    },
+    AncientEgg = {
+        Name = "Ancient Egg",
+        Price = "999,999,999,999",
+        Icon = "rbxassetid://113910587565739",
+        Rarity = 6
+    }
 }
 
 local MutationData = {
-    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
-    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electirc = { Name = "Electric", Icon = "⚡", Rarity = 50 },
-    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Dino = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
+    Golden = {
+        Name = "Golden",
+        Icon = "✨",
+        Rarity = 10
+    },
+    Diamond = {
+        Name = "Diamond", 
+        Icon = "💎",
+        Rarity = 20
+    },
+    Electirc = {
+        Name = "Electric",
+        Icon = "⚡",
+        Rarity = 50
+    },
+    Fire = {
+        Name = "Fire",
+        Icon = "🔥",
+        Rarity = 100
+    },
+    Dino = {
+        Name = "Jurassic",
+        Icon = "🦕",
+        Rarity = 100
+    }
 }
 
 -- UI Variables
@@ -50,29 +150,51 @@ local startPos = nil
 local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
-local currentPage = "eggs"
+local currentPage = "eggs" -- "eggs" or "mutations"
 local searchText = ""
 
 -- Callback functions
 local onSelectionChanged = nil
 local onToggleChanged = nil
 
--- macOS-style Colors
+-- macOS-style Colors (Dark Theme)
 local colors = {
-    background = Color3.fromRGB(248, 248, 248),
-    window = Color3.fromRGB(255, 255, 255),
-    border = Color3.fromRGB(225, 225, 225),
-    text = Color3.fromRGB(51, 51, 51),
-    textSecondary = Color3.fromRGB(102, 102, 102),
+    background = Color3.fromRGB(28, 28, 30),
+    window = Color3.fromRGB(44, 44, 46),
+    card = Color3.fromRGB(58, 58, 60),
+    cardHover = Color3.fromRGB(68, 68, 70),
+    cardSelected = Color3.fromRGB(0, 122, 255),
+    border = Color3.fromRGB(72, 72, 74),
+    text = Color3.fromRGB(255, 255, 255),
+    textSecondary = Color3.fromRGB(174, 174, 178),
     accent = Color3.fromRGB(0, 122, 255),
     selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(245, 245, 245),
-    shadow = Color3.fromRGB(0, 0, 0, 0.1),
-    searchBackground = Color3.fromRGB(248, 248, 248),
-    searchBorder = Color3.fromRGB(225, 225, 225)
+    hover = Color3.fromRGB(68, 68, 70),
+    pageActive = Color3.fromRGB(0, 122, 255),
+    pageInactive = Color3.fromRGB(174, 174, 178),
+    searchBackground = Color3.fromRGB(58, 58, 60),
+    searchBorder = Color3.fromRGB(72, 72, 74),
+    shadow = Color3.fromRGB(0, 0, 0, 0.3)
 }
 
 -- Utility Functions
+local function formatNumber(num)
+    if type(num) == "string" then
+        return num
+    end
+    if num >= 1e12 then
+        return string.format("%.1fT", num / 1e12)
+    elseif num >= 1e9 then
+        return string.format("%.1fB", num / 1e9)
+    elseif num >= 1e6 then
+        return string.format("%.1fM", num / 1e6)
+    elseif num >= 1e3 then
+        return string.format("%.1fK", num / 1e3)
+    else
+        return tostring(num)
+    end
+end
+
 local function getRarityColor(rarity)
     if rarity >= 100 then return Color3.fromRGB(255, 59, 48)
     elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222)
@@ -89,7 +211,10 @@ end
 
 -- Price parsing function
 local function parsePrice(priceStr)
-    if type(priceStr) == "number" then return priceStr end
+    if type(priceStr) == "number" then
+        return priceStr
+    end
+    -- Remove commas and convert to number
     local cleanPrice = priceStr:gsub(",", "")
     return tonumber(cleanPrice) or 0
 end
@@ -108,6 +233,7 @@ local function sortDataByPrice(data, isEggs)
             return priceA < priceB
         end)
     else
+        -- For mutations, sort by name
         table.sort(sortedData, function(a, b)
             return a.data.Name < b.data.Name
         end)
@@ -118,7 +244,9 @@ end
 
 -- Filter data by search text
 local function filterDataBySearch(data, searchText)
-    if searchText == "" then return data end
+    if searchText == "" then
+        return data
+    end
     
     local filteredData = {}
     local searchLower = string.lower(searchText)
@@ -156,7 +284,7 @@ local function createMacCard(parent)
     local card = Instance.new("Frame")
     card.Name = "Card"
     card.Size = UDim2.new(1, 0, 1, 0)
-    card.BackgroundColor3 = colors.window
+    card.BackgroundColor3 = colors.card
     card.BorderSizePixel = 0
     card.Parent = parent
     
@@ -249,20 +377,20 @@ local function createItemCard(itemId, itemData, parent)
     -- Set initial selection state
     if selectedItems[itemId] then
         checkmark.Visible = true
-        mainCard.BackgroundColor3 = colors.selected
-        mainCard.UIStroke.Color = colors.selected
+        mainCard.BackgroundColor3 = colors.cardSelected
+        mainCard.UIStroke.Color = colors.cardSelected
     end
     
     -- Hover effect
     card.MouseEnter:Connect(function()
         if not selectedItems[itemId] then
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.cardHover}):Play()
         end
     end)
     
     card.MouseLeave:Connect(function()
         if not selectedItems[itemId] then
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.window}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.card}):Play()
         end
     end)
     
@@ -271,13 +399,13 @@ local function createItemCard(itemId, itemData, parent)
         if selectedItems[itemId] then
             selectedItems[itemId] = nil
             checkmark.Visible = false
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.window}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.card}):Play()
             TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.border}):Play()
         else
             selectedItems[itemId] = true
             checkmark.Visible = true
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
-            TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.selected}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.cardSelected}):Play()
+            TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.cardSelected}):Play()
         end
         
         if onSelectionChanged then
@@ -338,6 +466,7 @@ local function createSearchBar(parent)
     searchBox.ClearTextOnFocus = false
     searchBox.Parent = searchContainer
     
+    -- Search functionality
     searchBox.Changed:Connect(function(prop)
         if prop == "Text" then
             searchText = searchBox.Text
@@ -348,9 +477,80 @@ local function createSearchBar(parent)
     return searchContainer
 end
 
+-- Create Page Tabs
+local function createPageTabs(parent)
+    local tabContainer = Instance.new("Frame")
+    tabContainer.Name = "PageTabs"
+    tabContainer.Size = UDim2.new(1, -16, 0, 40)
+    tabContainer.Position = UDim2.new(0, 8, 0, 48)
+    tabContainer.BackgroundTransparency = 1
+    tabContainer.Parent = parent
+    
+    local eggsTab = Instance.new("TextButton")
+    eggsTab.Name = "EggsTab"
+    eggsTab.Size = UDim2.new(0.5, -4, 1, 0)
+    eggsTab.Position = UDim2.new(0, 0, 0, 0)
+    eggsTab.BackgroundColor3 = colors.card
+    eggsTab.BorderSizePixel = 0
+    eggsTab.Text = "🥚 Eggs"
+    eggsTab.TextSize = 14
+    eggsTab.Font = Enum.Font.GothamBold
+    eggsTab.TextColor3 = colors.pageActive
+    eggsTab.Parent = tabContainer
+    
+    local eggsCorner = Instance.new("UICorner")
+    eggsCorner.CornerRadius = UDim2.new(0, 6)
+    eggsCorner.Parent = eggsTab
+    
+    local mutationsTab = Instance.new("TextButton")
+    mutationsTab.Name = "MutationsTab"
+    mutationsTab.Size = UDim2.new(0.5, -4, 1, 0)
+    mutationsTab.Position = UDim2.new(0.5, 4, 0, 0)
+    mutationsTab.BackgroundColor3 = colors.card
+    mutationsTab.BorderSizePixel = 0
+    mutationsTab.Text = "✨ Mutations"
+    mutationsTab.TextSize = 14
+    mutationsTab.Font = Enum.Font.GothamBold
+    mutationsTab.TextColor3 = colors.pageInactive
+    mutationsTab.Parent = tabContainer
+    
+    local mutationsCorner = Instance.new("UICorner")
+    mutationsCorner.CornerRadius = UDim2.new(0, 6)
+    mutationsCorner.Parent = mutationsTab
+    
+    -- Tab click events
+    eggsTab.MouseButton1Click:Connect(function()
+        currentPage = "eggs"
+        eggsTab.TextColor3 = colors.pageActive
+        mutationsTab.TextColor3 = colors.pageInactive
+        -- Update search placeholder
+        local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
+        if searchBox then
+            searchBox.PlaceholderText = "Search eggs..."
+        end
+        EggSelection.RefreshContent()
+    end)
+    
+    mutationsTab.MouseButton1Click:Connect(function()
+        currentPage = "mutations"
+        mutationsTab.TextColor3 = colors.pageActive
+        eggsTab.TextColor3 = colors.pageInactive
+        -- Update search placeholder
+        local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
+        if searchBox then
+            searchBox.PlaceholderText = "Search mutations..."
+        end
+        EggSelection.RefreshContent()
+    end)
+    
+    return tabContainer
+end
+
 -- Create UI
 function EggSelection.CreateUI()
-    if ScreenGui then ScreenGui:Destroy() end
+    if ScreenGui then
+        ScreenGui:Destroy()
+    end
     
     ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "EggSelectionUI"
@@ -438,7 +638,7 @@ function EggSelection.CreateUI()
     sidebar.Name = "Sidebar"
     sidebar.Size = UDim2.new(0, 200, 1, -32)
     sidebar.Position = UDim2.new(0, 0, 0, 32)
-    sidebar.BackgroundColor3 = Color3.fromRGB(248, 248, 248)
+    sidebar.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
     sidebar.BorderSizePixel = 0
     sidebar.Parent = mainWindow
     
@@ -689,11 +889,11 @@ function EggSelection.SetSelectedItems(items)
                 if checkmark and mainCard then
                     if selectedItems[child.Name] then
                         checkmark.Visible = true
-                        mainCard.BackgroundColor3 = colors.selected
-                        mainCard.UIStroke.Color = colors.selected
+                        mainCard.BackgroundColor3 = colors.cardSelected
+                        mainCard.UIStroke.Color = colors.cardSelected
                     else
                         checkmark.Visible = false
-                        mainCard.BackgroundColor3 = colors.window
+                        mainCard.BackgroundColor3 = colors.card
                         mainCard.UIStroke.Color = colors.border
                     end
                 end
