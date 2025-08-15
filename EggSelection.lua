@@ -113,31 +113,26 @@ local EggData = {
 local MutationData = {
     Golden = {
         Name = "Golden",
-        Price = "Premium",
         Icon = "✨",
         Rarity = 10
     },
     Diamond = {
-        Name = "Diamond",
-        Price = "Premium", 
+        Name = "Diamond", 
         Icon = "💎",
         Rarity = 20
     },
     Electirc = {
         Name = "Electric",
-        Price = "Premium",
         Icon = "⚡",
         Rarity = 50
     },
     Fire = {
         Name = "Fire",
-        Price = "Premium",
         Icon = "🔥",
         Rarity = 100
     },
     Dino = {
         Name = "Jurassic",
-        Price = "Premium",
         Icon = "🦕",
         Rarity = 100
     }
@@ -213,26 +208,30 @@ local function parsePrice(priceStr)
     if type(priceStr) == "number" then
         return priceStr
     end
-    if priceStr == "Premium" then
-        return 999999999999 -- High value for premium items
-    end
     -- Remove commas and convert to number
     local cleanPrice = priceStr:gsub(",", "")
     return tonumber(cleanPrice) or 0
 end
 
--- Sort data by price (low to high)
-local function sortDataByPrice(data)
+-- Sort data by price (low to high) - only for eggs
+local function sortDataByPrice(data, isEggs)
     local sortedData = {}
     for id, item in pairs(data) do
         table.insert(sortedData, {id = id, data = item})
     end
     
-    table.sort(sortedData, function(a, b)
-        local priceA = parsePrice(a.data.Price)
-        local priceB = parsePrice(b.data.Price)
-        return priceA < priceB
-    end)
+    if isEggs then
+        table.sort(sortedData, function(a, b)
+            local priceA = parsePrice(a.data.Price)
+            local priceB = parsePrice(b.data.Price)
+            return priceA < priceB
+        end)
+    else
+        -- For mutations, sort by name
+        table.sort(sortedData, function(a, b)
+            return a.data.Name < b.data.Name
+        end)
+    end
     
     return sortedData
 end
@@ -333,7 +332,11 @@ local function createItemCard(itemId, itemData, parent)
     price.Size = UDim2.new(1, -16, 0, 16)
     price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
-    price.Text = "$" .. itemData.Price
+    if currentPage == "eggs" then
+        price.Text = "$" .. itemData.Price
+    else
+        price.Text = "Mutation"
+    end
     price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
@@ -572,7 +575,6 @@ function EggSelection.CreateUI()
     
     -- Search Bar
     local searchBar = createSearchBar(MainFrame)
-    searchBar.Position = UDim2.new(0, 8, 0, 96)
     
     -- Content Area
     local content = Instance.new("Frame")
@@ -666,8 +668,8 @@ function EggSelection.RefreshContent()
     -- Filter by search
     local filteredData = filterDataBySearch(data, searchText)
     
-    -- Sort by price (low to high)
-    local sortedData = sortDataByPrice(filteredData)
+    -- Sort by price (low to high) for eggs, by name for mutations
+    local sortedData = sortDataByPrice(filteredData, currentPage == "eggs")
     
     -- Add content
     for i, item in ipairs(sortedData) do
