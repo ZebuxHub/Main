@@ -3034,17 +3034,32 @@ local function getBigPets()
     local petsFolder = workspace:FindFirstChild("Pets")
     if not petsFolder then return pets end
     
+    local playerUserId = Players.LocalPlayer.UserId
+    
     for _, petModel in pairs(petsFolder:GetChildren()) do
         if petModel:IsA("Model") then
-            local rootPart = petModel:FindFirstChild("RootPart")
-            if rootPart then
-                local bigValue = rootPart:GetAttribute("BigValue")
-                if bigValue then
-                    table.insert(pets, {
-                        model = petModel,
-                        name = bigValue,
-                        rootPart = rootPart
-                    })
+            -- First verify if this pet belongs to the user
+            local petUserId = petModel:GetAttribute("UserId")
+            if petUserId and tonumber(petUserId) == playerUserId then
+                local rootPart = petModel:FindFirstChild("RootPart")
+                if rootPart then
+                    -- Check if it has the BigPetGUI structure
+                    local gui = rootPart:FindFirstChild("GUI")
+                    if gui then
+                        local bigPetGUI = gui:FindFirstChild("BigPetGUI")
+                        if bigPetGUI then
+                            -- This is confirmed to be a big pet that belongs to the user
+                            local bigValue = rootPart:GetAttribute("BigValue")
+                            local petName = bigValue or petModel.Name
+                            
+                            table.insert(pets, {
+                                model = petModel,
+                                name = petName,
+                                rootPart = rootPart,
+                                gui = bigPetGUI
+                            })
+                        end
+                    end
                 end
             end
         end
@@ -3053,15 +3068,19 @@ local function getBigPets()
     return pets
 end
 
-local function isPetEating(petModel)
-    local rootPart = petModel:FindFirstChild("RootPart")
-    if not rootPart then return false end
-    
-    local gui = rootPart:FindFirstChild("GUI")
-    if not gui then return false end
-    
-    local bigPetGUI = gui:FindFirstChild("BigPetGUI")
-    if not bigPetGUI then return false end
+local function isPetEating(petInfo)
+    -- Use the GUI from petInfo if available, otherwise fallback to finding it
+    local bigPetGUI = petInfo.gui
+    if not bigPetGUI then
+        local rootPart = petInfo.rootPart or petInfo.model:FindFirstChild("RootPart")
+        if not rootPart then return false end
+        
+        local gui = rootPart:FindFirstChild("GUI")
+        if not gui then return false end
+        
+        bigPetGUI = gui:FindFirstChild("BigPetGUI")
+        if not bigPetGUI then return false end
+    end
     
     local feed = bigPetGUI:FindFirstChild("Feed")
     if not feed then return false end
@@ -3070,6 +3089,7 @@ local function isPetEating(petModel)
     if not txt or not txt:IsA("TextLabel") then return false end
     
     local timeText = tostring(txt.Text or "")
+    -- Pet is available for feeding when timer shows "00:00"
     return timeText == "00:00"
 end
 
@@ -3118,7 +3138,7 @@ local function runAutoFeed()
             end
             
             for _, pet in ipairs(bigPets) do
-                if isPetEating(pet.model) then
+                if isPetEating(pet) then -- Pass the pet info object instead of just the model
                     for fruitName, _ in pairs(selectedFeedFruits) do
                         if equipFruit(fruitName) then
                             task.wait(0.2)
@@ -3127,7 +3147,7 @@ local function runAutoFeed()
                                 autoFeedStatus.lastAction = "Fed " .. pet.name .. " with " .. fruitName
                                 updateAutoFeedStatus()
                                 task.wait(0.5)
-                                break
+                                break -- Move to next pet after successful feeding
                             else
                                 autoFeedStatus.lastAction = "Failed to feed " .. pet.name
                                 updateAutoFeedStatus()
