@@ -1992,36 +1992,20 @@ local eggPriceInput = Tabs.AutoTab:Input({
     end
 })
 
-local eggRarityDropdown = Tabs.AutoTab:Dropdown({
-    Title = "⭐ Rarity",
-    Desc = "Filter by egg rarity",
-    Values = { "1", "2", "3", "4", "5", "6" },
-    Value = "1",
-    Visible = false,
-    Callback = function(selection)
-        local rarity = tonumber(selection) or 1
-        eggIdList = buildEggIdList("rarity", rarity)
-        eggDropdown:Refresh(eggIdList)
-    end
-})
+
 
 local eggFilterDropdown = Tabs.AutoTab:Dropdown({
     Title = "🔍 Filter Eggs",
-    Desc = "Filter eggs by price or rarity",
-    Values = { "All Eggs", "By Price", "By Rarity" },
+    Desc = "Filter eggs by price",
+    Values = { "All Eggs", "By Price" },
     Value = "All Eggs",
     Callback = function(selection)
         if selection == "By Price" then
             -- Show price input
             eggPriceInput:SetValue("1000000") -- Default 1M
             eggPriceInput:SetVisible(true)
-            eggRarityDropdown:SetVisible(false)
-        elseif selection == "By Rarity" then
-            eggPriceInput:SetVisible(false)
-            eggRarityDropdown:SetVisible(true)
         else
             eggPriceInput:SetVisible(false)
-            eggRarityDropdown:SetVisible(false)
             -- Refresh with no filter
             eggIdList = buildEggIdList()
             eggDropdown:Refresh(eggIdList)
@@ -4016,7 +4000,6 @@ local function registerConfigElements()
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("eggFilterType", eggFilterDropdown)
         zooConfig:Register("eggMinPrice", eggPriceInput)
-        zooConfig:Register("eggRarity", eggRarityDropdown)
         zooConfig:Register("mutationFilterType", mutationFilterDropdown)
         zooConfig:Register("mutationRarity", mutationRarityDropdown)
         zooConfig:Register("fruitFilterType", fruitFilterDropdown)
