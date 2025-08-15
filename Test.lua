@@ -1917,34 +1917,7 @@ local selectedMutationSet = {}
 local selectedFruitSet = {}
 local currentEggSort = "alphabetical" -- "alphabetical", "price_low", "price_high"
 
--- Egg sorting dropdown
-local eggSortDropdown = Tabs.AutoTab:Dropdown({
-    Title = "📊 Sort Eggs By",
-    Desc = "Choose how to sort the egg list",
-    Values = { "Alphabetical", "Price: Low to High", "Price: High to Low" },
-    Value = "Alphabetical",
-    Callback = function(selection)
-        if selection == "Alphabetical" then
-            currentEggSort = "alphabetical"
-        elseif selection == "Price: Low to High" then
-            currentEggSort = "price_low"
-        elseif selection == "Price: High to Low" then
-            currentEggSort = "price_high"
-        end
-        
-        -- Refresh egg dropdown with new sorting
-        local newEggList = buildEggIdList(currentEggSort)
-        if eggDropdown and eggDropdown.Refresh then
-            eggDropdown:Refresh(newEggList)
-        end
-        
-        WindUI:Notify({ 
-            Title = "📊 Egg Sort", 
-            Content = "Egg list sorted by: " .. selection, 
-            Duration = 3 
-        })
-    end
-})
+
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
@@ -1981,6 +1954,35 @@ eggDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
+-- Egg sorting dropdown
+local eggSortDropdown = Tabs.AutoTab:Dropdown({
+    Title = "📊 Sort Eggs By",
+    Desc = "Choose how to sort the egg list",
+    Values = { "Alphabetical", "Price: Low to High", "Price: High to Low" },
+    Value = "Alphabetical",
+    Callback = function(selection)
+        if selection == "Alphabetical" then
+            currentEggSort = "alphabetical"
+        elseif selection == "Price: Low to High" then
+            currentEggSort = "price_low"
+        elseif selection == "Price: High to Low" then
+            currentEggSort = "price_high"
+        end
+        
+        -- Refresh egg dropdown with new sorting
+        local newEggList = buildEggIdList(currentEggSort)
+        if eggDropdown and eggDropdown.Refresh then
+            eggDropdown:Refresh(newEggList)
+        end
+        
+        WindUI:Notify({ 
+            Title = "📊 Egg Sort", 
+            Content = "Egg list sorted by: " .. selection, 
+            Duration = 3 
+        })
+    end
+})
+
 local mutationDropdown
 mutationDropdown = Tabs.AutoTab:Dropdown({
     Title = "🧬 Pick Mutations",
@@ -2007,27 +2009,6 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-
-
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Selection",
-    Desc = "Show what eggs and mutations are currently selected",
-    Callback = function()
-        local eggTypes = {}
-        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
-        table.sort(eggTypes)
-        
-        local mutations = {}
-        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
-        table.sort(mutations)
-        
-        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
-        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
-        
-        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
-            end
-})
-
 Tabs.AutoTab:Button({
     Title = "🔄 Refresh Lists",
     Desc = "Refresh all dropdown lists with current data",
@@ -2047,8 +2028,33 @@ Tabs.AutoTab:Button({
     end
 })
 
+Tabs.AutoTab:Button({
+    Title = "🔍 Debug Selection",
+    Desc = "Show what eggs and mutations are currently selected",
+    Callback = function()
+        local eggTypes = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
+        table.sort(eggTypes)
+        
+        local mutations = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
+        table.sort(mutations)
+        
+        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
+        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
+        
+        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
+    end
+})
+
+
+
+
+
 local autoBuyEnabled = false
 local autoBuyThread = nil
+
+
 
 
 
@@ -2100,9 +2106,18 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
     
+    -- Debug: Log egg type found
+    print("🔍 Found egg type:", eggType)
+    
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
-    if not selectedTypeSet[eggType] then return false, nil, nil end
+        if not selectedTypeSet[eggType] then 
+            print("❌ Egg type not selected:", eggType)
+            return false, nil, nil 
+        end
+        print("✅ Egg type selected:", eggType)
+    else
+        print("ℹ️ No eggs selected, buying all types")
     end
     
     -- Now check mutation if mutations are selected
@@ -2111,6 +2126,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
+            print("❌ Mutations selected but egg has no mutation")
             return false, nil, nil
         end
         -- Check if egg has a selected mutation
@@ -2121,16 +2137,73 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         end
         
         if not selectedMutationSet[mappedEggMutation] then
+            print("❌ Egg mutation not selected:", eggMutation, "->", mappedEggMutation)
             return false, nil, nil
         end
+        print("✅ Egg mutation selected:", eggMutation, "->", mappedEggMutation)
+    else
+        print("ℹ️ No mutations selected, buying all mutations")
     end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-    if type(price) ~= "number" then return false, nil, nil end
-    if playerMoney < price then return false, nil, nil end
+    if type(price) ~= "number" then 
+        print("❌ Invalid price:", price)
+        return false, nil, nil 
+    end
+    if playerMoney < price then 
+        print("❌ Not enough money:", playerMoney, "<", price)
+        return false, nil, nil 
+    end
     
+    print("✅ Should buy egg:", eggInstance.Name, "Type:", eggType, "Price:", price)
     return true, eggInstance.Name, price
 end
+
+Tabs.AutoTab:Button({
+    Title = "🔍 Debug Auto Buy",
+    Desc = "Test auto buy system and show current status",
+    Callback = function()
+        local islandName = getAssignedIslandName()
+        local activeBelt = getActiveBelt(islandName)
+        local netWorth = getPlayerNetWorth()
+        
+        local message = "🔍 Auto Buy Debug:\n"
+        message = message .. "🏝️ Island: " .. tostring(islandName or "None") .. "\n"
+        message = message .. "💰 NetWorth: " .. tostring(netWorth) .. "\n"
+        message = message .. "🔄 Auto Buy Enabled: " .. tostring(autoBuyEnabled) .. "\n"
+        message = message .. "🧵 Auto Buy Thread: " .. tostring(autoBuyThread ~= nil) .. "\n"
+        
+        if activeBelt then
+            local children = {}
+            for _, inst in ipairs(activeBelt:GetChildren()) do
+                if inst:IsA("Model") then table.insert(children, inst) end
+            end
+            message = message .. "🥚 Eggs on Belt: " .. #children .. "\n"
+            
+            -- Test first egg
+            if #children > 0 then
+                local firstEgg = children[1]
+                local eggType = firstEgg:GetAttribute("Type") or firstEgg:GetAttribute("EggType") or firstEgg:GetAttribute("Name")
+                local price = firstEgg:GetAttribute("Price")
+                message = message .. "🥚 First Egg: " .. tostring(firstEgg.Name) .. "\n"
+                message = message .. "📝 Type: " .. tostring(eggType) .. "\n"
+                message = message .. "💰 Price: " .. tostring(price) .. "\n"
+                
+                -- Test if we should buy it
+                local shouldBuy, uid, eggPrice = shouldBuyEggInstance(firstEgg, netWorth)
+                message = message .. "✅ Should Buy: " .. tostring(shouldBuy) .. "\n"
+                if shouldBuy then
+                    message = message .. "🆔 UID: " .. tostring(uid) .. "\n"
+                    message = message .. "💵 Price: " .. tostring(eggPrice) .. "\n"
+                end
+            end
+        else
+            message = message .. "❌ No active belt found\n"
+        end
+        
+        WindUI:Notify({ Title = "🔍 Auto Buy Debug", Content = message, Duration = 8 })
+    end
+})
 
 local function buyEggByUID(eggUID)
     local args = {
