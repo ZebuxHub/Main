@@ -1483,7 +1483,7 @@ Tabs.AutoTab:Button({
         
         if not customEggUI then
             local success, result = pcall(function()
-                return CustomEggUI.new(game:GetService("CoreGui"), function(selectedEggs)
+                return CustomEggUI.new(game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"), function(selectedEggs)
                     -- Callback when eggs are selected
                     selectedTypeSet = {}
                     for eggId, _ in pairs(selectedEggs) do
@@ -1529,6 +1529,13 @@ Tabs.AutoTab:Button({
             local success, result = pcall(function()
                 customEggUI:setSelectedEggs(selectedTypeSet)
                 customEggUI:show()
+                
+                -- Force the UI to be visible and on top
+                if customEggUI.mainFrame then
+                    customEggUI.mainFrame.Visible = true
+                    customEggUI.mainFrame.ZIndex = 999
+                    customEggUI.mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+                end
             end)
             
             if not success then
@@ -1540,6 +1547,13 @@ Tabs.AutoTab:Button({
                 print("❌ Failed to show Custom Egg UI: " .. tostring(result))
             else
                 print("✅ Custom Egg UI shown successfully")
+                
+                -- Additional check to ensure visibility
+                task.wait(0.1)
+                if customEggUI.mainFrame and not customEggUI.mainFrame.Visible then
+                    customEggUI.mainFrame.Visible = true
+                    print("🔧 Forced UI visibility")
+                end
             end
         end
     end
@@ -1579,6 +1593,16 @@ Tabs.AutoTab:Button({
         local status = {}
         table.insert(status, "CustomEggUI loaded: " .. tostring(CustomEggUI ~= nil))
         table.insert(status, "customEggUI instance: " .. tostring(customEggUI ~= nil))
+        
+        if customEggUI then
+            table.insert(status, "mainFrame exists: " .. tostring(customEggUI.mainFrame ~= nil))
+            if customEggUI.mainFrame then
+                table.insert(status, "mainFrame visible: " .. tostring(customEggUI.mainFrame.Visible))
+                table.insert(status, "mainFrame parent: " .. tostring(customEggUI.mainFrame.Parent and customEggUI.mainFrame.Parent.Name))
+                table.insert(status, "mainFrame position: " .. tostring(customEggUI.mainFrame.Position))
+            end
+        end
+        
         table.insert(status, "Selected eggs count: " .. tostring(table.getn(selectedTypeSet)))
         
         local message = table.concat(status, "\n")
@@ -1588,6 +1612,31 @@ Tabs.AutoTab:Button({
             Duration = 8 
         })
         print("🔧 Debug Info:", message)
+    end
+})
+
+-- Force show button
+Tabs.AutoTab:Button({
+    Title = "👁️ Force Show UI",
+    Desc = "Force the Custom Egg UI to be visible",
+    Callback = function()
+        if customEggUI and customEggUI.mainFrame then
+            customEggUI.mainFrame.Visible = true
+            customEggUI.mainFrame.ZIndex = 999
+            customEggUI.mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+            WindUI:Notify({ 
+                Title = "👁️ UI Forced Visible", 
+                Content = "Custom Egg UI should now be visible!", 
+                Duration = 3 
+            })
+            print("👁️ Forced UI visibility")
+        else
+            WindUI:Notify({ 
+                Title = "❌ No UI Instance", 
+                Content = "Custom Egg UI instance not found. Create it first.", 
+                Duration = 3 
+            })
+        end
     end
 })
 
