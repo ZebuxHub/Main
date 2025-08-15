@@ -113,32 +113,27 @@ local EggData = {
 local MutationData = {
     Golden = {
         Name = "Golden",
-        Price = "Premium",
-        Icon = "rbxassetid://71012831091414", -- Using a golden-like icon
+        Icon = "✨",
         Rarity = 10
     },
     Diamond = {
         Name = "Diamond",
-        Price = "Premium", 
-        Icon = "rbxassetid://79960683434582", -- Using a prismatic-like icon
+        Icon = "💎",
         Rarity = 20
     },
     Electirc = {
         Name = "Electric",
-        Price = "Premium",
-        Icon = "rbxassetid://104958288296273", -- Using a hyper-like icon
+        Icon = "⚡",
         Rarity = 50
     },
     Fire = {
         Name = "Fire",
-        Price = "Premium",
-        Icon = "rbxassetid://126412407639969", -- Using a demon-like icon
+        Icon = "🔥",
         Rarity = 100
     },
     Dino = {
         Name = "Jurassic",
-        Price = "Premium",
-        Icon = "rbxassetid://80783528632315", -- Using dino egg icon
+        Icon = "🦕",
         Rarity = 100
     }
 }
@@ -156,6 +151,7 @@ local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
 local currentPage = "eggs" -- "eggs" or "mutations"
+local searchText = ""
 
 -- Callback functions
 local onSelectionChanged = nil
@@ -207,6 +203,54 @@ local function getRarityColor(rarity)
     end
 end
 
+-- Price parsing function
+local function parsePrice(priceStr)
+    if type(priceStr) == "number" then
+        return priceStr
+    end
+    if priceStr == "Premium" then
+        return 999999999999 -- High value for premium items
+    end
+    -- Remove commas and convert to number
+    local cleanPrice = priceStr:gsub(",", "")
+    return tonumber(cleanPrice) or 0
+end
+
+-- Sort data by price (low to high)
+local function sortDataByPrice(data)
+    local sortedData = {}
+    for id, item in pairs(data) do
+        table.insert(sortedData, {id = id, data = item})
+    end
+    
+    table.sort(sortedData, function(a, b)
+        local priceA = parsePrice(a.data.Price)
+        local priceB = parsePrice(b.data.Price)
+        return priceA < priceB
+    end)
+    
+    return sortedData
+end
+
+-- Filter data by search text
+local function filterDataBySearch(data, searchText)
+    if searchText == "" then
+        return data
+    end
+    
+    local filteredData = {}
+    local searchLower = string.lower(searchText)
+    
+    for id, item in pairs(data) do
+        local nameLower = string.lower(item.Name)
+        if string.find(nameLower, searchLower, 1, true) then
+            filteredData[id] = item
+        end
+    end
+    
+    return filteredData
+end
+
 -- Create Glass Effect
 local function createGlassEffect(parent)
     local glass = Instance.new("Frame")
@@ -247,14 +291,24 @@ local function createItemButton(itemId, itemData, parent)
     glass.Size = UDim2.new(1, -4, 1, -4)
     glass.Position = UDim2.new(0, 2, 0, 2)
     
-    -- Create ImageIcon instead of TextLabel
-    local icon = Instance.new("ImageLabel")
+    -- Create Icon (ImageLabel for eggs, TextLabel for mutations)
+    local icon
+    if currentPage == "eggs" then
+        icon = Instance.new("ImageLabel")
+        icon.Image = itemData.Icon
+        icon.ScaleType = Enum.ScaleType.Fit
+    else
+        icon = Instance.new("TextLabel")
+        icon.Text = itemData.Icon
+        icon.TextSize = 24
+        icon.Font = Enum.Font.GothamBold
+        icon.TextColor3 = getRarityColor(itemData.Rarity)
+    end
+    
     icon.Name = "Icon"
     icon.Size = UDim2.new(0, 40, 0, 40)
     icon.Position = UDim2.new(0, 8, 0.5, -20)
     icon.BackgroundTransparency = 1
-    icon.Image = itemData.Icon
-    icon.ScaleType = Enum.ScaleType.Fit
     icon.Parent = button
     
     local name = Instance.new("TextLabel")
@@ -293,6 +347,12 @@ local function createItemButton(itemId, itemData, parent)
     checkmark.Visible = false
     checkmark.Parent = button
     
+    -- Set initial selection state
+    if selectedItems[itemId] then
+        checkmark.Visible = true
+        glass.BackgroundColor3 = colors.selected
+    end
+    
     -- Hover effect
     button.MouseEnter:Connect(function()
         if not selectedItems[itemId] then
@@ -324,6 +384,53 @@ local function createItemButton(itemId, itemData, parent)
     end)
     
     return button
+end
+
+-- Create Search Bar
+local function createSearchBar(parent)
+    local searchContainer = Instance.new("Frame")
+    searchContainer.Name = "SearchContainer"
+    searchContainer.Size = UDim2.new(1, 0, 0, 40)
+    searchContainer.BackgroundTransparency = 1
+    searchContainer.Parent = parent
+    
+    local searchGlass = createGlassEffect(searchContainer)
+    searchGlass.Size = UDim2.new(1, 0, 1, 0)
+    
+    local searchIcon = Instance.new("TextLabel")
+    searchIcon.Name = "SearchIcon"
+    searchIcon.Size = UDim2.new(0, 20, 0, 20)
+    searchIcon.Position = UDim2.new(0, 12, 0.5, -10)
+    searchIcon.BackgroundTransparency = 1
+    searchIcon.Text = "🔍"
+    searchIcon.TextSize = 14
+    searchIcon.Font = Enum.Font.Gotham
+    searchIcon.TextColor3 = colors.textSecondary
+    searchIcon.Parent = searchContainer
+    
+    local searchBox = Instance.new("TextBox")
+    searchBox.Name = "SearchBox"
+    searchBox.Size = UDim2.new(1, -60, 0.8, 0)
+    searchBox.Position = UDim2.new(0, 40, 0.1, 0)
+    searchBox.BackgroundTransparency = 1
+    searchBox.Text = ""
+    searchBox.PlaceholderText = "Search eggs..."
+    searchBox.TextSize = 14
+    searchBox.Font = Enum.Font.Gotham
+    searchBox.TextColor3 = colors.text
+    searchBox.TextXAlignment = Enum.TextXAlignment.Left
+    searchBox.ClearTextOnFocus = false
+    searchBox.Parent = searchContainer
+    
+    -- Search functionality
+    searchBox.Changed:Connect(function(prop)
+        if prop == "Text" then
+            searchText = searchBox.Text
+            EggSelection.RefreshContent()
+        end
+    end)
+    
+    return searchContainer
 end
 
 -- Create Page Tabs
@@ -361,6 +468,11 @@ local function createPageTabs(parent)
         currentPage = "eggs"
         eggsTab.TextColor3 = colors.pageActive
         mutationsTab.TextColor3 = colors.pageInactive
+        -- Update search placeholder
+        local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
+        if searchBox then
+            searchBox.PlaceholderText = "Search eggs..."
+        end
         EggSelection.RefreshContent()
     end)
     
@@ -368,6 +480,11 @@ local function createPageTabs(parent)
         currentPage = "mutations"
         mutationsTab.TextColor3 = colors.pageActive
         eggsTab.TextColor3 = colors.pageInactive
+        -- Update search placeholder
+        local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
+        if searchBox then
+            searchBox.PlaceholderText = "Search mutations..."
+        end
         EggSelection.RefreshContent()
     end)
     
@@ -446,11 +563,15 @@ function EggSelection.CreateUI()
     local pageTabs = createPageTabs(MainFrame)
     pageTabs.Position = UDim2.new(0, 8, 0, 48)
     
+    -- Search Bar
+    local searchBar = createSearchBar(MainFrame)
+    searchBar.Position = UDim2.new(0, 8, 0, 96)
+    
     -- Content Area
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, -16, 1, -96)
-    content.Position = UDim2.new(0, 8, 0, 96)
+    content.Size = UDim2.new(1, -16, 1, -136)
+    content.Position = UDim2.new(0, 8, 0, 144)
     content.BackgroundTransparency = 1
     content.Parent = MainFrame
     
@@ -473,11 +594,13 @@ function EggSelection.CreateUI()
             MainFrame.Size = originalSize
             content.Visible = true
             pageTabs.Visible = true
+            searchBar.Visible = true
             isMinimized = false
         else
             MainFrame.Size = minimizedSize
             content.Visible = false
             pageTabs.Visible = false
+            searchBar.Visible = false
             isMinimized = true
         end
     end)
@@ -529,15 +652,18 @@ function EggSelection.RefreshContent()
         end
     end
     
-    -- Add content based on current page
-    if currentPage == "eggs" then
-        for eggId, eggData in pairs(EggData) do
-            createItemButton(eggId, eggData, scrollFrame)
-        end
-    else
-        for mutationId, mutationData in pairs(MutationData) do
-            createItemButton(mutationId, mutationData, scrollFrame)
-        end
+    -- Get data based on current page
+    local data = (currentPage == "eggs") and EggData or MutationData
+    
+    -- Filter by search
+    local filteredData = filterDataBySearch(data, searchText)
+    
+    -- Sort by price (low to high)
+    local sortedData = sortDataByPrice(filteredData)
+    
+    -- Add content
+    for _, item in ipairs(sortedData) do
+        createItemButton(item.id, item.data, scrollFrame)
     end
 end
 
