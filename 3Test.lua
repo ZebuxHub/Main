@@ -1472,92 +1472,335 @@ Tabs.AutoTab:Button({
     Title = "🥚 Select Eggs",
     Desc = "Open visual egg selection interface",
     Callback = function()
-        if not CustomEggUI then
-            WindUI:Notify({ 
-                Title = "❌ Error", 
-                Content = "Custom Egg UI failed to load. Please check your internet connection.", 
-                Duration = 5 
-            })
-            return
-        end
-        
-        if not customEggUI then
-            local success, result = pcall(function()
-                return CustomEggUI.new(game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"), function(selectedEggs)
-                    -- Callback when eggs are selected
-                    selectedTypeSet = {}
-                    for eggId, _ in pairs(selectedEggs) do
-                        selectedTypeSet[eggId] = true
-                        -- Also include the mapped Type from config (if available and different)
-                        local mappedType = idToTypeMap[eggId]
-                        if mappedType and tostring(mappedType) ~= eggId then
-                            selectedTypeSet[tostring(mappedType)] = true
+        -- Try external Custom Egg UI first
+        if CustomEggUI then
+            if not customEggUI then
+                local success, result = pcall(function()
+                    return CustomEggUI.new(game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"), function(selectedEggs)
+                        -- Callback when eggs are selected
+                        selectedTypeSet = {}
+                        for eggId, _ in pairs(selectedEggs) do
+                            selectedTypeSet[eggId] = true
+                            -- Also include the mapped Type from config (if available and different)
+                            local mappedType = idToTypeMap[eggId]
+                            if mappedType and tostring(mappedType) ~= eggId then
+                                selectedTypeSet[tostring(mappedType)] = true
+                            end
                         end
-                    end
-                    
-                    -- Update selected types display
-                    local keys = {}
-                    for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-                    table.sort(keys)
-                    statusData.selectedTypes = table.concat(keys, ", ")
-                    updateStatusParagraph()
-                    
-                    WindUI:Notify({ 
-                        Title = "🥚 Eggs Selected", 
-                        Content = "Selected " .. #keys .. " egg types!", 
-                        Duration = 3 
-                    })
+                        
+                        -- Update selected types display
+                        local keys = {}
+                        for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+                        table.sort(keys)
+                        statusData.selectedTypes = table.concat(keys, ", ")
+                        updateStatusParagraph()
+                        
+                        WindUI:Notify({ 
+                            Title = "🥚 Eggs Selected", 
+                            Content = "Selected " .. #keys .. " egg types!", 
+                            Duration = 3 
+                        })
+                    end)
                 end)
-            end)
-            
-            if success then
-                customEggUI = result
-                print("✅ Custom Egg UI created successfully")
-            else
-                WindUI:Notify({ 
-                    Title = "❌ Error", 
-                    Content = "Failed to create Custom Egg UI: " .. tostring(result), 
-                    Duration = 5 
-                })
-                print("❌ Failed to create Custom Egg UI: " .. tostring(result))
-                return
-            end
-        end
-        
-        -- Set current selection and show
-        if customEggUI then
-            local success, result = pcall(function()
-                customEggUI:setSelectedEggs(selectedTypeSet)
-                customEggUI:show()
                 
-                -- Force the UI to be visible and on top
-                if customEggUI.mainFrame then
-                    customEggUI.mainFrame.Visible = true
-                    customEggUI.mainFrame.ZIndex = 999
-                    customEggUI.mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
-                end
-            end)
-            
-            if not success then
-                WindUI:Notify({ 
-                    Title = "❌ Error", 
-                    Content = "Failed to show Custom Egg UI: " .. tostring(result), 
-                    Duration = 5 
-                })
-                print("❌ Failed to show Custom Egg UI: " .. tostring(result))
-            else
-                print("✅ Custom Egg UI shown successfully")
-                
-                -- Additional check to ensure visibility
-                task.wait(0.1)
-                if customEggUI.mainFrame and not customEggUI.mainFrame.Visible then
-                    customEggUI.mainFrame.Visible = true
-                    print("🔧 Forced UI visibility")
+                if success then
+                    customEggUI = result
+                    print("✅ Custom Egg UI created successfully")
+                else
+                    print("❌ Failed to create Custom Egg UI: " .. tostring(result))
+                    -- Fall back to simple UI
+                    createSimpleEggUI()
+                    return
                 end
             end
+            
+            -- Set current selection and show
+            if customEggUI then
+                local success, result = pcall(function()
+                    customEggUI:setSelectedEggs(selectedTypeSet)
+                    customEggUI:show()
+                    
+                    -- Force the UI to be visible and on top
+                    if customEggUI.mainFrame then
+                        customEggUI.mainFrame.Visible = true
+                        customEggUI.mainFrame.ZIndex = 999
+                        customEggUI.mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+                    end
+                end)
+                
+                if not success then
+                    print("❌ Failed to show Custom Egg UI: " .. tostring(result))
+                    -- Fall back to simple UI
+                    createSimpleEggUI()
+                else
+                    print("✅ Custom Egg UI shown successfully")
+                    
+                    -- Additional check to ensure visibility
+                    task.wait(0.1)
+                    if customEggUI.mainFrame and not customEggUI.mainFrame.Visible then
+                        customEggUI.mainFrame.Visible = true
+                        print("🔧 Forced UI visibility")
+                    end
+                end
+            end
+        else
+            -- No external UI available, use simple UI
+            createSimpleEggUI()
         end
     end
 })
+
+-- Simple egg selection UI function
+function createSimpleEggUI()
+    local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Remove existing simple UI if it exists
+    local existingUI = playerGui:FindFirstChild("SimpleEggUI")
+    if existingUI then
+        existingUI:Destroy()
+    end
+    
+    -- Create main frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "SimpleEggUI"
+    mainFrame.Size = UDim2.new(0, 400, 0, 500)
+    mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.ZIndex = 999
+    mainFrame.Parent = playerGui
+    
+    -- Add corner radius
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = mainFrame
+    
+    -- Add title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 50)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 12)
+    titleCorner.Parent = titleBar
+    
+    -- Add title text
+    local titleText = Instance.new("TextLabel")
+    titleText.Name = "Title"
+    titleText.Size = UDim2.new(1, -100, 1, 0)
+    titleText.Position = UDim2.new(0, 15, 0, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "🥚 Select Eggs"
+    titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleText.TextScaled = true
+    titleText.Font = Enum.Font.GothamBold
+    titleText.Parent = titleBar
+    
+    -- Add close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -40, 0, 10)
+    closeButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+    closeButton.BorderSizePixel = 0
+    closeButton.Text = "×"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Parent = titleBar
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeButton
+    
+    -- Add scroll frame for eggs
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Name = "ScrollFrame"
+    scrollFrame.Size = UDim2.new(1, -20, 1, -100)
+    scrollFrame.Position = UDim2.new(0, 10, 0, 60)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.Parent = mainFrame
+    
+    -- Add grid layout
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0, 120, 0, 140)
+    gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    gridLayout.Parent = scrollFrame
+    
+    -- Create egg buttons
+    local eggButtons = {}
+    for eggId, eggInfo in pairs(eggData) do
+        local eggButton = Instance.new("TextButton")
+        eggButton.Name = eggId
+        eggButton.Size = UDim2.new(0, 120, 0, 140)
+        eggButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        eggButton.BorderSizePixel = 0
+        eggButton.Text = ""
+        eggButton.Parent = scrollFrame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 8)
+        buttonCorner.Parent = eggButton
+        
+        -- Add border
+        local border = Instance.new("UIStroke")
+        border.Color = Color3.fromRGB(200, 200, 200)
+        border.Thickness = 2
+        border.Parent = eggButton
+        
+        -- Add egg name
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "Name"
+        nameLabel.Size = UDim2.new(1, -10, 0, 20)
+        nameLabel.Position = UDim2.new(0, 5, 0, 80)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = eggInfo.Name
+        nameLabel.TextColor3 = Color3.fromRGB(50, 50, 50)
+        nameLabel.TextScaled = true
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.Parent = eggButton
+        
+        -- Add price
+        local priceLabel = Instance.new("TextLabel")
+        priceLabel.Name = "Price"
+        priceLabel.Size = UDim2.new(1, -10, 0, 20)
+        priceLabel.Position = UDim2.new(0, 5, 0, 100)
+        priceLabel.BackgroundTransparency = 1
+        priceLabel.Text = "$" .. eggInfo.Price
+        priceLabel.TextColor3 = Color3.fromRGB(76, 175, 80)
+        priceLabel.TextScaled = true
+        priceLabel.Font = Enum.Font.GothamBold
+        priceLabel.Parent = eggButton
+        
+        -- Add selection indicator
+        local selectionIndicator = Instance.new("Frame")
+        selectionIndicator.Name = "SelectionIndicator"
+        selectionIndicator.Size = UDim2.new(1, 0, 1, 0)
+        selectionIndicator.Position = UDim2.new(0, 0, 0, 0)
+        selectionIndicator.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+        selectionIndicator.BackgroundTransparency = 0.8
+        selectionIndicator.Visible = selectedTypeSet[eggId] or false
+        selectionIndicator.Parent = eggButton
+        
+        local indicatorCorner = Instance.new("UICorner")
+        indicatorCorner.CornerRadius = UDim.new(0, 8)
+        indicatorCorner.Parent = selectionIndicator
+        
+        -- Add check mark
+        local checkMark = Instance.new("TextLabel")
+        checkMark.Name = "CheckMark"
+        checkMark.Size = UDim2.new(0, 30, 0, 30)
+        checkMark.Position = UDim2.new(1, -35, 0, 5)
+        checkMark.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+        checkMark.BorderSizePixel = 0
+        checkMark.Text = "✓"
+        checkMark.TextColor3 = Color3.fromRGB(255, 255, 255)
+        checkMark.TextScaled = true
+        checkMark.Font = Enum.Font.GothamBold
+        checkMark.Visible = selectedTypeSet[eggId] or false
+        checkMark.Parent = eggButton
+        
+        local checkCorner = Instance.new("UICorner")
+        checkCorner.CornerRadius = UDim.new(0, 15)
+        checkCorner.Parent = checkMark
+        
+        -- Button click handler
+        eggButton.MouseButton1Click:Connect(function()
+            if selectedTypeSet[eggId] then
+                -- Deselect
+                selectedTypeSet[eggId] = nil
+                selectionIndicator.Visible = false
+                checkMark.Visible = false
+                border.Color = Color3.fromRGB(200, 200, 200)
+            else
+                -- Select
+                selectedTypeSet[eggId] = true
+                selectionIndicator.Visible = true
+                checkMark.Visible = true
+                border.Color = Color3.fromRGB(76, 175, 80)
+            end
+        end)
+        
+        eggButtons[eggId] = {
+            button = eggButton,
+            indicator = selectionIndicator,
+            checkMark = checkMark,
+            border = border
+        }
+    end
+    
+    -- Update canvas size
+    local numEggs = 0
+    for _ in pairs(eggData) do
+        numEggs = numEggs + 1
+    end
+    
+    local rows = math.ceil(numEggs / 3)
+    local canvasHeight = rows * 150 + (rows - 1) * 10
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, canvasHeight)
+    
+    -- Add buttons frame
+    local buttonsFrame = Instance.new("Frame")
+    buttonsFrame.Name = "Buttons"
+    buttonsFrame.Size = UDim2.new(1, 0, 0, 50)
+    buttonsFrame.Position = UDim2.new(0, 0, 1, -50)
+    buttonsFrame.BackgroundTransparency = 1
+    buttonsFrame.Parent = mainFrame
+    
+    -- Add confirm button
+    local confirmButton = Instance.new("TextButton")
+    confirmButton.Name = "Confirm"
+    confirmButton.Size = UDim2.new(0, 100, 0, 35)
+    confirmButton.Position = UDim2.new(1, -110, 0, 7)
+    confirmButton.BackgroundColor3 = Color3.fromRGB(33, 150, 243)
+    confirmButton.BorderSizePixel = 0
+    confirmButton.Text = "Confirm"
+    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmButton.TextScaled = true
+    confirmButton.Font = Enum.Font.GothamBold
+    confirmButton.Parent = buttonsFrame
+    
+    local confirmCorner = Instance.new("UICorner")
+    confirmCorner.CornerRadius = UDim.new(0, 8)
+    confirmCorner.Parent = confirmButton
+    
+    -- Close button functionality
+    closeButton.MouseButton1Click:Connect(function()
+        mainFrame:Destroy()
+    end)
+    
+    -- Confirm button functionality
+    confirmButton.MouseButton1Click:Connect(function()
+        -- Update selected types display
+        local keys = {}
+        for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+        table.sort(keys)
+        statusData.selectedTypes = table.concat(keys, ", ")
+        updateStatusParagraph()
+        
+        WindUI:Notify({ 
+            Title = "🥚 Eggs Selected", 
+            Content = "Selected " .. #keys .. " egg types!", 
+            Duration = 3 
+        })
+        
+        mainFrame:Destroy()
+    end)
+    
+    WindUI:Notify({ 
+        Title = "🥚 Simple Egg UI", 
+        Content = "Simple egg selection UI created!", 
+        Duration = 3 
+    })
+end
 
 -- Show current selection button
 Tabs.AutoTab:Button({
@@ -1637,6 +1880,77 @@ Tabs.AutoTab:Button({
                 Duration = 3 
             })
         end
+    end
+})
+
+-- Create simple test UI button
+Tabs.AutoTab:Button({
+    Title = "🧪 Test Simple UI",
+    Desc = "Create a simple test UI to verify functionality",
+    Callback = function()
+        local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+        
+        -- Create a simple test frame
+        local testFrame = Instance.new("Frame")
+        testFrame.Name = "TestEggUI"
+        testFrame.Size = UDim2.new(0, 300, 0, 200)
+        testFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+        testFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        testFrame.BorderSizePixel = 0
+        testFrame.ZIndex = 999
+        testFrame.Parent = playerGui
+        
+        -- Add corner radius
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = testFrame
+        
+        -- Add title
+        local title = Instance.new("TextLabel")
+        title.Name = "Title"
+        title.Size = UDim2.new(1, 0, 0, 40)
+        title.Position = UDim2.new(0, 0, 0, 0)
+        title.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        title.BorderSizePixel = 0
+        title.Text = "🧪 Test UI - Click to close"
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.TextScaled = true
+        title.Font = Enum.Font.GothamBold
+        title.Parent = testFrame
+        
+        local titleCorner = Instance.new("UICorner")
+        titleCorner.CornerRadius = UDim.new(0, 8)
+        titleCorner.Parent = title
+        
+        -- Add content
+        local content = Instance.new("TextLabel")
+        content.Name = "Content"
+        content.Size = UDim2.new(1, -20, 1, -60)
+        content.Position = UDim2.new(0, 10, 0, 50)
+        content.BackgroundTransparency = 1
+        content.Text = "If you can see this, UI creation works!\n\nThis is a simple test frame.\nClick anywhere to close it."
+        content.TextColor3 = Color3.fromRGB(0, 0, 0)
+        content.TextScaled = true
+        content.Font = Enum.Font.Gotham
+        content.Parent = testFrame
+        
+        -- Make it clickable to close
+        testFrame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                testFrame:Destroy()
+                WindUI:Notify({ 
+                    Title = "✅ Test Successful", 
+                    Content = "Simple UI test worked! The issue is with the Custom Egg UI script.", 
+                    Duration = 5 
+                })
+            end
+        end)
+        
+        WindUI:Notify({ 
+            Title = "🧪 Test UI Created", 
+            Content = "A simple test UI should appear. Click it to close.", 
+            Duration = 3 
+        })
     end
 })
 
