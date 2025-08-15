@@ -670,22 +670,45 @@ end
 
 local function getEggPriceByType(eggType)
     local target = tostring(eggType)
+    
+    -- First, try to find by exact ID match in hard-coded config
+    if eggConfig[target] then
+        local price = eggConfig[target].Price
+        if price then
+            -- Parse price string to number (e.g., "3,000,000" -> 3000000)
+            if type(price) == "string" then
+                return parsePrice(price)
+            elseif type(price) == "number" then
+                return price
+            end
+        end
+    end
+    
+    -- If not found by exact ID, search through all config entries
     for key, value in pairs(eggConfig) do
         if type(value) == "table" then
             local t = value.Type or value.Name or value.type or value.name or tostring(key)
             if tostring(t) == target then
                 local price = value.Price or value.price or value.Cost or value.cost
-                if type(price) == "number" then return price end
-                if type(value.Base) == "table" and type(value.Base.Price) == "number" then return value.Base.Price end
-            end
-        else
-            if tostring(key) == target then
-                -- primitive mapping, try id-based
-                local price = getEggPriceById(key)
-                if type(price) == "number" then return price end
+                if price then
+                    -- Parse price string to number
+                    if type(price) == "string" then
+                        return parsePrice(price)
+                    elseif type(price) == "number" then
+                        return price
+                    end
+                end
             end
         end
     end
+    
+    -- Debug: Log what we're looking for
+    print("🔍 Price lookup failed for egg type:", target)
+    print("🔍 Available egg types in config:")
+    for key, value in pairs(eggConfig) do
+        print("  - " .. tostring(key))
+    end
+    
     return nil
 end
 
