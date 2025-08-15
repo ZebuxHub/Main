@@ -3274,6 +3274,12 @@ Tabs.FruitTab:Button({
                     -- Handle selection changes
                     selectedFruits = selectedItems
                     
+                    -- Debug: Print selected fruits
+                    print("Selected fruits updated:")
+                    for fruitId, _ in pairs(selectedFruits) do
+                        print("  - " .. fruitId)
+                    end
+                    
                     -- Update status display
                     local fruitKeys = {}
                     for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
@@ -3307,19 +3313,25 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          autoBuyFruitThread = task.spawn(function()
                  while autoBuyFruitEnabled do
                      -- Auto buy fruit logic
+                     print("Auto buy fruit loop - selectedFruits count:", selectedFruits and next(selectedFruits) and "has items" or "empty")
                      if selectedFruits and next(selectedFruits) then
                          local netWorth = getPlayerNetWorth()
+                         print("Current net worth:", netWorth)
                          for fruitId, _ in pairs(selectedFruits) do
                              if FruitData[fruitId] then
                                  local fruitPrice = parsePrice(FruitData[fruitId].Price)
+                                 print("Checking fruit:", fruitId, "Price:", fruitPrice, "Can afford:", netWorth >= fruitPrice)
                                  if netWorth >= fruitPrice then
                                      -- Try to buy the fruit
+                                     print("Attempting to buy fruit:", fruitId)
                                      local success = pcall(function()
                                          -- Fire the fruit buying remote
                                          local args = {
                                              fruitId
                                          }
+                                         print("Firing remote with args:", table.concat(args, ", "))
                                          ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+                                         print("Remote fired successfully")
                                      end)
                                      
                                      if success then
