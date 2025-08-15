@@ -4,7 +4,7 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 -- Load Custom Egg Selector
-local createCustomEggSelector = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/Eggui.lua"))()
+local CustomEggSelector = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/Eggui.lua"))()
 
 -- Services
 local Players = game:GetService("Players")
@@ -1446,47 +1446,25 @@ local mutationList = buildMutationList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 
--- Custom Egg Selector
-local customEggSelector = nil
-local eggSelectorButton = Tabs.AutoTab:Button({
+-- Custom Egg Selector Integration
+local eggSelector = nil
+local selectedEggs = {}
+
+Tabs.AutoTab:Button({
     Title = "🥚 Open Egg Selector",
-    Desc = "Open custom visual egg selector",
+    Desc = "Open visual egg selector with icons and prices",
     Callback = function()
-        if customEggSelector then
-            customEggSelector:Destroy()
-            customEggSelector = nil
+        if eggSelector then
+            eggSelector:destroy()
         end
         
-        customEggSelector = createCustomEggSelector()
-        
-        -- Load saved selections if available
-        if zooConfig then
-            local savedEggs = zooConfig:GetValue("selectedEggs") or {}
-            local savedMutations = zooConfig:GetValue("selectedMutations") or {}
-            customEggSelector:SetSelectedEggs(savedEggs)
-            customEggSelector:SetSelectedMutations(savedMutations)
-        end
-        
-        -- Set up callback to update selectedTypeSet when selections change
-        local function updateSelections()
-            local selectedEggs = customEggSelector:GetSelectedEggs()
-            local selectedMutations = customEggSelector:GetSelectedMutations()
-            
-            -- Update selectedTypeSet
+        eggSelector = CustomEggSelector.new("eggs", function(selectedItems)
+            selectedEggs = selectedItems
             selectedTypeSet = {}
-            for eggId, _ in pairs(selectedEggs) do
-                selectedTypeSet[eggId] = true
-                -- Also include the mapped Type from config
-                local mappedType = idToTypeMap[eggId]
-                if mappedType and tostring(mappedType) ~= eggId then
-                    selectedTypeSet[tostring(mappedType)] = true
-                end
-            end
             
-            -- Update selectedMutationSet
-            selectedMutationSet = {}
-            for mutationId, _ in pairs(selectedMutations) do
-                selectedMutationSet[mutationId] = true
+            -- Convert selected items to the format expected by the system
+            for _, eggName in ipairs(selectedItems) do
+                selectedTypeSet[eggName] = true
             end
             
             -- Update status display
@@ -1494,49 +1472,51 @@ local eggSelectorButton = Tabs.AutoTab:Button({
             for k in pairs(selectedTypeSet) do table.insert(keys, k) end
             table.sort(keys)
             statusData.selectedTypes = table.concat(keys, ", ")
-            
-            local mutationKeys = {}
-            for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-            table.sort(mutationKeys)
-            statusData.selectedMutations = table.concat(mutationKeys, ", ")
-            
             updateStatusParagraph()
             
-            -- Save selections to config
-            if zooConfig then
-                zooConfig:SetValue("selectedEggs", selectedEggs)
-                zooConfig:SetValue("selectedMutations", selectedMutations)
-            end
-        end
-        
-        -- Monitor for changes (simple polling for now)
-        task.spawn(function()
-            while customEggSelector do
-                updateSelections()
-                task.wait(0.5)
-            end
+            WindUI:Notify({ 
+                Title = "🥚 Eggs Selected", 
+                Content = "Selected " .. #selectedItems .. " eggs", 
+                Duration = 3 
+            })
         end)
     end
 })
 
--- Note: Mutations are now handled in the custom egg selector above
+-- Custom Mutation Selector Integration
+local mutationSelector = nil
+local selectedMutations = {}
 
 Tabs.AutoTab:Button({
-    Title = "💾 Save Current Selections",
-    Desc = "Save your current egg and mutation selections",
+    Title = "🧬 Open Mutation Selector",
+    Desc = "Open visual mutation selector with colors",
     Callback = function()
-        if customEggSelector then
-            local selectedEggs = customEggSelector:GetSelectedEggs()
-            local selectedMutations = customEggSelector:GetSelectedMutations()
-            
-            if zooConfig then
-                zooConfig:SetValue("selectedEggs", selectedEggs)
-                zooConfig:SetValue("selectedMutations", selectedMutations)
-                WindUI:Notify({ Title = "💾 Selections Saved", Content = "Your selections have been saved!", Duration = 3 })
-            end
-        else
-            WindUI:Notify({ Title = "⚠️ No Selector Open", Content = "Please open the egg selector first!", Duration = 3 })
+        if mutationSelector then
+            mutationSelector:destroy()
         end
+        
+        mutationSelector = CustomEggSelector.new("mutations", function(selectedItems)
+            selectedMutations = selectedItems
+            selectedMutationSet = {}
+            
+            -- Convert selected items to the format expected by the system
+            for _, mutationName in ipairs(selectedItems) do
+                selectedMutationSet[mutationName] = true
+            end
+            
+            -- Update status display
+            local keys = {}
+            for k in pairs(selectedMutationSet) do table.insert(keys, k) end
+            table.sort(keys)
+            statusData.selectedMutations = table.concat(keys, ", ")
+            updateStatusParagraph()
+            
+            WindUI:Notify({ 
+                Title = "🧬 Mutations Selected", 
+                Content = "Selected " .. #selectedItems .. " mutations", 
+                Duration = 3 
+            })
+        end)
     end
 })
 
@@ -1545,6 +1525,9 @@ Tabs.AutoTab:Button({
     Desc = "Update the mutation list if it's not showing all mutations",
     Callback = function()
         loadMutationConfig()
+        if mutationDropdown and mutationDropdown.Refresh then
+            mutationDropdown:Refresh(buildMutationList())
+        end
         updateStatusParagraph()
         WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
     end
@@ -1895,68 +1878,31 @@ local function getEggOptions()
     return eggOptions
 end
 
--- Custom Egg Selector for Place Tab
+-- Custom Place Egg Selector Integration
 local placeEggSelector = nil
-local placeEggSelectorButton = Tabs.PlaceTab:Button({
-    Title = "🥚 Open Place Egg Selector",
-    Desc = "Open custom visual egg selector for placement",
-    Callback = function()
-        if placeEggSelector then
-            placeEggSelector:Destroy()
-            placeEggSelector = nil
-        end
-        
-        placeEggSelector = createCustomEggSelector()
-        
-        -- Load saved place selections if available
-        if zooConfig then
-            local savedPlaceEggs = zooConfig:GetValue("selectedPlaceEggs") or {}
-            placeEggSelector:SetSelectedEggs(savedPlaceEggs)
-        end
-        
-        -- Set up callback to update selectedEggTypes when selections change
-        local function updatePlaceSelections()
-            local selectedEggs = placeEggSelector:GetSelectedEggs()
-            
-            -- Update selectedEggTypes
-            selectedEggTypes = {}
-            for eggId, _ in pairs(selectedEggs) do
-                table.insert(selectedEggTypes, eggId)
-            end
-            
-            placeStatusData.selectedEggs = #selectedEggTypes
-            updatePlaceStatusParagraph()
-            
-            -- Save selections to config
-            if zooConfig then
-                zooConfig:SetValue("selectedPlaceEggs", selectedEggs)
-            end
-        end
-        
-        -- Monitor for changes
-        task.spawn(function()
-            while placeEggSelector do
-                updatePlaceSelections()
-                task.wait(0.5)
-            end
-        end)
-    end
-})
+local selectedPlaceEggs = {}
 
 Tabs.PlaceTab:Button({
-    Title = "💾 Save Place Selections",
-    Desc = "Save your current place egg selections",
+    Title = "🥚 Open Place Egg Selector",
+    Desc = "Open visual egg selector for placement",
     Callback = function()
         if placeEggSelector then
-            local selectedEggs = placeEggSelector:GetSelectedEggs()
-            
-            if zooConfig then
-                zooConfig:SetValue("selectedPlaceEggs", selectedEggs)
-                WindUI:Notify({ Title = "💾 Place Selections Saved", Content = "Your place selections have been saved!", Duration = 3 })
-            end
-        else
-            WindUI:Notify({ Title = "⚠️ No Selector Open", Content = "Please open the place egg selector first!", Duration = 3 })
+            placeEggSelector:destroy()
         end
+        
+        placeEggSelector = CustomEggSelector.new("eggs", function(selectedItems)
+            selectedPlaceEggs = selectedItems
+            selectedEggTypes = selectedItems
+            
+            placeStatusData.selectedEggs = #selectedItems
+            updatePlaceStatusParagraph()
+            
+            WindUI:Notify({ 
+                Title = "🥚 Place Eggs Selected", 
+                Content = "Selected " .. #selectedItems .. " eggs for placement", 
+                Duration = 3 
+            })
+        end)
     end
 })
 
@@ -3352,15 +3298,10 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        -- Custom egg selector config will be handled separately
-        -- zooConfig:Register("selectedEggs", eggDropdown)
-        -- zooConfig:Register("selectedMutations", mutationDropdown)
-        -- Custom place egg selector config will be handled separately
-        -- zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
+        -- Custom selector data will be saved/loaded separately via the CustomEggSelector system
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
-            zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
         zooConfig:Register("automationPriority", priorityDropdown)
