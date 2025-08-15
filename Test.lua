@@ -1479,7 +1479,7 @@ Tabs.AutoTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedTypeSet = {}
-                    selectedMutationSet = {}
+        selectedMutationSet = {}
                     
                     for itemId, isSelected in pairs(selectedItems) do
                         if isSelected then
@@ -1576,7 +1576,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
-        if not selectedTypeSet[eggType] then return false, nil, nil end
+    if not selectedTypeSet[eggType] then return false, nil, nil end
     end
     
     -- Now check mutation if mutations are selected
@@ -3232,6 +3232,34 @@ Tabs.ShopTab:Button({
 -- Load Fruit Selection UI
 local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
 
+-- Fruit Data for auto buy functionality
+local FruitData = {
+    Strawberry = { Price = "5,000" },
+    Blueberry = { Price = "20,000" },
+    Watermelon = { Price = "80,000" },
+    Apple = { Price = "400,000" },
+    Orange = { Price = "1,200,000" },
+    Corn = { Price = "3,500,000" },
+    Banana = { Price = "12,000,000" },
+    Grape = { Price = "50,000,000" },
+    Pear = { Price = "200,000,000" },
+    Pineapple = { Price = "600,000,000" },
+    GoldMango = { Price = "2,000,000,000" },
+    BloodstoneCycad = { Price = "8,000,000,000" },
+    ColossalPinecone = { Price = "40,000,000,000" },
+    VoltGinkgo = { Price = "80,000,000,000" }
+}
+
+-- Price parsing function
+local function parsePrice(priceStr)
+    if type(priceStr) == "number" then
+        return priceStr
+    end
+    -- Remove commas and convert to number
+    local cleanPrice = priceStr:gsub(",", "")
+    return tonumber(cleanPrice) or 0
+end
+
 -- Fruit selection state
 local selectedFruits = {}
 local fruitSelectionVisible = false
@@ -3276,12 +3304,45 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Callback = function(state)
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
-            autoBuyFruitThread = task.spawn(function()
-                while autoBuyFruitEnabled do
-                    -- Auto buy fruit logic here
-                    task.wait(1)
-                end
-            end)
+                         autoBuyFruitThread = task.spawn(function()
+                 while autoBuyFruitEnabled do
+                     -- Auto buy fruit logic
+                     if selectedFruits and next(selectedFruits) then
+                         local netWorth = getPlayerNetWorth()
+                         for fruitId, _ in pairs(selectedFruits) do
+                             if FruitData[fruitId] then
+                                 local fruitPrice = parsePrice(FruitData[fruitId].Price)
+                                 if netWorth >= fruitPrice then
+                                     -- Try to buy the fruit
+                                     local success = pcall(function()
+                                         -- Fire the fruit buying remote
+                                         local args = {
+                                             "BuyFruit",
+                                             fruitId
+                                         }
+                                         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                                     end)
+                                     
+                                     if success then
+                                         WindUI:Notify({ 
+                                             Title = "🍎 Fruit Bought", 
+                                             Content = "Bought " .. fruitId .. " for $" .. fruitPrice, 
+                                             Duration = 2 
+                                         })
+                                     else
+                                         WindUI:Notify({ 
+                                             Title = "❌ Fruit Buy Failed", 
+                                             Content = "Failed to buy " .. fruitId, 
+                                             Duration = 2 
+                                         })
+                                     end
+                                 end
+                             end
+                         end
+                     end
+                     task.wait(2) -- Wait 2 seconds between attempts
+                 end
+             end)
             WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
         elseif (not state) and autoBuyFruitThread then
             WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
@@ -3354,7 +3415,7 @@ Tabs.SaveTab:Button({
     Callback = function()
         local success, err = pcall(function()
             if zooConfig then
-                zooConfig:Save()
+        zooConfig:Save()
                 
                 -- Save egg selections separately using writefile
                 local eggSelections = {
@@ -3388,11 +3449,11 @@ Tabs.SaveTab:Button({
         end)
         
         if success then
-            WindUI:Notify({ 
-                Title = "💾 Settings Saved", 
-                Content = "All your settings have been saved! 🎉", 
-                Duration = 3 
-            })
+        WindUI:Notify({ 
+            Title = "💾 Settings Saved", 
+            Content = "All your settings have been saved! 🎉", 
+            Duration = 3 
+        })
         else
             WindUI:Notify({ 
                 Title = "❌ Save Failed", 
@@ -3409,7 +3470,7 @@ Tabs.SaveTab:Button({
     Callback = function()
         local success, err = pcall(function()
             if zooConfig then
-                zooConfig:Load()
+        zooConfig:Load()
                 
                 -- Load egg selections separately
                 local success, data = pcall(function()
@@ -3470,11 +3531,11 @@ Tabs.SaveTab:Button({
         end)
         
         if success then
-            WindUI:Notify({ 
-                Title = "📂 Settings Loaded", 
-                Content = "Your settings have been loaded! 🎉", 
-                Duration = 3 
-            })
+        WindUI:Notify({ 
+            Title = "📂 Settings Loaded", 
+            Content = "Your settings have been loaded! 🎉", 
+            Duration = 3 
+        })
         else
             WindUI:Notify({ 
                 Title = "❌ Load Failed", 
@@ -3537,7 +3598,7 @@ task.spawn(function()
     
     -- Safe registration with error handling
     local success, err = pcall(function()
-        registerConfigElements() -- Register all UI elements for config
+    registerConfigElements() -- Register all UI elements for config
     end)
     
     if not success then
@@ -3545,9 +3606,9 @@ task.spawn(function()
     end
     
             -- Safe loading with error handling
-        if zooConfig then
+    if zooConfig then
             local loadSuccess, loadErr = pcall(function()
-                zooConfig:Load()
+        zooConfig:Load()
                 
                 -- Load egg selections separately
                 local success, data = pcall(function()
@@ -3608,11 +3669,11 @@ task.spawn(function()
             end)
             
             if loadSuccess then
-                WindUI:Notify({ 
-                    Title = "📂 Auto-Load", 
-                    Content = "Your saved settings have been loaded! 🎉", 
-                    Duration = 3 
-                })
+        WindUI:Notify({ 
+            Title = "📂 Auto-Load", 
+            Content = "Your saved settings have been loaded! 🎉", 
+            Duration = 3 
+        })
             else
                 warn("Failed to load config: " .. tostring(loadErr))
                 WindUI:Notify({ 
@@ -3621,7 +3682,7 @@ task.spawn(function()
                     Duration = 3 
                 })
             end
-        end
+    end
 end)
 
 
