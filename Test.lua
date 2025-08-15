@@ -3275,8 +3275,9 @@ local function registerConfigElements()
             return selectedTypeSet
         end, function(value)
             selectedTypeSet = value or {}
-            if EggSelection then
-                EggSelection.SetSelectedItems(selectedTypeSet)
+            -- Update the UI when settings are loaded
+            if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
+                EggSelection.RefreshContent()
             end
         end)
         
@@ -3284,8 +3285,9 @@ local function registerConfigElements()
             return selectedMutationSet
         end, function(value)
             selectedMutationSet = value or {}
-            if EggSelection then
-                EggSelection.SetSelectedItems(selectedMutationSet)
+            -- Update the UI when settings are loaded
+            if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
+                EggSelection.RefreshContent()
             end
         end)
     end
@@ -3328,12 +3330,27 @@ Tabs.SaveTab:Button({
     Title = "💾 Save Settings",
     Desc = "Save all your current settings",
     Callback = function()
-        zooConfig:Save()
-        WindUI:Notify({ 
-            Title = "💾 Settings Saved", 
-            Content = "All your settings have been saved! 🎉", 
-            Duration = 3 
-        })
+        local success, err = pcall(function()
+            if zooConfig then
+                zooConfig:Save()
+            else
+                error("Config manager not available")
+            end
+        end)
+        
+        if success then
+            WindUI:Notify({ 
+                Title = "💾 Settings Saved", 
+                Content = "All your settings have been saved! 🎉", 
+                Duration = 3 
+            })
+        else
+            WindUI:Notify({ 
+                Title = "❌ Save Failed", 
+                Content = "Failed to save settings: " .. tostring(err), 
+                Duration = 5 
+            })
+        end
     end
 })
 
@@ -3341,12 +3358,27 @@ Tabs.SaveTab:Button({
     Title = "📂 Load Settings",
     Desc = "Load your saved settings",
     Callback = function()
-        zooConfig:Load()
-        WindUI:Notify({ 
-            Title = "📂 Settings Loaded", 
-            Content = "Your settings have been loaded! 🎉", 
-            Duration = 3 
-        })
+        local success, err = pcall(function()
+            if zooConfig then
+                zooConfig:Load()
+            else
+                error("Config manager not available")
+            end
+        end)
+        
+        if success then
+            WindUI:Notify({ 
+                Title = "📂 Settings Loaded", 
+                Content = "Your settings have been loaded! 🎉", 
+                Duration = 3 
+            })
+        else
+            WindUI:Notify({ 
+                Title = "❌ Load Failed", 
+                Content = "Failed to load settings: " .. tostring(err), 
+                Duration = 5 
+            })
+        end
     end
 })
 
@@ -3399,14 +3431,36 @@ Tabs.SaveTab:Button({
 -- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(1) -- Wait a bit for UI to fully load
-    registerConfigElements() -- Register all UI elements for config
+    
+    -- Safe registration with error handling
+    local success, err = pcall(function()
+        registerConfigElements() -- Register all UI elements for config
+    end)
+    
+    if not success then
+        warn("Failed to register config elements: " .. tostring(err))
+    end
+    
+    -- Safe loading with error handling
     if zooConfig then
-        zooConfig:Load()
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load", 
-            Content = "Your saved settings have been loaded! 🎉", 
-            Duration = 3 
-        })
+        local loadSuccess, loadErr = pcall(function()
+            zooConfig:Load()
+        end)
+        
+        if loadSuccess then
+            WindUI:Notify({ 
+                Title = "📂 Auto-Load", 
+                Content = "Your saved settings have been loaded! 🎉", 
+                Duration = 3 
+            })
+        else
+            warn("Failed to load config: " .. tostring(loadErr))
+            WindUI:Notify({ 
+                Title = "⚠️ Config Error", 
+                Content = "Failed to load saved settings. Using defaults.", 
+                Duration = 3 
+            })
+        end
     end
 end)
 
