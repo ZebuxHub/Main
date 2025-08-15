@@ -3696,7 +3696,7 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        zooConfig:Register("selectedEggs", eggDropdown)
+        -- eggDropdown was replaced with button system, so we skip this registration
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         -- Register fruit UI elements from external file
