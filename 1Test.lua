@@ -4,7 +4,25 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 -- Load Custom Egg UI
-local CustomEggUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/Eggui.lua"))()
+local CustomEggUI = nil
+local success, result = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/Eggui.lua"))()
+end)
+if success then
+    CustomEggUI = result
+else
+    print("❌ Failed to load Custom Egg UI from external source")
+    -- Fallback: try to load from local file
+    local success2, result2 = pcall(function()
+        return loadstring(readfile("Build a Zoo/CustomEggUI.lua"))()
+    end)
+    if success2 then
+        CustomEggUI = result2
+        print("✅ Loaded Custom Egg UI from local file")
+    else
+        print("❌ Failed to load Custom Egg UI from local file")
+    end
+end
 
 -- Services
 local Players = game:GetService("Players")
@@ -1448,45 +1466,81 @@ local selectedMutationSet = {}
 
 -- Custom Egg UI Instance
 local customEggUI = nil
-local selectedTypeSet = {}
 
 -- Create custom egg UI button
 Tabs.AutoTab:Button({
     Title = "🥚 Select Eggs",
     Desc = "Open visual egg selection interface",
     Callback = function()
-        if not customEggUI then
-            customEggUI = CustomEggUI.new(game:GetService("CoreGui"), function(selectedEggs)
-                -- Callback when eggs are selected
-                selectedTypeSet = {}
-                for eggId, _ in pairs(selectedEggs) do
-                    selectedTypeSet[eggId] = true
-                    -- Also include the mapped Type from config (if available and different)
-                    local mappedType = idToTypeMap[eggId]
-                    if mappedType and tostring(mappedType) ~= eggId then
-                        selectedTypeSet[tostring(mappedType)] = true
-                    end
-                end
-                
-                -- Update selected types display
-                local keys = {}
-                for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-                table.sort(keys)
-                statusData.selectedTypes = table.concat(keys, ", ")
-                updateStatusParagraph()
-                
-                WindUI:Notify({ 
-                    Title = "🥚 Eggs Selected", 
-                    Content = "Selected " .. #keys .. " egg types!", 
-                    Duration = 3 
-                })
-            end)
+        if not CustomEggUI then
+            WindUI:Notify({ 
+                Title = "❌ Error", 
+                Content = "Custom Egg UI failed to load. Please check your internet connection.", 
+                Duration = 5 
+            })
+            return
         end
         
-        -- Set current selection
+        if not customEggUI then
+            local success, result = pcall(function()
+                return CustomEggUI.new(game:GetService("CoreGui"), function(selectedEggs)
+                    -- Callback when eggs are selected
+                    selectedTypeSet = {}
+                    for eggId, _ in pairs(selectedEggs) do
+                        selectedTypeSet[eggId] = true
+                        -- Also include the mapped Type from config (if available and different)
+                        local mappedType = idToTypeMap[eggId]
+                        if mappedType and tostring(mappedType) ~= eggId then
+                            selectedTypeSet[tostring(mappedType)] = true
+                        end
+                    end
+                    
+                    -- Update selected types display
+                    local keys = {}
+                    for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+                    table.sort(keys)
+                    statusData.selectedTypes = table.concat(keys, ", ")
+                    updateStatusParagraph()
+                    
+                    WindUI:Notify({ 
+                        Title = "🥚 Eggs Selected", 
+                        Content = "Selected " .. #keys .. " egg types!", 
+                        Duration = 3 
+                    })
+                end)
+            end)
+            
+            if success then
+                customEggUI = result
+                print("✅ Custom Egg UI created successfully")
+            else
+                WindUI:Notify({ 
+                    Title = "❌ Error", 
+                    Content = "Failed to create Custom Egg UI: " .. tostring(result), 
+                    Duration = 5 
+                })
+                print("❌ Failed to create Custom Egg UI: " .. tostring(result))
+                return
+            end
+        end
+        
+        -- Set current selection and show
         if customEggUI then
-            customEggUI:setSelectedEggs(selectedTypeSet)
-            customEggUI:show()
+            local success, result = pcall(function()
+                customEggUI:setSelectedEggs(selectedTypeSet)
+                customEggUI:show()
+            end)
+            
+            if not success then
+                WindUI:Notify({ 
+                    Title = "❌ Error", 
+                    Content = "Failed to show Custom Egg UI: " .. tostring(result), 
+                    Duration = 5 
+                })
+                print("❌ Failed to show Custom Egg UI: " .. tostring(result))
+            else
+                print("✅ Custom Egg UI shown successfully")
+            end
         end
     end
 })
@@ -1514,6 +1568,26 @@ Tabs.AutoTab:Button({
                 Duration = 8 
             })
         end
+    end
+})
+
+-- Debug button to check Custom Egg UI status
+Tabs.AutoTab:Button({
+    Title = "🔧 Debug Custom UI",
+    Desc = "Check if Custom Egg UI is loaded properly",
+    Callback = function()
+        local status = {}
+        table.insert(status, "CustomEggUI loaded: " .. tostring(CustomEggUI ~= nil))
+        table.insert(status, "customEggUI instance: " .. tostring(customEggUI ~= nil))
+        table.insert(status, "Selected eggs count: " .. tostring(table.getn(selectedTypeSet)))
+        
+        local message = table.concat(status, "\n")
+        WindUI:Notify({ 
+            Title = "🔧 Debug Info", 
+            Content = message, 
+            Duration = 8 
+        })
+        print("🔧 Debug Info:", message)
     end
 })
 
