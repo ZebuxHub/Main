@@ -280,6 +280,8 @@ local eggConfig = {
 	};
 }
 
+local conveyorConfig = {}
+
 local petFoodConfig = {
 	Strawberry = {
 		ID = "Strawberry";
@@ -525,84 +527,82 @@ local mutationConfig = {
 	};
 }
 
-local conveyorConfig = {} -- Keep empty for now, will be populated if needed
-
-local idToTypeMap = {}
-
--- Price parsing function
-local function parsePrice(priceString)
-    if type(priceString) == "number" then
-        return priceString
-    elseif type(priceString) == "string" then
-        -- Remove commas and convert to number
-        local cleanPrice = priceString:gsub(",", "")
-        return tonumber(cleanPrice) or 0
-    end
-    return 0
+-- Helper function to parse price string to number
+local function parsePrice(priceStr)
+    if type(priceStr) == "number" then return priceStr end
+    if type(priceStr) ~= "string" then return 0 end
+    
+    -- Remove commas and convert to number
+    local cleanPrice = priceStr:gsub(",", "")
+    return tonumber(cleanPrice) or 0
 end
 
--- Filter functions
-local function filterByPriceRange(items, minPrice, maxPrice)
-    local filtered = {}
-    for id, item in pairs(items) do
-        local price = parsePrice(item.Price)
-        if price >= minPrice and (maxPrice == nil or price <= maxPrice) then
-            table.insert(filtered, {id = id, item = item, price = price})
+-- Function to sort eggs by price
+local function sortEggsByPrice(eggs, ascending)
+    local sortedEggs = {}
+    for _, eggId in ipairs(eggs) do
+        table.insert(sortedEggs, eggId)
+    end
+    
+    table.sort(sortedEggs, function(a, b)
+        local priceA = parsePrice(eggConfig[a] and eggConfig[a].Price or "0")
+        local priceB = parsePrice(eggConfig[b] and eggConfig[b].Price or "0")
+        
+        if ascending then
+            return priceA < priceB
+        else
+            return priceA > priceB
+        end
+    end)
+    
+    return sortedEggs
+end
+
+-- Function to build fruit list from hard-coded data
+local function buildFruitList()
+    local fruits = {}
+    for id, val in pairs(petFoodConfig) do
+        local idStr = tostring(id)
+        -- Filter out meta keys like _index, __index, and any leading underscore entries
+        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+            local fruitName = val.Name or val.ID or val.Id or idStr
+            fruitName = tostring(fruitName)
+            table.insert(fruits, fruitName)
         end
     end
-    -- Sort by price
-    table.sort(filtered, function(a, b) return a.price < b.price end)
-    return filtered
+    table.sort(fruits)
+    return fruits
 end
-
-local function filterByRarity(items, rarity)
-    local filtered = {}
-    for id, item in pairs(items) do
-        if item.Rarity == rarity then
-            table.insert(filtered, {id = id, item = item, price = parsePrice(item.Price)})
-        end
-    end
-    -- Sort by price
-    table.sort(filtered, function(a, b) return a.price < b.price end)
-    return filtered
-end
-
 local function getTypeFromConfig(key, val)
     if type(val) == "table" then
-        -- For our hard-coded config, use ID field first, then fall back to others
-        local t = val.ID or val.Type or val.Name or val.type or val.name
+        local t = val.Type or val.Name or val.type or val.name
         if t ~= nil then return tostring(t) end
     end
     return tostring(key)
 end
 
-local function buildEggIdList(filterType, filterValue)
+-- Global variable for egg type mapping
+local idToTypeMap = {}
+
+local function buildEggIdList(sortBy)
     idToTypeMap = {}
     local ids = {}
+    for id, val in pairs(eggConfig) do
+        local idStr = tostring(id)
+        -- Filter out meta keys like _index, __index, and any leading underscore entries
+        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+            table.insert(ids, idStr)
+            idToTypeMap[idStr] = getTypeFromConfig(id, val)
+        end
+    end
     
-    if filterType == "price" then
-        local filtered = filterByPriceRange(eggConfig, filterValue, nil)
-        for _, item in ipairs(filtered) do
-            table.insert(ids, item.id)
-            idToTypeMap[item.id] = getTypeFromConfig(item.id, item.item)
-        end
-    elseif filterType == "rarity" then
-        local filtered = filterByRarity(eggConfig, filterValue)
-        for _, item in ipairs(filtered) do
-            table.insert(ids, item.id)
-            idToTypeMap[item.id] = getTypeFromConfig(item.id, item.item)
-        end
+    -- Sort based on preference
+    if sortBy == "price_low" then
+        ids = sortEggsByPrice(ids, true) -- ascending
+    elseif sortBy == "price_high" then
+        ids = sortEggsByPrice(ids, false) -- descending
     else
-        -- No filter, show all
-        for id, val in pairs(eggConfig) do
-            local idStr = tostring(id)
-            -- Filter out meta keys like _index, __index, and any leading underscore entries
-            if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
-                table.insert(ids, idStr)
-                idToTypeMap[idStr] = getTypeFromConfig(id, val)
-            end
-        end
-        table.sort(ids)
+        table.sort(ids) -- alphabetical
     end
     
     return ids
@@ -627,33 +627,6 @@ local function buildMutationList()
     end
     table.sort(mutations)
     return mutations
-end
-
-local function buildFruitList(filterType, filterValue)
-    local fruits = {}
-    
-    if filterType == "price" then
-        local filtered = filterByPriceRange(petFoodConfig, filterValue, nil)
-        for _, item in ipairs(filtered) do
-            table.insert(fruits, item.id)
-        end
-    elseif filterType == "rarity" then
-        local filtered = filterByRarity(petFoodConfig, filterValue)
-        for _, item in ipairs(filtered) do
-            table.insert(fruits, item.id)
-        end
-    else
-        -- No filter, show all
-        for id, val in pairs(petFoodConfig) do
-            local idStr = tostring(id)
-            if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
-                table.insert(fruits, idStr)
-            end
-        end
-        table.sort(fruits)
-    end
-    
-    return fruits
 end
 
 -- UI helpers
@@ -1936,15 +1909,42 @@ local function placePetAtPart(farmPart, petUID)
 end
 
 -- UI state
-local eggIdList = buildEggIdList()
+local eggIdList = buildEggIdList() -- Default alphabetical
 local mutationList = buildMutationList()
 local fruitList = buildFruitList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 local selectedFruitSet = {}
+local currentEggSort = "alphabetical" -- "alphabetical", "price_low", "price_high"
 
--- Filter UI for Eggs
-Tabs.AutoTab:Section({ Title = "🔍 Egg Filters", Icon = "filter" })
+-- Egg sorting dropdown
+local eggSortDropdown = Tabs.AutoTab:Dropdown({
+    Title = "📊 Sort Eggs By",
+    Desc = "Choose how to sort the egg list",
+    Values = { "Alphabetical", "Price: Low to High", "Price: High to Low" },
+    Value = "Alphabetical",
+    Callback = function(selection)
+        if selection == "Alphabetical" then
+            currentEggSort = "alphabetical"
+        elseif selection == "Price: Low to High" then
+            currentEggSort = "price_low"
+        elseif selection == "Price: High to Low" then
+            currentEggSort = "price_high"
+        end
+        
+        -- Refresh egg dropdown with new sorting
+        local newEggList = buildEggIdList(currentEggSort)
+        if eggDropdown and eggDropdown.Refresh then
+            eggDropdown:Refresh(newEggList)
+        end
+        
+        WindUI:Notify({ 
+            Title = "📊 Egg Sort", 
+            Content = "Egg list sorted by: " .. selection, 
+            Duration = 3 
+        })
+    end
+})
 
 local eggDropdown
 eggDropdown = Tabs.AutoTab:Dropdown({
@@ -1981,29 +1981,6 @@ eggDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-local eggFilterDropdown = Tabs.AutoTab:Dropdown({
-    Title = "🔍 Filter Eggs",
-    Desc = "Filter eggs by price",
-    Values = { "All Eggs", "By Price" },
-    Value = "All Eggs",
-    Callback = function(selection)
-        if selection == "By Price" then
-            -- Filter by price (1M default)
-            eggIdList = buildEggIdList("price", 1000000)
-            eggDropdown:Refresh(eggIdList)
-        else
-            -- Refresh with no filter
-            eggIdList = buildEggIdList()
-            eggDropdown:Refresh(eggIdList)
-        end
-    end
-})
-
-Tabs.AutoTab:Divider()
-
--- Filter UI for Mutations
-Tabs.AutoTab:Section({ Title = "🧬 Mutation Selection", Icon = "filter" })
-
 local mutationDropdown
 mutationDropdown = Tabs.AutoTab:Dropdown({
     Title = "🧬 Pick Mutations",
@@ -2030,8 +2007,45 @@ mutationDropdown = Tabs.AutoTab:Dropdown({
     end
 })
 
-Tabs.AutoTab:Divider()
 
+
+Tabs.AutoTab:Button({
+    Title = "🔍 Debug Selection",
+    Desc = "Show what eggs and mutations are currently selected",
+    Callback = function()
+        local eggTypes = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
+        table.sort(eggTypes)
+        
+        local mutations = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
+        table.sort(mutations)
+        
+        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
+        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
+        
+        WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
+            end
+})
+
+Tabs.AutoTab:Button({
+    Title = "🔄 Refresh Lists",
+    Desc = "Refresh all dropdown lists with current data",
+    Callback = function()
+        -- Refresh mutation list
+        if mutationDropdown and mutationDropdown.Refresh then
+            mutationDropdown:Refresh(buildMutationList())
+        end
+        
+        -- Refresh egg list with current sort
+        if eggDropdown and eggDropdown.Refresh then
+            eggDropdown:Refresh(buildEggIdList(currentEggSort))
+        end
+        
+        updateStatusParagraph()
+        WindUI:Notify({ Title = "🔄 Refresh", Content = "All lists refreshed!", Duration = 3 })
+    end
+})
 
 local autoBuyEnabled = false
 local autoBuyThread = nil
@@ -2335,7 +2349,7 @@ local function getEggOptions()
         end
     end
     
-    -- Fallback: get from PlayerBuiltBlocks if no hard-coded data
+    -- Fallback: get from PlayerBuiltBlocks
     if #eggOptions == 0 then
         local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
         if playerBuiltBlocks then
@@ -2354,7 +2368,7 @@ local function getEggOptions()
     return eggOptions
 end
 
--- Egg selection dropdown
+-- Egg selection dropdown for placement
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "🥚 Pick Pet Types",
     Desc = "Choose which pets to place",
@@ -3727,69 +3741,22 @@ Tabs.ShopTab:Button({
 
 
 -- ============ Fruit Market (Auto Buy Fruit) ============
--- Create Fruit Store UI with hard-coded data
-Tabs.FruitTab:Section({ Title = "🍎 Fruit Selection", Icon = "filter" })
-
--- Create fruit dropdown with hard-coded data
-local fruitDropdown
-fruitDropdown = Tabs.FruitTab:Dropdown({
-    Title = "🍎 Pick Fruits",
-    Desc = "Choose which fruits to buy automatically",
-    Values = fruitList,
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selection)
-        selectedFruitSet = {}
-        if type(selection) == "table" then
-            for _, fruit in ipairs(selection) do
-                selectedFruitSet[tostring(fruit)] = true
-            end
-        elseif type(selection) == "string" then
-            selectedFruitSet[tostring(selection)] = true
-        end
-        -- Update status
-        local keys = {}
-        for k in pairs(selectedFruitSet) do table.insert(keys, k) end
-        table.sort(keys)
-        WindUI:Notify({ Title = "🍎 Fruit Selection", Content = "Selected: " .. table.concat(keys, ", "), Duration = 3 })
+-- Load Fruit Store System from external file
+local fruitUI = nil
+pcall(function()
+    local fruitSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
+    if fruitSystem then
+        fruitUI = fruitSystem(Tabs, WindUI, LocalPlayer, ReplicatedStorage, Players)
+    else
+        Tabs.FruitTab:Paragraph({
+            Title = "🍎 Fruit Store System",
+            Desc = "Fruit store system could not be loaded. Please check if FruitStoreSystem.lua exists.",
+            Image = "apple",
+            ImageSize = 18,
+        })
+        print("❌ Failed to load Fruit Store System from external file")
     end
-})
-
-Tabs.FruitTab:Divider()
-
--- Fruit store status
-Tabs.FruitTab:Section({ Title = "📊 Fruit Status", Icon = "info" })
-
-local fruitStatusParagraph = Tabs.FruitTab:Paragraph({
-    Title = "🍎 Fruit Store Status",
-    Desc = "Shows fruit buying progress",
-    Image = "apple",
-    ImageSize = 18,
-})
-
-local autoFruitEnabled = false
-local autoFruitThread = nil
-
-local autoFruitToggle = Tabs.FruitTab:Toggle({
-    Title = "🛒 Auto Buy Fruits",
-    Desc = "Automatically buys your selected fruits when they're available",
-    Value = false,
-    Callback = function(state)
-        autoFruitEnabled = state
-        if state then
-            WindUI:Notify({ Title = "🍎 Auto Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
-        else
-            WindUI:Notify({ Title = "🍎 Auto Fruit", Content = "Stopped", Duration = 3 })
-        end
-    end
-})
-
--- Create fruitUI object for config compatibility
-local fruitUI = {
-    autoFruitToggle = autoFruitToggle,
-    fruitDropdown = fruitDropdown
-}
+end)
 
 -- ============ Config System ============
 -- Create config manager
@@ -3811,14 +3778,15 @@ local function registerConfigElements()
         zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        zooConfig:Register("eggFilterType", eggFilterDropdown)
-
-        -- Register fruit UI elements
+        zooConfig:Register("eggSortOrder", eggSortDropdown)
+        zooConfig:Register("automationPriority", priorityDropdown)
+        
+        -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
+            zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
-        zooConfig:Register("automationPriority", priorityDropdown)
     end
 end
 
