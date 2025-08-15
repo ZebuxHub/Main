@@ -1677,7 +1677,8 @@ local function createEggSelectionUI()
             local sellRate = mutationData.SellRate or 1
             local textColor = mutationData.TextColor or "ffffff"
             
-            local mutationButton = eggTabs.MutationTab:Button({
+            local mutationButton
+            mutationButton = eggTabs.MutationTab:Button({
                 Title = mutationId,
                 Desc = string.format("⭐ Rarity: %d | ⚡ Produce: %dx | 💰 Sell: %dx", rarityNum, produceRate, sellRate),
                 Icon = "dna",
