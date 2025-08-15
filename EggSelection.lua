@@ -1,6 +1,6 @@
--- EggSelection.lua - Modern macOS-style UI for Egg Selection
+-- EggSelection.lua - macOS Style Dark Theme UI for Egg Selection
 -- Author: Zebux
--- Version: 1.0
+-- Version: 2.0
 
 local EggSelection = {}
 
@@ -157,24 +157,23 @@ local searchText = ""
 local onSelectionChanged = nil
 local onToggleChanged = nil
 
--- macOS-style Colors (Dark Theme)
+-- macOS Dark Theme Colors
 local colors = {
-    background = Color3.fromRGB(28, 28, 30),
-    window = Color3.fromRGB(44, 44, 46),
-    card = Color3.fromRGB(58, 58, 60),
-    cardHover = Color3.fromRGB(68, 68, 70),
-    cardSelected = Color3.fromRGB(0, 122, 255),
-    border = Color3.fromRGB(72, 72, 74),
-    text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(174, 174, 178),
-    accent = Color3.fromRGB(0, 122, 255),
-    selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(68, 68, 70),
-    pageActive = Color3.fromRGB(0, 122, 255),
-    pageInactive = Color3.fromRGB(174, 174, 178),
-    searchBackground = Color3.fromRGB(58, 58, 60),
-    searchBorder = Color3.fromRGB(72, 72, 74),
-    shadow = Color3.fromRGB(0, 0, 0, 0.3)
+    background = Color3.fromRGB(28, 28, 30), -- Dark background
+    surface = Color3.fromRGB(44, 44, 46), -- Card surface
+    primary = Color3.fromRGB(10, 132, 255), -- Blue accent
+    secondary = Color3.fromRGB(88, 86, 214), -- Purple accent
+    text = Color3.fromRGB(255, 255, 255), -- White text
+    textSecondary = Color3.fromRGB(174, 174, 178), -- Gray text
+    textTertiary = Color3.fromRGB(99, 99, 102), -- Darker gray
+    border = Color3.fromRGB(58, 58, 60), -- Border color
+    selected = Color3.fromRGB(10, 132, 255), -- Selected blue
+    hover = Color3.fromRGB(58, 58, 60), -- Hover state
+    pageActive = Color3.fromRGB(10, 132, 255), -- Active tab
+    pageInactive = Color3.fromRGB(174, 174, 178), -- Inactive tab
+    close = Color3.fromRGB(255, 69, 58), -- Red close button
+    minimize = Color3.fromRGB(255, 159, 10), -- Yellow minimize
+    maximize = Color3.fromRGB(48, 209, 88) -- Green maximize
 }
 
 -- Utility Functions
@@ -196,16 +195,16 @@ local function formatNumber(num)
 end
 
 local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 59, 48)
-    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 20 then return Color3.fromRGB(90, 200, 250)
-    elseif rarity >= 10 then return Color3.fromRGB(255, 204, 0)
-    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85)
-    elseif rarity >= 5 then return Color3.fromRGB(255, 149, 0)
-    elseif rarity >= 4 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 3 then return Color3.fromRGB(52, 199, 89)
-    elseif rarity >= 2 then return Color3.fromRGB(255, 149, 0)
-    else return Color3.fromRGB(142, 142, 147)
+    if rarity >= 100 then return Color3.fromRGB(255, 69, 58) -- Fire red
+    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222) -- Electric purple
+    elseif rarity >= 20 then return Color3.fromRGB(88, 86, 214) -- Diamond blue
+    elseif rarity >= 10 then return Color3.fromRGB(255, 159, 10) -- Golden yellow
+    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85) -- Ultra pink
+    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58) -- Legendary red
+    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222) -- Epic purple
+    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214) -- Rare blue
+    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88) -- Uncommon green
+    else return Color3.fromRGB(174, 174, 178) -- Common gray
     end
 end
 
@@ -261,31 +260,68 @@ local function filterDataBySearch(data, searchText)
     return filteredData
 end
 
--- Create macOS-style shadow
-local function createShadow(parent)
-    local shadow = Instance.new("Frame")
-    shadow.Name = "Shadow"
-    shadow.Size = UDim2.new(1, 4, 1, 4)
-    shadow.Position = UDim2.new(0, -2, 0, -2)
-    shadow.BackgroundColor3 = colors.shadow
-    shadow.BorderSizePixel = 0
-    shadow.ZIndex = parent.ZIndex - 1
-    shadow.Parent = parent
+-- Create macOS Style Window Controls
+local function createWindowControls(parent)
+    local controlsContainer = Instance.new("Frame")
+    controlsContainer.Name = "WindowControls"
+    controlsContainer.Size = UDim2.new(0, 70, 0, 12)
+    controlsContainer.Position = UDim2.new(0, 12, 0, 12)
+    controlsContainer.BackgroundTransparency = 1
+    controlsContainer.Parent = parent
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = shadow
+    -- Close Button (Red)
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseBtn"
+    closeBtn.Size = UDim2.new(0, 12, 0, 12)
+    closeBtn.Position = UDim2.new(0, 0, 0, 0)
+    closeBtn.BackgroundColor3 = colors.close
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = ""
+    closeBtn.Parent = controlsContainer
     
-    return shadow
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0.5, 0)
+    closeCorner.Parent = closeBtn
+    
+    -- Minimize Button (Yellow)
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Name = "MinimizeBtn"
+    minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
+    minimizeBtn.Position = UDim2.new(0, 18, 0, 0)
+    minimizeBtn.BackgroundColor3 = colors.minimize
+    minimizeBtn.BorderSizePixel = 0
+    minimizeBtn.Text = ""
+    minimizeBtn.Parent = controlsContainer
+    
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(0.5, 0)
+    minimizeCorner.Parent = minimizeBtn
+    
+    -- Maximize Button (Green)
+    local maximizeBtn = Instance.new("TextButton")
+    maximizeBtn.Name = "MaximizeBtn"
+    maximizeBtn.Size = UDim2.new(0, 12, 0, 12)
+    maximizeBtn.Position = UDim2.new(0, 36, 0, 0)
+    maximizeBtn.BackgroundColor3 = colors.maximize
+    maximizeBtn.BorderSizePixel = 0
+    maximizeBtn.Text = ""
+    maximizeBtn.Parent = controlsContainer
+    
+    local maximizeCorner = Instance.new("UICorner")
+    maximizeCorner.CornerRadius = UDim.new(0.5, 0)
+    maximizeCorner.Parent = maximizeBtn
+    
+    return controlsContainer
 end
 
--- Create macOS-style card
-local function createMacCard(parent)
-    local card = Instance.new("Frame")
-    card.Name = "Card"
-    card.Size = UDim2.new(1, 0, 1, 0)
-    card.BackgroundColor3 = colors.card
+-- Create Item Card (macOS style)
+local function createItemCard(itemId, itemData, parent)
+    local card = Instance.new("TextButton")
+    card.Name = itemId
+    card.Size = UDim2.new(0.33, -8, 0, 120)
+    card.BackgroundColor3 = colors.surface
     card.BorderSizePixel = 0
+    card.Text = ""
     card.Parent = parent
     
     local corner = Instance.new("UICorner")
@@ -297,22 +333,7 @@ local function createMacCard(parent)
     stroke.Thickness = 1
     stroke.Parent = card
     
-    return card
-end
-
--- Create Item Card (3 per row, macOS design)
-local function createItemCard(itemId, itemData, parent)
-    local card = Instance.new("TextButton")
-    card.Name = itemId
-    card.Size = UDim2.new(0.33, -8, 0, 140)
-    card.BackgroundTransparency = 1
-    card.Text = ""
-    card.Parent = parent
-    
-    createShadow(card)
-    local mainCard = createMacCard(card)
-    
-    -- Create Icon
+    -- Create Icon (ImageLabel for eggs, TextLabel for mutations)
     local icon
     if currentPage == "eggs" then
         icon = Instance.new("ImageLabel")
@@ -321,16 +342,16 @@ local function createItemCard(itemId, itemData, parent)
     else
         icon = Instance.new("TextLabel")
         icon.Text = itemData.Icon
-        icon.TextSize = 36
+        icon.TextSize = 32
         icon.Font = Enum.Font.GothamBold
         icon.TextColor3 = getRarityColor(itemData.Rarity)
     end
     
     icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 60, 0, 60)
-    icon.Position = UDim2.new(0.5, -30, 0.15, 0)
+    icon.Size = UDim2.new(0, 50, 0, 50)
+    icon.Position = UDim2.new(0.5, -25, 0.2, 0)
     icon.BackgroundTransparency = 1
-    icon.Parent = mainCard
+    icon.Parent = card
     
     local name = Instance.new("TextLabel")
     name.Name = "Name"
@@ -338,59 +359,58 @@ local function createItemCard(itemId, itemData, parent)
     name.Position = UDim2.new(0, 8, 0.6, 0)
     name.BackgroundTransparency = 1
     name.Text = itemData.Name
-    name.TextSize = 13
+    name.TextSize = 12
     name.Font = Enum.Font.GothamSemibold
     name.TextColor3 = colors.text
     name.TextXAlignment = Enum.TextXAlignment.Center
     name.TextWrapped = true
-    name.Parent = mainCard
+    name.Parent = card
     
     local price = Instance.new("TextLabel")
     price.Name = "Price"
     price.Size = UDim2.new(1, -16, 0, 16)
-    price.Position = UDim2.new(0, 8, 0.75, 0)
+    price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
     if currentPage == "eggs" then
         price.Text = "$" .. itemData.Price
     else
         price.Text = "Mutation"
     end
-    price.TextSize = 11
+    price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
     price.TextXAlignment = Enum.TextXAlignment.Center
     price.TextWrapped = true
-    price.Parent = mainCard
+    price.Parent = card
     
     local checkmark = Instance.new("TextLabel")
     checkmark.Name = "Checkmark"
-    checkmark.Size = UDim2.new(0, 24, 0, 24)
-    checkmark.Position = UDim2.new(1, -28, 0, 8)
+    checkmark.Size = UDim2.new(0, 20, 0, 20)
+    checkmark.Position = UDim2.new(1, -24, 0, 4)
     checkmark.BackgroundTransparency = 1
     checkmark.Text = "✓"
-    checkmark.TextSize = 18
+    checkmark.TextSize = 16
     checkmark.Font = Enum.Font.GothamBold
     checkmark.TextColor3 = colors.selected
     checkmark.Visible = false
-    checkmark.Parent = mainCard
+    checkmark.Parent = card
     
     -- Set initial selection state
     if selectedItems[itemId] then
         checkmark.Visible = true
-        mainCard.BackgroundColor3 = colors.cardSelected
-        mainCard.UIStroke.Color = colors.cardSelected
+        card.BackgroundColor3 = colors.selected
     end
     
     -- Hover effect
     card.MouseEnter:Connect(function()
         if not selectedItems[itemId] then
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.cardHover}):Play()
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
         end
     end)
     
     card.MouseLeave:Connect(function()
         if not selectedItems[itemId] then
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.card}):Play()
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
         end
     end)
     
@@ -399,13 +419,11 @@ local function createItemCard(itemId, itemData, parent)
         if selectedItems[itemId] then
             selectedItems[itemId] = nil
             checkmark.Visible = false
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.card}):Play()
-            TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.border}):Play()
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
         else
             selectedItems[itemId] = true
             checkmark.Visible = true
-            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.cardSelected}):Play()
-            TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.cardSelected}):Play()
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
         end
         
         if onSelectionChanged then
@@ -416,52 +434,47 @@ local function createItemCard(itemId, itemData, parent)
     return card
 end
 
--- Create macOS-style search bar
+-- Create Search Bar (macOS style)
 local function createSearchBar(parent)
     local searchContainer = Instance.new("Frame")
     searchContainer.Name = "SearchContainer"
-    searchContainer.Size = UDim2.new(1, -16, 0, 36)
-    searchContainer.Position = UDim2.new(0, 8, 0, 0)
-    searchContainer.BackgroundTransparency = 1
+    searchContainer.Size = UDim2.new(1, -32, 0, 32)
+    searchContainer.Position = UDim2.new(0, 16, 0, 60)
+    searchContainer.BackgroundColor3 = colors.surface
+    searchContainer.BorderSizePixel = 0
     searchContainer.Parent = parent
     
-    local searchBackground = Instance.new("Frame")
-    searchBackground.Name = "SearchBackground"
-    searchBackground.Size = UDim2.new(1, 0, 1, 0)
-    searchBackground.BackgroundColor3 = colors.searchBackground
-    searchBackground.BorderSizePixel = 0
-    searchBackground.Parent = searchContainer
+    local searchCorner = Instance.new("UICorner")
+    searchCorner.CornerRadius = UDim.new(0, 8)
+    searchCorner.Parent = searchContainer
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim2.new(0, 8)
-    corner.Parent = searchBackground
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.searchBorder
-    stroke.Thickness = 1
-    stroke.Parent = searchBackground
+    local searchStroke = Instance.new("UIStroke")
+    searchStroke.Color = colors.border
+    searchStroke.Thickness = 1
+    searchStroke.Parent = searchContainer
     
     local searchIcon = Instance.new("TextLabel")
     searchIcon.Name = "SearchIcon"
-    searchIcon.Size = UDim2.new(0, 20, 0, 20)
-    searchIcon.Position = UDim2.new(0, 12, 0.5, -10)
+    searchIcon.Size = UDim2.new(0, 16, 0, 16)
+    searchIcon.Position = UDim2.new(0, 12, 0.5, -8)
     searchIcon.BackgroundTransparency = 1
     searchIcon.Text = "🔍"
-    searchIcon.TextSize = 14
+    searchIcon.TextSize = 12
     searchIcon.Font = Enum.Font.Gotham
     searchIcon.TextColor3 = colors.textSecondary
     searchIcon.Parent = searchContainer
     
     local searchBox = Instance.new("TextBox")
     searchBox.Name = "SearchBox"
-    searchBox.Size = UDim2.new(1, -60, 0.8, 0)
-    searchBox.Position = UDim2.new(0, 40, 0.1, 0)
+    searchBox.Size = UDim2.new(1, -44, 0.8, 0)
+    searchBox.Position = UDim2.new(0, 36, 0.1, 0)
     searchBox.BackgroundTransparency = 1
     searchBox.Text = ""
     searchBox.PlaceholderText = "Search eggs..."
     searchBox.TextSize = 14
     searchBox.Font = Enum.Font.Gotham
     searchBox.TextColor3 = colors.text
+    searchBox.PlaceholderTextColor3 = colors.textTertiary
     searchBox.TextXAlignment = Enum.TextXAlignment.Left
     searchBox.ClearTextOnFocus = false
     searchBox.Parent = searchContainer
@@ -477,12 +490,12 @@ local function createSearchBar(parent)
     return searchContainer
 end
 
--- Create Page Tabs
+-- Create Page Tabs (macOS style)
 local function createPageTabs(parent)
     local tabContainer = Instance.new("Frame")
     tabContainer.Name = "PageTabs"
-    tabContainer.Size = UDim2.new(1, -16, 0, 40)
-    tabContainer.Position = UDim2.new(0, 8, 0, 48)
+    tabContainer.Size = UDim2.new(1, -32, 0, 40)
+    tabContainer.Position = UDim2.new(0, 16, 0, 100)
     tabContainer.BackgroundTransparency = 1
     tabContainer.Parent = parent
     
@@ -490,39 +503,41 @@ local function createPageTabs(parent)
     eggsTab.Name = "EggsTab"
     eggsTab.Size = UDim2.new(0.5, -4, 1, 0)
     eggsTab.Position = UDim2.new(0, 0, 0, 0)
-    eggsTab.BackgroundColor3 = colors.card
+    eggsTab.BackgroundColor3 = colors.pageActive
     eggsTab.BorderSizePixel = 0
     eggsTab.Text = "🥚 Eggs"
     eggsTab.TextSize = 14
-    eggsTab.Font = Enum.Font.GothamBold
-    eggsTab.TextColor3 = colors.pageActive
+    eggsTab.Font = Enum.Font.GothamSemibold
+    eggsTab.TextColor3 = colors.text
     eggsTab.Parent = tabContainer
     
     local eggsCorner = Instance.new("UICorner")
-    eggsCorner.CornerRadius = UDim2.new(0, 6)
+    eggsCorner.CornerRadius = UDim.new(0, 6)
     eggsCorner.Parent = eggsTab
     
     local mutationsTab = Instance.new("TextButton")
     mutationsTab.Name = "MutationsTab"
     mutationsTab.Size = UDim2.new(0.5, -4, 1, 0)
     mutationsTab.Position = UDim2.new(0.5, 4, 0, 0)
-    mutationsTab.BackgroundColor3 = colors.card
+    mutationsTab.BackgroundColor3 = colors.pageInactive
     mutationsTab.BorderSizePixel = 0
     mutationsTab.Text = "✨ Mutations"
     mutationsTab.TextSize = 14
-    mutationsTab.Font = Enum.Font.GothamBold
-    mutationsTab.TextColor3 = colors.pageInactive
+    mutationsTab.Font = Enum.Font.GothamSemibold
+    mutationsTab.TextColor3 = colors.textSecondary
     mutationsTab.Parent = tabContainer
     
     local mutationsCorner = Instance.new("UICorner")
-    mutationsCorner.CornerRadius = UDim2.new(0, 6)
+    mutationsCorner.CornerRadius = UDim.new(0, 6)
     mutationsCorner.Parent = mutationsTab
     
     -- Tab click events
     eggsTab.MouseButton1Click:Connect(function()
         currentPage = "eggs"
-        eggsTab.TextColor3 = colors.pageActive
-        mutationsTab.TextColor3 = colors.pageInactive
+        eggsTab.BackgroundColor3 = colors.pageActive
+        eggsTab.TextColor3 = colors.text
+        mutationsTab.BackgroundColor3 = colors.pageInactive
+        mutationsTab.TextColor3 = colors.textSecondary
         -- Update search placeholder
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
@@ -533,8 +548,10 @@ local function createPageTabs(parent)
     
     mutationsTab.MouseButton1Click:Connect(function()
         currentPage = "mutations"
-        mutationsTab.TextColor3 = colors.pageActive
-        eggsTab.TextColor3 = colors.pageInactive
+        mutationsTab.BackgroundColor3 = colors.pageActive
+        mutationsTab.TextColor3 = colors.text
+        eggsTab.BackgroundColor3 = colors.pageInactive
+        eggsTab.TextColor3 = colors.textSecondary
         -- Update search placeholder
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
@@ -558,248 +575,110 @@ function EggSelection.CreateUI()
     
     MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 800, 0, 500)
-    MainFrame.Position = UDim2.new(0.5, -400, 0.5, -250)
-    MainFrame.BackgroundTransparency = 1
+    MainFrame.Size = UDim2.new(0, 600, 0, 400)
+    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
+    MainFrame.BackgroundColor3 = colors.background
+    MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
     
     originalSize = MainFrame.Size
-    minimizedSize = UDim2.new(0, 800, 0, 60)
+    minimizedSize = UDim2.new(0, 600, 0, 60)
     
-    createShadow(MainFrame)
-    local mainWindow = createMacCard(MainFrame)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = MainFrame
     
-    -- Title Bar (macOS style)
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 32)
-    titleBar.BackgroundColor3 = colors.window
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = mainWindow
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = colors.border
+    stroke.Thickness = 1
+    stroke.Parent = MainFrame
     
-    local titleBarCorner = Instance.new("UICorner")
-    titleBarCorner.CornerRadius = UDim2.new(0, 8, 0, 0)
-    titleBarCorner.Parent = titleBar
+    -- Window Controls
+    local windowControls = createWindowControls(MainFrame)
     
+    -- Title
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Size = UDim2.new(1, -80, 1, 0)
-    title.Position = UDim2.new(0, 12, 0, 0)
+    title.Size = UDim2.new(1, -140, 0, 20)
+    title.Position = UDim2.new(0, 100, 0, 12)
     title.BackgroundTransparency = 1
-    title.Text = "🥚 Egg Selection"
+    title.Text = "Egg Selection"
     title.TextSize = 14
     title.Font = Enum.Font.GothamSemibold
     title.TextColor3 = colors.text
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = titleBar
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.Parent = MainFrame
     
-    -- macOS-style traffic light buttons
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 12, 0, 12)
-    closeBtn.Position = UDim2.new(0, 12, 0.5, -6)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = ""
-    closeBtn.Parent = titleBar
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim2.new(0.5, 0)
-    closeCorner.Parent = closeBtn
-    
-    local minimizeBtn = Instance.new("TextButton")
-    minimizeBtn.Name = "MinimizeBtn"
-    minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    minimizeBtn.Position = UDim2.new(0, 30, 0.5, -6)
-    minimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
-    minimizeBtn.BorderSizePixel = 0
-    minimizeBtn.Text = ""
-    minimizeBtn.Parent = titleBar
-    
-    local minimizeCorner = Instance.new("UICorner")
-    minimizeCorner.CornerRadius = UDim2.new(0.5, 0)
-    minimizeCorner.Parent = minimizeBtn
-    
-    local maximizeBtn = Instance.new("TextButton")
-    maximizeBtn.Name = "MaximizeBtn"
-    maximizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    maximizeBtn.Position = UDim2.new(0, 48, 0.5, -6)
-    maximizeBtn.BackgroundColor3 = Color3.fromRGB(52, 199, 89)
-    maximizeBtn.BorderSizePixel = 0
-    maximizeBtn.Text = ""
-    maximizeBtn.Parent = titleBar
-    
-    local maximizeCorner = Instance.new("UICorner")
-    maximizeCorner.CornerRadius = UDim2.new(0.5, 0)
-    maximizeCorner.Parent = maximizeBtn
-    
-    -- Sidebar (macOS style)
-    local sidebar = Instance.new("Frame")
-    sidebar.Name = "Sidebar"
-    sidebar.Size = UDim2.new(0, 200, 1, -32)
-    sidebar.Position = UDim2.new(0, 0, 0, 32)
-    sidebar.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
-    sidebar.BorderSizePixel = 0
-    sidebar.Parent = mainWindow
-    
-    local sidebarCorner = Instance.new("UICorner")
-    sidebarCorner.CornerRadius = UDim2.new(0, 0, 0, 8)
-    sidebarCorner.Parent = sidebar
-    
-    -- Sidebar content
-    local sidebarContent = Instance.new("ScrollingFrame")
-    sidebarContent.Name = "SidebarContent"
-    sidebarContent.Size = UDim2.new(1, -16, 1, -16)
-    sidebarContent.Position = UDim2.new(0, 8, 0, 8)
-    sidebarContent.BackgroundTransparency = 1
-    sidebarContent.ScrollBarThickness = 4
-    sidebarContent.ScrollBarImageColor3 = colors.accent
-    sidebarContent.Parent = sidebar
-    
-    local sidebarLayout = Instance.new("UIListLayout")
-    sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sidebarLayout.Padding = UDim2.new(0, 8)
-    sidebarLayout.Parent = sidebarContent
-    
-    -- Favorites section
-    local favoritesSection = Instance.new("TextLabel")
-    favoritesSection.Name = "FavoritesSection"
-    favoritesSection.Size = UDim2.new(1, 0, 0, 20)
-    favoritesSection.BackgroundTransparency = 1
-    favoritesSection.Text = "Favorites"
-    favoritesSection.TextSize = 12
-    favoritesSection.Font = Enum.Font.GothamBold
-    favoritesSection.TextColor3 = colors.textSecondary
-    favoritesSection.TextXAlignment = Enum.TextXAlignment.Left
-    favoritesSection.LayoutOrder = 1
-    favoritesSection.Parent = sidebarContent
-    
-    -- Eggs tab
-    local eggsTab = Instance.new("TextButton")
-    eggsTab.Name = "EggsTab"
-    eggsTab.Size = UDim2.new(1, 0, 0, 32)
-    eggsTab.BackgroundColor3 = colors.selected
-    eggsTab.BorderSizePixel = 0
-    eggsTab.Text = "🥚 Eggs"
-    eggsTab.TextSize = 14
-    eggsTab.Font = Enum.Font.GothamSemibold
-    eggsTab.TextColor3 = colors.window
-    eggsTab.TextXAlignment = Enum.TextXAlignment.Left
-    eggsTab.LayoutOrder = 2
-    eggsTab.Parent = sidebarContent
-    
-    local eggsCorner = Instance.new("UICorner")
-    eggsCorner.CornerRadius = UDim2.new(0, 6)
-    eggsCorner.Parent = eggsTab
-    
-    -- Mutations tab
-    local mutationsTab = Instance.new("TextButton")
-    mutationsTab.Name = "MutationsTab"
-    mutationsTab.Size = UDim2.new(1, 0, 0, 32)
-    mutationsTab.BackgroundColor3 = colors.window
-    mutationsTab.BorderSizePixel = 0
-    mutationsTab.Text = "✨ Mutations"
-    mutationsTab.TextSize = 14
-    mutationsTab.Font = Enum.Font.GothamSemibold
-    mutationsTab.TextColor3 = colors.text
-    mutationsTab.TextXAlignment = Enum.TextXAlignment.Left
-    mutationsTab.LayoutOrder = 3
-    mutationsTab.Parent = sidebarContent
-    
-    local mutationsCorner = Instance.new("UICorner")
-    mutationsCorner.CornerRadius = UDim2.new(0, 6)
-    mutationsCorner.Parent = mutationsTab
-    
-    -- Main content area
-    local mainContent = Instance.new("Frame")
-    mainContent.Name = "MainContent"
-    mainContent.Size = UDim2.new(1, -200, 1, -32)
-    mainContent.Position = UDim2.new(0, 200, 0, 32)
-    mainContent.BackgroundTransparency = 1
-    mainContent.Parent = mainWindow
+    -- Page Tabs
+    local pageTabs = createPageTabs(MainFrame)
     
     -- Search Bar
-    local searchBar = createSearchBar(mainContent)
-    searchBar.Position = UDim2.new(0, 8, 0, 8)
+    local searchBar = createSearchBar(MainFrame)
     
     -- Content Area
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, -16, 1, -60)
-    content.Position = UDim2.new(0, 8, 0, 60)
+    content.Size = UDim2.new(1, -32, 1, -160)
+    content.Position = UDim2.new(0, 16, 0, 160)
     content.BackgroundTransparency = 1
-    content.Parent = mainContent
+    content.Parent = MainFrame
     
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Name = "ScrollFrame"
     scrollFrame.Size = UDim2.new(1, 0, 1, 0)
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 6
-    scrollFrame.ScrollBarImageColor3 = colors.accent
+    scrollFrame.ScrollBarImageColor3 = colors.primary
     scrollFrame.Parent = content
     
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 140)
+    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
     gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = scrollFrame
     
-    -- Tab click events
-    eggsTab.MouseButton1Click:Connect(function()
-        currentPage = "eggs"
-        eggsTab.BackgroundColor3 = colors.selected
-        eggsTab.TextColor3 = colors.window
-        mutationsTab.BackgroundColor3 = colors.window
-        mutationsTab.TextColor3 = colors.text
-        local searchBox = ScreenGui.MainFrame.Card.MainContent.SearchContainer.SearchBox
-        if searchBox then searchBox.PlaceholderText = "Search eggs..." end
-        EggSelection.RefreshContent()
-    end)
-    
-    mutationsTab.MouseButton1Click:Connect(function()
-        currentPage = "mutations"
-        mutationsTab.BackgroundColor3 = colors.selected
-        mutationsTab.TextColor3 = colors.window
-        eggsTab.BackgroundColor3 = colors.window
-        eggsTab.TextColor3 = colors.text
-        local searchBox = ScreenGui.MainFrame.Card.MainContent.SearchContainer.SearchBox
-        if searchBox then searchBox.PlaceholderText = "Search mutations..." end
-        EggSelection.RefreshContent()
-    end)
-    
-    -- Control Button Events
-    minimizeBtn.MouseButton1Click:Connect(function()
-        if isMinimized then
-            MainFrame.Size = originalSize
-            mainContent.Visible = true
-            sidebar.Visible = true
-            isMinimized = false
-        else
-            MainFrame.Size = minimizedSize
-            mainContent.Visible = false
-            sidebar.Visible = false
-            isMinimized = true
-        end
-    end)
+    -- Window Control Events
+    local closeBtn = windowControls.CloseBtn
+    local minimizeBtn = windowControls.MinimizeBtn
+    local maximizeBtn = windowControls.MaximizeBtn
     
     closeBtn.MouseButton1Click:Connect(function()
-        if onToggleChanged then onToggleChanged(false) end
+        if onToggleChanged then
+            onToggleChanged(false)
+        end
         ScreenGui:Destroy()
         ScreenGui = nil
     end)
     
+    minimizeBtn.MouseButton1Click:Connect(function()
+        if isMinimized then
+            MainFrame.Size = originalSize
+            content.Visible = true
+            pageTabs.Visible = true
+            searchBar.Visible = true
+            isMinimized = false
+        else
+            MainFrame.Size = minimizedSize
+            content.Visible = false
+            pageTabs.Visible = false
+            searchBar.Visible = false
+            isMinimized = true
+        end
+    end)
+    
     maximizeBtn.MouseButton1Click:Connect(function()
+        -- Toggle between normal and full size
         if MainFrame.Size == originalSize then
-            MainFrame.Size = UDim2.new(0.9, 0, 0.9, 0)
-            MainFrame.Position = UDim2.new(0.05, 0, 0.05, 0)
+            MainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
+            MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
         else
             MainFrame.Size = originalSize
-            MainFrame.Position = UDim2.new(0.5, -400, 0.5, -250)
+            MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
         end
     end)
     
     -- Dragging
-    titleBar.InputBegan:Connect(function(input)
+    MainFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             isDragging = true
             dragStart = input.Position
@@ -827,36 +706,8 @@ end
 function EggSelection.RefreshContent()
     if not ScreenGui then return end
     
-    -- Debug: Check UI structure
-    local mainFrame = ScreenGui:FindFirstChild("MainFrame")
-    if not mainFrame then
-        warn("MainFrame not found")
-        return
-    end
-    
-    local card = mainFrame:FindFirstChild("Card")
-    if not card then
-        warn("Card not found")
-        return
-    end
-    
-    local mainContent = card:FindFirstChild("MainContent")
-    if not mainContent then
-        warn("MainContent not found")
-        return
-    end
-    
-    local content = mainContent:FindFirstChild("Content")
-    if not content then
-        warn("Content not found")
-        return
-    end
-    
-    local scrollFrame = content:FindFirstChild("ScrollFrame")
-    if not scrollFrame then 
-        warn("ScrollFrame not found in UI structure")
-        return 
-    end
+    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+    if not scrollFrame then return end
     
     -- Clear existing content
     for _, child in pairs(scrollFrame:GetChildren()) do
@@ -877,7 +728,7 @@ function EggSelection.RefreshContent()
     -- Add content
     for i, item in ipairs(sortedData) do
         local card = createItemCard(item.id, item.data, scrollFrame)
-        card.LayoutOrder = i
+        card.LayoutOrder = i -- Ensure proper ordering
     end
 end
 
@@ -909,50 +760,17 @@ function EggSelection.SetSelectedItems(items)
     selectedItems = items or {}
     
     if ScreenGui then
-        -- Debug: Check UI structure
-        local mainFrame = ScreenGui:FindFirstChild("MainFrame")
-        if not mainFrame then
-            warn("MainFrame not found in SetSelectedItems")
-            return
-        end
-        
-        local card = mainFrame:FindFirstChild("Card")
-        if not card then
-            warn("Card not found in SetSelectedItems")
-            return
-        end
-        
-        local mainContent = card:FindFirstChild("MainContent")
-        if not mainContent then
-            warn("MainContent not found in SetSelectedItems")
-            return
-        end
-        
-        local content = mainContent:FindFirstChild("Content")
-        if not content then
-            warn("Content not found in SetSelectedItems")
-            return
-        end
-        
-        local scrollFrame = content:FindFirstChild("ScrollFrame")
-        if not scrollFrame then 
-            warn("ScrollFrame not found in SetSelectedItems")
-            return 
-        end
-        
+        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
         for _, child in pairs(scrollFrame:GetChildren()) do
             if child:IsA("TextButton") then
-                local checkmark = child.Card.Checkmark
-                local mainCard = child.Card
-                if checkmark and mainCard then
+                local checkmark = child:FindFirstChild("Checkmark")
+                if checkmark then
                     if selectedItems[child.Name] then
                         checkmark.Visible = true
-                        mainCard.BackgroundColor3 = colors.cardSelected
-                        mainCard.UIStroke.Color = colors.cardSelected
+                        child.BackgroundColor3 = colors.selected
                     else
                         checkmark.Visible = false
-                        mainCard.BackgroundColor3 = colors.card
-                        mainCard.UIStroke.Color = colors.border
+                        child.BackgroundColor3 = colors.surface
                     end
                 end
             end
