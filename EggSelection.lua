@@ -1,4 +1,4 @@
--- EggSelection.lua - Modern Glass UI for Egg Selection
+-- EggSelection.lua - Modern macOS-style UI for Egg Selection
 -- Author: Zebux
 -- Version: 1.0
 
@@ -157,18 +157,23 @@ local searchText = ""
 local onSelectionChanged = nil
 local onToggleChanged = nil
 
--- Colors
+-- macOS-style Colors
 local colors = {
-    background = Color3.fromRGB(20, 20, 25),
-    glass = Color3.fromRGB(30, 30, 35),
-    accent = Color3.fromRGB(100, 150, 255),
-    text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(180, 180, 180),
-    border = Color3.fromRGB(60, 60, 70),
-    selected = Color3.fromRGB(100, 150, 255),
-    hover = Color3.fromRGB(40, 40, 45),
-    pageActive = Color3.fromRGB(100, 150, 255),
-    pageInactive = Color3.fromRGB(80, 80, 90)
+    background = Color3.fromRGB(248, 248, 248), -- Light gray background
+    window = Color3.fromRGB(255, 255, 255), -- Pure white window
+    border = Color3.fromRGB(225, 225, 225), -- Light border
+    text = Color3.fromRGB(51, 51, 51), -- Dark text
+    textSecondary = Color3.fromRGB(102, 102, 102), -- Secondary text
+    accent = Color3.fromRGB(0, 122, 255), -- macOS blue
+    accentHover = Color3.fromRGB(0, 112, 245), -- Darker blue on hover
+    selected = Color3.fromRGB(0, 122, 255), -- Selection blue
+    selectedHover = Color3.fromRGB(0, 112, 245), -- Selection hover
+    hover = Color3.fromRGB(245, 245, 245), -- Light hover
+    shadow = Color3.fromRGB(0, 0, 0, 0.1), -- Subtle shadow
+    tabActive = Color3.fromRGB(0, 122, 255), -- Active tab
+    tabInactive = Color3.fromRGB(102, 102, 102), -- Inactive tab
+    searchBackground = Color3.fromRGB(248, 248, 248), -- Search background
+    searchBorder = Color3.fromRGB(225, 225, 225) -- Search border
 }
 
 -- Utility Functions
@@ -190,16 +195,16 @@ local function formatNumber(num)
 end
 
 local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 61, 2) -- Fire
-    elseif rarity >= 50 then return Color3.fromRGB(170, 85, 255) -- Electric
-    elseif rarity >= 20 then return Color3.fromRGB(7, 230, 255) -- Diamond
-    elseif rarity >= 10 then return Color3.fromRGB(255, 197, 24) -- Golden
-    elseif rarity >= 6 then return Color3.fromRGB(255, 0, 255) -- Ultra
-    elseif rarity >= 5 then return Color3.fromRGB(255, 0, 0) -- Legendary
-    elseif rarity >= 4 then return Color3.fromRGB(255, 0, 255) -- Epic
-    elseif rarity >= 3 then return Color3.fromRGB(0, 255, 255) -- Rare
-    elseif rarity >= 2 then return Color3.fromRGB(0, 255, 0) -- Uncommon
-    else return Color3.fromRGB(255, 255, 255) -- Common
+    if rarity >= 100 then return Color3.fromRGB(255, 59, 48) -- Fire red
+    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222) -- Electric purple
+    elseif rarity >= 20 then return Color3.fromRGB(90, 200, 250) -- Diamond blue
+    elseif rarity >= 10 then return Color3.fromRGB(255, 204, 0) -- Golden yellow
+    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85) -- Ultra pink
+    elseif rarity >= 5 then return Color3.fromRGB(255, 149, 0) -- Legendary orange
+    elseif rarity >= 4 then return Color3.fromRGB(88, 86, 214) -- Epic purple
+    elseif rarity >= 3 then return Color3.fromRGB(52, 199, 89) -- Rare green
+    elseif rarity >= 2 then return Color3.fromRGB(255, 149, 0) -- Uncommon orange
+    else return Color3.fromRGB(142, 142, 147) -- Common gray
     end
 end
 
@@ -255,44 +260,59 @@ local function filterDataBySearch(data, searchText)
     return filteredData
 end
 
--- Create Glass Effect
-local function createGlassEffect(parent)
-    local glass = Instance.new("Frame")
-    glass.Name = "Glass"
-    glass.BackgroundColor3 = colors.glass
-    glass.BorderSizePixel = 0
-    glass.Parent = parent
+-- Create macOS-style shadow
+local function createShadow(parent)
+    local shadow = Instance.new("Frame")
+    shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1, 4, 1, 4)
+    shadow.Position = UDim2.new(0, -2, 0, -2)
+    shadow.BackgroundColor3 = colors.shadow
+    shadow.BorderSizePixel = 0
+    shadow.ZIndex = parent.ZIndex - 1
+    shadow.Parent = parent
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = glass
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = shadow
+    
+    return shadow
+end
+
+-- Create macOS-style card
+local function createMacCard(parent)
+    local card = Instance.new("Frame")
+    card.Name = "Card"
+    card.Size = UDim2.new(1, 0, 1, 0)
+    card.BackgroundColor3 = colors.window
+    card.BorderSizePixel = 0
+    card.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = card
     
     local stroke = Instance.new("UIStroke")
     stroke.Color = colors.border
     stroke.Thickness = 1
-    stroke.Parent = glass
+    stroke.Parent = card
     
-    local transparency = Instance.new("UIGradient")
-    transparency.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255, 0.1)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255, 0.05))
-    })
-    transparency.Parent = glass
-    
-    return glass
+    return card
 end
 
--- Create Item Card (3 per row, landscape design)
+-- Create Item Card (3 per row, macOS design)
 local function createItemCard(itemId, itemData, parent)
     local card = Instance.new("TextButton")
     card.Name = itemId
-    card.Size = UDim2.new(0.33, -8, 0, 120) -- 3 per row with spacing
+    card.Size = UDim2.new(0.33, -8, 0, 140) -- 3 per row with spacing
     card.BackgroundTransparency = 1
     card.Text = ""
     card.Parent = parent
     
-    local glass = createGlassEffect(card)
-    glass.Size = UDim2.new(1, 0, 1, 0)
+    -- Create shadow
+    createShadow(card)
+    
+    -- Create main card
+    local mainCard = createMacCard(card)
     
     -- Create Icon (ImageLabel for eggs, TextLabel for mutations)
     local icon
@@ -303,16 +323,16 @@ local function createItemCard(itemId, itemData, parent)
     else
         icon = Instance.new("TextLabel")
         icon.Text = itemData.Icon
-        icon.TextSize = 32
+        icon.TextSize = 36
         icon.Font = Enum.Font.GothamBold
         icon.TextColor3 = getRarityColor(itemData.Rarity)
     end
     
     icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 50, 0, 50)
-    icon.Position = UDim2.new(0.5, -25, 0.2, 0)
+    icon.Size = UDim2.new(0, 60, 0, 60)
+    icon.Position = UDim2.new(0.5, -30, 0.15, 0)
     icon.BackgroundTransparency = 1
-    icon.Parent = card
+    icon.Parent = mainCard
     
     local name = Instance.new("TextLabel")
     name.Name = "Name"
@@ -320,58 +340,59 @@ local function createItemCard(itemId, itemData, parent)
     name.Position = UDim2.new(0, 8, 0.6, 0)
     name.BackgroundTransparency = 1
     name.Text = itemData.Name
-    name.TextSize = 12
+    name.TextSize = 13
     name.Font = Enum.Font.GothamSemibold
     name.TextColor3 = colors.text
     name.TextXAlignment = Enum.TextXAlignment.Center
     name.TextWrapped = true
-    name.Parent = card
+    name.Parent = mainCard
     
     local price = Instance.new("TextLabel")
     price.Name = "Price"
     price.Size = UDim2.new(1, -16, 0, 16)
-    price.Position = UDim2.new(0, 8, 0.8, 0)
+    price.Position = UDim2.new(0, 8, 0.75, 0)
     price.BackgroundTransparency = 1
     if currentPage == "eggs" then
         price.Text = "$" .. itemData.Price
     else
         price.Text = "Mutation"
     end
-    price.TextSize = 10
+    price.TextSize = 11
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
     price.TextXAlignment = Enum.TextXAlignment.Center
     price.TextWrapped = true
-    price.Parent = card
+    price.Parent = mainCard
     
     local checkmark = Instance.new("TextLabel")
     checkmark.Name = "Checkmark"
-    checkmark.Size = UDim2.new(0, 20, 0, 20)
-    checkmark.Position = UDim2.new(1, -24, 0, 4)
+    checkmark.Size = UDim2.new(0, 24, 0, 24)
+    checkmark.Position = UDim2.new(1, -28, 0, 8)
     checkmark.BackgroundTransparency = 1
     checkmark.Text = "✓"
-    checkmark.TextSize = 16
+    checkmark.TextSize = 18
     checkmark.Font = Enum.Font.GothamBold
     checkmark.TextColor3 = colors.selected
     checkmark.Visible = false
-    checkmark.Parent = card
+    checkmark.Parent = mainCard
     
     -- Set initial selection state
     if selectedItems[itemId] then
         checkmark.Visible = true
-        glass.BackgroundColor3 = colors.selected
+        mainCard.BackgroundColor3 = colors.selected
+        mainCard.UIStroke.Color = colors.selected
     end
     
     -- Hover effect
     card.MouseEnter:Connect(function()
         if not selectedItems[itemId] then
-            TweenService:Create(glass, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
         end
     end)
     
     card.MouseLeave:Connect(function()
         if not selectedItems[itemId] then
-            TweenService:Create(glass, TweenInfo.new(0.2), {BackgroundColor3 = colors.glass}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.window}):Play()
         end
     end)
     
@@ -380,11 +401,13 @@ local function createItemCard(itemId, itemData, parent)
         if selectedItems[itemId] then
             selectedItems[itemId] = nil
             checkmark.Visible = false
-            TweenService:Create(glass, TweenInfo.new(0.2), {BackgroundColor3 = colors.glass}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.window}):Play()
+            TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.border}):Play()
         else
             selectedItems[itemId] = true
             checkmark.Visible = true
-            TweenService:Create(glass, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            TweenService:Create(mainCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            TweenService:Create(mainCard.UIStroke, TweenInfo.new(0.2), {Color = colors.selected}):Play()
         end
         
         if onSelectionChanged then
@@ -395,17 +418,30 @@ local function createItemCard(itemId, itemData, parent)
     return card
 end
 
--- Create Search Bar
+-- Create macOS-style search bar
 local function createSearchBar(parent)
     local searchContainer = Instance.new("Frame")
     searchContainer.Name = "SearchContainer"
-    searchContainer.Size = UDim2.new(1, -16, 0, 40)
+    searchContainer.Size = UDim2.new(1, -16, 0, 36)
     searchContainer.Position = UDim2.new(0, 8, 0, 0)
     searchContainer.BackgroundTransparency = 1
     searchContainer.Parent = parent
     
-    local searchGlass = createGlassEffect(searchContainer)
-    searchGlass.Size = UDim2.new(1, 0, 1, 0)
+    local searchBackground = Instance.new("Frame")
+    searchBackground.Name = "SearchBackground"
+    searchBackground.Size = UDim2.new(1, 0, 1, 0)
+    searchBackground.BackgroundColor3 = colors.searchBackground
+    searchBackground.BorderSizePixel = 0
+    searchBackground.Parent = searchContainer
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = searchBackground
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = colors.searchBorder
+    stroke.Thickness = 1
+    stroke.Parent = searchBackground
     
     local searchIcon = Instance.new("TextLabel")
     searchIcon.Name = "SearchIcon"
@@ -443,12 +479,12 @@ local function createSearchBar(parent)
     return searchContainer
 end
 
--- Create Page Tabs
+-- Create macOS-style page tabs
 local function createPageTabs(parent)
     local tabContainer = Instance.new("Frame")
     tabContainer.Name = "PageTabs"
     tabContainer.Size = UDim2.new(1, -16, 0, 40)
-    tabContainer.Position = UDim2.new(0, 8, 0, 48)
+    tabContainer.Position = UDim2.new(0, 8, 0, 44)
     tabContainer.BackgroundTransparency = 1
     tabContainer.Parent = parent
     
@@ -459,8 +495,8 @@ local function createPageTabs(parent)
     eggsTab.BackgroundTransparency = 1
     eggsTab.Text = "🥚 Eggs"
     eggsTab.TextSize = 14
-    eggsTab.Font = Enum.Font.GothamBold
-    eggsTab.TextColor3 = colors.pageActive
+    eggsTab.Font = Enum.Font.GothamSemibold
+    eggsTab.TextColor3 = colors.tabActive
     eggsTab.Parent = tabContainer
     
     local mutationsTab = Instance.new("TextButton")
@@ -470,15 +506,15 @@ local function createPageTabs(parent)
     mutationsTab.BackgroundTransparency = 1
     mutationsTab.Text = "✨ Mutations"
     mutationsTab.TextSize = 14
-    mutationsTab.Font = Enum.Font.GothamBold
-    mutationsTab.TextColor3 = colors.pageInactive
+    mutationsTab.Font = Enum.Font.GothamSemibold
+    mutationsTab.TextColor3 = colors.tabInactive
     mutationsTab.Parent = tabContainer
     
     -- Tab click events
     eggsTab.MouseButton1Click:Connect(function()
         currentPage = "eggs"
-        eggsTab.TextColor3 = colors.pageActive
-        mutationsTab.TextColor3 = colors.pageInactive
+        eggsTab.TextColor3 = colors.tabActive
+        mutationsTab.TextColor3 = colors.tabInactive
         -- Update search placeholder
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
@@ -489,8 +525,8 @@ local function createPageTabs(parent)
     
     mutationsTab.MouseButton1Click:Connect(function()
         currentPage = "mutations"
-        mutationsTab.TextColor3 = colors.pageActive
-        eggsTab.TextColor3 = colors.pageInactive
+        mutationsTab.TextColor3 = colors.tabActive
+        eggsTab.TextColor3 = colors.tabInactive
         -- Update search placeholder
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
@@ -522,18 +558,21 @@ function EggSelection.CreateUI()
     originalSize = MainFrame.Size
     minimizedSize = UDim2.new(0, 600, 0, 60)
     
-    local mainGlass = createGlassEffect(MainFrame)
-    mainGlass.Size = UDim2.new(1, 0, 1, 0)
+    -- Create main window with shadow
+    createShadow(MainFrame)
+    local mainWindow = createMacCard(MainFrame)
     
-    -- Title Bar
+    -- Title Bar (macOS style)
     local titleBar = Instance.new("Frame")
     titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.BackgroundTransparency = 1
-    titleBar.Parent = MainFrame
+    titleBar.Size = UDim2.new(1, 0, 0, 32)
+    titleBar.BackgroundColor3 = colors.window
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainWindow
     
-    local titleGlass = createGlassEffect(titleBar)
-    titleGlass.Size = UDim2.new(1, 0, 1, 0)
+    local titleBarCorner = Instance.new("UICorner")
+    titleBarCorner.CornerRadius = UDim.new(0, 8, 0, 0)
+    titleBarCorner.Parent = titleBar
     
     local title = Instance.new("TextLabel")
     title.Name = "Title"
@@ -541,59 +580,63 @@ function EggSelection.CreateUI()
     title.Position = UDim2.new(0, 12, 0, 0)
     title.BackgroundTransparency = 1
     title.Text = "🥚 Egg Selection"
-    title.TextSize = 16
-    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
+    title.Font = Enum.Font.GothamSemibold
     title.TextColor3 = colors.text
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = titleBar
     
-    -- Control Buttons
-    local minimizeBtn = Instance.new("TextButton")
-    minimizeBtn.Name = "MinimizeBtn"
-    minimizeBtn.Size = UDim2.new(0, 20, 0, 20)
-    minimizeBtn.Position = UDim2.new(1, -50, 0.5, -10)
-    minimizeBtn.BackgroundTransparency = 1
-    minimizeBtn.Text = "−"
-    minimizeBtn.TextSize = 16
-    minimizeBtn.Font = Enum.Font.GothamBold
-    minimizeBtn.TextColor3 = colors.text
-    minimizeBtn.Parent = titleBar
-    
+    -- macOS-style traffic light buttons
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 20, 0, 20)
-    closeBtn.Position = UDim2.new(1, -25, 0.5, -10)
-    closeBtn.BackgroundTransparency = 1
-    closeBtn.Text = "×"
-    closeBtn.TextSize = 16
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.Size = UDim2.new(0, 12, 0, 12)
+    closeBtn.Position = UDim2.new(0, 12, 0.5, -6)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = ""
     closeBtn.Parent = titleBar
     
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0.5, 0)
+    closeCorner.Parent = closeBtn
+    
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Name = "MinimizeBtn"
+    minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
+    minimizeBtn.Position = UDim2.new(0, 30, 0.5, -6)
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+    minimizeBtn.BorderSizePixel = 0
+    minimizeBtn.Text = ""
+    minimizeBtn.Parent = titleBar
+    
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(0.5, 0)
+    minimizeCorner.Parent = minimizeBtn
+    
     -- Page Tabs
-    local pageTabs = createPageTabs(MainFrame)
+    local pageTabs = createPageTabs(mainWindow)
     
     -- Search Bar
-    local searchBar = createSearchBar(MainFrame)
+    local searchBar = createSearchBar(mainWindow)
     
     -- Content Area
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, -16, 1, -144)
-    content.Position = UDim2.new(0, 8, 0, 144)
+    content.Size = UDim2.new(1, -16, 1, -120)
+    content.Position = UDim2.new(0, 8, 0, 120)
     content.BackgroundTransparency = 1
-    content.Parent = MainFrame
+    content.Parent = mainWindow
     
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Name = "ScrollFrame"
     scrollFrame.Size = UDim2.new(1, 0, 1, 0)
     scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 4
+    scrollFrame.ScrollBarThickness = 6
     scrollFrame.ScrollBarImageColor3 = colors.accent
     scrollFrame.Parent = content
     
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
+    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 140)
     gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = scrollFrame
@@ -652,7 +695,7 @@ end
 function EggSelection.RefreshContent()
     if not ScreenGui then return end
     
-    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+    local scrollFrame = ScreenGui.MainFrame.Card.Content.ScrollFrame
     if not scrollFrame then return end
     
     -- Clear existing content
@@ -706,18 +749,20 @@ function EggSelection.SetSelectedItems(items)
     selectedItems = items or {}
     
     if ScreenGui then
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+        local scrollFrame = ScreenGui.MainFrame.Card.Content.ScrollFrame
         for _, child in pairs(scrollFrame:GetChildren()) do
             if child:IsA("TextButton") then
-                local checkmark = child:FindFirstChild("Checkmark")
-                local glass = child:FindFirstChild("Glass")
-                if checkmark and glass then
+                local checkmark = child.Card.Checkmark
+                local mainCard = child.Card
+                if checkmark and mainCard then
                     if selectedItems[child.Name] then
                         checkmark.Visible = true
-                        glass.BackgroundColor3 = colors.selected
+                        mainCard.BackgroundColor3 = colors.selected
+                        mainCard.UIStroke.Color = colors.selected
                     else
                         checkmark.Visible = false
-                        glass.BackgroundColor3 = colors.glass
+                        mainCard.BackgroundColor3 = colors.window
+                        mainCard.UIStroke.Color = colors.border
                     end
                 end
             end
