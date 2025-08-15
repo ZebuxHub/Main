@@ -3,6 +3,9 @@
 -- Load WindUI library (same as in Windui.lua)
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
+-- Load Egg Selection UI
+local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
+
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,9 +40,6 @@ Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
 Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
--- Load EggSelection UI
-local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
-
 -- Forward declarations for status used by UI callbacks defined below
 local statusData
 local function updateStatusParagraph() end
@@ -54,11 +54,6 @@ local antiAFKEnabled = false
 local antiAFKConnection = nil
 local autoHatchThread = nil
 local automationPriority = "Hatch" -- "Hatch" or "Place"
-
--- EggSelection UI instance
-local eggSelectionUI = nil
-local selectedEggs = {}
-local selectedMutations = {}
 
 -- Egg config loader
 local eggConfig = {}
@@ -1451,78 +1446,74 @@ local mutationList = buildMutationList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 
--- Egg Selection UI Integration
-Tabs.AutoTab:Button({
-    Title = "🥚 Open Egg Selection",
-    Desc = "Open the custom egg selection UI to choose which eggs to buy",
-    Callback = function()
-        if eggSelectionUI and eggSelectionUI.Parent then
-            WindUI:Notify({ Title = "🥚 Egg Selection", Content = "Egg Selection UI is already open!", Duration = 3 })
-        else
-            eggSelectionUI = EggSelection:Create()
-            WindUI:Notify({ Title = "🥚 Egg Selection", Content = "Egg Selection UI opened! Select your eggs.", Duration = 3 })
-        end
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🧬 Open Mutation Selection", 
-    Desc = "Open the custom mutation selection UI to choose which mutations to buy",
-    Callback = function()
-        if eggSelectionUI and eggSelectionUI.Parent then
-            -- Switch to mutations tab
-            local mutationsTab = eggSelectionUI.MainFrame.InnerFrame.ContentFrame.TabFrame.MutationsTab
-            if mutationsTab then
-                mutationsTab.BackgroundColor3 = Color3.fromRGB(139, 69, 19)
-                local eggsTab = eggSelectionUI.MainFrame.InnerFrame.ContentFrame.TabFrame.EggsTab
-                if eggsTab then
-                    eggsTab.BackgroundColor3 = Color3.fromRGB(160, 82, 45)
+local eggDropdown
+eggDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🥚 Pick Eggs",
+    Desc = "Choose which eggs to buy",
+    Values = eggIdList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+            Callback = function(selection)
+            selectedTypeSet = {}
+            local function addTypeFor(idStr)
+                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+                selectedTypeSet[idStr] = true
+                -- Also include the mapped Type from config (if available and different)
+                local mappedType = idToTypeMap[idStr]
+                if mappedType and tostring(mappedType) ~= idStr then
+                    selectedTypeSet[tostring(mappedType)] = true
                 end
             end
-            WindUI:Notify({ Title = "🧬 Mutation Selection", Content = "Switched to mutation selection!", Duration = 3 })
-        else
-            eggSelectionUI = EggSelection:Create()
-            -- Switch to mutations tab
-            local mutationsTab = eggSelectionUI.MainFrame.InnerFrame.ContentFrame.TabFrame.MutationsTab
-            if mutationsTab then
-                mutationsTab.BackgroundColor3 = Color3.fromRGB(139, 69, 19)
-                local eggsTab = eggSelectionUI.MainFrame.InnerFrame.ContentFrame.TabFrame.EggsTab
-                if eggsTab then
-                    eggsTab.BackgroundColor3 = Color3.fromRGB(160, 82, 45)
+            if type(selection) == "table" then
+                for _, id in ipairs(selection) do
+                    addTypeFor(tostring(id))
                 end
+            elseif type(selection) == "string" then
+                addTypeFor(tostring(selection))
             end
-            WindUI:Notify({ Title = "🧬 Mutation Selection", Content = "Mutation Selection UI opened!", Duration = 3 })
+            -- update selected types display
+            local keys = {}
+            for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+            table.sort(keys)
+            statusData.selectedTypes = table.concat(keys, ", ")
+            updateStatusParagraph()
         end
-    end
 })
 
--- Function to get selected eggs from EggSelection UI
-local function getSelectedEggsFromUI()
-    if eggSelectionUI and eggSelectionUI.Parent then
-        return EggSelection:GetSelectedEggs()
-    else
-        return {}
+local mutationDropdown
+mutationDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🧬 Pick Mutations",
+    Desc = "Choose which mutations to buy (leave empty to buy all)",
+    Values = mutationList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        selectedMutationSet = {}
+        if type(selection) == "table" then
+            for _, mutation in ipairs(selection) do
+                selectedMutationSet[tostring(mutation)] = true
+            end
+        elseif type(selection) == "string" then
+            selectedMutationSet[tostring(selection)] = true
+        end
+        -- update selected mutations display
+        local keys = {}
+        for k in pairs(selectedMutationSet) do table.insert(keys, k) end
+        table.sort(keys)
+        statusData.selectedMutations = table.concat(keys, ", ")
+        updateStatusParagraph()
     end
-end
-
--- Function to get selected mutations from EggSelection UI  
-local function getSelectedMutationsFromUI()
-    if eggSelectionUI and eggSelectionUI.Parent then
-        return EggSelection:GetSelectedMutations()
-    else
-        return {}
-    end
-end
+})
 
 Tabs.AutoTab:Button({
     Title = "🔄 Refresh Mutation List",
     Desc = "Update the mutation list if it's not showing all mutations",
     Callback = function()
         loadMutationConfig()
-        -- Mutation list refreshed - update EggSelection UI if open
-        if eggSelectionUI and eggSelectionUI.Parent then
-            -- Refresh the UI to show updated mutations
-            WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed! Please reopen Egg Selection UI to see updates.", Duration = 3 })
+        if mutationDropdown and mutationDropdown.Refresh then
+            mutationDropdown:Refresh(buildMutationList())
         end
         updateStatusParagraph()
         WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
@@ -1533,22 +1524,18 @@ Tabs.AutoTab:Button({
     Title = "🔍 Debug Selection",
     Desc = "Show what eggs and mutations are currently selected",
     Callback = function()
-        local selectedEggsFromUI = getSelectedEggsFromUI()
-        local selectedMutationsFromUI = getSelectedMutationsFromUI()
+        local eggTypes = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggTypes, k) end
+        table.sort(eggTypes)
         
-        local message = "Selected Eggs: " .. table.concat(selectedEggsFromUI, ", ") .. "\n"
-        message = message .. "Selected Mutations: " .. table.concat(selectedMutationsFromUI, ", ")
+        local mutations = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutations, k) end
+        table.sort(mutations)
+        
+        local message = "Selected Eggs: " .. table.concat(eggTypes, ", ") .. "\n"
+        message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
         
         WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🔄 Refresh Status",
-    Desc = "Refresh the status display with current selections",
-    Callback = function()
-        updateStatusParagraph()
-        WindUI:Notify({ Title = "🔄 Status Refreshed", Content = "Status display updated!", Duration = 3 })
     end
 })
 
@@ -1584,23 +1571,8 @@ local function formatStatusDesc()
     table.insert(lines, string.format("Island: %s", tostring(statusData.islandName or "?")))
     table.insert(lines, string.format("NetWorth: %s", tostring(statusData.netWorth)))
     table.insert(lines, string.format("Belt: %d eggs | Match %d | Can buy %d", statusData.eggsFound or 0, statusData.matchingFound or 0, statusData.affordableFound or 0))
-    
-    -- Show selected eggs from UI
-    local selectedEggsFromUI = getSelectedEggsFromUI()
-    if selectedEggsFromUI and #selectedEggsFromUI > 0 then
-        table.insert(lines, "Selected Eggs: " .. table.concat(selectedEggsFromUI, ", "))
-    else
-        table.insert(lines, "Selected Eggs: None (will buy all)")
-    end
-    
-    -- Show selected mutations from UI
-    local selectedMutationsFromUI = getSelectedMutationsFromUI()
-    if selectedMutationsFromUI and #selectedMutationsFromUI > 0 then
-        table.insert(lines, "Selected Mutations: " .. table.concat(selectedMutationsFromUI, ", "))
-    else
-        table.insert(lines, "Selected Mutations: None (will buy all)")
-    end
-    
+    if statusData.selectedTypes then table.insert(lines, "Selected Eggs: " .. statusData.selectedTypes) end
+    if statusData.selectedMutations then table.insert(lines, "Selected Mutations: " .. statusData.selectedMutations) end
     if statusData.lastUID then table.insert(lines, "Last Buy: " .. tostring(statusData.lastUID)) end
     table.insert(lines, "Status: " .. tostring(statusData.lastAction))
     return table.concat(lines, "\n")
@@ -1622,24 +1594,13 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
     
-    -- Get selected eggs from EggSelection UI
-    local selectedEggsFromUI = getSelectedEggsFromUI()
-    local selectedMutationsFromUI = getSelectedMutationsFromUI()
-    
-    -- If eggs are selected in UI, check if this is the type we want
-    if selectedEggsFromUI and #selectedEggsFromUI > 0 then
-        local found = false
-        for _, selectedEgg in ipairs(selectedEggsFromUI) do
-            if string.lower(selectedEgg) == string.lower(eggType) then
-                found = true
-                break
-            end
-        end
-        if not found then return false, nil, nil end
+    -- If eggs are selected, check if this is the type we want
+    if selectedTypeSet and next(selectedTypeSet) then
+    if not selectedTypeSet[eggType] then return false, nil, nil end
     end
     
-    -- Now check mutation if mutations are selected in UI
-    if selectedMutationsFromUI and #selectedMutationsFromUI > 0 then
+    -- Now check mutation if mutations are selected
+    if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutation(eggInstance.Name)
         
         if not eggMutation then
@@ -1653,14 +1614,9 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
             mappedEggMutation = "Jurassic"
         end
         
-        local found = false
-        for _, selectedMutation in ipairs(selectedMutationsFromUI) do
-            if string.lower(selectedMutation) == string.lower(mappedEggMutation) then
-                found = true
-                break
-            end
+        if not selectedMutationSet[mappedEggMutation] then
+            return false, nil, nil
         end
-        if not found then return false, nil, nil end
     end
 
     local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
@@ -3316,6 +3272,9 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
+        zooConfig:Register("selectedEggs", eggDropdown)
+        zooConfig:Register("selectedMutations", mutationDropdown)
+        zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
@@ -3382,52 +3341,6 @@ Tabs.SaveTab:Button({
             Content = "Your settings have been loaded! 🎉", 
             Duration = 3 
         })
-    end
-})
-
-Tabs.SaveTab:Button({
-    Title = "🥚 Save Egg Selection",
-    Desc = "Save your current egg and mutation selections",
-    Callback = function()
-        if EggSelection then
-            local success = EggSelection:Save()
-            if success then
-                WindUI:Notify({ 
-                    Title = "🥚 Egg Selection Saved", 
-                    Content = "Your egg selections have been saved! 🎉", 
-                    Duration = 3 
-                })
-            else
-                WindUI:Notify({ 
-                    Title = "❌ Save Failed", 
-                    Content = "Failed to save egg selections.", 
-                    Duration = 3 
-                })
-            end
-        end
-    end
-})
-
-Tabs.SaveTab:Button({
-    Title = "🥚 Load Egg Selection",
-    Desc = "Load your saved egg and mutation selections",
-    Callback = function()
-        if EggSelection then
-            local success = EggSelection:Load()
-            if success then
-                WindUI:Notify({ 
-                    Title = "🥚 Egg Selection Loaded", 
-                    Content = "Your egg selections have been loaded! 🎉", 
-                    Duration = 3 
-                })
-            else
-                WindUI:Notify({ 
-                    Title = "❌ Load Failed", 
-                    Content = "Failed to load egg selections.", 
-                    Duration = 3 
-                })
-            end
-        end
     end
 })
 
