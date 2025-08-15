@@ -3,9 +3,6 @@
 -- Load WindUI library (same as in Windui.lua)
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
--- Load Egg Selection UI
-local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
-
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -1436,85 +1433,49 @@ local function placePetAtPart(farmPart, petUID)
     return true
 end
 
+-- Hardcoded Egg and Mutation Data
+local EggData = {
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "🥚", Rarity = 1 },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "🥚", Rarity = 2 },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "🥚", Rarity = 2 },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "🥚", Rarity = 2 },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "🥚", Rarity = 3 },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "🥚", Rarity = 4 },
+    HyperEgg = { Name = "Hyper Egg", Price = "3,000,000", Icon = "🥚", Rarity = 5 },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "🥚", Rarity = 5 },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "🥚", Rarity = 5 },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "🥚", Rarity = 5 },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "🥚", Rarity = 5 },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "🥚", Rarity = 6 },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "🥚", Rarity = 6 },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "🥚", Rarity = 6 },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "🥚", Rarity = 6 },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "🥚", Rarity = 6 }
+}
+
+local MutationData = {
+    Golden = { Name = "Golden", Price = "Premium", Icon = "✨", Rarity = 10 },
+    Diamond = { Name = "Diamond", Price = "Premium", Icon = "💎", Rarity = 20 },
+    Electirc = { Name = "Electric", Price = "Premium", Icon = "⚡", Rarity = 50 },
+    Fire = { Name = "Fire", Price = "Premium", Icon = "🔥", Rarity = 100 },
+    Dino = { Name = "Jurassic", Price = "Premium", Icon = "🦕", Rarity = 100 }
+}
+
+-- Load Egg Selection UI
+local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
+
 -- UI state
-loadEggConfig()
-loadConveyorConfig()
-loadPetFoodConfig()
-loadMutationConfig()
-local eggIdList = buildEggIdList()
-local mutationList = buildMutationList()
 local selectedTypeSet = {}
 local selectedMutationSet = {}
+local eggSelectionVisible = false
 
-local eggDropdown
-eggDropdown = Tabs.AutoTab:Dropdown({
-    Title = "🥚 Pick Eggs",
-    Desc = "Choose which eggs to buy",
-    Values = eggIdList,
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-            Callback = function(selection)
-            selectedTypeSet = {}
-            local function addTypeFor(idStr)
-                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
-                selectedTypeSet[idStr] = true
-                -- Also include the mapped Type from config (if available and different)
-                local mappedType = idToTypeMap[idStr]
-                if mappedType and tostring(mappedType) ~= idStr then
-                    selectedTypeSet[tostring(mappedType)] = true
-                end
-            end
-            if type(selection) == "table" then
-                for _, id in ipairs(selection) do
-                    addTypeFor(tostring(id))
-                end
-            elseif type(selection) == "string" then
-                addTypeFor(tostring(selection))
-            end
-            -- update selected types display
-            local keys = {}
-            for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-            table.sort(keys)
-            statusData.selectedTypes = table.concat(keys, ", ")
-            updateStatusParagraph()
-        end
-})
 
-local mutationDropdown
-mutationDropdown = Tabs.AutoTab:Dropdown({
-    Title = "🧬 Pick Mutations",
-    Desc = "Choose which mutations to buy (leave empty to buy all)",
-    Values = mutationList,
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selection)
-        selectedMutationSet = {}
-        if type(selection) == "table" then
-            for _, mutation in ipairs(selection) do
-                selectedMutationSet[tostring(mutation)] = true
-            end
-        elseif type(selection) == "string" then
-            selectedMutationSet[tostring(selection)] = true
-        end
-        -- update selected mutations display
-        local keys = {}
-        for k in pairs(selectedMutationSet) do table.insert(keys, k) end
-        table.sort(keys)
-        statusData.selectedMutations = table.concat(keys, ", ")
-        updateStatusParagraph()
-    end
-})
 
 Tabs.AutoTab:Button({
     Title = "🔄 Refresh Mutation List",
     Desc = "Update the mutation list if it's not showing all mutations",
     Callback = function()
         loadMutationConfig()
-        if mutationDropdown and mutationDropdown.Refresh then
-            mutationDropdown:Refresh(buildMutationList())
-        end
         updateStatusParagraph()
         WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
     end
@@ -1536,6 +1497,53 @@ Tabs.AutoTab:Button({
         message = message .. "Selected Mutations: " .. table.concat(mutations, ", ")
         
         WindUI:Notify({ Title = "🔍 Debug Selection", Content = message, Duration = 5 })
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "🥚 Open Egg Selection UI",
+    Desc = "Open the modern glass-style egg selection interface",
+    Callback = function()
+        if not eggSelectionVisible then
+            EggSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+                    selectedTypeSet = {}
+                    selectedMutationSet = {}
+                    
+                    for itemId, isSelected in pairs(selectedItems) do
+                        if isSelected then
+                            -- Check if it's an egg or mutation
+                            if EggData[itemId] then
+                                selectedTypeSet[itemId] = true
+                            elseif MutationData[itemId] then
+                                selectedMutationSet[itemId] = true
+                            end
+                        end
+                    end
+                    
+                    -- Update status display
+                    local eggKeys = {}
+                    for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+                    table.sort(eggKeys)
+                    statusData.selectedTypes = table.concat(eggKeys, ", ")
+                    
+                    local mutationKeys = {}
+                    for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+                    table.sort(mutationKeys)
+                    statusData.selectedMutations = table.concat(mutationKeys, ", ")
+                    
+                    updateStatusParagraph()
+                end,
+                function(isVisible)
+                    eggSelectionVisible = isVisible
+                end
+            )
+            eggSelectionVisible = true
+        else
+            EggSelection.Hide()
+            eggSelectionVisible = false
+        end
     end
 })
 
@@ -1596,7 +1604,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
-    if not selectedTypeSet[eggType] then return false, nil, nil end
+        if not selectedTypeSet[eggType] then return false, nil, nil end
     end
     
     -- Now check mutation if mutations are selected
@@ -1619,7 +1627,18 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         end
     end
 
-    local price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    -- Get price from hardcoded data or instance attribute
+    local price = nil
+    if EggData[eggType] then
+        -- Convert price string to number (remove commas and convert to number)
+        local priceStr = EggData[eggType].Price:gsub(",", "")
+        price = tonumber(priceStr)
+    end
+    
+    if not price then
+        price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    end
+    
     if type(price) ~= "number" then return false, nil, nil end
     if playerMoney < price then return false, nil, nil end
     
@@ -1869,7 +1888,7 @@ end
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "🥚 Pick Pet Types",
     Desc = "Choose which pets to place",
-    Values = eggIdList,
+    Values = {"BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"},
     Value = {},
     Multi = true,
     AllowNone = true,
@@ -3272,8 +3291,6 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        zooConfig:Register("selectedEggs", eggDropdown)
-        zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         -- Register fruit UI elements from external file
         if fruitUI then
@@ -3282,6 +3299,25 @@ local function registerConfigElements()
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
         zooConfig:Register("automationPriority", priorityDropdown)
+        
+        -- Custom config for egg selection
+        zooConfig:Register("selectedEggs", function()
+            return selectedTypeSet
+        end, function(value)
+            selectedTypeSet = value or {}
+            if EggSelection then
+                EggSelection.SetSelectedItems(selectedTypeSet)
+            end
+        end)
+        
+        zooConfig:Register("selectedMutations", function()
+            return selectedMutationSet
+        end, function(value)
+            selectedMutationSet = value or {}
+            if EggSelection then
+                EggSelection.SetSelectedItems(selectedMutationSet)
+            end
+        end)
     end
 end
 
