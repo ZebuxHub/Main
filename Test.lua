@@ -1370,28 +1370,6 @@ Tabs.HatchTab:Paragraph({
     ImageSize = 18,
 })
 
-local priorityDropdown = Tabs.HatchTab:Dropdown({
-    Title = "🎯 Choose Priority",
-    Desc = "Select which automation has priority",
-    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
-    Value = "⚡ Auto Hatch First",
-    Callback = function(selection)
-        if selection == "⚡ Auto Hatch First" then
-            automationPriority = "Hatch"
-        else
-            automationPriority = "Place"
-        end
-        WindUI:Notify({ 
-            Title = "🎯 Priority Set", 
-            Content = "Priority set to: " .. selection, 
-            Duration = 3 
-        })
-        
-        -- Ensure the selection is saved immediately
-        ensureDropdownSave(priorityDropdown, "automationPriority")
-    end
-})
-
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
     
@@ -1436,64 +1414,98 @@ local function placePetAtPart(farmPart, petUID)
     return true
 end
 
+-- Hardcoded dropdown values for better config saving
+local hardcodedEggList = {
+    "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", 
+    "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", 
+    "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"
+}
+
+local hardcodedMutationList = {
+    "Golden", "Diamond", "Electirc", "Fire", "Dino"
+}
+
+local hardcodedFruitList = {
+    "Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", 
+    "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango"
+}
+
+local hardcodedPriorityList = {
+    "⚡ Auto Hatch First", "🏠 Auto Place First"
+}
+
 -- UI state
 loadEggConfig()
 loadConveyorConfig()
 loadPetFoodConfig()
 loadMutationConfig()
-local eggIdList = buildEggIdList()
-local mutationList = buildMutationList()
+
+local priorityDropdown = Tabs.HatchTab:Dropdown({
+    Title = "🎯 Choose Priority",
+    Desc = "Select which automation has priority",
+    Values = hardcodedPriorityList,
+    Value = "⚡ Auto Hatch First",
+    Callback = function(selection)
+        if selection == "⚡ Auto Hatch First" then
+            automationPriority = "Hatch"
+        else
+            automationPriority = "Place"
+        end
+        WindUI:Notify({ 
+            Title = "🎯 Priority Set", 
+            Content = "Priority set to: " .. selection, 
+            Duration = 3 
+        })
+    end
+})
+
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 
 local eggDropdown
-eggDropdown = createDropdownWithConfig(
-    "🥚 Pick Eggs",
-    "Choose which eggs to buy",
-    eggIdList,
-    {},
-    true, -- multi
-    true, -- allowNone
-    function(selection)
-        selectedTypeSet = {}
-        local function addTypeFor(idStr)
-            -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
-            selectedTypeSet[idStr] = true
-            -- Also include the mapped Type from config (if available and different)
-            local mappedType = idToTypeMap[idStr]
-            if mappedType and tostring(mappedType) ~= idStr then
-                selectedTypeSet[tostring(mappedType)] = true
+eggDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🥚 Pick Eggs",
+    Desc = "Choose which eggs to buy",
+    Values = hardcodedEggList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+            Callback = function(selection)
+            selectedTypeSet = {}
+            local function addTypeFor(idStr)
+                -- Always include the ID itself (many games set Type directly to the config ID, e.g., "BasicEgg")
+                selectedTypeSet[idStr] = true
+                -- Also include the mapped Type from config (if available and different)
+                local mappedType = idToTypeMap[idStr]
+                if mappedType and tostring(mappedType) ~= idStr then
+                    selectedTypeSet[tostring(mappedType)] = true
+                end
             end
-        end
-        if type(selection) == "table" then
-            for _, id in ipairs(selection) do
-                addTypeFor(tostring(id))
+            if type(selection) == "table" then
+                for _, id in ipairs(selection) do
+                    addTypeFor(tostring(id))
+                end
+            elseif type(selection) == "string" then
+                addTypeFor(tostring(selection))
             end
-        elseif type(selection) == "string" then
-            addTypeFor(tostring(selection))
+            -- update selected types display
+            local keys = {}
+            for k in pairs(selectedTypeSet) do table.insert(keys, k) end
+            table.sort(keys)
+            statusData.selectedTypes = table.concat(keys, ", ")
+            updateStatusParagraph()
         end
-        -- update selected types display
-        local keys = {}
-        for k in pairs(selectedTypeSet) do table.insert(keys, k) end
-        table.sort(keys)
-        statusData.selectedTypes = table.concat(keys, ", ")
-        updateStatusParagraph()
-        
-        -- Ensure the selection is saved immediately
-        ensureDropdownSave(eggDropdown, "selectedEggs")
-    end,
-    "selectedEggs"
-)
+})
 
 local mutationDropdown
-mutationDropdown = createDropdownWithConfig(
-    "🧬 Pick Mutations",
-    "Choose which mutations to buy (leave empty to buy all)",
-    mutationList,
-    {},
-    true, -- multi
-    true, -- allowNone
-    function(selection)
+mutationDropdown = Tabs.AutoTab:Dropdown({
+    Title = "🧬 Pick Mutations",
+    Desc = "Choose which mutations to buy (leave empty to buy all)",
+    Values = hardcodedMutationList,
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
         selectedMutationSet = {}
         if type(selection) == "table" then
             for _, mutation in ipairs(selection) do
@@ -1508,20 +1520,15 @@ mutationDropdown = createDropdownWithConfig(
         table.sort(keys)
         statusData.selectedMutations = table.concat(keys, ", ")
         updateStatusParagraph()
-        
-        -- Ensure the selection is saved immediately
-        ensureDropdownSave(mutationDropdown, "selectedMutations")
-    end,
-    "selectedMutations"
-)
+    end
+})
 
 Tabs.AutoTab:Button({
     Title = "🔄 Refresh Mutation List",
     Desc = "Update the mutation list if it's not showing all mutations",
     Callback = function()
-        loadMutationConfig()
         if mutationDropdown and mutationDropdown.Refresh then
-            mutationDropdown:Refresh(buildMutationList())
+            mutationDropdown:Refresh(hardcodedMutationList)
         end
         updateStatusParagraph()
         WindUI:Notify({ Title = "🧬 Auto Buy", Content = "Mutation list refreshed!", Duration = 3 })
@@ -1877,7 +1884,7 @@ end
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "🥚 Pick Pet Types",
     Desc = "Choose which pets to place",
-    Values = eggIdList,
+    Values = hardcodedEggList,
     Value = {},
     Multi = true,
     AllowNone = true,
@@ -1885,9 +1892,6 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
         selectedEggTypes = selection
         placeStatusData.selectedEggs = #selection
         updatePlaceStatusParagraph()
-        
-        -- Ensure the selection is saved immediately
-        ensureDropdownSave(placeEggDropdown, "selectedPlaceEggs")
     end
 })
 
@@ -3283,19 +3287,16 @@ local function registerConfigElements()
         zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
         zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        
-        -- Register dropdowns with enhanced save/load handling
         zooConfig:Register("selectedEggs", eggDropdown)
         zooConfig:Register("selectedMutations", mutationDropdown)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        zooConfig:Register("automationPriority", priorityDropdown)
-        
         -- Register fruit UI elements from external file
         if fruitUI then
             zooConfig:Register("autoFruitEnabled", fruitUI.autoFruitToggle)
             zooConfig:Register("selectedFruits", fruitUI.fruitDropdown)
             zooConfig:Register("onlyIfNoneOwned", fruitUI.onlyIfNoneOwnedToggle)
         end
+        zooConfig:Register("automationPriority", priorityDropdown)
     end
 end
 
@@ -3336,17 +3337,6 @@ Tabs.SaveTab:Button({
     Title = "💾 Save Settings",
     Desc = "Save all your current settings",
     Callback = function()
-        -- Force save dropdown values before saving config
-        ensureDropdownSave(eggDropdown, "selectedEggs")
-        ensureDropdownSave(mutationDropdown, "selectedMutations")
-        ensureDropdownSave(placeEggDropdown, "selectedPlaceEggs")
-        ensureDropdownSave(priorityDropdown, "automationPriority")
-        
-        -- Save fruit dropdown if available
-        if fruitUI and fruitUI.fruitDropdown then
-            ensureDropdownSave(fruitUI.fruitDropdown, "selectedFruits")
-        end
-        
         zooConfig:Save()
         WindUI:Notify({ 
             Title = "💾 Settings Saved", 
@@ -3378,60 +3368,6 @@ Tabs.SaveTab:Button({
         else
             setupAntiAFK()
         end
-    end
-})
-
-Tabs.SaveTab:Button({
-    Title = "🧪 Test Dropdown Save/Load",
-    Desc = "Test the dropdown save/load functionality",
-    Callback = function()
-        testDropdownSaveLoad()
-        WindUI:Notify({ 
-            Title = "🧪 Test Completed", 
-            Content = "Dropdown save/load test completed! Check console for details.", 
-            Duration = 3 
-        })
-    end
-})
-
-Tabs.SaveTab:Button({
-    Title = "🔍 Debug Dropdown Values",
-    Desc = "Show current dropdown values for debugging",
-    Callback = function()
-        local debugInfo = {}
-        
-        -- Get current dropdown values
-        if eggDropdown then
-            local eggValue = eggDropdown:GetValue()
-            debugInfo[#debugInfo + 1] = "Egg Dropdown: " .. (type(eggValue) == "table" and table.concat(eggValue, ", ") or tostring(eggValue))
-        end
-        
-        if mutationDropdown then
-            local mutationValue = mutationDropdown:GetValue()
-            debugInfo[#debugInfo + 1] = "Mutation Dropdown: " .. (type(mutationValue) == "table" and table.concat(mutationValue, ", ") or tostring(mutationValue))
-        end
-        
-        if placeEggDropdown then
-            local placeValue = placeEggDropdown:GetValue()
-            debugInfo[#debugInfo + 1] = "Place Egg Dropdown: " .. (type(placeValue) == "table" and table.concat(placeValue, ", ") or tostring(placeValue))
-        end
-        
-        if priorityDropdown then
-            local priorityValue = priorityDropdown:GetValue()
-            debugInfo[#debugInfo + 1] = "Priority Dropdown: " .. tostring(priorityValue)
-        end
-        
-        if fruitUI and fruitUI.fruitDropdown then
-            local fruitValue = fruitUI.fruitDropdown:GetValue()
-            debugInfo[#debugInfo + 1] = "Fruit Dropdown: " .. (type(fruitValue) == "table" and table.concat(fruitValue, ", ") or tostring(fruitValue))
-        end
-        
-        local message = table.concat(debugInfo, "\n")
-        WindUI:Notify({ 
-            Title = "🔍 Debug Info", 
-            Content = message, 
-            Duration = 5 
-        })
     end
 })
 
@@ -3475,18 +3411,6 @@ task.spawn(function()
     registerConfigElements() -- Register all UI elements for config
     if zooConfig then
         zooConfig:Load()
-        
-        -- Ensure dropdown values are properly loaded
-        ensureDropdownLoad(eggDropdown, "selectedEggs", {})
-        ensureDropdownLoad(mutationDropdown, "selectedMutations", {})
-        ensureDropdownLoad(placeEggDropdown, "selectedPlaceEggs", {})
-        ensureDropdownLoad(priorityDropdown, "automationPriority", "⚡ Auto Hatch First")
-        
-        -- Load fruit dropdown values if fruitUI is available
-        if fruitUI and fruitUI.loadFruitDropdownValues then
-            fruitUI.loadFruitDropdownValues()
-        end
-        
         WindUI:Notify({ 
             Title = "📂 Auto-Load", 
             Content = "Your saved settings have been loaded! 🎉", 
@@ -3517,84 +3441,3 @@ end)
 Window:OnClose(function()
     print("UI closed.")
 end)
-
--- ============ Config System Enhancement ============
--- Enhanced config handling for dropdowns
-local function createDropdownWithConfig(title, desc, values, defaultValue, multi, allowNone, callback, configKey)
-    local dropdown = Tabs.AutoTab:Dropdown({
-        Title = title,
-        Desc = desc,
-        Values = values,
-        Value = defaultValue or (multi and {} or ""),
-        Multi = multi or false,
-        AllowNone = allowNone or false,
-        Callback = callback
-    })
-    
-    -- Register with config system if configKey is provided
-    if configKey and zooConfig then
-        zooConfig:Register(configKey, dropdown)
-    end
-    
-    return dropdown
-end
-
--- Function to ensure dropdown values are properly saved
-local function ensureDropdownSave(dropdown, configKey)
-    if dropdown and zooConfig then
-        -- Force save the current dropdown value
-        local currentValue = dropdown:GetValue()
-        if currentValue then
-            -- Update the config with current value
-            zooConfig:SetValue(configKey, currentValue)
-        end
-    end
-end
-
--- Function to properly load dropdown values
-local function ensureDropdownLoad(dropdown, configKey, defaultValues)
-    if dropdown and zooConfig then
-        local savedValue = zooConfig:GetValue(configKey)
-        if savedValue and type(savedValue) == "table" and #savedValue > 0 then
-            -- Set the dropdown to saved values
-            dropdown:SetValue(savedValue)
-        elseif savedValue and type(savedValue) == "string" and savedValue ~= "" then
-            -- Set the dropdown to saved value
-            dropdown:SetValue(savedValue)
-        elseif defaultValues then
-            -- Set to default values if no saved value
-            dropdown:SetValue(defaultValues)
-        end
-    end
-end
-
--- Test function to verify dropdown save/load functionality
-local function testDropdownSaveLoad()
-    print("🧪 Testing dropdown save/load functionality...")
-    
-    -- Test saving dropdown values
-    if eggDropdown then
-        local testValue = {"TestEgg1", "TestEgg2"}
-        eggDropdown:SetValue(testValue)
-        ensureDropdownSave(eggDropdown, "selectedEggs")
-        print("✅ Egg dropdown save test completed")
-    end
-    
-    if mutationDropdown then
-        local testValue = {"TestMutation1"}
-        mutationDropdown:SetValue(testValue)
-        ensureDropdownSave(mutationDropdown, "selectedMutations")
-        print("✅ Mutation dropdown save test completed")
-    end
-    
-    if priorityDropdown then
-        local testValue = "🏠 Auto Place First"
-        priorityDropdown:SetValue(testValue)
-        ensureDropdownSave(priorityDropdown, "automationPriority")
-        print("✅ Priority dropdown save test completed")
-    end
-    
-    print("🧪 Dropdown save/load test completed!")
-end
-
--- ============ Anti-AFK System ============
