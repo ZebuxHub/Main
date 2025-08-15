@@ -1454,11 +1454,11 @@ local EggData = {
 }
 
 local MutationData = {
-    Golden = { Name = "Golden", Price = "Premium", Icon = "✨", Rarity = 10 },
-    Diamond = { Name = "Diamond", Price = "Premium", Icon = "💎", Rarity = 20 },
-    Electirc = { Name = "Electric", Price = "Premium", Icon = "⚡", Rarity = 50 },
-    Fire = { Name = "Fire", Price = "Premium", Icon = "🔥", Rarity = 100 },
-    Dino = { Name = "Jurassic", Price = "Premium", Icon = "🦕", Rarity = 100 }
+    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
+    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
+    Electirc = { Name = "Electric", Icon = "⚡", Rarity = 50 },
+    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
+    Dino = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
 }
 
 -- Load Egg Selection UI
