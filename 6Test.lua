@@ -3336,110 +3336,75 @@ Tabs.SaveTab:Button({
 
 -- Register config elements and auto-load when script starts
 task.spawn(function()
-    task.wait(1) -- Wait a bit for UI to fully load
+    task.wait(2) -- Wait longer for UI to fully load
     
-    -- Safe registration with error handling
-    local success, err = pcall(function()
-    registerConfigElements() -- Register all UI elements for config
+    -- Load custom JSON files only (skip problematic WindUI config)
+    local success, data = pcall(function()
+        if isfile("Zebux_EggSelections.json") then
+            local jsonData = readfile("Zebux_EggSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
     end)
     
-    if not success then
-        warn("Failed to register config elements: " .. tostring(err))
+    if success and data then
+        -- Load egg selections
+        selectedTypeSet = {}
+        if data.eggs then
+            for _, eggId in ipairs(data.eggs) do
+                selectedTypeSet[eggId] = true
+            end
+        end
+        
+        -- Load mutation selections
+        selectedMutationSet = {}
+        if data.mutations then
+            for _, mutationId in ipairs(data.mutations) do
+                selectedMutationSet[mutationId] = true
+            end
+        end
     end
     
-            -- Safe loading with error handling
-    if zooConfig then
-            local loadSuccess, loadErr = pcall(function()
-        if zooConfig and zooConfig.Load then
-            zooConfig:Load()
+    -- Load fruit selections separately
+    local fruitSuccess, fruitData = pcall(function()
+        if isfile("Zebux_FruitSelections.json") then
+            local jsonData = readfile("Zebux_FruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
         end
-                
-                -- Load egg selections separately
-                local success, data = pcall(function()
-                    if isfile("Zebux_EggSelections.json") then
-                        local jsonData = readfile("Zebux_EggSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if success and data then
-                    -- Load egg selections
-                    selectedTypeSet = {}
-                    if data.eggs then
-                        for _, eggId in ipairs(data.eggs) do
-                            selectedTypeSet[eggId] = true
-                        end
-                    end
-                    
-                    -- Load mutation selections
-                    selectedMutationSet = {}
-                    if data.mutations then
-                        for _, mutationId in ipairs(data.mutations) do
-                            selectedMutationSet[mutationId] = true
-                        end
-                    end
-                    
-                    -- Update status display with loaded selections
-                    local eggKeys = {}
-                    for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-                    table.sort(eggKeys)
-                    -- Selection updated
-                    
-                    -- Status update removed
-                end
-                
-                -- Load fruit selections separately
-                local fruitSuccess, fruitData = pcall(function()
-                    if isfile("Zebux_FruitSelections.json") then
-                        local jsonData = readfile("Zebux_FruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if fruitSuccess and fruitData then
-                    -- Load fruit selections
-                    selectedFruits = {}
-                    if fruitData.fruits then
-                        for _, fruitId in ipairs(fruitData.fruits) do
-                            selectedFruits[fruitId] = true
-                        end
-                    end
-                end
-                
-                -- Load feed fruit selections separately
-                local feedFruitSuccess, feedFruitData = pcall(function()
-                    if isfile("Zebux_FeedFruitSelections.json") then
-                        local jsonData = readfile("Zebux_FeedFruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if feedFruitSuccess and feedFruitData then
-                    -- Load feed fruit selections
-                    selectedFeedFruits = {}
-                    if feedFruitData.fruits then
-                        for _, fruitId in ipairs(feedFruitData.fruits) do
-                            selectedFeedFruits[fruitId] = true
-                        end
-                    end
-                end
-            end)
-            
-            if loadSuccess then
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load", 
-            Content = "Your saved settings have been loaded! 🎉", 
-            Duration = 3 
-        })
-            else
-                warn("Failed to load config: " .. tostring(loadErr))
-                WindUI:Notify({ 
-                    Title = "⚠️ Config Error", 
-                    Content = "Failed to load saved settings. Using defaults.", 
-            Duration = 3 
-        })
+    end)
+    
+    if fruitSuccess and fruitData then
+        -- Load fruit selections
+        selectedFruits = {}
+        if fruitData.fruits then
+            for _, fruitId in ipairs(fruitData.fruits) do
+                selectedFruits[fruitId] = true
             end
+        end
     end
+    
+    -- Load feed fruit selections separately
+    local feedFruitSuccess, feedFruitData = pcall(function()
+        if isfile("Zebux_FeedFruitSelections.json") then
+            local jsonData = readfile("Zebux_FeedFruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if feedFruitSuccess and feedFruitData then
+        -- Load feed fruit selections
+        selectedFeedFruits = {}
+        if feedFruitData.fruits then
+            for _, fruitId in ipairs(feedFruitData.fruits) do
+                selectedFeedFruits[fruitId] = true
+            end
+        end
+    end
+    
+    WindUI:Notify({ 
+        Title = "📂 Auto-Load", 
+        Content = "Your saved selections have been loaded! 🎉", 
+        Duration = 3 
+    })
 end)
 
 -- ============ Auto Feed Tab ============
