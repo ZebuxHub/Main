@@ -790,7 +790,7 @@ function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
     end
     
     -- Wait a frame to ensure UI is created
-    task.wait()
+    task.wait(0.1)
     EggSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
