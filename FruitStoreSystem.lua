@@ -9,6 +9,31 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Fruit Store Functions
+-- Try to read stock from the visible UI path:
+-- PlayerGui.ScreenFoodStore.Root.Frame.ScrollingFrame.<Fruit>.ItemButton.StockLabel.Text
+local function readStockFromUIPanel(fruitId)
+    local player = Players.LocalPlayer
+    if not player then return nil end
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local ui = pg:FindFirstChild("ScreenFoodStore")
+    if not ui then return nil end
+    local root = ui:FindFirstChild("Root")
+    if not root then return nil end
+    local frame = root:FindFirstChild("Frame")
+    if not frame then return nil end
+    local sf = frame:FindFirstChild("ScrollingFrame")
+    if not sf then return nil end
+    local fruitFolder = sf:FindFirstChild(fruitId)
+    if not fruitFolder then return nil end
+    local itemBtn = fruitFolder:FindFirstChild("ItemButton")
+    if not itemBtn then return nil end
+    local stockLabel = itemBtn:FindFirstChild("StockLabel")
+    if not (stockLabel and stockLabel:IsA("TextLabel")) then return nil end
+    local txt = stockLabel.Text or ""
+    local num = tonumber(txt:match("%d+"))
+    return num
+end
 function FruitStoreSystem.getFoodStoreUI()
     local player = Players.LocalPlayer
     if not player then return nil end
@@ -62,11 +87,21 @@ function FruitStoreSystem.readStockFromLST(lst, fruitId)
 end
 
 function FruitStoreSystem.isFruitInStock(fruitId)
+    -- Prefer UI panel stock if present
+    local uiStock = readStockFromUIPanel(fruitId)
+    if uiStock ~= nil then
+        return uiStock > 0
+    end
+
+    -- Fallback to LST labels
     local lst = FruitStoreSystem.getFoodStoreLST()
-    if not lst then return false end
-    
-    local stock = FruitStoreSystem.readStockFromLST(lst, fruitId)
-    return stock > 0
+    if lst then
+        local stock = FruitStoreSystem.readStockFromLST(lst, fruitId)
+        return stock > 0
+    end
+
+    -- Unknown (UI not open) -> allow attempt; caller will handle success/failure
+    return true
 end
 
 function FruitStoreSystem.getPlayerNetWorth()
