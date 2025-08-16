@@ -1053,7 +1053,11 @@ local hatchParagraph = Tabs.HatchTab:Paragraph({
     ImageSize = 18,
 })
 local function updateHatchStatus()
-    if not hatchParagraph or not hatchParagraph.SetDesc then return end
+    if not (hatchParagraph and hatchParagraph.SetDesc) then return end
+    local now = os.clock()
+    hatchParagraph._last = hatchParagraph._last or 0
+    if now - hatchParagraph._last < 0.25 then return end
+    hatchParagraph._last = now
     local lines = {}
     table.insert(lines, string.format("Owned: %d | Ready: %d", hatchStatus.owned or 0, hatchStatus.ready or 0))
     if hatchStatus.lastModel then
@@ -1492,7 +1496,7 @@ local function ensureSelectionsLoaded()
 		pcall(function()
 			if isfile("Zebux_EggSelections.json") then
 				local data = http:JSONDecode(readfile("Zebux_EggSelections.json"))
-				selectedTypeSet = {}
+            selectedTypeSet = {}
 				if data and data.eggs then
 					for _, id in ipairs(data.eggs) do selectedTypeSet[id] = true end
 				end
@@ -1544,7 +1548,9 @@ local function ensureSelectionsLoaded()
 		if updateStatusParagraph then updateStatusParagraph() end
 
 		for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
-		fruitAutoBuyStatus.selectedCount = #fruitKeys
+		if fruitAutoBuyStatus then
+			fruitAutoBuyStatus.selectedCount = #fruitKeys
+		end
 		if updateFruitStatus then updateFruitStatus() end
 	end
 end
@@ -1655,9 +1661,12 @@ local function formatStatusDesc()
 end
 
 function updateStatusParagraph()
-    if statusParagraph and statusParagraph.SetDesc then
+    if not (statusParagraph and statusParagraph.SetDesc) then return end
+    local now = os.clock()
+    statusParagraph._last = statusParagraph._last or 0
+    if now - statusParagraph._last < 0.25 then return end
+    statusParagraph._last = now
         statusParagraph:SetDesc(formatStatusDesc())
-    end
 end
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
@@ -2144,9 +2153,12 @@ local function formatPlaceStatusDesc()
 end
 
 local function updatePlaceStatusParagraph()
-    if placeStatusParagraph and placeStatusParagraph.SetDesc then
-        placeStatusParagraph:SetDesc(formatPlaceStatusDesc())
-    end
+    if not (placeStatusParagraph and placeStatusParagraph.SetDesc) then return end
+    local now = os.clock()
+    placeStatusParagraph._last = placeStatusParagraph._last or 0
+    if now - placeStatusParagraph._last < 0.25 then return end
+    placeStatusParagraph._last = now
+    placeStatusParagraph:SetDesc(formatPlaceStatusDesc())
 end
 
 -- Check and remember which tiles are taken
@@ -2660,9 +2672,12 @@ local function formatUnlockStatusDesc()
 end
 
 local function updateUnlockStatusParagraph()
-    if unlockStatusParagraph and unlockStatusParagraph.SetDesc then
-        unlockStatusParagraph:SetDesc(formatUnlockStatusDesc())
-    end
+    if not (unlockStatusParagraph and unlockStatusParagraph.SetDesc) then return end
+    local now = os.clock()
+    unlockStatusParagraph._last = unlockStatusParagraph._last or 0
+    if now - unlockStatusParagraph._last < 0.25 then return end
+    unlockStatusParagraph._last = now
+    unlockStatusParagraph:SetDesc(formatUnlockStatusDesc())
 end
 
 -- Function to get all locked tiles
@@ -2909,9 +2924,12 @@ local function formatDeleteStatusDesc()
 end
 
 local function updateDeleteStatusParagraph()
-    if deleteStatusParagraph and deleteStatusParagraph.SetDesc then
-        deleteStatusParagraph:SetDesc(formatDeleteStatusDesc())
-    end
+    if not (deleteStatusParagraph and deleteStatusParagraph.SetDesc) then return end
+    local now = os.clock()
+    deleteStatusParagraph._last = deleteStatusParagraph._last or 0
+    if now - deleteStatusParagraph._last < 0.25 then return end
+    deleteStatusParagraph._last = now
+    deleteStatusParagraph:SetDesc(formatDeleteStatusDesc())
 end
 
 local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
@@ -3219,9 +3237,12 @@ local shopStatus = { lastAction = "Ready to upgrade!", upgradesTried = 0, upgrad
 local shopParagraph = Tabs.ShopTab:Paragraph({ Title = "🛒 Shop Status", Desc = "Shows upgrade progress", Image = "activity", ImageSize = 22 })
 local function setShopStatus(msg)
     shopStatus.lastAction = msg
-    if shopParagraph and shopParagraph.SetDesc then
-        shopParagraph:SetDesc(string.format("Upgrades: %d done\nLast: %s", shopStatus.upgradesDone, shopStatus.lastAction))
-    end
+    if not (shopParagraph and shopParagraph.SetDesc) then return end
+    local now = os.clock()
+    shopParagraph._last = shopParagraph._last or 0
+    if now - shopParagraph._last < 0.25 then return end
+    shopParagraph._last = now
+    shopParagraph:SetDesc(string.format("Upgrades: %d done\nLast: %s", shopStatus.upgradesDone, shopStatus.lastAction))
 end
 
 local function parseConveyorIndexFromId(idStr)
@@ -3366,15 +3387,20 @@ local fruitStatusParagraph = Tabs.FruitTab:Paragraph({
 })
 
 local function updateFruitStatus()
-    if fruitStatusParagraph and fruitStatusParagraph.SetDesc then
-        local lines = {}
-        table.insert(lines, "🍎 Selected Fruits: " .. fruitAutoBuyStatus.selectedCount .. " fruits")
+    if not (fruitStatusParagraph and fruitStatusParagraph.SetDesc) then return end
+    local now = os.clock()
+    fruitStatusParagraph._last = fruitStatusParagraph._last or 0
+    if now - fruitStatusParagraph._last < 0.25 then return end
+    fruitStatusParagraph._last = now
+    local lines = {}
+    table.insert(lines, "🍎 Selected Fruits: " .. tostring((fruitAutoBuyStatus and fruitAutoBuyStatus.selectedCount) or 0) .. " fruits")
+    if fruitAutoBuyStatus then
         table.insert(lines, "🛒 Store Open: " .. (fruitAutoBuyStatus.storeOpen and "✅ Yes" or "❌ No"))
         table.insert(lines, "📊 Total Bought: " .. tostring(fruitAutoBuyStatus.totalBought))
-        table.insert(lines, "🔄 Last Action: " .. fruitAutoBuyStatus.lastAction)
-        table.insert(lines, "⏰ Last Check: " .. fruitAutoBuyStatus.lastCheck)
-        fruitStatusParagraph:SetDesc(table.concat(lines, "\n"))
+        table.insert(lines, "🔄 Last Action: " .. tostring(fruitAutoBuyStatus.lastAction or ""))
+        table.insert(lines, "⏰ Last Check: " .. tostring(fruitAutoBuyStatus.lastCheck or "Never"))
     end
+    fruitStatusParagraph:SetDesc(table.concat(lines, "\n"))
 end
 
 Tabs.FruitTab:Button({
@@ -3513,6 +3539,10 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
 local ConfigManager = Window.ConfigManager
 local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 
+-- Forward declarations for toggles that will be defined later
+local autoFeedToggle = nil
+local autoUnlockToggle = nil
+
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
     if zooConfig then
@@ -3528,9 +3558,10 @@ local function registerConfigElements()
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("automationPriority", priorityDropdown)
-        
-        -- Register fruit selection
         zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
+        if autoFeedToggle then zooConfig:Register("autoFeedEnabled", autoFeedToggle) end
+        if autoUnlockToggle then zooConfig:Register("autoUnlockEnabled", autoUnlockToggle) end
+        zooConfig:Register("antiAFKEnabled", antiAFKEnabled)
     end
 end
 
@@ -3854,122 +3885,122 @@ task.spawn(function()
     
     -- Safe registration with error handling
     local success, err = pcall(function()
-    registerConfigElements() -- Register all UI elements for config
+        registerConfigElements() -- Register all UI elements for config
     end)
     
     if not success then
         warn("Failed to register config elements: " .. tostring(err))
     end
     
-            -- Safe loading with error handling
+    -- Safe loading with error handling
     if zooConfig then
-            local loadSuccess, loadErr = pcall(function()
-        zooConfig:Load()
-                
-                -- Load egg selections separately
-                local success, data = pcall(function()
-                    if isfile("Zebux_EggSelections.json") then
-                        local jsonData = readfile("Zebux_EggSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if success and data then
-                    -- Load egg selections
-                    selectedTypeSet = {}
-                    if data.eggs then
-                        for _, eggId in ipairs(data.eggs) do
-                            selectedTypeSet[eggId] = true
-                        end
-                    end
-                    
-                    -- Load mutation selections
-                    selectedMutationSet = {}
-                    if data.mutations then
-                        for _, mutationId in ipairs(data.mutations) do
-                            selectedMutationSet[mutationId] = true
-                        end
-                    end
-                    
-                    -- Update status display with loaded selections
-                    local eggKeys = {}
-                    for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-                    table.sort(eggKeys)
-                    statusData.selectedTypes = table.concat(eggKeys, ", ")
-                    
-                    local mutationKeys = {}
-                    for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-                    table.sort(mutationKeys)
-                    statusData.selectedMutations = table.concat(mutationKeys, ", ")
-                    
-                    updateStatusParagraph()
-                end
-                
-                -- Load fruit selections separately
-                local fruitSuccess, fruitData = pcall(function()
-                    if isfile("Zebux_FruitSelections.json") then
-                        local jsonData = readfile("Zebux_FruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if fruitSuccess and fruitData then
-                    -- Load fruit selections
-                    selectedFruits = {}
-                    if fruitData.fruits then
-                        for _, fruitId in ipairs(fruitData.fruits) do
-                            selectedFruits[fruitId] = true
-                        end
-                    end
-                end
-                
-                -- Load feed fruit selections separately
-                local feedFruitSuccess, feedFruitData = pcall(function()
-                    if isfile("Zebux_FeedFruitSelections.json") then
-                        local jsonData = readfile("Zebux_FeedFruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if feedFruitSuccess and feedFruitData then
-                    -- Load feed fruit selections
-                    selectedFeedFruits = {}
-                    if feedFruitData.fruits then
-                        for _, fruitId in ipairs(feedFruitData.fruits) do
-                            selectedFeedFruits[fruitId] = true
-                        end
-                    end
+        local loadSuccess, loadErr = pcall(function()
+            zooConfig:Load()
+            
+            -- Load egg selections separately
+            local success, data = pcall(function()
+                if isfile("Zebux_EggSelections.json") then
+                    local jsonData = readfile("Zebux_EggSelections.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
                 end
             end)
             
-            if loadSuccess then
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load", 
-            Content = "Your saved settings have been loaded! 🎉", 
-            Duration = 3 
-        })
-            else
-                warn("Failed to load config: " .. tostring(loadErr))
-                WindUI:Notify({ 
-                    Title = "⚠️ Config Error", 
-                    Content = "Failed to load saved settings. Using defaults.", 
-            Duration = 3 
-        })
+            if success and data then
+                -- Load egg selections
+                selectedTypeSet = {}
+                if data.eggs then
+                    for _, eggId in ipairs(data.eggs) do
+                        selectedTypeSet[eggId] = true
+                    end
+                end
+                
+                -- Load mutation selections
+                selectedMutationSet = {}
+                if data.mutations then
+                    for _, mutationId in ipairs(data.mutations) do
+                        selectedMutationSet[mutationId] = true
+                    end
+                end
+                
+                -- Update status display with loaded selections
+                local eggKeys = {}
+                for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+                table.sort(eggKeys)
+                statusData.selectedTypes = table.concat(eggKeys, ", ")
+                
+                local mutationKeys = {}
+                for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+                table.sort(mutationKeys)
+                statusData.selectedMutations = table.concat(mutationKeys, ", ")
+                
+                updateStatusParagraph()
             end
+            
+            -- Load fruit selections separately
+            local fruitSuccess, fruitData = pcall(function()
+                if isfile("Zebux_FruitSelections.json") then
+                    local jsonData = readfile("Zebux_FruitSelections.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
+                end
+            end)
+            
+            if fruitSuccess and fruitData then
+                -- Load fruit selections
+                selectedFruits = {}
+                if fruitData.fruits then
+                    for _, fruitId in ipairs(fruitData.fruits) do
+                        selectedFruits[fruitId] = true
+                    end
+                end
+            end
+            
+            -- Load feed fruit selections separately
+            local feedFruitSuccess, feedFruitData = pcall(function()
+                if isfile("Zebux_FeedFruitSelections.json") then
+                    local jsonData = readfile("Zebux_FeedFruitSelections.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
+                end
+            end)
+            
+            if feedFruitSuccess and feedFruitData then
+                -- Load feed fruit selections
+                selectedFeedFruits = {}
+                if feedFruitData.fruits then
+                    for _, fruitId in ipairs(feedFruitData.fruits) do
+                        selectedFeedFruits[fruitId] = true
+                    end
+                end
+            end
+        end)
+        
+        if loadSuccess then
+            WindUI:Notify({ 
+                Title = "📂 Auto-Load", 
+                Content = "Your saved settings have been loaded! 🎉", 
+                Duration = 3 
+            })
+        else
+            warn("Failed to load config: " .. tostring(loadErr))
+            WindUI:Notify({ 
+                Title = "⚠️ Config Error", 
+                Content = "Failed to load saved settings. Using defaults.", 
+                Duration = 3 
+            })
+        end
     end
 end)
 
 -- ============ Auto Feed Tab ============
 -- Feed Status Section
 Tabs.FeedTab:Section({ Title = "📊 Feed Status", Icon = "info" })
-local feedStatusParagraph = Tabs.FeedTab:Paragraph({
+feedStatusParagraph = Tabs.FeedTab:Paragraph({
     Title = "🍽️ Auto Feed Status",
     Desc = "Select fruits and turn on auto feed!",
     Image = "heart",
     ImageSize = 18,
 })
 
-local function formatFeedStatusDesc()
+function formatFeedStatusDesc()
     local lines = {}
     table.insert(lines, string.format("Big Pets Found: %d", feedFruitStatus.petsFound or 0))
     table.insert(lines, string.format("Available to Feed: %d", feedFruitStatus.availablePets or 0))
@@ -3988,9 +4019,12 @@ local function formatFeedStatusDesc()
 end
 
 function updateFeedStatusParagraph()
-    if feedStatusParagraph and feedStatusParagraph.SetDesc then
-        feedStatusParagraph:SetDesc(formatFeedStatusDesc())
-    end
+    if not (feedStatusParagraph and feedStatusParagraph.SetDesc) then return end
+    local now = os.clock()
+    feedStatusParagraph._last = feedStatusParagraph._last or 0
+    if now - feedStatusParagraph._last < 0.25 then return end
+    feedStatusParagraph._last = now
+    feedStatusParagraph:SetDesc(formatFeedStatusDesc())
 end
 
 -- Feed Fruit Selection UI Button
@@ -4020,7 +4054,7 @@ Tabs.FeedTab:Button({
 })
 
 -- Auto Feed Toggle
-Tabs.FeedTab:Toggle({
+autoFeedToggle = Tabs.FeedTab:Toggle({
     Title = "🍽️ Auto Feed Pets",
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
