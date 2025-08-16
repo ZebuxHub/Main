@@ -1470,6 +1470,66 @@ local eggSelectionVisible = false
 
 
 Tabs.AutoTab:Button({
+    Title = "🔍 Debug Current Selections",
+    Desc = "Check what eggs and mutations are currently selected",
+    Callback = function()
+        local eggKeys = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+        table.sort(eggKeys)
+        
+        local mutationKeys = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+        table.sort(mutationKeys)
+        
+        local message = "🔍 Current Selections:\n\n"
+        message = message .. "🥚 Selected Eggs (" .. #eggKeys .. "):\n"
+        if #eggKeys > 0 then
+            message = message .. table.concat(eggKeys, ", ")
+        else
+            message = message .. "None"
+        end
+        
+        message = message .. "\n\n✨ Selected Mutations (" .. #mutationKeys .. "):\n"
+        if #mutationKeys > 0 then
+            message = message .. table.concat(mutationKeys, ", ")
+        else
+            message = message .. "None"
+        end
+        
+        message = message .. "\n\n📊 Status Data:\n"
+        message = message .. "selectedTypes: " .. tostring(statusData.selectedTypes or "nil") .. "\n"
+        message = message .. "selectedMutations: " .. tostring(statusData.selectedMutations or "nil")
+        
+        WindUI:Notify({ Title = "🔍 Selection Debug", Content = message, Duration = 10 })
+    end
+})
+
+Tabs.AutoTab:Button({
+    Title = "🔄 Force Update Status",
+    Desc = "Force update the status display with current selections",
+    Callback = function()
+        -- Update status display
+        local eggKeys = {}
+        for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+        table.sort(eggKeys)
+        statusData.selectedTypes = table.concat(eggKeys, ", ")
+        
+        local mutationKeys = {}
+        for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+        table.sort(mutationKeys)
+        statusData.selectedMutations = table.concat(mutationKeys, ", ")
+        
+        updateStatusParagraph()
+        
+        WindUI:Notify({ 
+            Title = "🔄 Status Updated", 
+            Content = "Status display has been updated with current selections", 
+            Duration = 3 
+        })
+    end
+})
+
+Tabs.AutoTab:Button({
     Title = "🔍 Debug Mutation Detection",
     Desc = "Check what mutations are currently on eggs",
     Callback = function()
@@ -1565,7 +1625,7 @@ Tabs.AutoTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedTypeSet = {}
-        selectedMutationSet = {}
+                    selectedMutationSet = {}
                     
                     for itemId, isSelected in pairs(selectedItems) do
                         if isSelected then
@@ -1588,6 +1648,10 @@ Tabs.AutoTab:Button({
                     for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
                     table.sort(mutationKeys)
                     statusData.selectedMutations = table.concat(mutationKeys, ", ")
+                    
+                    -- Debug: Log what was selected
+                    print("Selected Eggs:", statusData.selectedTypes)
+                    print("Selected Mutations:", statusData.selectedMutations)
                     
                     updateStatusParagraph()
                 end,
