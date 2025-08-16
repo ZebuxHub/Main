@@ -3031,20 +3031,20 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 local function registerConfigElements()
     if zooConfig then
         -- Only register simple UI elements that don't cause serialization issues
-        zooConfig:Register("autoBuyEnabled", autoBuyToggle)
-        zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
-        zooConfig:Register("autoHatchEnabled", autoHatchToggle)
-        zooConfig:Register("autoClaimEnabled", autoClaimToggle)
-        zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
-        zooConfig:Register("autoDinoEnabled", autoDinoToggle)
-        zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
-        zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider)
-        zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
-        zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
-        zooConfig:Register("automationPriority", priorityDropdown)
+        if autoBuyToggle then zooConfig:Register("autoBuyEnabled", autoBuyToggle) end
+        if autoPlaceToggle then zooConfig:Register("autoPlaceEnabled", autoPlaceToggle) end
+        if autoHatchToggle then zooConfig:Register("autoHatchEnabled", autoHatchToggle) end
+        if autoClaimToggle then zooConfig:Register("autoClaimEnabled", autoClaimToggle) end
+        if autoUpgradeToggle then zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle) end
+        if autoDinoToggle then zooConfig:Register("autoDinoEnabled", autoDinoToggle) end
+        if autoDeleteToggle then zooConfig:Register("autoDeleteEnabled", autoDeleteToggle) end
+        if autoDeleteSpeedSlider then zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider) end
+        if autoClaimDelaySlider then zooConfig:Register("autoClaimDelay", autoClaimDelaySlider) end
+        if placeEggDropdown then zooConfig:Register("selectedPlaceEggs", placeEggDropdown) end
+        if priorityDropdown then zooConfig:Register("automationPriority", priorityDropdown) end
         
         -- Register fruit selection
-        zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
+        if autoBuyFruitToggle then zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle) end
     end
 end
 
@@ -3086,7 +3086,7 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         local success, err = pcall(function()
-            if zooConfig then
+            if zooConfig and zooConfig.Save then
         zooConfig:Save()
                 
                 -- Save egg selections separately using writefile
@@ -3350,7 +3350,9 @@ task.spawn(function()
             -- Safe loading with error handling
     if zooConfig then
             local loadSuccess, loadErr = pcall(function()
-        zooConfig:Load()
+        if zooConfig and zooConfig.Load then
+            zooConfig:Load()
+        end
                 
                 -- Load egg selections separately
                 local success, data = pcall(function()
@@ -3562,7 +3564,7 @@ local function loadAllSavedSettings()
 	end
 	
 	-- Load config
-	if zooConfig then
+	if zooConfig and zooConfig.Load then
 		zooConfig:Load()
 	end
 end
