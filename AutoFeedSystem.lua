@@ -11,8 +11,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 function AutoFeedSystem.getBigPets()
     local pets = {}
     local petsFolder = workspace:FindFirstChild("Pets")
+    local localPlayer = game:GetService("Players").LocalPlayer
     
-    if not petsFolder then
+    if not petsFolder or not localPlayer then
         return pets
     end
     
@@ -20,18 +21,22 @@ function AutoFeedSystem.getBigPets()
         if petModel:IsA("Model") then
             local rootPart = petModel:FindFirstChild("RootPart")
             if rootPart then
-                -- Check if it's a Big Pet by looking for BigValue attribute
-                local bigValue = rootPart:GetAttribute("BigValue")
-                if bigValue then
-                    -- Additional verification: check for BigPetGUI
-                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                    if bigPetGUI then
-                        table.insert(pets, {
-                            model = petModel,
-                            name = petModel.Name,
-                            rootPart = rootPart,
-                            bigPetGUI = bigPetGUI
-                        })
+                -- Check if it's our pet by looking for UserId attribute
+                local petUserId = rootPart:GetAttribute("UserId")
+                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
+                    -- Check if it's a Big Pet by looking for BigValue attribute
+                    local bigValue = rootPart:GetAttribute("BigValue")
+                    if bigValue then
+                        -- Additional verification: check for BigPetGUI
+                        local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                        if bigPetGUI then
+                            table.insert(pets, {
+                                model = petModel,
+                                name = petModel.Name,
+                                rootPart = rootPart,
+                                bigPetGUI = bigPetGUI
+                            })
+                        end
                     end
                 end
             end
