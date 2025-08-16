@@ -1530,6 +1530,70 @@ Tabs.AutoTab:Button({
 })
 
 Tabs.AutoTab:Button({
+    Title = "🧪 Test Jurassic Selection",
+    Desc = "Manually test selecting Jurassic mutation",
+    Callback = function()
+        -- Simulate selecting Jurassic
+        local testSelections = {
+            Jurassic = true
+        }
+        
+        -- Call the selection callback manually
+        local callback = function(selectedItems)
+            print("🎯 Test callback triggered!")
+            print("Selected items:", selectedItems and "table" or "nil")
+            
+            -- Handle selection changes
+            selectedTypeSet = {}
+            selectedMutationSet = {}
+            
+            if selectedItems then
+                for itemId, isSelected in pairs(selectedItems) do
+                    print("Item:", itemId, "Selected:", isSelected)
+                    if isSelected then
+                        -- Check if it's an egg or mutation
+                        if EggData[itemId] then
+                            selectedTypeSet[itemId] = true
+                            print("Added egg:", itemId)
+                        elseif MutationData[itemId] then
+                            selectedMutationSet[itemId] = true
+                            print("Added mutation:", itemId)
+                        else
+                            print("Unknown item type:", itemId)
+                        end
+                    end
+                end
+            end
+            
+            -- Update status display
+            local eggKeys = {}
+            for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+            table.sort(eggKeys)
+            statusData.selectedTypes = table.concat(eggKeys, ", ")
+            
+            local mutationKeys = {}
+            for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
+            table.sort(mutationKeys)
+            statusData.selectedMutations = table.concat(mutationKeys, ", ")
+            
+            -- Debug: Log what was selected
+            print("Final - Selected Eggs:", statusData.selectedTypes)
+            print("Final - Selected Mutations:", statusData.selectedMutations)
+            
+            updateStatusParagraph()
+        end
+        
+                 callback(testSelections)
+         
+         WindUI:Notify({ 
+             Title = "🧪 Test Complete", 
+             Content = "Tested Jurassic selection - check console for debug info", 
+             Duration = 3 
+         })
+     end
+})
+
+Tabs.AutoTab:Button({
     Title = "🔍 Debug Mutation Detection",
     Desc = "Check what mutations are currently on eggs",
     Callback = function()
@@ -1623,17 +1687,27 @@ Tabs.AutoTab:Button({
         if not eggSelectionVisible then
             EggSelection.Show(
                 function(selectedItems)
+                    print("🎯 Selection callback triggered!")
+                    print("Selected items:", selectedItems and "table" or "nil")
+                    
                     -- Handle selection changes
                     selectedTypeSet = {}
                     selectedMutationSet = {}
                     
-                    for itemId, isSelected in pairs(selectedItems) do
-                        if isSelected then
-                            -- Check if it's an egg or mutation
-                            if EggData[itemId] then
-                                selectedTypeSet[itemId] = true
-                            elseif MutationData[itemId] then
-                                selectedMutationSet[itemId] = true
+                    if selectedItems then
+                        for itemId, isSelected in pairs(selectedItems) do
+                            print("Item:", itemId, "Selected:", isSelected)
+                            if isSelected then
+                                -- Check if it's an egg or mutation
+                                if EggData[itemId] then
+                                    selectedTypeSet[itemId] = true
+                                    print("Added egg:", itemId)
+                                elseif MutationData[itemId] then
+                                    selectedMutationSet[itemId] = true
+                                    print("Added mutation:", itemId)
+                                else
+                                    print("Unknown item type:", itemId)
+                                end
                             end
                         end
                     end
@@ -1650,8 +1724,8 @@ Tabs.AutoTab:Button({
                     statusData.selectedMutations = table.concat(mutationKeys, ", ")
                     
                     -- Debug: Log what was selected
-                    print("Selected Eggs:", statusData.selectedTypes)
-                    print("Selected Mutations:", statusData.selectedMutations)
+                    print("Final - Selected Eggs:", statusData.selectedTypes)
+                    print("Final - Selected Mutations:", statusData.selectedMutations)
                     
                     updateStatusParagraph()
                 end,
