@@ -8,6 +8,33 @@ local AutoFeedSystem = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
+-- Normalization helpers to robustly match fruit names from PlayerGui.Data.Asset
+local function normalizeFruitName(name)
+    if type(name) ~= "string" then return "" end
+    local lowered = string.lower(name)
+    lowered = lowered:gsub("[%s_%-%./]", "")
+    return lowered
+end
+
+-- Canonical fruit list used by the auto-feed system
+local KNOWN_FRUITS = {
+    "Strawberry",
+    "Blueberry",
+    "Watermelon",
+    "Apple",
+    "Orange",
+    "Corn",
+    "Banana",
+    "Grape",
+    "Pear",
+    "Peach",
+}
+
+local CANONICAL_FRUIT_BY_NORMALIZED = {}
+for _, fruitName in ipairs(KNOWN_FRUITS) do
+    CANONICAL_FRUIT_BY_NORMALIZED[normalizeFruitName(fruitName)] = fruitName
+end
+
 -- Auto Feed Functions
 function AutoFeedSystem.getBigPets()
     local pets = {}
@@ -73,19 +100,20 @@ function AutoFeedSystem.getPlayerFruitInventory()
     
     local fruitInventory = {}
     
-    -- Check for fruit attributes in the Asset
+    -- Check for fruit attributes in the Asset. Match by normalized name
     for _, child in pairs(asset:GetChildren()) do
-        if child:IsA("StringValue") or child:IsA("IntValue") then
-            local fruitName = child.Name
-            local fruitAmount = child.Value
-            
-            -- Convert to number if it's a string
-            if type(fruitAmount) == "string" then
-                fruitAmount = tonumber(fruitAmount) or 0
-            end
-            
-            if fruitAmount and fruitAmount > 0 then
-                fruitInventory[fruitName] = fruitAmount
+        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+            local rawName = child.Name
+            local normalized = normalizeFruitName(rawName)
+            local canonicalName = CANONICAL_FRUIT_BY_NORMALIZED[normalized]
+            if canonicalName then
+                local fruitAmount = child.Value
+                if type(fruitAmount) == "string" then
+                    fruitAmount = tonumber(fruitAmount) or 0
+                end
+                if fruitAmount and fruitAmount > 0 then
+                    fruitInventory[canonicalName] = fruitAmount
+                end
             end
         end
     end
