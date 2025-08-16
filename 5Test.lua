@@ -34,6 +34,7 @@ Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
 Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
+Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
 Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
@@ -41,6 +42,7 @@ Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 local statusData
 local function updateStatusParagraph() end
 local function updatePlaceStatusParagraph() end
+local function updateFeedStatusParagraph() end
 -- Auto state variables (declared early so close handler can reference)
 
 local autoFeedEnabled = false
@@ -1460,225 +1462,21 @@ local MutationData = {
     Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
 }
 
--- Load Egg Selection UI
+-- Load UI modules
 local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
+local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
+local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FeedFruitSelection.lua"))()
 
 -- UI state
 local selectedTypeSet = {}
 local selectedMutationSet = {}
+local selectedFeedFruits = {}
 local eggSelectionVisible = false
+local fruitSelectionVisible = false
+local feedFruitSelectionVisible = false
 
 
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Current Selections",
-    Desc = "Check what eggs and mutations are currently selected",
-    Callback = function()
-        local eggKeys = {}
-        for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-        table.sort(eggKeys)
-        
-        local mutationKeys = {}
-        for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-        table.sort(mutationKeys)
-        
-        local message = "🔍 Current Selections:\n\n"
-        message = message .. "🥚 Selected Eggs (" .. #eggKeys .. "):\n"
-        if #eggKeys > 0 then
-            message = message .. table.concat(eggKeys, ", ")
-        else
-            message = message .. "None"
-        end
-        
-        message = message .. "\n\n✨ Selected Mutations (" .. #mutationKeys .. "):\n"
-        if #mutationKeys > 0 then
-            message = message .. table.concat(mutationKeys, ", ")
-        else
-            message = message .. "None"
-        end
-        
-        message = message .. "\n\n📊 Status Data:\n"
-        message = message .. "selectedTypes: " .. tostring(statusData.selectedTypes or "nil") .. "\n"
-        message = message .. "selectedMutations: " .. tostring(statusData.selectedMutations or "nil")
-        
-        WindUI:Notify({ Title = "🔍 Selection Debug", Content = message, Duration = 10 })
-    end
-})
 
-Tabs.AutoTab:Button({
-    Title = "🔄 Force Update Status",
-    Desc = "Force update the status display with current selections",
-    Callback = function()
-        -- Update status display
-        local eggKeys = {}
-        for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-        table.sort(eggKeys)
-        statusData.selectedTypes = table.concat(eggKeys, ", ")
-        
-        local mutationKeys = {}
-        for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-        table.sort(mutationKeys)
-        statusData.selectedMutations = table.concat(mutationKeys, ", ")
-        
-        updateStatusParagraph()
-        
-        WindUI:Notify({ 
-            Title = "🔄 Status Updated", 
-            Content = "Status display has been updated with current selections", 
-            Duration = 3 
-        })
-    end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🧪 Test Jurassic Selection",
-    Desc = "Manually test selecting Jurassic mutation",
-    Callback = function()
-        -- Simulate selecting Jurassic
-        local testSelections = {
-            Jurassic = true
-        }
-        
-        -- Call the selection callback manually
-        local callback = function(selectedItems)
-            print("🎯 Test callback triggered!")
-            print("Selected items:", selectedItems and "table" or "nil")
-            
-            -- Handle selection changes
-            selectedTypeSet = {}
-            selectedMutationSet = {}
-            
-            if selectedItems then
-                for itemId, isSelected in pairs(selectedItems) do
-                    print("Item:", itemId, "Selected:", isSelected)
-                    if isSelected then
-                        -- Check if it's an egg or mutation
-                        if EggData[itemId] then
-                            selectedTypeSet[itemId] = true
-                            print("Added egg:", itemId)
-                        elseif MutationData[itemId] then
-                            selectedMutationSet[itemId] = true
-                            print("Added mutation:", itemId)
-                        else
-                            print("Unknown item type:", itemId)
-                end
-            end
-                end
-            end
-            
-            -- Update status display
-            local eggKeys = {}
-            for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-            table.sort(eggKeys)
-            statusData.selectedTypes = table.concat(eggKeys, ", ")
-            
-            local mutationKeys = {}
-            for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-            table.sort(mutationKeys)
-            statusData.selectedMutations = table.concat(mutationKeys, ", ")
-            
-            -- Debug: Log what was selected
-            print("Final - Selected Eggs:", statusData.selectedTypes)
-            print("Final - Selected Mutations:", statusData.selectedMutations)
-            
-            updateStatusParagraph()
-        end
-        
-                 callback(testSelections)
-         
-         WindUI:Notify({ 
-             Title = "🧪 Test Complete", 
-             Content = "Tested Jurassic selection - check console for debug info", 
-             Duration = 3 
-         })
-        end
-})
-
-Tabs.AutoTab:Button({
-    Title = "🔍 Debug Mutation Detection",
-    Desc = "Check what mutations are currently on eggs",
-    Callback = function()
-        local islandName = getAssignedIslandName()
-        if not islandName then
-            WindUI:Notify({ Title = "🔍 Debug", Content = "No island assigned!", Duration = 3 })
-            return
-        end
-        
-        local art = workspace:FindFirstChild("Art")
-        if not art then
-            WindUI:Notify({ Title = "🔍 Debug", Content = "No Art folder found!", Duration = 3 })
-            return
-        end
-        
-        local island = art:FindFirstChild(islandName)
-        if not island then
-            WindUI:Notify({ Title = "🔍 Debug", Content = "Island not found: " .. islandName, Duration = 3 })
-            return
-        end
-        
-        local env = island:FindFirstChild("ENV")
-        if not env then
-            WindUI:Notify({ Title = "🔍 Debug", Content = "ENV folder not found!", Duration = 3 })
-            return
-        end
-        
-        local conveyor = env:FindFirstChild("Conveyor")
-        if not conveyor then
-            WindUI:Notify({ Title = "🔍 Debug", Content = "Conveyor folder not found!", Duration = 3 })
-            return
-        end
-        
-        local foundEggs = {}
-        
-        -- Check all conveyor belts
-        for i = 1, 9 do
-            local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
-            if conveyorBelt then
-                local belt = conveyorBelt:FindFirstChild("Belt")
-                if belt then
-                    for _, eggModel in ipairs(belt:GetChildren()) do
-                        if eggModel:IsA("Model") then
-                            local rootPart = eggModel:FindFirstChild("RootPart")
-                            if rootPart then
-                                local eggGUI = rootPart:FindFirstChild("GUI/EggGUI")
-                                if eggGUI then
-                                    local mutateText = eggGUI:FindFirstChild("Mutate")
-                                    if mutateText and mutateText:IsA("TextLabel") then
-                                        local mutationText = mutateText.Text
-                                        if mutationText and mutationText ~= "" then
-                                            table.insert(foundEggs, {
-                                                uid = eggModel.Name,
-                                                mutation = mutationText,
-                                                mapped = string.lower(mutationText) == "dino" and "Jurassic" or mutationText
-                                            })
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        if #foundEggs == 0 then
-            WindUI:Notify({ Title = "🔍 Debug", Content = "No eggs with mutations found on conveyor belts", Duration = 5 })
-            return
-        end
-        
-        local message = "🔍 Found " .. #foundEggs .. " eggs with mutations:\n\n"
-        for i, egg in ipairs(foundEggs) do
-            message = message .. string.format("%d. UID: %s\n   Mutation: %s\n   Mapped: %s\n\n", 
-                i, egg.uid, egg.mutation, egg.mapped)
-            if i >= 5 then break end
-        end
-        
-        if #foundEggs > 5 then
-            message = message .. "... (showing first 5)"
-        end
-        
-        WindUI:Notify({ Title = "🔍 Mutation Debug", Content = message, Duration = 10 })
-    end
-})
 
 Tabs.AutoTab:Button({
     Title = "🥚 Open Egg Selection UI",
@@ -1687,26 +1485,18 @@ Tabs.AutoTab:Button({
         if not eggSelectionVisible then
             EggSelection.Show(
                 function(selectedItems)
-                    print("🎯 Selection callback triggered!")
-                    print("Selected items:", selectedItems and "table" or "nil")
-                    
                     -- Handle selection changes
                     selectedTypeSet = {}
                     selectedMutationSet = {}
                     
                     if selectedItems then
                         for itemId, isSelected in pairs(selectedItems) do
-                            print("Item:", itemId, "Selected:", isSelected)
                             if isSelected then
                                 -- Check if it's an egg or mutation
                                 if EggData[itemId] then
                                     selectedTypeSet[itemId] = true
-                                    print("Added egg:", itemId)
                                 elseif MutationData[itemId] then
                                     selectedMutationSet[itemId] = true
-                                    print("Added mutation:", itemId)
-                                else
-                                    print("Unknown item type:", itemId)
                                 end
                             end
                         end
@@ -1722,10 +1512,6 @@ Tabs.AutoTab:Button({
                     for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
                     table.sort(mutationKeys)
                     statusData.selectedMutations = table.concat(mutationKeys, ", ")
-                    
-                    -- Debug: Log what was selected
-                    print("Final - Selected Eggs:", statusData.selectedTypes)
-                    print("Final - Selected Mutations:", statusData.selectedMutations)
                     
                     updateStatusParagraph()
                 end,
@@ -1747,6 +1533,17 @@ Tabs.AutoTab:Button({
 
 local autoBuyEnabled = false
 local autoBuyThread = nil
+
+-- Auto Feed variables
+local autoFeedEnabled = false
+local autoFeedThread = nil
+local feedFruitStatus = {
+    petsFound = 0,
+    availablePets = 0,
+    lastFedPet = nil,
+    lastAction = "Idle",
+    totalFeeds = 0
+}
 
 
 
@@ -1813,14 +1610,10 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         end
         
         -- Check if egg has a selected mutation
-        -- getEggMutation handles "Dino" -> "Jurassic" conversion
-        if not selectedMutationSet[eggMutation] then
-            -- Debug: Log what mutation was found vs what's selected
-            local selectedMutations = {}
-            for k in pairs(selectedMutationSet) do table.insert(selectedMutations, k) end
-            warn("Egg mutation '" .. tostring(eggMutation) .. "' not in selected mutations: " .. table.concat(selectedMutations, ", "))
-            return false, nil, nil
-        end
+                           -- getEggMutation handles "Dino" -> "Jurassic" conversion
+                   if not selectedMutationSet[eggMutation] then
+                       return false, nil, nil
+                   end
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -2016,7 +1809,148 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     end
 })
 
+-- Auto Feed Functions
+local function getBigPets()
+    local pets = {}
+    local petsFolder = workspace:FindFirstChild("Pets")
+    
+    if not petsFolder then
+        return pets
+    end
+    
+    for _, petModel in ipairs(petsFolder:GetChildren()) do
+        if petModel:IsA("Model") then
+            local rootPart = petModel:FindFirstChild("RootPart")
+            if rootPart then
+                -- Check if it's a Big Pet by looking for BigValue attribute
+                local bigValue = rootPart:GetAttribute("BigValue")
+                if bigValue then
+                    -- Additional verification: check for BigPetGUI
+                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                    if bigPetGUI then
+                        table.insert(pets, {
+                            model = petModel,
+                            name = petModel.Name,
+                            rootPart = rootPart,
+                            bigPetGUI = bigPetGUI
+                        })
+                    end
+                end
+            end
+        end
+    end
+    
+    return pets
+end
 
+local function isPetEating(petData)
+    if not petData or not petData.bigPetGUI then
+        return true -- Assume eating if we can't check
+    end
+    
+    local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
+    if not feedGUI then
+        return true -- Assume eating if no feed GUI
+    end
+    
+    local feedText = feedGUI:FindFirstChild("TXT")
+    if not feedText or not feedText:IsA("TextLabel") then
+        return true -- Assume eating if no text
+    end
+    
+    local feedTime = feedText.Text
+    return feedTime ~= "00:00"
+end
+
+local function equipFruit(fruitName)
+    local args = {
+        "Focus",
+        fruitName
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to equip fruit " .. tostring(fruitName) .. ": " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+local function feedPet(petName)
+    local args = {
+        "Feed",
+        petName
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to feed pet " .. tostring(petName) .. ": " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+local function runAutoFeed()
+    while autoFeedEnabled do
+        local bigPets = getBigPets()
+        feedFruitStatus.petsFound = #bigPets
+        feedFruitStatus.availablePets = 0
+        
+        if #bigPets == 0 then
+            feedFruitStatus.lastAction = "No Big Pets found"
+            updateFeedStatusParagraph()
+            task.wait(2)
+            continue
+        end
+        
+        -- Check each pet for feeding opportunity
+        for _, petData in ipairs(bigPets) do
+            if not autoFeedEnabled then break end
+            
+            if not isPetEating(petData) then
+                feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
+                
+                -- Check if we have selected fruits
+                if selectedFeedFruits and next(selectedFeedFruits) then
+                    -- Try to feed with selected fruits
+                    for fruitName, _ in pairs(selectedFeedFruits) do
+                        if not autoFeedEnabled then break end
+                        
+                        -- Equip the fruit first
+                        if equipFruit(fruitName) then
+                            task.wait(0.1) -- Small delay between equip and feed
+                            
+                            -- Feed the pet
+                            if feedPet(petData.name) then
+                                feedFruitStatus.lastFedPet = petData.name
+                                feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
+                                feedFruitStatus.lastAction = "Fed " .. petData.name .. " with " .. fruitName
+                                updateFeedStatusParagraph()
+                                
+                                task.wait(1) -- Wait before trying next pet
+                                break -- Move to next pet
+                            end
+                        end
+                        
+                        task.wait(0.2) -- Small delay between fruit attempts
+                    end
+                else
+                    feedFruitStatus.lastAction = "No fruits selected for feeding"
+                    updateFeedStatusParagraph()
+                end
+            end
+        end
+        
+        if feedFruitStatus.availablePets == 0 then
+            feedFruitStatus.lastAction = "All pets are currently eating"
+            updateFeedStatusParagraph()
+        end
+        
+        task.wait(2) -- Check every 2 seconds
+    end
+end
 
 -- Event-driven Auto Place functionality
 local placeConnections = {}
@@ -3837,6 +3771,17 @@ Tabs.SaveTab:Button({
                 end
                 
                 writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
+                
+                -- Save feed fruit selections separately
+                local feedFruitSelections = {
+                    fruits = {}
+                }
+                
+                for fruitId, _ in pairs(selectedFeedFruits) do
+                    table.insert(feedFruitSelections.fruits, fruitId)
+                end
+                
+                writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
             else
                 error("Config manager not available")
             end
@@ -4060,6 +4005,24 @@ task.spawn(function()
                         end
                     end
                 end
+                
+                -- Load feed fruit selections separately
+                local feedFruitSuccess, feedFruitData = pcall(function()
+                    if isfile("Zebux_FeedFruitSelections.json") then
+                        local jsonData = readfile("Zebux_FeedFruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if feedFruitSuccess and feedFruitData then
+                    -- Load feed fruit selections
+                    selectedFeedFruits = {}
+                    if feedFruitData.fruits then
+                        for _, fruitId in ipairs(feedFruitData.fruits) do
+                            selectedFeedFruits[fruitId] = true
+                        end
+                    end
+                end
             end)
             
             if loadSuccess then
@@ -4079,7 +4042,87 @@ task.spawn(function()
     end
 end)
 
+-- ============ Auto Feed Tab ============
+-- Feed Status Section
+Tabs.FeedTab:Section({ Title = "📊 Feed Status", Icon = "info" })
+local feedStatusParagraph = Tabs.FeedTab:Paragraph({
+    Title = "🍽️ Auto Feed Status",
+    Desc = "Select fruits and turn on auto feed!",
+    Image = "heart",
+    ImageSize = 18,
+})
 
+local function formatFeedStatusDesc()
+    local lines = {}
+    table.insert(lines, string.format("Big Pets Found: %d", feedFruitStatus.petsFound or 0))
+    table.insert(lines, string.format("Available to Feed: %d", feedFruitStatus.availablePets or 0))
+    table.insert(lines, string.format("Total Feeds: %d", feedFruitStatus.totalFeeds or 0))
+    if feedFruitStatus.lastFedPet then table.insert(lines, "Last Fed: " .. feedFruitStatus.lastFedPet) end
+    if feedFruitStatus.lastAction then table.insert(lines, "Status: " .. feedFruitStatus.lastAction) end
+    if selectedFeedFruits and next(selectedFeedFruits) then
+        local fruitKeys = {}
+        for k in pairs(selectedFeedFruits) do table.insert(fruitKeys, k) end
+        table.sort(fruitKeys)
+        table.insert(lines, "Selected Fruits: " .. table.concat(fruitKeys, ", "))
+    else
+        table.insert(lines, "Selected Fruits: None")
+    end
+    return table.concat(lines, "\n")
+end
+
+function updateFeedStatusParagraph()
+    if feedStatusParagraph and feedStatusParagraph.SetDesc then
+        feedStatusParagraph:SetDesc(formatFeedStatusDesc())
+    end
+end
+
+-- Feed Fruit Selection UI Button
+Tabs.FeedTab:Button({
+    Title = "🍎 Open Feed Fruit Selection UI",
+    Desc = "Open the modern glass-style fruit selection interface for feeding",
+    Callback = function()
+        if not feedFruitSelectionVisible then
+            FeedFruitSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+                    selectedFeedFruits = selectedItems
+                    updateFeedStatusParagraph()
+                end,
+                function(isVisible)
+                    feedFruitSelectionVisible = isVisible
+                end,
+                selectedFeedFruits -- Pass saved fruit selections
+            )
+            feedFruitSelectionVisible = true
+        else
+            FeedFruitSelection.Hide()
+            feedFruitSelectionVisible = false
+        end
+    end
+})
+
+-- Auto Feed Toggle
+local autoFeedToggle = Tabs.FeedTab:Toggle({
+    Title = "🍽️ Auto Feed Pets",
+    Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
+    Value = false,
+    Callback = function(state)
+        autoFeedEnabled = state
+        if state and not autoFeedThread then
+            autoFeedThread = task.spawn(function()
+                runAutoFeed()
+                autoFeedThread = nil
+            end)
+            WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
+            feedFruitStatus.lastAction = "Started - Feeding Big Pets!"
+            updateFeedStatusParagraph()
+        elseif (not state) and autoFeedThread then
+            WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Stopped", Duration = 3 })
+            feedFruitStatus.lastAction = "Stopped"
+            updateFeedStatusParagraph()
+        end
+    end
+})
 
 -- ============ Bug Report / Suggestions ============
 -- Load bug report system from separate file
