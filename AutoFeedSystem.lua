@@ -34,10 +34,13 @@ function AutoFeedSystem.getBigPets()
                             if active and active == 1 then
                                 -- Get the GridCenterPos attribute
                                 local gridCenterPos = bigPetPart:GetAttribute("GridCenterPos")
+                                print("🔍 BigPet", i, "GridCenterPos:", gridCenterPos)
                                 if gridCenterPos then
                                     -- Look for pets in the area around this position
                                     local petsFolder = workspace:FindFirstChild("Pets")
+                                    print("🔍 Pets folder found:", petsFolder and "Yes" or "No")
                                     if petsFolder then
+                                        print("🔍 Total pets in folder:", #petsFolder:GetChildren())
                                         local petsInThisArea = 0 -- Count pets found in this BigPet area
                                         
                                         for _, petModel in ipairs(petsFolder:GetChildren()) do
@@ -46,13 +49,15 @@ function AutoFeedSystem.getBigPets()
                                                 if rootPart then
                                                     -- Check if it's our pet by looking for UserId attribute
                                                     local petUserId = rootPart:GetAttribute("UserId")
+                                                    print("🔍 Pet", petModel.Name, "UserId:", petUserId, "Our UserId:", localPlayer.UserId)
                                                     if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
                                                         -- Check if pet is near the BigPet area using WorldPivot
                                                         local petWorldPivot = petModel:GetPivot()
                                                         local distance = (petWorldPivot.Position - gridCenterPos).Magnitude
+                                                        print("🔍 Pet", petModel.Name, "Distance:", distance, "WorldPivot:", petWorldPivot.Position, "GridCenter:", gridCenterPos)
                                                         
                                                         -- If pet is within 20 studs of BigPet area, consider it a Big Pet
-                                                        if distance < 10 then -- 20 studs radius
+                                                        if distance < 20 then -- 20 studs radius
                                                             -- No additional verification needed - if it's in the area, it's a Big Pet
                                                             local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
                                                             table.insert(pets, {
