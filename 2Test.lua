@@ -2961,63 +2961,60 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
-                         autoBuyFruitThread = task.spawn(function()
-                 while autoBuyFruitEnabled do
-                     -- Auto buy fruit logic
-                     if selectedFruits and next(selectedFruits) then
-                         -- Auto buy fruit logic
-                         
-                         local netWorth = FruitStoreSystem.getPlayerNetWorth()
-                         local boughtAny = false
-                         
-                         for fruitId, _ in pairs(selectedFruits) do
-                             if FruitData[fruitId] then
-                                 local fruitPrice = FruitStoreSystem.parsePrice(FruitData[fruitId].Price)
-                                 
-                                 -- Check if fruit is in stock
-                                 if not FruitStoreSystem.isFruitInStock(fruitId) then
-                                     task.wait(0.5)
-                                 else
-                                     -- Check if player can afford it
-                                     if netWorth < fruitPrice then
-                                         task.wait(0.5)
-                                     else
-                                         -- Try to buy the fruit
-                                         local success = pcall(function()
-                                             -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
-                                             local args = {
-                                                 fruitId
-                                             }
-                                             ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
-                                         end)
-                                         
-                                         if success then
-                                             boughtAny = true
-                                         end
-                                         
-                                         task.wait(0.5) -- Wait between each fruit purchase
-                                     end
-                                 end
-                             end
-                         end
-                         
-                         -- If no fruits were bought, wait longer before next attempt
-                         if not boughtAny then
-                             task.wait(2)
-                         else
-                             task.wait(1) -- Shorter wait if we bought something
-                         end
-                     else
-                         task.wait(2)
-                     end
-        end
-    end)
-                         -- Auto buy started
-         elseif (not state) and autoBuyFruitThread then
-             -- Auto buy stopped
+            autoBuyFruitThread = task.spawn(function()
+                while autoBuyFruitEnabled do
+                    -- Auto buy fruit logic
+                    if selectedFruits and next(selectedFruits) then
+                        local netWorth = FruitStoreSystem.getPlayerNetWorth()
+                        local boughtAny = false
+                        
+                        for fruitId, _ in pairs(selectedFruits) do
+                            if FruitData[fruitId] then
+                                local fruitPrice = FruitStoreSystem.parsePrice(FruitData[fruitId].Price)
+                                
+                                -- Check if fruit is in stock
+                                if not FruitStoreSystem.isFruitInStock(fruitId) then
+                                    task.wait(0.5)
+                                else
+                                    -- Check if player can afford it
+                                    if netWorth < fruitPrice then
+                                        task.wait(0.5)
+                                    else
+                                        -- Try to buy the fruit
+                                        local success = pcall(function()
+                                            -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
+                                            local args = {
+                                                fruitId
+                                            }
+                                            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+                                        end)
+                                        
+                                        if success then
+                                            boughtAny = true
+                                        end
+                                        
+                                        task.wait(0.5) -- Wait between each fruit purchase
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- If no fruits were bought, wait longer before next attempt
+                        if not boughtAny then
+                            task.wait(2)
+                        else
+                            task.wait(1) -- Shorter wait if we bought something
+                        end
+                    else
+                        task.wait(2)
+                    end
+                end
+            end)
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
+        elseif (not state) and autoBuyFruitThread then
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
         end
     end
 })
@@ -3097,6 +3094,20 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         local success, err = pcall(function()
+            -- Save toggle states
+            local toggleStates = {
+                autoBuyEnabled = autoBuyEnabled,
+                autoPlaceEnabled = autoPlaceEnabled,
+                autoHatchEnabled = autoHatchEnabled,
+                autoClaimEnabled = autoClaimEnabled,
+                autoUpgradeEnabled = autoUpgradeEnabled,
+                autoDinoEnabled = autoDinoEnabled,
+                autoDeleteEnabled = autoDeleteEnabled,
+                autoBuyFruitEnabled = autoBuyFruitEnabled,
+                autoFeedEnabled = autoFeedEnabled
+            }
+            writefile("Zebux_ToggleStates.json", game:GetService("HttpService"):JSONEncode(toggleStates))
+            
             -- Save egg selections separately using writefile
             local eggSelections = {
                 eggs = {},
@@ -3157,6 +3168,27 @@ Tabs.SaveTab:Button({
     Desc = "Load your saved settings",
     Callback = function()
         local success, err = pcall(function()
+            -- Load toggle states
+            local toggleSuccess, toggleData = pcall(function()
+                if isfile("Zebux_ToggleStates.json") then
+                    local jsonData = readfile("Zebux_ToggleStates.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
+                end
+            end)
+            
+            if toggleSuccess and toggleData then
+                -- Apply toggle states
+                if toggleData.autoBuyEnabled then autoBuyToggle:SetValue(true) end
+                if toggleData.autoPlaceEnabled then autoPlaceToggle:SetValue(true) end
+                if toggleData.autoHatchEnabled then autoHatchToggle:SetValue(true) end
+                if toggleData.autoClaimEnabled then autoClaimToggle:SetValue(true) end
+                if toggleData.autoUpgradeEnabled then autoUpgradeToggle:SetValue(true) end
+                if toggleData.autoDinoEnabled then autoDinoToggle:SetValue(true) end
+                if toggleData.autoDeleteEnabled then autoDeleteToggle:SetValue(true) end
+                if toggleData.autoBuyFruitEnabled then autoBuyFruitToggle:SetValue(true) end
+                if toggleData.autoFeedEnabled then autoFeedToggle:SetValue(true) end
+            end
+            
             -- Load egg selections separately
             local success, data = pcall(function()
                 if isfile("Zebux_EggSelections.json") then
@@ -3356,6 +3388,28 @@ task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
     
     local loadedCount = 0
+    
+    -- Load toggle states
+    local toggleSuccess, toggleData = pcall(function()
+        if isfile("Zebux_ToggleStates.json") then
+            local jsonData = readfile("Zebux_ToggleStates.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if toggleSuccess and toggleData then
+        -- Apply toggle states
+        if toggleData.autoBuyEnabled then autoBuyToggle:SetValue(true) end
+        if toggleData.autoPlaceEnabled then autoPlaceToggle:SetValue(true) end
+        if toggleData.autoHatchEnabled then autoHatchToggle:SetValue(true) end
+        if toggleData.autoClaimEnabled then autoClaimToggle:SetValue(true) end
+        if toggleData.autoUpgradeEnabled then autoUpgradeToggle:SetValue(true) end
+        if toggleData.autoDinoEnabled then autoDinoToggle:SetValue(true) end
+        if toggleData.autoDeleteEnabled then autoDeleteToggle:SetValue(true) end
+        if toggleData.autoBuyFruitEnabled then autoBuyFruitToggle:SetValue(true) end
+        if toggleData.autoFeedEnabled then autoFeedToggle:SetValue(true) end
+        loadedCount = loadedCount + 1
+    end
     
     -- Load custom JSON files only (skip problematic WindUI config)
     local success, data = pcall(function()
