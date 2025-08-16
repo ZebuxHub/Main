@@ -406,7 +406,7 @@ local function createItemCard(itemId, itemData, parent)
     -- Update immediately
     updateInventoryDisplay()
     
-    -- Update every 2 seconds to keep inventory current
+    -- Update every 3 seconds to keep inventory current (lightweight)
     local lastUpdate = 0
     local connection
     connection = RunService.Heartbeat:Connect(function()
@@ -415,9 +415,9 @@ local function createItemCard(itemId, itemData, parent)
             return
         end
         
-        -- Update every 2 seconds
+        -- Update every 3 seconds (reduced frequency for lightweight)
         local currentTime = tick()
-        if currentTime - lastUpdate >= 2 then
+        if currentTime - lastUpdate >= 3 then
             updateInventoryDisplay()
             lastUpdate = currentTime
         end
@@ -746,7 +746,7 @@ function FeedFruitSelection.Show(callback, toggleCallback, savedFruits)
         FeedFruitSelection.CreateUI()
     end
     
-    task.wait()
+    task.wait(0.1)
     FeedFruitSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
