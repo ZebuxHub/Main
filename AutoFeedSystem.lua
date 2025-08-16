@@ -16,80 +16,29 @@ function AutoFeedSystem.getBigPets()
         return pets
     end
     
-    -- Check BigPet parts in workspace.Art.Island_1.ENV.BigPet
-    local bigPetFolder = workspace:FindFirstChild("Art")
-    if bigPetFolder then
-        local island1 = bigPetFolder:FindFirstChild("Island_1")
-        if island1 then
-            local env = island1:FindFirstChild("ENV")
-            if env then
-                local bigPet = env:FindFirstChild("BigPet")
-                if bigPet then
-                    -- Check both BigPet parts
-                    for i = 1, 2 do
-                        local bigPetPart = bigPet:FindFirstChild(tostring(i))
-                        if bigPetPart then
-                            -- Check if this BigPet part is active
-                            local active = bigPetPart:GetAttribute("Active")
-                            if active and active == 1 then
-                                -- Get the GridCenterPos attribute and convert to Vector3 if needed
-                                local gridCenterPos = bigPetPart:GetAttribute("GridCenterPos")
-                                if gridCenterPos then
-                                    -- Convert GridCenterPos to Vector3 if it's not already
-                                    local centerPos
-                                    if typeof(gridCenterPos) == "Vector3" then
-                                        centerPos = gridCenterPos
-                                    elseif typeof(gridCenterPos) == "CFrame" then
-                                        centerPos = gridCenterPos.Position
-                                    elseif typeof(gridCenterPos) == "table" then
-                                        -- If it's a table with x, y, z coordinates
-                                        if gridCenterPos.x and gridCenterPos.y and gridCenterPos.z then
-                                            centerPos = Vector3.new(gridCenterPos.x, gridCenterPos.y, gridCenterPos.z)
-                                        else
-                                            centerPos = Vector3.new(0, 0, 0) -- Default fallback
-                                        end
-                                    else
-                                        centerPos = Vector3.new(0, 0, 0) -- Default fallback
-                                    end
-                                    -- Look for pets in the area around this position
-                                    local petsFolder = workspace:FindFirstChild("Pets")
-                                    if petsFolder then
-                                        local petsInThisArea = 0 -- Count pets found in this BigPet area
-                                        
-                                        for _, petModel in ipairs(petsFolder:GetChildren()) do
-                                            if petModel:IsA("Model") then
-                                                local rootPart = petModel:FindFirstChild("RootPart")
-                                                if rootPart then
-                                                    -- Check if it's our pet by looking for UserId attribute
-                                                    local petUserId = rootPart:GetAttribute("UserId")
-                                                    if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                                                        -- Check if pet is near the BigPet area using WorldPivot
-                                                        local petWorldPivot = petModel:GetPivot()
-                                                        local distance = (petWorldPivot.Position - centerPos).Magnitude
-                                                        
-                                                        -- If pet is within 20 studs of BigPet area, consider it a Big Pet
-                                                        if distance < 20 then -- 20 studs radius
-                                                            -- No additional verification needed - if it's in the area, it's a Big Pet
-                                                            local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                                                            table.insert(pets, {
-                                                                model = petModel,
-                                                                name = petModel.Name,
-                                                                rootPart = rootPart,
-                                                                bigPetGUI = bigPetGUI,
-                                                                bigPetPart = bigPetPart.Name
-                                                            })
-                                                            petsInThisArea = petsInThisArea + 1
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                        
-                                        -- If no pets found in this BigPet area, skip it (already handled by not adding to pets table)
-                                    end
-                                end
-                            end
-                        end
+    -- Go through all pet models in workspace.Pets
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then
+        return pets
+    end
+    
+    for _, petModel in ipairs(petsFolder:GetChildren()) do
+        if petModel:IsA("Model") then
+            local rootPart = petModel:FindFirstChild("RootPart")
+            if rootPart then
+                -- Check if it's our pet by looking for UserId attribute
+                local petUserId = rootPart:GetAttribute("UserId")
+                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
+                    -- Check if this pet has BigPetGUI
+                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                    if bigPetGUI then
+                        -- This is a Big Pet, add it to the list
+                        table.insert(pets, {
+                            model = petModel,
+                            name = petModel.Name,
+                            rootPart = rootPart,
+                            bigPetGUI = bigPetGUI
+                        })
                     end
                 end
             end
@@ -175,8 +124,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                         if not autoFeedEnabled then break end
                         
                                                  -- Update status to show which pet we're trying to feed
-                         local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                         feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                         feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName
                          updateFeedStatusParagraph()
                         
                         -- Equip the fruit first
@@ -187,20 +135,17 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                             if AutoFeedSystem.feedPet(petData.name) then
                                 feedFruitStatus.lastFedPet = petData.name
                                 feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                                                 local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                                 feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                                                                 feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                                 
                                 task.wait(1) -- Wait before trying next pet
                                 break -- Move to next pet
                             else
-                                                                 local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                                 feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                                                                 feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                             end
                         else
-                                                         local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                             feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. bigPetInfo
+                                                         feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name
                             updateFeedStatusParagraph()
                         end
                         
@@ -212,8 +157,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                 end
             else
                                  -- Show which pets are currently eating
-                 local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                 feedFruitStatus.lastAction = petData.name .. bigPetInfo .. " is currently eating"
+                 feedFruitStatus.lastAction = petData.name .. " is currently eating"
                 updateFeedStatusParagraph()
             end
         end
