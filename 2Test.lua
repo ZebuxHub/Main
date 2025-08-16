@@ -12,6 +12,12 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
+-- Selection state variables (declared early for loadAllSavedSettings)
+local selectedTypeSet = {}
+local selectedMutationSet = {}
+local selectedFruits = {}
+local selectedFeedFruits = {}
+
 -- Window
 local Window = WindUI:CreateWindow({
     Title = "Build A Zoo",
@@ -1473,9 +1479,6 @@ local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.co
 local FruitStoreSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
 
 -- UI state
-local selectedTypeSet = {}
-local selectedMutationSet = {}
-local selectedFeedFruits = {}
 local eggSelectionVisible = false
 local fruitSelectionVisible = false
 local feedFruitSelectionVisible = false
@@ -2974,7 +2977,6 @@ local FruitData = {
 -- Helper functions moved to FruitStoreSystem.lua
 
 -- Fruit selection state
-local selectedFruits = {}
 local fruitSelectionVisible = false
 
 -- Fruit auto buy status removed per user request
