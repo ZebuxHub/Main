@@ -43,6 +43,9 @@ local statusData
 local function updateStatusParagraph() end
 local function updatePlaceStatusParagraph() end
 local function updateFeedStatusParagraph() end
+-- Forward declarations for fruit auto-buy status so earlier code can reference them
+local fruitAutoBuyStatus
+local function updateFruitStatus() end
 -- Auto state variables (declared early so close handler can reference)
 
 local autoFeedEnabled = false
@@ -1473,6 +1476,7 @@ local FruitStoreSystem = loadstring(game:HttpGet("https://raw.githubusercontent.
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 local selectedFeedFruits = {}
+local selectedFruits = {}
 local eggSelectionVisible = false
 local fruitSelectionVisible = false
 local feedFruitSelectionVisible = false
@@ -4016,7 +4020,7 @@ Tabs.FeedTab:Button({
 })
 
 -- Auto Feed Toggle
-local autoFeedToggle = Tabs.FeedTab:Toggle({
+Tabs.FeedTab:Toggle({
     Title = "🍽️ Auto Feed Pets",
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
