@@ -10,32 +10,70 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Auto Feed Functions
 function AutoFeedSystem.getBigPets()
     local pets = {}
-    local petsFolder = workspace:FindFirstChild("Pets")
     local localPlayer = game:GetService("Players").LocalPlayer
     
-    if not petsFolder or not localPlayer then
+    if not localPlayer then
         return pets
     end
     
-    for _, petModel in ipairs(petsFolder:GetChildren()) do
-        if petModel:IsA("Model") then
-            local rootPart = petModel:FindFirstChild("RootPart")
-            if rootPart then
-                -- Check if it's our pet by looking for UserId attribute
-                local petUserId = rootPart:GetAttribute("UserId")
-                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                    -- Check if it's a Big Pet by looking for BigValue attribute
-                    local bigValue = rootPart:GetAttribute("BigValue")
-                    if bigValue then
-                        -- Additional verification: check for BigPetGUI
-                        local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                        if bigPetGUI then
-                            table.insert(pets, {
-                                model = petModel,
-                                name = petModel.Name,
-                                rootPart = rootPart,
-                                bigPetGUI = bigPetGUI
-                            })
+    -- Check BigPet parts in workspace.Art.Island_1.ENV.BigPet
+    local bigPetFolder = workspace:FindFirstChild("Art")
+    if bigPetFolder then
+        local island1 = bigPetFolder:FindFirstChild("Island_1")
+        if island1 then
+            local env = island1:FindFirstChild("ENV")
+            if env then
+                local bigPet = env:FindFirstChild("BigPet")
+                if bigPet then
+                    -- Check both BigPet parts
+                    for i = 1, 2 do
+                        local bigPetPart = bigPet:FindFirstChild(tostring(i))
+                        if bigPetPart then
+                            -- Check if this BigPet part is active
+                            local active = bigPetPart:GetAttribute("Active")
+                            if active and active == 1 then
+                                -- Get the GridCenterPos attribute
+                                local gridCenterPos = bigPetPart:GetAttribute("GridCenterPos")
+                                if gridCenterPos then
+                                    -- Look for pets in the area around this position
+                                    local petsFolder = workspace:FindFirstChild("Pets")
+                                    if petsFolder then
+                                        for _, petModel in ipairs(petsFolder:GetChildren()) do
+                                            if petModel:IsA("Model") then
+                                                local rootPart = petModel:FindFirstChild("RootPart")
+                                                if rootPart then
+                                                    -- Check if it's our pet by looking for UserId attribute
+                                                    local petUserId = rootPart:GetAttribute("UserId")
+                                                    if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
+                                                        -- Check if pet is near the BigPet area
+                                                        local petPos = rootPart.Position
+                                                        local distance = (petPos - gridCenterPos).Magnitude
+                                                        
+                                                        -- If pet is within reasonable distance (adjust as needed)
+                                                        if distance < 50 then -- 50 studs radius
+                                                            -- Check if it's a Big Pet by looking for BigValue attribute
+                                                            local bigValue = rootPart:GetAttribute("BigValue")
+                                                            if bigValue then
+                                                                -- Additional verification: check for BigPetGUI
+                                                                local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                                                                if bigPetGUI then
+                                                                    table.insert(pets, {
+                                                                        model = petModel,
+                                                                        name = petModel.Name,
+                                                                        rootPart = rootPart,
+                                                                        bigPetGUI = bigPetGUI,
+                                                                        bigPetPart = bigPetPart.Name
+                                                                    })
+                                                                end
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -121,9 +159,10 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                     for fruitName, _ in pairs(selectedFeedFruits) do
                         if not autoFeedEnabled then break end
                         
-                        -- Update status to show which pet we're trying to feed
-                        feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName
-                        updateFeedStatusParagraph()
+                                                 -- Update status to show which pet we're trying to feed
+                         local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
+                         feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                         updateFeedStatusParagraph()
                         
                         -- Equip the fruit first
                         if AutoFeedSystem.equipFruit(fruitName) then
@@ -133,17 +172,20 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                             if AutoFeedSystem.feedPet(petData.name) then
                                 feedFruitStatus.lastFedPet = petData.name
                                 feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
+                                                                 local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
+                                 feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. bigPetInfo .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                                 
                                 task.wait(1) -- Wait before trying next pet
                                 break -- Move to next pet
                             else
-                                feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName
+                                                                 local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
+                                 feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. bigPetInfo .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                             end
                         else
-                            feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name
+                                                         local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
+                             feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. bigPetInfo
                             updateFeedStatusParagraph()
                         end
                         
@@ -154,8 +196,9 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                     updateFeedStatusParagraph()
                 end
             else
-                -- Show which pets are currently eating
-                feedFruitStatus.lastAction = petData.name .. " is currently eating"
+                                 -- Show which pets are currently eating
+                 local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
+                 feedFruitStatus.lastAction = petData.name .. bigPetInfo .. " is currently eating"
                 updateFeedStatusParagraph()
             end
         end
