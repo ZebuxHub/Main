@@ -230,12 +230,12 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                     end
                 end
                 
-                -- Log current selections for debugging
-                if fruitCount > 0 then
-                    print("🍎 Auto Feed Debug - Current selections:", table.concat(fruitList, ", "))
-                else
-                    print("🍎 Auto Feed Debug - No fruit selections found!")
-                end
+                -- Log current selections for debugging (removed for lightweight)
+                -- if fruitCount > 0 then
+                --     print("🍎 Auto Feed Debug - Current selections:", table.concat(fruitList, ", "))
+                -- else
+                --     print("🍎 Auto Feed Debug - No fruit selections found!")
+                -- end
                 
                 -- Check if we have selected fruits
                 if selectedFeedFruits and fruitCount > 0 then
