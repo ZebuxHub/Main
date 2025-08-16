@@ -96,8 +96,8 @@ local function loadAllSavedSettings()
 		end
 	end
 	
-	-- Load config
-	zooConfig:Load()
+	-- Load config - commented out since zooConfig not created yet
+	-- zooConfig:Load()
 end
 
 -- Auto state variables (declared early so close handler can reference)
@@ -3616,5 +3616,7 @@ local function loadAllSavedSettings()
 	end
 	
 	-- Load config
-	zooConfig:Load()
+	if zooConfig then
+		zooConfig:Load()
+	end
 end
