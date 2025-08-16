@@ -121,6 +121,10 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                     for fruitName, _ in pairs(selectedFeedFruits) do
                         if not autoFeedEnabled then break end
                         
+                        -- Update status to show which pet we're trying to feed
+                        feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName
+                        updateFeedStatusParagraph()
+                        
                         -- Equip the fruit first
                         if AutoFeedSystem.equipFruit(fruitName) then
                             task.wait(0.1) -- Small delay between equip and feed
@@ -129,12 +133,18 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                             if AutoFeedSystem.feedPet(petData.name) then
                                 feedFruitStatus.lastFedPet = petData.name
                                 feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                feedFruitStatus.lastAction = "Fed " .. petData.name .. " with " .. fruitName
+                                feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                                 
                                 task.wait(1) -- Wait before trying next pet
                                 break -- Move to next pet
+                            else
+                                feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName
+                                updateFeedStatusParagraph()
                             end
+                        else
+                            feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name
+                            updateFeedStatusParagraph()
                         end
                         
                         task.wait(0.2) -- Small delay between fruit attempts
@@ -143,6 +153,10 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                     feedFruitStatus.lastAction = "No fruits selected for feeding"
                     updateFeedStatusParagraph()
                 end
+            else
+                -- Show which pets are currently eating
+                feedFruitStatus.lastAction = petData.name .. " is currently eating"
+                updateFeedStatusParagraph()
             end
         end
         
