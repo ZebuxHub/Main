@@ -116,6 +116,9 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                 feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
                 
                 -- Check if we have selected fruits
+                print("🔍 Auto Feed Debug - selectedFeedFruits:", selectedFeedFruits and next(selectedFeedFruits) and "Has selections" or "No selections")
+                print("🔍 Auto Feed Debug - selectedFeedFruits type:", type(selectedFeedFruits))
+                print("🔍 Auto Feed Debug - selectedFeedFruits content:", selectedFeedFruits)
                 if selectedFeedFruits and next(selectedFeedFruits) then
                     -- Try to feed with selected fruits
                     for fruitName, _ in pairs(selectedFeedFruits) do
