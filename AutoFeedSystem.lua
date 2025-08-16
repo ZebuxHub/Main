@@ -35,11 +35,13 @@ function AutoFeedSystem.getBigPets()
                                 -- Get the GridCenterPos attribute
                                 local gridCenterPos = bigPetPart:GetAttribute("GridCenterPos")
                                 if gridCenterPos then
-                                    -- Look for pets in the area around this position
+                                    -- Find all pets in workspace.Pets and compare distances to this center
                                     local petsFolder = workspace:FindFirstChild("Pets")
                                     if petsFolder then
                                         local petsInThisArea = 0 -- Count pets found in this BigPet area
+                                        local nearbyPets = {} -- Store pets with their distances
                                         
+                                        -- First pass: collect all our pets and their distances to this center
                                         for _, petModel in ipairs(petsFolder:GetChildren()) do
                                             if petModel:IsA("Model") then
                                                 local rootPart = petModel:FindFirstChild("RootPart")
@@ -47,29 +49,46 @@ function AutoFeedSystem.getBigPets()
                                                     -- Check if it's our pet by looking for UserId attribute
                                                     local petUserId = rootPart:GetAttribute("UserId")
                                                     if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                                                        -- Check if pet is near the BigPet area
+                                                        -- Calculate distance to this BigPet center
                                                         local petPos = rootPart.Position
                                                         local distance = (petPos - gridCenterPos).Magnitude
                                                         
-                                                        -- If pet is within 20 studs of BigPet area, consider it a Big Pet
-                                                        if distance < 20 then -- 20 studs radius
-                                                            -- No additional verification needed - if it's in the area, it's a Big Pet
-                                                            local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                                                            table.insert(pets, {
-                                                                model = petModel,
-                                                                name = petModel.Name,
-                                                                rootPart = rootPart,
-                                                                bigPetGUI = bigPetGUI,
-                                                                bigPetPart = bigPetPart.Name
-                                                            })
-                                                            petsInThisArea = petsInThisArea + 1
-                                                        end
+                                                        -- Store pet info with distance for comparison
+                                                        table.insert(nearbyPets, {
+                                                            model = petModel,
+                                                            name = petModel.Name,
+                                                            rootPart = rootPart,
+                                                            distance = distance,
+                                                            bigPetPart = bigPetPart.Name
+                                                        })
                                                     end
                                                 end
                                             end
                                         end
                                         
-                                        -- If no pets found in this BigPet area, skip it (already handled by not adding to pets table)
+                                        -- Sort pets by distance (closest first)
+                                        table.sort(nearbyPets, function(a, b)
+                                            return a.distance < b.distance
+                                        end)
+                                        
+                                        -- Add the closest pets within 20 studs
+                                        for _, petData in ipairs(nearbyPets) do
+                                            if petData.distance < 20 then -- 20 studs radius
+                                                local bigPetGUI = petData.rootPart:FindFirstChild("GUI/BigPetGUI")
+                                                table.insert(pets, {
+                                                    model = petData.model,
+                                                    name = petData.name,
+                                                    rootPart = petData.rootPart,
+                                                    bigPetGUI = bigPetGUI,
+                                                    bigPetPart = petData.bigPetPart,
+                                                    distance = petData.distance -- Keep distance info for debugging
+                                                })
+                                                petsInThisArea = petsInThisArea + 1
+                                            else
+                                                -- Stop checking once we're outside the 20 stud radius
+                                                break
+                                            end
+                                        end
                                     end
                                 end
                             end
@@ -160,7 +179,8 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                         
                                                  -- Update status to show which pet we're trying to feed
                          local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                         feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                         local distanceInfo = petData.distance and string.format(" [%.1f studs]", petData.distance) or ""
+                         feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. bigPetInfo .. distanceInfo .. " with " .. fruitName
                          updateFeedStatusParagraph()
                         
                         -- Equip the fruit first
@@ -172,19 +192,22 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
                                 feedFruitStatus.lastFedPet = petData.name
                                 feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
                                                                  local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                                 feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                                 local distanceInfo = petData.distance and string.format(" [%.1f studs]", petData.distance) or ""
+                                 feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. bigPetInfo .. distanceInfo .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                                 
                                 task.wait(1) -- Wait before trying next pet
                                 break -- Move to next pet
                             else
                                                                  local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                                 feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. bigPetInfo .. " with " .. fruitName
+                                 local distanceInfo = petData.distance and string.format(" [%.1f studs]", petData.distance) or ""
+                                 feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. bigPetInfo .. distanceInfo .. " with " .. fruitName
                                 updateFeedStatusParagraph()
                             end
                         else
                                                          local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                             feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. bigPetInfo
+                             local distanceInfo = petData.distance and string.format(" [%.1f studs]", petData.distance) or ""
+                             feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. bigPetInfo .. distanceInfo
                             updateFeedStatusParagraph()
                         end
                         
@@ -197,7 +220,8 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
             else
                                  -- Show which pets are currently eating
                  local bigPetInfo = petData.bigPetPart and " (BigPet " .. petData.bigPetPart .. ")" or ""
-                 feedFruitStatus.lastAction = petData.name .. bigPetInfo .. " is currently eating"
+                 local distanceInfo = petData.distance and string.format(" [%.1f studs]", petData.distance) or ""
+                 feedFruitStatus.lastAction = petData.name .. bigPetInfo .. distanceInfo .. " is currently eating"
                 updateFeedStatusParagraph()
             end
         end
