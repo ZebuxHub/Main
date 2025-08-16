@@ -3679,12 +3679,59 @@ Tabs.SaveTab:Button({
                     Title = "✅ Reset",
                     Variant = "Primary",
                     Callback = function()
-                        -- Clear config file to reset to defaults
-                        if zooConfig then
-                            zooConfig:Clear()
+                        -- Reset all settings to defaults
+                        local success, err = pcall(function()
+                            -- Clear config file if it exists
+                            if zooConfig then
+                                zooConfig:Clear()
+                            end
+                            
+                            -- Delete custom JSON files
+                            if isfile("Zebux_EggSelections.json") then
+                                delfile("Zebux_EggSelections.json")
+                            end
+                            if isfile("Zebux_FruitSelections.json") then
+                                delfile("Zebux_FruitSelections.json")
+                            end
+                            if isfile("Zebux_FeedFruitSelections.json") then
+                                delfile("Zebux_FeedFruitSelections.json")
+                            end
+                            
+                            -- Reset all selection variables
+                            selectedTypeSet = {}
+                            selectedMutationSet = {}
+                            selectedFruits = {}
+                            selectedFeedFruits = {}
+                            
+                            -- Reset status data
+                            statusData.selectedTypes = "None"
+                            statusData.selectedMutations = "None"
+                            
+                            -- Update status displays
+                            updateStatusParagraph()
+                            updateFruitStatusParagraph()
+                            
+                            -- Reset auto feed status
+                            feedFruitStatus = {
+                                petsFound = 0,
+                                availablePets = 0,
+                                totalFeeds = 0,
+                                lastAction = "Ready to feed pets!"
+                            }
+                            updateFeedStatusParagraph()
+                            
                             WindUI:Notify({ 
                                 Title = "🔄 Settings Reset", 
                                 Content = "All settings have been reset to default! 🎉", 
+                                Duration = 3 
+                            })
+                        end)
+                        
+                        if not success then
+                            warn("Failed to reset settings: " .. tostring(err))
+                            WindUI:Notify({ 
+                                Title = "⚠️ Reset Error", 
+                                Content = "Failed to reset some settings. Please try again.", 
                                 Duration = 3 
                             })
                         end
@@ -3850,7 +3897,6 @@ Tabs.FeedTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFeedFruits = selectedItems
-                    print("🍎 Feed Fruit Selection Updated:", selectedItems and next(selectedItems) and "Has selections" or "No selections")
                     updateFeedStatusParagraph()
                 end,
                 function(isVisible)
@@ -3874,7 +3920,6 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Callback = function(state)
         autoFeedEnabled = state
         if state and not autoFeedThread then
-            print("🚀 Starting Auto Feed with selectedFeedFruits:", selectedFeedFruits and next(selectedFeedFruits) and "Has selections" or "No selections")
             autoFeedThread = task.spawn(function()
                 AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFruitStatus, updateFeedStatusParagraph)
                 autoFeedThread = nil
