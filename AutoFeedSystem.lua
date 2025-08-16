@@ -32,15 +32,28 @@ function AutoFeedSystem.getBigPets()
                             -- Check if this BigPet part is active
                             local active = bigPetPart:GetAttribute("Active")
                             if active and active == 1 then
-                                -- Get the GridCenterPos attribute
+                                -- Get the GridCenterPos attribute and convert to Vector3 if needed
                                 local gridCenterPos = bigPetPart:GetAttribute("GridCenterPos")
-                                print("🔍 BigPet", i, "GridCenterPos:", gridCenterPos)
                                 if gridCenterPos then
+                                    -- Convert GridCenterPos to Vector3 if it's not already
+                                    local centerPos
+                                    if typeof(gridCenterPos) == "Vector3" then
+                                        centerPos = gridCenterPos
+                                    elseif typeof(gridCenterPos) == "CFrame" then
+                                        centerPos = gridCenterPos.Position
+                                    elseif typeof(gridCenterPos) == "table" then
+                                        -- If it's a table with x, y, z coordinates
+                                        if gridCenterPos.x and gridCenterPos.y and gridCenterPos.z then
+                                            centerPos = Vector3.new(gridCenterPos.x, gridCenterPos.y, gridCenterPos.z)
+                                        else
+                                            centerPos = Vector3.new(0, 0, 0) -- Default fallback
+                                        end
+                                    else
+                                        centerPos = Vector3.new(0, 0, 0) -- Default fallback
+                                    end
                                     -- Look for pets in the area around this position
                                     local petsFolder = workspace:FindFirstChild("Pets")
-                                    print("🔍 Pets folder found:", petsFolder and "Yes" or "No")
                                     if petsFolder then
-                                        print("🔍 Total pets in folder:", #petsFolder:GetChildren())
                                         local petsInThisArea = 0 -- Count pets found in this BigPet area
                                         
                                         for _, petModel in ipairs(petsFolder:GetChildren()) do
@@ -49,12 +62,10 @@ function AutoFeedSystem.getBigPets()
                                                 if rootPart then
                                                     -- Check if it's our pet by looking for UserId attribute
                                                     local petUserId = rootPart:GetAttribute("UserId")
-                                                    print("🔍 Pet", petModel.Name, "UserId:", petUserId, "Our UserId:", localPlayer.UserId)
                                                     if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
                                                         -- Check if pet is near the BigPet area using WorldPivot
                                                         local petWorldPivot = petModel:GetPivot()
-                                                        local distance = (petWorldPivot.Position - gridCenterPos).Magnitude
-                                                        print("🔍 Pet", petModel.Name, "Distance:", distance, "WorldPivot:", petWorldPivot.Position, "GridCenter:", gridCenterPos)
+                                                        local distance = (petWorldPivot.Position - centerPos).Magnitude
                                                         
                                                         -- If pet is within 20 studs of BigPet area, consider it a Big Pet
                                                         if distance < 20 then -- 20 studs radius
