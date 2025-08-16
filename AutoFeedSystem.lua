@@ -100,7 +100,34 @@ function AutoFeedSystem.getPlayerFruitInventory()
     
     local fruitInventory = {}
     
-    -- Check for fruit attributes in the Asset. Match by normalized name
+    -- 1) Read from Attributes (primary source in many games)
+    local attrMap = {}
+    local ok, attrs = pcall(function()
+        return asset:GetAttributes()
+    end)
+    if ok and type(attrs) == "table" then
+        attrMap = attrs
+    end
+
+    for _, canonicalName in ipairs(KNOWN_FRUITS) do
+        local amount = attrMap[canonicalName]
+        if amount == nil then
+            -- try normalized key match
+            local want = normalizeFruitName(canonicalName)
+            for k, v in pairs(attrMap) do
+                if normalizeFruitName(k) == want then
+                    amount = v
+                    break
+                end
+            end
+        end
+        if type(amount) == "string" then amount = tonumber(amount) or 0 end
+        if type(amount) == "number" and amount > 0 then
+            fruitInventory[canonicalName] = amount
+        end
+    end
+
+    -- 2) Merge children values as fallback
     for _, child in pairs(asset:GetChildren()) do
         if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
             local rawName = child.Name
