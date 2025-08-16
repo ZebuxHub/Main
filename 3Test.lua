@@ -3355,6 +3355,8 @@ Tabs.SaveTab:Button({
 task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
     
+    local loadedCount = 0
+    
     -- Load custom JSON files only (skip problematic WindUI config)
     local success, data = pcall(function()
         if isfile("Zebux_EggSelections.json") then
@@ -3369,6 +3371,7 @@ task.spawn(function()
         if data.eggs then
             for _, eggId in ipairs(data.eggs) do
                 selectedTypeSet[eggId] = true
+                loadedCount = loadedCount + 1
             end
         end
         
@@ -3377,6 +3380,7 @@ task.spawn(function()
         if data.mutations then
             for _, mutationId in ipairs(data.mutations) do
                 selectedMutationSet[mutationId] = true
+                loadedCount = loadedCount + 1
             end
         end
     end
@@ -3395,6 +3399,7 @@ task.spawn(function()
         if fruitData.fruits then
             for _, fruitId in ipairs(fruitData.fruits) do
                 selectedFruits[fruitId] = true
+                loadedCount = loadedCount + 1
             end
         end
     end
@@ -3413,15 +3418,24 @@ task.spawn(function()
         if feedFruitData.fruits then
             for _, fruitId in ipairs(feedFruitData.fruits) do
                 selectedFeedFruits[fruitId] = true
+                loadedCount = loadedCount + 1
             end
         end
     end
     
-    WindUI:Notify({ 
-        Title = "📂 Auto-Load", 
-        Content = "Your saved selections have been loaded! 🎉", 
-        Duration = 3 
-    })
+    if loadedCount > 0 then
+        WindUI:Notify({ 
+            Title = "📂 Auto-Load", 
+            Content = "Loaded " .. loadedCount .. " saved selections! 🎉", 
+            Duration = 3 
+        })
+    else
+        WindUI:Notify({ 
+            Title = "📂 Auto-Load", 
+            Content = "No saved settings found. Use 'Save Settings' to save your selections.", 
+            Duration = 3 
+        })
+    end
 end)
 
 -- ============ Auto Feed Tab ============
