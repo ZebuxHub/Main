@@ -1271,7 +1271,7 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoHatchEnabled = state
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
@@ -1669,7 +1669,7 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     Desc = "Instantly buys eggs as soon as they appear on the conveyor belt!",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoBuyEnabled = state
         if state and not autoBuyThread then
             autoBuyThread = task.spawn(function()
@@ -2305,7 +2305,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
@@ -2444,7 +2444,7 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically unlock tiles when you have enough money",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoUnlockEnabled = state
         if state and not autoUnlockThread then
             autoUnlockThread = task.spawn(function()
@@ -2620,7 +2620,7 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoDeleteEnabled = state
         if state and not autoDeleteThread then
             autoDeleteThread = task.spawn(function()
@@ -2961,7 +2961,7 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
                          autoBuyFruitThread = task.spawn(function()
@@ -3097,11 +3097,6 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         local success, err = pcall(function()
-            -- Save WindUI config if available
-            if zooConfig and zooConfig.Save then
-                zooConfig:Save()
-            end
-            
             -- Save egg selections separately using writefile
             local eggSelections = {
                 eggs = {},
@@ -3162,73 +3157,85 @@ Tabs.SaveTab:Button({
     Desc = "Load your saved settings",
     Callback = function()
         local success, err = pcall(function()
-            if zooConfig then
-        zooConfig:Load()
-                
-                -- Load egg selections separately
-                local success, data = pcall(function()
-                    if isfile("Zebux_EggSelections.json") then
-                        local jsonData = readfile("Zebux_EggSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if success and data then
-                    -- Load egg selections
-                    selectedTypeSet = {}
-                    if data.eggs then
-                        for _, eggId in ipairs(data.eggs) do
-                            selectedTypeSet[eggId] = true
-                        end
-                    end
-                    
-                    -- Load mutation selections
-                    selectedMutationSet = {}
-                    if data.mutations then
-                        for _, mutationId in ipairs(data.mutations) do
-                            selectedMutationSet[mutationId] = true
-                        end
-                    end
-                    
-                    -- Update UI if visible
-                    if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
-                        EggSelection.RefreshContent()
+            -- Load egg selections separately
+            local success, data = pcall(function()
+                if isfile("Zebux_EggSelections.json") then
+                    local jsonData = readfile("Zebux_EggSelections.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
+                end
+            end)
+            
+            if success and data then
+                -- Load egg selections
+                selectedTypeSet = {}
+                if data.eggs then
+                    for _, eggId in ipairs(data.eggs) do
+                        selectedTypeSet[eggId] = true
                     end
                 end
                 
-                -- Load fruit selections separately
-                local fruitSuccess, fruitData = pcall(function()
-                    if isfile("Zebux_FruitSelections.json") then
-                        local jsonData = readfile("Zebux_FruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if fruitSuccess and fruitData then
-                    -- Load fruit selections
-                    selectedFruits = {}
-                    if fruitData.fruits then
-                        for _, fruitId in ipairs(fruitData.fruits) do
-                            selectedFruits[fruitId] = true
-                        end
-                    end
-                    
-                    -- Update UI if visible
-                    if FruitSelection and FruitSelection.IsVisible and FruitSelection.IsVisible() then
-                        FruitSelection.RefreshContent()
+                -- Load mutation selections
+                selectedMutationSet = {}
+                if data.mutations then
+                    for _, mutationId in ipairs(data.mutations) do
+                        selectedMutationSet[mutationId] = true
                     end
                 end
-            else
-                error("Config manager not available")
+                
+                -- Update UI if visible
+                if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
+                    EggSelection.RefreshContent()
+                end
+            end
+            
+            -- Load fruit selections separately
+            local fruitSuccess, fruitData = pcall(function()
+                if isfile("Zebux_FruitSelections.json") then
+                    local jsonData = readfile("Zebux_FruitSelections.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
+                end
+            end)
+            
+            if fruitSuccess and fruitData then
+                -- Load fruit selections
+                selectedFruits = {}
+                if fruitData.fruits then
+                    for _, fruitId in ipairs(fruitData.fruits) do
+                        selectedFruits[fruitId] = true
+                    end
+                end
+                
+                -- Update UI if visible
+                if FruitSelection and FruitSelection.IsVisible and FruitSelection.IsVisible() then
+                    FruitSelection.RefreshContent()
+                end
+            end
+            
+            -- Load feed fruit selections separately
+            local feedFruitSuccess, feedFruitData = pcall(function()
+                if isfile("Zebux_FeedFruitSelections.json") then
+                    local jsonData = readfile("Zebux_FeedFruitSelections.json")
+                    return game:GetService("HttpService"):JSONDecode(jsonData)
+                end
+            end)
+            
+            if feedFruitSuccess and feedFruitData then
+                -- Load feed fruit selections
+                selectedFeedFruits = {}
+                if feedFruitData.fruits then
+                    for _, fruitId in ipairs(feedFruitData.fruits) do
+                        selectedFeedFruits[fruitId] = true
+                    end
+                end
             end
         end)
         
         if success then
-        WindUI:Notify({ 
-            Title = "📂 Settings Loaded", 
-            Content = "Your settings have been loaded! 🎉", 
-            Duration = 3 
-        })
+            WindUI:Notify({ 
+                Title = "📂 Settings Loaded", 
+                Content = "Your settings have been loaded! 🎉", 
+                Duration = 3 
+            })
         else
             WindUI:Notify({ 
                 Title = "❌ Load Failed", 
@@ -3344,18 +3351,9 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Register config elements and auto-load when script starts
+-- Load saved settings when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
-    
-    -- Register config elements with error handling
-    local success, err = pcall(function()
-        registerConfigElements()
-    end)
-    
-    if not success then
-        warn("Failed to register config elements: " .. tostring(err))
-    end
     
     -- Load custom JSON files only (skip problematic WindUI config)
     local success, data = pcall(function()
@@ -3459,7 +3457,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
     Callback = function(state)
-        loadAllSavedSettings() -- Load saved settings before starting
+        -- Settings loading removed - using auto-load instead
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
@@ -3495,60 +3493,4 @@ Window:OnClose(function()
     print("UI closed.")
 end)
 
--- Function to load all saved settings before any function starts
-local function loadAllSavedSettings()
-	-- Load egg selections
-	if isfile("Zebux_EggSelections.json") then
-		local success, data = pcall(function()
-			local jsonData = readfile("Zebux_EggSelections.json")
-			return game:GetService("HttpService"):JSONDecode(jsonData)
-		end)
-		if success and data then
-			selectedTypeSet = {}
-			selectedMutationSet = {}
-			if data.eggs then
-				for _, eggId in ipairs(data.eggs) do
-					selectedTypeSet[eggId] = true
-				end
-			end
-			if data.mutations then
-				for _, mutationId in ipairs(data.mutations) do
-					selectedMutationSet[mutationId] = true
-				end
-			end
-		end
-	end
-	
-	-- Load fruit selections
-	if isfile("Zebux_FruitSelections.json") then
-		local success, data = pcall(function()
-			local jsonData = readfile("Zebux_FruitSelections.json")
-			return game:GetService("HttpService"):JSONDecode(jsonData)
-		end)
-		if success and data and data.fruits then
-			selectedFruits = {}
-			for _, fruitId in ipairs(data.fruits) do
-				selectedFruits[fruitId] = true
-			end
-		end
-	end
-	
-	-- Load feed fruit selections
-	if isfile("Zebux_FeedFruitSelections.json") then
-		local success, data = pcall(function()
-			local jsonData = readfile("Zebux_FeedFruitSelections.json")
-			return game:GetService("HttpService"):JSONDecode(jsonData)
-		end)
-		if success and data and data.fruits then
-			selectedFeedFruits = {}
-			for _, fruitId in ipairs(data.fruits) do
-				selectedFeedFruits[fruitId] = true
-			end
-		end
-	end
-	
-	-- Load config
-	if zooConfig and zooConfig.Load then
-		zooConfig:Load()
-	end
-end
+-- Function removed - using auto-load instead
