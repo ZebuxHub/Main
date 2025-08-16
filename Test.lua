@@ -1478,12 +1478,81 @@ local fruitSelectionVisible = false
 local feedFruitSelectionVisible = false
 
 
+-- Ensure saved selections are loaded before any feature runs
+local function ensureSelectionsLoaded()
+	local http = game:GetService("HttpService")
+	local changed = false
+
+	-- Eggs + Mutations
+	if (not next(selectedTypeSet)) and (not next(selectedMutationSet)) then
+		pcall(function()
+			if isfile("Zebux_EggSelections.json") then
+				local data = http:JSONDecode(readfile("Zebux_EggSelections.json"))
+				selectedTypeSet = {}
+				if data and data.eggs then
+					for _, id in ipairs(data.eggs) do selectedTypeSet[id] = true end
+				end
+				selectedMutationSet = {}
+				if data and data.mutations then
+					for _, id in ipairs(data.mutations) do selectedMutationSet[id] = true end
+				end
+				changed = true
+			end
+		end)
+	end
+
+	-- Fruit selection (auto-buy)
+	if not next(selectedFruits) then
+		pcall(function()
+			if isfile("Zebux_FruitSelections.json") then
+				local data = http:JSONDecode(readfile("Zebux_FruitSelections.json"))
+				selectedFruits = {}
+				if data and data.fruits then
+					for _, id in ipairs(data.fruits) do selectedFruits[id] = true end
+				end
+				changed = true
+			end
+		end)
+	end
+
+	-- Feed fruit selection (auto-feed)
+	if not next(selectedFeedFruits) then
+		pcall(function()
+			if isfile("Zebux_FeedFruitSelections.json") then
+				local data = http:JSONDecode(readfile("Zebux_FeedFruitSelections.json"))
+				selectedFeedFruits = {}
+				if data and data.fruits then
+					for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
+				end
+				changed = true
+			end
+		end)
+	end
+
+	if changed then
+		-- Update status blocks
+		local eggKeys, mutKeys, fruitKeys = {}, {}, {}
+		for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+		for k in pairs(selectedMutationSet) do table.insert(mutKeys, k) end
+		table.sort(eggKeys); table.sort(mutKeys)
+		statusData.selectedTypes = (#eggKeys > 0) and table.concat(eggKeys, ", ") or "None"
+		statusData.selectedMutations = (#mutKeys > 0) and table.concat(mutKeys, ", ") or "None"
+		if updateStatusParagraph then updateStatusParagraph() end
+
+		for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
+		fruitAutoBuyStatus.selectedCount = #fruitKeys
+		if updateFruitStatus then updateFruitStatus() end
+	end
+end
+
+
 
 
 Tabs.AutoTab:Button({
     Title = "🥚 Open Egg Selection UI",
     Desc = "Open the modern glass-style egg selection interface",
     Callback = function()
+        ensureSelectionsLoaded()
         if not eggSelectionVisible then
             EggSelection.Show(
                 function(selectedItems)
@@ -3308,6 +3377,7 @@ Tabs.FruitTab:Button({
     Title = "🍎 Open Fruit Selection UI",
     Desc = "Open the modern glass-style fruit selection interface",
     Callback = function()
+        ensureSelectionsLoaded()
         if not fruitSelectionVisible then
             FruitSelection.Show(
                 function(selectedItems)
@@ -3344,6 +3414,7 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
+        ensureSelectionsLoaded()
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
                          autoBuyFruitThread = task.spawn(function()
@@ -3923,6 +3994,7 @@ Tabs.FeedTab:Button({
     Title = "🍎 Open Feed Fruit Selection UI",
     Desc = "Open the modern glass-style fruit selection interface for feeding",
     Callback = function()
+        ensureSelectionsLoaded()
         if not feedFruitSelectionVisible then
             FeedFruitSelection.Show(
                 function(selectedItems)
@@ -3949,6 +4021,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
     Callback = function(state)
+        ensureSelectionsLoaded()
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
