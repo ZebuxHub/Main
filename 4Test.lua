@@ -3910,7 +3910,6 @@ Tabs.FeedTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFeedFruits = selectedItems
-                    print("🍎 Feed Fruit Selection Updated:", selectedItems and next(selectedItems) and "Has selections" or "No selections")
                     updateFeedStatusParagraph()
                 end,
                 function(isVisible)
@@ -3934,9 +3933,8 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Callback = function(state)
         autoFeedEnabled = state
         if state and not autoFeedThread then
-            print("🚀 Starting Auto Feed with selectedFeedFruits:", selectedFeedFruits and next(selectedFeedFruits) and "Has selections" or "No selections")
             autoFeedThread = task.spawn(function()
-                AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFruitStatus, updateFeedStatusParagraph)
+                AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeedStatusParagraph, function() return selectedFeedFruits end)
                 autoFeedThread = nil
             end)
             WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
