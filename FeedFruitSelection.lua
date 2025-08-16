@@ -10,6 +10,50 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
+-- Function to get player's fruit inventory
+local function getPlayerFruitInventory()
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then
+        return {}
+    end
+    
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return {}
+    end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then
+        return {}
+    end
+    
+    local asset = data:FindFirstChild("Asset")
+    if not asset then
+        return {}
+    end
+    
+    local fruitInventory = {}
+    
+    -- Check for fruit attributes in the Asset
+    for _, child in pairs(asset:GetChildren()) do
+        if child:IsA("StringValue") or child:IsA("IntValue") then
+            local fruitName = child.Name
+            local fruitAmount = child.Value
+            
+            -- Convert to number if it's a string
+            if type(fruitAmount) == "string" then
+                fruitAmount = tonumber(fruitAmount) or 0
+            end
+            
+            if fruitAmount and fruitAmount > 0 then
+                fruitInventory[fruitName] = fruitAmount
+            end
+        end
+    end
+    
+    return fruitInventory
+end
+
 -- Hardcoded fruit data for feeding
 local FruitData = {
     Strawberry = {
@@ -288,13 +332,54 @@ local function createItemCard(itemId, itemData, parent)
     price.Size = UDim2.new(1, -16, 0, 16)
     price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
-    price.Text = "$" .. itemData.Price
+    price.Text = "Loading..." -- Will be updated with inventory count
     price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
     price.TextXAlignment = Enum.TextXAlignment.Center
     price.TextWrapped = true
     price.Parent = card
+    
+    -- Update price label with inventory count
+    local function updateInventoryDisplay()
+        local fruitInventory = getPlayerFruitInventory()
+        local fruitAmount = fruitInventory[itemData.Name] or 0
+        
+        if fruitAmount > 0 then
+            price.Text = fruitAmount .. "x"
+            price.TextColor3 = colors.textSecondary
+        else
+            price.Text = "0x"
+            price.TextColor3 = Color3.fromRGB(255, 69, 58) -- Red for 0 inventory
+        end
+    end
+    
+    -- Update immediately
+    updateInventoryDisplay()
+    
+    -- Update every 2 seconds to keep inventory current
+    local lastUpdate = 0
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        if not card.Parent then
+            connection:Disconnect()
+            return
+        end
+        
+        -- Update every 2 seconds
+        local currentTime = tick()
+        if currentTime - lastUpdate >= 2 then
+            updateInventoryDisplay()
+            lastUpdate = currentTime
+        end
+    end)
+    
+    -- Clean up connection when card is destroyed
+    card.AncestryChanged:Connect(function()
+        if not card.Parent then
+            connection:Disconnect()
+        end
+    end)
     
     local checkmark = Instance.new("TextLabel")
     checkmark.Name = "Checkmark"
@@ -566,8 +651,19 @@ function FeedFruitSelection.RefreshContent()
     -- Filter by search
     local filteredData = filterDataBySearch(FruitData, searchText)
     
-    -- Sort by price (low to high)
-    local sortedData = sortDataByPrice(filteredData)
+    -- Sort by inventory count (high to low) instead of price
+    local sortedData = {}
+    for id, item in pairs(filteredData) do
+        table.insert(sortedData, {id = id, data = item})
+    end
+    
+    -- Sort by inventory count (high to low)
+    local fruitInventory = getPlayerFruitInventory()
+    table.sort(sortedData, function(a, b)
+        local amountA = fruitInventory[a.data.Name] or 0
+        local amountB = fruitInventory[b.data.Name] or 0
+        return amountA > amountB -- High to low
+    end)
     
     -- Add content
     for i, item in ipairs(sortedData) do
