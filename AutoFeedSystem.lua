@@ -97,7 +97,7 @@ function AutoFeedSystem.feedPet(petName)
     return true
 end
 
-function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFruitStatus, updateFeedStatusParagraph)
+function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeedStatusParagraph, getSelectedFruits)
     while autoFeedEnabled do
         local bigPets = AutoFeedSystem.getBigPets()
         feedFruitStatus.petsFound = #bigPets
@@ -117,8 +117,10 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFru
             if not AutoFeedSystem.isPetEating(petData) then
                 feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
                 
+                -- Get current selected fruits from main script
+                local selectedFeedFruits = getSelectedFruits and getSelectedFruits() or {}
+                
                 -- Check if we have selected fruits
-                print("🔍 Auto Feed Debug - selectedFeedFruits:", selectedFeedFruits and next(selectedFeedFruits) and "Has selections" or "No selections")
                 if selectedFeedFruits and next(selectedFeedFruits) then
                     -- Try to feed with selected fruits
                     for fruitName, _ in pairs(selectedFeedFruits) do
