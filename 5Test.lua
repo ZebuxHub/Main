@@ -3030,21 +3030,32 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
     if zooConfig then
-        -- Only register simple UI elements that don't cause serialization issues
-        if autoBuyToggle then zooConfig:Register("autoBuyEnabled", autoBuyToggle) end
-        if autoPlaceToggle then zooConfig:Register("autoPlaceEnabled", autoPlaceToggle) end
-        if autoHatchToggle then zooConfig:Register("autoHatchEnabled", autoHatchToggle) end
-        if autoClaimToggle then zooConfig:Register("autoClaimEnabled", autoClaimToggle) end
-        if autoUpgradeToggle then zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle) end
-        if autoDinoToggle then zooConfig:Register("autoDinoEnabled", autoDinoToggle) end
-        if autoDeleteToggle then zooConfig:Register("autoDeleteEnabled", autoDeleteToggle) end
-        if autoDeleteSpeedSlider then zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider) end
-        if autoClaimDelaySlider then zooConfig:Register("autoClaimDelay", autoClaimDelaySlider) end
-        if placeEggDropdown then zooConfig:Register("selectedPlaceEggs", placeEggDropdown) end
-        if priorityDropdown then zooConfig:Register("automationPriority", priorityDropdown) end
+        -- Only register UI elements that exist and are properly initialized
+        local elementsToRegister = {
+            {name = "autoBuyEnabled", element = autoBuyToggle},
+            {name = "autoPlaceEnabled", element = autoPlaceToggle},
+            {name = "autoHatchEnabled", element = autoHatchToggle},
+            {name = "autoClaimEnabled", element = autoClaimToggle},
+            {name = "autoUpgradeEnabled", element = autoUpgradeToggle},
+            {name = "autoDinoEnabled", element = autoDinoToggle},
+            {name = "autoDeleteEnabled", element = autoDeleteToggle},
+            {name = "autoDeleteSpeed", element = autoDeleteSpeedSlider},
+            {name = "autoClaimDelay", element = autoClaimDelaySlider},
+            {name = "selectedPlaceEggs", element = placeEggDropdown},
+            {name = "automationPriority", element = priorityDropdown},
+            {name = "autoBuyFruitEnabled", element = autoBuyFruitToggle}
+        }
         
-        -- Register fruit selection
-        if autoBuyFruitToggle then zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle) end
+        for _, item in ipairs(elementsToRegister) do
+            if item.element and type(item.element) == "table" then
+                local success, err = pcall(function()
+                    zooConfig:Register(item.name, item.element)
+                end)
+                if not success then
+                    warn("Failed to register " .. item.name .. ": " .. tostring(err))
+                end
+            end
+        end
     end
 end
 
@@ -3086,57 +3097,56 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         local success, err = pcall(function()
+            -- Save WindUI config if available
             if zooConfig and zooConfig.Save then
-        zooConfig:Save()
-                
-                -- Save egg selections separately using writefile
-                local eggSelections = {
-                    eggs = {},
-                    mutations = {}
-                }
-                
-                for eggId, _ in pairs(selectedTypeSet) do
-                    table.insert(eggSelections.eggs, eggId)
-                end
-                
-                for mutationId, _ in pairs(selectedMutationSet) do
-                    table.insert(eggSelections.mutations, mutationId)
-                end
-                
-                writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
-                
-                -- Save fruit selections separately
-                local fruitSelections = {
-                    fruits = {}
-                }
-                
-                for fruitId, _ in pairs(selectedFruits) do
-                    table.insert(fruitSelections.fruits, fruitId)
-                end
-                
-                writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
-                
-                -- Save feed fruit selections separately
-                local feedFruitSelections = {
-                    fruits = {}
-                }
-                
-                for fruitId, _ in pairs(selectedFeedFruits) do
-                    table.insert(feedFruitSelections.fruits, fruitId)
-                end
-                
-                writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
-            else
-                error("Config manager not available")
+                zooConfig:Save()
             end
+            
+            -- Save egg selections separately using writefile
+            local eggSelections = {
+                eggs = {},
+                mutations = {}
+            }
+            
+            for eggId, _ in pairs(selectedTypeSet) do
+                table.insert(eggSelections.eggs, eggId)
+            end
+            
+            for mutationId, _ in pairs(selectedMutationSet) do
+                table.insert(eggSelections.mutations, mutationId)
+            end
+            
+            writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
+            
+            -- Save fruit selections separately
+            local fruitSelections = {
+                fruits = {}
+            }
+            
+            for fruitId, _ in pairs(selectedFruits) do
+                table.insert(fruitSelections.fruits, fruitId)
+            end
+            
+            writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
+            
+            -- Save feed fruit selections separately
+            local feedFruitSelections = {
+                fruits = {}
+            }
+            
+            for fruitId, _ in pairs(selectedFeedFruits) do
+                table.insert(feedFruitSelections.fruits, fruitId)
+            end
+            
+            writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
         end)
         
         if success then
-        WindUI:Notify({ 
-            Title = "💾 Settings Saved", 
-            Content = "All your settings have been saved! 🎉", 
-            Duration = 3 
-        })
+            WindUI:Notify({ 
+                Title = "💾 Settings Saved", 
+                Content = "All your settings have been saved! 🎉", 
+                Duration = 3 
+            })
         else
             WindUI:Notify({ 
                 Title = "❌ Save Failed", 
@@ -3337,6 +3347,15 @@ Tabs.SaveTab:Button({
 -- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
+    
+    -- Register config elements with error handling
+    local success, err = pcall(function()
+        registerConfigElements()
+    end)
+    
+    if not success then
+        warn("Failed to register config elements: " .. tostring(err))
+    end
     
     -- Load custom JSON files only (skip problematic WindUI config)
     local success, data = pcall(function()
