@@ -475,7 +475,7 @@ function FeedFruitSelection.CreateUI()
     
     -- Add UIPadding to ensure proper scrolling
     local padding = Instance.new("UIPadding")
-    padding.PaddingBottom = UDim2.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 8)
     padding.Parent = scrollFrame
     
     -- Window Control Events
