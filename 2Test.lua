@@ -35,17 +35,65 @@ Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
 Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
-Tabs.BugTab = Tabs.MainSection:Tab({ Title = "🐛 | Bug Report"})
+-- Bug tab removed per user request
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
--- Forward declarations for status used by UI callbacks defined below
-local statusData
-local function updateStatusParagraph() end
-local function updatePlaceStatusParagraph() end
-local function updateFeedStatusParagraph() end
--- Forward declarations for fruit auto-buy status so earlier code can reference them
-local fruitAutoBuyStatus
-local function updateFruitStatus() end
+-- Function to load all saved settings before any function starts
+local function loadAllSavedSettings()
+	-- Load egg selections
+	if isfile("Zebux_EggSelections.json") then
+		local success, data = pcall(function()
+			local jsonData = readfile("Zebux_EggSelections.json")
+			return game:GetService("HttpService"):JSONDecode(jsonData)
+		end)
+		if success and data then
+			selectedTypeSet = {}
+			selectedMutationSet = {}
+			if data.eggs then
+				for _, eggId in ipairs(data.eggs) do
+					selectedTypeSet[eggId] = true
+				end
+			end
+			if data.mutations then
+				for _, mutationId in ipairs(data.mutations) do
+					selectedMutationSet[mutationId] = true
+				end
+			end
+		end
+	end
+	
+	-- Load fruit selections
+	if isfile("Zebux_FruitSelections.json") then
+		local success, data = pcall(function()
+			local jsonData = readfile("Zebux_FruitSelections.json")
+			return game:GetService("HttpService"):JSONDecode(jsonData)
+		end)
+		if success and data and data.fruits then
+			selectedFruits = {}
+			for _, fruitId in ipairs(data.fruits) do
+				selectedFruits[fruitId] = true
+			end
+		end
+	end
+	
+	-- Load feed fruit selections
+	if isfile("Zebux_FeedFruitSelections.json") then
+		local success, data = pcall(function()
+			local jsonData = readfile("Zebux_FeedFruitSelections.json")
+			return game:GetService("HttpService"):JSONDecode(jsonData)
+		end)
+		if success and data and data.fruits then
+			selectedFeedFruits = {}
+			for _, fruitId in ipairs(data.fruits) do
+				selectedFeedFruits[fruitId] = true
+			end
+		end
+	end
+	
+	-- Load config
+	zooConfig:Load()
+end
+
 -- Auto state variables (declared early so close handler can reference)
 
 local autoFeedEnabled = false
@@ -1043,30 +1091,7 @@ Tabs.ClaimTab:Button({
 
 -- ============ Auto Hatch ============
 
--- Hatch debug UI
-Tabs.HatchTab:Section({ Title = "📊 Status", Icon = "info" })
-local hatchStatus = { last = "Ready to hatch!", owned = 0, ready = 0, lastModel = nil, lastEggType = nil }
-local hatchParagraph = Tabs.HatchTab:Paragraph({
-    Title = "⚡ Auto Hatch Status",
-    Desc = "Shows egg hatching progress",
-    Image = "zap",
-    ImageSize = 18,
-})
-local function updateHatchStatus()
-    if not (hatchParagraph and hatchParagraph.SetDesc) then return end
-    local now = os.clock()
-    hatchParagraph._last = hatchParagraph._last or 0
-    if now - hatchParagraph._last < 0.25 then return end
-    hatchParagraph._last = now
-    local lines = {}
-    table.insert(lines, string.format("Owned: %d | Ready: %d", hatchStatus.owned or 0, hatchStatus.ready or 0))
-    if hatchStatus.lastModel then
-        local extra = hatchStatus.lastEggType and (" (" .. tostring(hatchStatus.lastEggType) .. ")") or ""
-        table.insert(lines, "Target: " .. tostring(hatchStatus.lastModel) .. extra)
-    end
-    table.insert(lines, "Status: " .. tostring(hatchStatus.last or ""))
-    hatchParagraph:SetDesc(table.concat(lines, "\n"))
-end
+-- Hatch status section removed per user request
 
 local function getOwnerUserIdDeep(inst)
     local current = inst
@@ -1156,10 +1181,7 @@ local function collectOwnedEggs()
     local owned = {}
     local container = workspace:FindFirstChild("PlayerBuiltBlocks")
     if not container then
-        hatchStatus.owned = 0
-        hatchStatus.ready = 0
-        hatchStatus.last = "No PlayerBuiltBlocks found"
-        updateHatchStatus()
+        -- No PlayerBuiltBlocks found
         return owned
     end
     for _, child in ipairs(container:GetChildren()) do
@@ -1251,28 +1273,18 @@ local function runAutoHatch()
     while autoHatchEnabled do
         -- Check priority - if Auto Place is running and has priority, pause hatching
         if autoPlaceEnabled and automationPriority == "Place" then
-            hatchStatus.last = "Paused - Auto Place has priority"
-            updateHatchStatus()
             task.wait(1.0)
             return
         end
         
         local ok, err = pcall(function()
-            hatchStatus.last = "Scanning"
-            updateHatchStatus()
             local owned = collectOwnedEggs()
-            hatchStatus.owned = #owned
             if #owned == 0 then
-                hatchStatus.last = "No owned eggs - Auto Place can work now"
-                updateHatchStatus()
                 task.wait(1.0)
                 return
             end
             local eggs = filterReadyEggs(owned)
-            hatchStatus.ready = #eggs
             if #eggs == 0 then
-                hatchStatus.last = "Owned but not ready - Auto Place can work now"
-                updateHatchStatus()
                 task.wait(0.8)
                 return
             end
@@ -1286,25 +1298,17 @@ local function runAutoHatch()
             for _, m in ipairs(eggs) do
                 -- Check priority again before each hatch
                 if autoPlaceEnabled and automationPriority == "Place" then
-                    hatchStatus.last = "Paused - Auto Place has priority"
-                    updateHatchStatus()
                     return
                 end
                 
-                hatchStatus.lastModel = m.Name
-                hatchStatus.lastEggType = getEggTypeFromModel(m)
-                hatchStatus.last = "Moving to hatch"
-                updateHatchStatus()
+                -- Moving to hatch
                 tryHatchModel(m)
                 task.wait(0.2)
             end
-            hatchStatus.last = "Done"
-            updateHatchStatus()
+            -- Done
         end)
         if not ok then
             warn("Auto Hatch error: " .. tostring(err))
-            hatchStatus.last = "Error: " .. tostring(err)
-            updateHatchStatus()
             task.wait(1)
         end
     end
@@ -1315,6 +1319,7 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
     Callback = function(state)
+        loadAllSavedSettings() -- Load saved settings before starting
         autoHatchEnabled = state
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
@@ -1338,18 +1343,12 @@ Tabs.HatchTab:Button({
     Desc = "Hatch the closest egg to you",
     Callback = function()
         local owned = collectOwnedEggs()
-        hatchStatus.owned = #owned
         if #owned == 0 then
-            hatchStatus.last = "No eggs to hatch"
-            updateHatchStatus()
             WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs found", Duration = 3 })
             return
         end
         local eggs = filterReadyEggs(owned)
-        hatchStatus.ready = #eggs
         if #eggs == 0 then
-            hatchStatus.last = "Eggs not ready yet"
-            updateHatchStatus()
             WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs ready", Duration = 3 })
             return
         end
@@ -1359,10 +1358,7 @@ Tabs.HatchTab:Button({
             local pb = getModelPosition(b) or Vector3.new()
             return (pa - me).Magnitude < (pb - me).Magnitude
         end)
-        hatchStatus.lastModel = eggs[1].Name
-        hatchStatus.lastEggType = getEggTypeFromModel(eggs[1])
-        hatchStatus.last = "Moving to hatch"
-        updateHatchStatus()
+        -- Moving to hatch
         local ok = tryHatchModel(eggs[1])
         WindUI:Notify({ Title = ok and "🎉 Hatched!" or "❌ Hatch Failed", Content = eggs[1].Name, Duration = 3 })
     end
@@ -1480,80 +1476,9 @@ local FruitStoreSystem = loadstring(game:HttpGet("https://raw.githubusercontent.
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 local selectedFeedFruits = {}
-local selectedFruits = {}
 local eggSelectionVisible = false
 local fruitSelectionVisible = false
 local feedFruitSelectionVisible = false
-
-
--- Ensure saved selections are loaded before any feature runs
-local function ensureSelectionsLoaded()
-	local http = game:GetService("HttpService")
-	local changed = false
-
-	-- Eggs + Mutations
-	if (not next(selectedTypeSet)) and (not next(selectedMutationSet)) then
-		pcall(function()
-			if isfile("Zebux_EggSelections.json") then
-				local data = http:JSONDecode(readfile("Zebux_EggSelections.json"))
-            selectedTypeSet = {}
-				if data and data.eggs then
-					for _, id in ipairs(data.eggs) do selectedTypeSet[id] = true end
-				end
-				selectedMutationSet = {}
-				if data and data.mutations then
-					for _, id in ipairs(data.mutations) do selectedMutationSet[id] = true end
-				end
-				changed = true
-			end
-		end)
-	end
-
-	-- Fruit selection (auto-buy)
-	if not next(selectedFruits) then
-		pcall(function()
-			if isfile("Zebux_FruitSelections.json") then
-				local data = http:JSONDecode(readfile("Zebux_FruitSelections.json"))
-				selectedFruits = {}
-				if data and data.fruits then
-					for _, id in ipairs(data.fruits) do selectedFruits[id] = true end
-				end
-				changed = true
-			end
-		end)
-	end
-
-	-- Feed fruit selection (auto-feed)
-	if not next(selectedFeedFruits) then
-		pcall(function()
-			if isfile("Zebux_FeedFruitSelections.json") then
-				local data = http:JSONDecode(readfile("Zebux_FeedFruitSelections.json"))
-				selectedFeedFruits = {}
-				if data and data.fruits then
-					for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
-				end
-				changed = true
-			end
-		end)
-	end
-
-	if changed then
-		-- Update status blocks
-		local eggKeys, mutKeys, fruitKeys = {}, {}, {}
-		for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-		for k in pairs(selectedMutationSet) do table.insert(mutKeys, k) end
-		table.sort(eggKeys); table.sort(mutKeys)
-		statusData.selectedTypes = (#eggKeys > 0) and table.concat(eggKeys, ", ") or "None"
-		statusData.selectedMutations = (#mutKeys > 0) and table.concat(mutKeys, ", ") or "None"
-		if updateStatusParagraph then updateStatusParagraph() end
-
-		for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
-		if fruitAutoBuyStatus then
-			fruitAutoBuyStatus.selectedCount = #fruitKeys
-		end
-		if updateFruitStatus then updateFruitStatus() end
-	end
-end
 
 
 
@@ -1562,7 +1487,6 @@ Tabs.AutoTab:Button({
     Title = "🥚 Open Egg Selection UI",
     Desc = "Open the modern glass-style egg selection interface",
     Callback = function()
-        ensureSelectionsLoaded()
         if not eggSelectionVisible then
             EggSelection.Show(
                 function(selectedItems)
@@ -1583,18 +1507,7 @@ Tabs.AutoTab:Button({
                         end
                     end
                     
-                    -- Update status display
-                    local eggKeys = {}
-                    for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-                    table.sort(eggKeys)
-                    statusData.selectedTypes = table.concat(eggKeys, ", ")
-                    
-                    local mutationKeys = {}
-                    for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-                    table.sort(mutationKeys)
-                    statusData.selectedMutations = table.concat(mutationKeys, ", ")
-                    
-                    updateStatusParagraph()
+                    -- Selection updated
                 end,
                 function(isVisible)
                     eggSelectionVisible = isVisible
@@ -1618,56 +1531,14 @@ local autoBuyThread = nil
 -- Auto Feed variables
 local autoFeedEnabled = false
 local autoFeedThread = nil
-local feedFruitStatus = {
-    petsFound = 0,
-    availablePets = 0,
-    lastFedPet = nil,
-    lastAction = "Idle",
-    totalFeeds = 0
-}
+
+-- Feed status tracking removed per user request
 
 
 
--- Status tracking
-statusData = {
-    eggsFound = 0,
-    matchingFound = 0,
-    affordableFound = 0,
-    lastAction = "Idle",
-    lastUID = nil,
-    totalBuys = 0,
-    netWorth = 0,
-    islandName = nil,
-}
+-- Status tracking removed per user request
 
-Tabs.AutoTab:Section({ Title = "📊 Status", Icon = "info" })
-local statusParagraph = Tabs.AutoTab:Paragraph({
-    Title = "🥚 Auto Buy Status",
-    Desc = "Turn on and pick eggs to buy!",
-    Image = "shopping-bag",
-    ImageSize = 18,
-})
-
-local function formatStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("Island: %s", tostring(statusData.islandName or "?")))
-    table.insert(lines, string.format("NetWorth: %s", tostring(statusData.netWorth)))
-    table.insert(lines, string.format("Belt: %d eggs | Match %d | Can buy %d", statusData.eggsFound or 0, statusData.matchingFound or 0, statusData.affordableFound or 0))
-    if statusData.selectedTypes then table.insert(lines, "Selected Eggs: " .. statusData.selectedTypes) end
-    if statusData.selectedMutations then table.insert(lines, "Selected Mutations: " .. statusData.selectedMutations) end
-    if statusData.lastUID then table.insert(lines, "Last Buy: " .. tostring(statusData.lastUID)) end
-    table.insert(lines, "Status: " .. tostring(statusData.lastAction))
-    return table.concat(lines, "\n")
-end
-
-function updateStatusParagraph()
-    if not (statusParagraph and statusParagraph.SetDesc) then return end
-    local now = os.clock()
-    statusParagraph._last = statusParagraph._last or 0
-    if now - statusParagraph._last < 0.25 then return end
-    statusParagraph._last = now
-        statusParagraph:SetDesc(formatStatusDesc())
-end
+-- Status section removed per user request
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
@@ -1766,16 +1637,8 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        statusData.lastUID = uid
-        statusData.lastAction = "Buying UID " .. tostring(uid) .. " for " .. tostring(price)
-        statusData.netWorth = netWorth
-        updateStatusParagraph()
-        
         buyEggByUID(uid)
         focusEggByUID(uid)
-        statusData.totalBuys = (statusData.totalBuys or 0) + 1
-        statusData.lastAction = "Bought + Focused UID " .. tostring(uid)
-        updateStatusParagraph()
     end
     
     buyingInProgress = false
@@ -1822,40 +1685,22 @@ end
 local function runAutoBuy()
     while autoBuyEnabled do
         local islandName = getAssignedIslandName()
-        statusData.islandName = islandName
+        -- Status update removed
 
         if not islandName or islandName == "" then
-            statusData.lastAction = "Waiting for island assignment"
-            updateStatusParagraph()
             task.wait(1)
             continue
         end
 
         local activeBelt = getActiveBelt(islandName)
         if not activeBelt then
-            statusData.eggsFound = 0
-            statusData.matchingFound = 0
-            statusData.affordableFound = 0
-            statusData.lastAction = "Waiting for belt on island"
-            updateStatusParagraph()
             task.wait(1)
             continue
         end
 
-        -- Count current eggs
-        local children = {}
-        for _, inst in ipairs(activeBelt:GetChildren()) do
-            if inst:IsA("Model") then table.insert(children, inst) end
-        end
-        statusData.eggsFound = #children
-        statusData.netWorth = getPlayerNetWorth()
-
         -- Setup monitoring for this belt
         cleanupBeltConnections()
         setupBeltMonitoring(activeBelt)
-        
-        statusData.lastAction = "Monitoring belt for new eggs"
-        updateStatusParagraph()
         
         -- Wait until disabled or island changes
         while autoBuyEnabled do
@@ -1875,6 +1720,7 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     Desc = "Instantly buys eggs as soon as they appear on the conveyor belt!",
     Value = false,
     Callback = function(state)
+        loadAllSavedSettings() -- Load saved settings before starting
         autoBuyEnabled = state
         if state and not autoBuyThread then
             autoBuyThread = task.spawn(function()
@@ -1882,13 +1728,9 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
                 autoBuyThread = nil
             end)
             WindUI:Notify({ Title = "🥚 Auto Buy", Content = "Started - Watching for eggs! 🎉", Duration = 3 })
-            statusData.lastAction = "Started - Watching for eggs!"
-            updateStatusParagraph()
         elseif (not state) and autoBuyThread then
             cleanupBeltConnections()
             WindUI:Notify({ Title = "🥚 Auto Buy", Content = "Stopped", Duration = 3 })
-            statusData.lastAction = "Stopped"
-            updateStatusParagraph()
         end
     end
 })
@@ -1904,24 +1746,7 @@ local selectedEggTypes = {} -- Selected egg types for placement
 local tileMonitoringActive = false
 
 
--- Auto Place status tracking
-local placeStatusData = {
-    islandName = nil,
-    availableEggs = 0,
-    availableTiles = 0,
-    totalPlaces = 0,
-    lastAction = "Idle",
-    selectedEggs = 0,
-}
-
-Tabs.PlaceTab:Section({ Title = "📊 Status", Icon = "info" })
-
-local placeStatusParagraph = Tabs.PlaceTab:Paragraph({
-    Title = "🏠 Auto Place Status",
-    Desc = "Shows pet placement progress",
-    Image = "map-pin",
-    ImageSize = 18,
-})
+-- Place status tracking removed per user request
 
 -- Function to get egg options
 local function getEggOptions()
@@ -1967,8 +1792,6 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     AllowNone = true,
     Callback = function(selection)
         selectedEggTypes = selection
-        placeStatusData.selectedEggs = #selection
-        updatePlaceStatusParagraph()
     end
 })
 
@@ -1994,8 +1817,7 @@ local function updateAvailableEggs()
         end
     end
     
-    placeStatusData.availableEggs = #availableEggs
-    updatePlaceStatusParagraph()
+    -- Status update removed
 end
 
 -- Comprehensive tile scanning system
@@ -2115,51 +1937,15 @@ local function updateAvailableTiles()
         end
     end
     
-    placeStatusData.availableTiles = #availableTiles
-    placeStatusData.totalTiles = totalTiles
-    placeStatusData.occupiedTiles = occupiedTiles
-    placeStatusData.lockedTiles = lockedTiles
+    -- Status updates removed
     
-    -- Debug info
-    placeStatusData.lastAction = string.format("Found %d available tiles out of %d unlocked (locked: %d, occupied: %d)", 
-        #availableTiles, totalTiles, lockedTiles, occupiedTiles)
-    
-    updatePlaceStatusParagraph()
+    -- Status update removed
 end
 
 
-local function formatPlaceStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("🏝️ Island: %s", tostring(placeStatusData.islandName or "?")))
-    table.insert(lines, string.format("🥚 Available Eggs: %d | 📦 Available Tiles: %d", 
-        placeStatusData.availableEggs or 0, 
-        placeStatusData.availableTiles or 0))
-    
-    if placeStatusData.totalTiles then
-        table.insert(lines, string.format("📊 Unlocked Tiles: %d | 🔒 Locked: %d | ❌ Occupied: %d", 
-            placeStatusData.totalTiles or 0,
-            placeStatusData.lockedTiles or 0,
-            placeStatusData.occupiedTiles or 0))
-    end
-    
-    table.insert(lines, string.format("✅ Total Placed: %d", placeStatusData.totalPlaces or 0))
-    
-    if placeStatusData.selectedEggs then
-        table.insert(lines, string.format("🎯 Selected Types: %d", placeStatusData.selectedEggs or 0))
-    end
-    
-    table.insert(lines, string.format("🔄 Status: %s", tostring(placeStatusData.lastAction or "Ready")))
-    return table.concat(lines, "\n")
-end
+-- Place status format function removed per user request
 
-local function updatePlaceStatusParagraph()
-    if not (placeStatusParagraph and placeStatusParagraph.SetDesc) then return end
-    local now = os.clock()
-    placeStatusParagraph._last = placeStatusParagraph._last or 0
-    if now - placeStatusParagraph._last < 0.25 then return end
-    placeStatusParagraph._last = now
-    placeStatusParagraph:SetDesc(formatPlaceStatusDesc())
-end
+-- Place status update function removed per user request
 
 -- Check and remember which tiles are taken
 -- Count actual placed pets in PlayerBuiltBlocks
@@ -2218,7 +2004,6 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 
                 -- X/Z: 4 studs radius, Y: 8 studs radius
                 if xzDistance < 4.0 and yDistance < 8.0 then
-                    placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied by egg - skipping"
                     placingInProgress = false
                     return false
                 end
@@ -2245,7 +2030,6 @@ local function placeEggInstantly(eggInfo, tileInfo)
         
         -- X/Z: 4 studs radius, Y: 8 studs radius
         if xzDistance < 4.0 and yDistance < 8.0 then
-            placeStatusData.lastAction = "❌ Tile " .. tostring(tileInfo.index) .. " occupied by pet " .. petInfo.name .. " - skipping"
             placingInProgress = false
             return false
         end
@@ -2308,8 +2092,7 @@ local function placeEggInstantly(eggInfo, tileInfo)
         end
         
         if placementConfirmed then
-            placeStatusData.totalPlaces = (placeStatusData.totalPlaces or 0) + 1
-            placeStatusData.lastAction = "✅ Placed " .. tostring(petUID) .. " on tile " .. tostring(tileInfo.index)
+                    -- Placement successful
             
             -- Remove egg and tile from available lists
             for i, egg in ipairs(availableEggs) do
@@ -2326,13 +2109,11 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 end
             end
             
-            placeStatusData.availableEggs = #availableEggs
-            placeStatusData.availableTiles = #availableTiles
-            updatePlaceStatusParagraph()
+            -- Status update removed
             placingInProgress = false
             return true
         else
-            placeStatusData.lastAction = "❌ Placement failed for " .. tostring(petUID) .. " - removing tile"
+            -- Placement failed
             -- Remove the failed tile from available tiles so we don't retry it
             for i, tile in ipairs(availableTiles) do
                 if tile.index == tileInfo.index then
@@ -2340,13 +2121,12 @@ local function placeEggInstantly(eggInfo, tileInfo)
                     break
                 end
             end
-            placeStatusData.availableTiles = #availableTiles
-            updatePlaceStatusParagraph()
+            -- Status update removed
             placingInProgress = false
             return false
         end
     else
-        placeStatusData.lastAction = "❌ Failed to fire placement for " .. tostring(petUID) .. " - removing tile"
+                    -- Failed to fire placement
         -- Remove the failed tile from available tiles so we don't retry it
         for i, tile in ipairs(availableTiles) do
             if tile.index == tileInfo.index then
@@ -2354,8 +2134,7 @@ local function placeEggInstantly(eggInfo, tileInfo)
                 break
             end
         end
-        placeStatusData.availableTiles = #availableTiles
-        updatePlaceStatusParagraph()
+        -- Status update removed
         placingInProgress = false
         return false
     end
@@ -2363,15 +2142,11 @@ end
 
 local function attemptPlacement()
     if #availableEggs == 0 then 
-        placeStatusData.lastAction = "No eggs available to place"
-        updatePlaceStatusParagraph()
         warn("Auto Place stopped: No eggs available")
         return 
     end
     
     if #availableTiles == 0 then 
-        placeStatusData.lastAction = "No available tiles to place on"
-        updatePlaceStatusParagraph()
         warn("Auto Place stopped: No available tiles")
         return 
     end
@@ -2454,21 +2229,10 @@ local function attemptPlacement()
         else
             -- Tile is no longer available, remove it
             table.remove(availableTiles, 1)
-            placeStatusData.availableTiles = #availableTiles
-            updatePlaceStatusParagraph()
         end
     end
     
-    if placed > 0 then
-        placeStatusData.lastAction = "Placed " .. tostring(placed) .. " eggs"
-        updatePlaceStatusParagraph()
-    elseif attempts > 0 then
-        placeStatusData.lastAction = "Tried " .. tostring(attempts) .. " placements, no success"
-        updatePlaceStatusParagraph()
-    else
-        placeStatusData.lastAction = "Ready - waiting for eggs and tiles"
-        updatePlaceStatusParagraph()
-    end
+    -- Placement attempt completed
 end
 
 local function setupPlacementMonitoring()
@@ -2543,23 +2307,15 @@ local function runAutoPlace()
             local readyEggs = filterReadyEggs(owned)
             
             if #readyEggs > 0 then
-            placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-            updatePlaceStatusParagraph()
-            task.wait(1.0)
-            return
-            else
-                -- Auto Hatch has no eggs to work with, so Auto Place can work
-                placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
-                updatePlaceStatusParagraph()
+                task.wait(1.0)
+                return
             end
         end
         
         local islandName = getAssignedIslandName()
-        placeStatusData.islandName = islandName
+        -- Status update removed
         
         if not islandName or islandName == "" then
-            placeStatusData.lastAction = "Waiting for island assignment"
-            updatePlaceStatusParagraph()
             task.wait(1)
             continue
         end
@@ -2567,9 +2323,6 @@ local function runAutoPlace()
         -- Setup monitoring
         cleanupPlaceConnections()
         setupPlacementMonitoring()
-        
-        placeStatusData.lastAction = "Monitoring for eggs and tiles"
-        updatePlaceStatusParagraph()
         
         -- Wait until disabled or island changes
         while autoPlaceEnabled do
@@ -2579,13 +2332,11 @@ local function runAutoPlace()
                 local readyEggs = filterReadyEggs(owned)
                 
                 if #readyEggs > 0 then
-                placeStatusData.lastAction = "Paused - Auto Hatch has priority"
-                updatePlaceStatusParagraph()
+                -- Status update removed
+                -- Status update removed
                 return
                 else
                     -- Auto Hatch has no eggs to work with, so Auto Place can work
-                    placeStatusData.lastAction = "Auto Hatch has no eggs - Auto Place can work"
-                    updatePlaceStatusParagraph()
                 end
             end
             
@@ -2605,6 +2356,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
     Callback = function(state)
+        loadAllSavedSettings() -- Load saved settings before starting
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
@@ -2613,22 +2365,15 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
                 return
             end
             -- Reset counters
-            placeStatusData.totalPlaces = countPlacedPets()
-            placeStatusData.availableEggs = 0
-            placeStatusData.availableTiles = 0
             
             autoPlaceThread = task.spawn(function()
                 runAutoPlace()
                 autoPlaceThread = nil
             end)
             WindUI:Notify({ Title = "🏠 Auto Place", Content = "Started - Placing pets automatically! 🎉", Duration = 3 })
-            placeStatusData.lastAction = "Started - Placing pets automatically!"
-            updatePlaceStatusParagraph()
         elseif (not state) and autoPlaceThread then
             cleanupPlaceConnections()
             WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
-            placeStatusData.lastAction = "Stopped"
-            updatePlaceStatusParagraph()
         end
     end
 })
@@ -2637,48 +2382,8 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
 -- Auto Unlock Tile functionality
 local autoUnlockEnabled = false
 local autoUnlockThread = nil
-local unlockStatusData = {
-    totalLocks = 0,
-    unlockedCount = 0,
-    affordableCount = 0,
-    lastAction = "Idle",
-    currentLock = nil,
-    netWorth = 0
-}
 
-Tabs.PlaceTab:Section({ Title = "🔓 Auto Unlock Tiles", Icon = "unlock" })
-
-local unlockStatusParagraph = Tabs.PlaceTab:Paragraph({
-    Title = "🔓 Auto Unlock Status",
-    Desc = "Shows tile unlocking progress",
-    Image = "unlock",
-    ImageSize = 18,
-})
-
-local function formatUnlockStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("💰 NetWorth: %s", tostring(unlockStatusData.netWorth or 0)))
-    table.insert(lines, string.format("🔒 Total Locks: %d | 💰 Affordable: %d | ✅ Unlocked: %d", 
-        unlockStatusData.totalLocks or 0,
-        unlockStatusData.affordableCount or 0,
-        unlockStatusData.unlockedCount or 0))
-    
-    if unlockStatusData.currentLock then
-        table.insert(lines, string.format("🔓 Current: %s", tostring(unlockStatusData.currentLock)))
-    end
-    
-    table.insert(lines, string.format("🔄 Status: %s", tostring(unlockStatusData.lastAction or "Ready")))
-    return table.concat(lines, "\n")
-end
-
-local function updateUnlockStatusParagraph()
-    if not (unlockStatusParagraph and unlockStatusParagraph.SetDesc) then return end
-    local now = os.clock()
-    unlockStatusParagraph._last = unlockStatusParagraph._last or 0
-    if now - unlockStatusParagraph._last < 0.25 then return end
-    unlockStatusParagraph._last = now
-    unlockStatusParagraph:SetDesc(formatUnlockStatusDesc())
-end
+-- Unlock status tracking removed per user request
 
 -- Function to get all locked tiles
 local function getLockedTiles()
@@ -2738,30 +2443,24 @@ end
 local function runAutoUnlock()
     while autoUnlockEnabled do
         local ok, err = pcall(function()
-            unlockStatusData.netWorth = getPlayerNetWorth()
             local lockedTiles = getLockedTiles()
-            unlockStatusData.totalLocks = #lockedTiles
             
             if #lockedTiles == 0 then
-                unlockStatusData.lastAction = "No locked tiles found"
-                updateUnlockStatusParagraph()
                 task.wait(2)
                 return
             end
             
             -- Count affordable locks
             local affordableCount = 0
+            local netWorth = getPlayerNetWorth()
             for _, lockInfo in ipairs(lockedTiles) do
                 local cost = tonumber(lockInfo.cost) or 0
-                if unlockStatusData.netWorth >= cost then
+                if netWorth >= cost then
                     affordableCount = affordableCount + 1
                 end
             end
-            unlockStatusData.affordableCount = affordableCount
             
             if affordableCount == 0 then
-                unlockStatusData.lastAction = "No affordable locks - waiting for money"
-                updateUnlockStatusParagraph()
                 task.wait(2)
                 return
             end
@@ -2771,35 +2470,21 @@ local function runAutoUnlock()
                 if not autoUnlockEnabled then break end
                 
                 local cost = tonumber(lockInfo.cost) or 0
-                if unlockStatusData.netWorth >= cost then
-                    unlockStatusData.currentLock = lockInfo.modelName
-                    unlockStatusData.lastAction = string.format("Unlocking %s (Cost: %s)", lockInfo.modelName, tostring(cost))
-                    updateUnlockStatusParagraph()
-                    
+                if netWorth >= cost then
                     if unlockTile(lockInfo) then
-                        unlockStatusData.unlockedCount = unlockStatusData.unlockedCount + 1
-                        unlockStatusData.lastAction = string.format("✅ Unlocked %s", lockInfo.modelName)
-                        updateUnlockStatusParagraph()
                         task.wait(0.5) -- Wait between unlocks
                     else
-                        unlockStatusData.lastAction = string.format("❌ Failed to unlock %s", lockInfo.modelName)
-                        updateUnlockStatusParagraph()
                         task.wait(0.2)
                     end
                 end
             end
             
-            unlockStatusData.currentLock = nil
-            unlockStatusData.lastAction = string.format("Completed - Unlocked %d tiles", unlockStatusData.unlockedCount)
-            updateUnlockStatusParagraph()
             task.wait(3) -- Wait before next scan
             
         end)
         
         if not ok then
             warn("Auto Unlock error: " .. tostring(err))
-            unlockStatusData.lastAction = "Error: " .. tostring(err)
-            updateUnlockStatusParagraph()
             task.wait(1)
         end
     end
@@ -2810,22 +2495,16 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically unlock tiles when you have enough money",
     Value = false,
     Callback = function(state)
+        loadAllSavedSettings() -- Load saved settings before starting
         autoUnlockEnabled = state
         if state and not autoUnlockThread then
-            unlockStatusData.unlockedCount = 0
-            unlockStatusData.totalLocks = 0
-            unlockStatusData.affordableCount = 0
             autoUnlockThread = task.spawn(function()
                 runAutoUnlock()
                 autoUnlockThread = nil
             end)
             WindUI:Notify({ Title = "🔓 Auto Unlock", Content = "Started unlocking tiles! 🎉", Duration = 3 })
-            unlockStatusData.lastAction = "Started unlocking tiles!"
-            updateUnlockStatusParagraph()
         elseif (not state) and autoUnlockThread then
             WindUI:Notify({ Title = "🔓 Auto Unlock", Content = "Stopped", Duration = 3 })
-            unlockStatusData.lastAction = "Stopped"
-            updateUnlockStatusParagraph()
         end
     end
 })
@@ -2878,7 +2557,7 @@ Tabs.PlaceTab:Button({
         message = message .. string.format("💸 Affordable: %d\n", affordableCount)
         message = message .. string.format("🔄 Auto Unlock Enabled: %s\n", tostring(autoUnlockEnabled))
         message = message .. string.format("🧵 Auto Unlock Thread: %s\n", tostring(autoUnlockThread ~= nil))
-        message = message .. string.format("⏰ Last Action: %s", tostring(unlockStatusData.lastAction or "None"))
+        -- Status removed per user request
         
         WindUI:Notify({ Title = "🔧 Auto Unlock Debug", Content = message, Duration = 8 })
     end
@@ -2888,49 +2567,8 @@ Tabs.PlaceTab:Button({
 local autoDeleteEnabled = false
 local autoDeleteThread = nil
 local deleteSpeedThreshold = 100 -- Default speed threshold
-local deleteStatusData = {
-    totalDeleted = 0,
-    lastAction = "Idle",
-    currentPet = nil,
-    speedThreshold = 100,
-    scannedPets = 0,
-    slowPetsFound = 0
-}
 
-Tabs.PlaceTab:Section({ Title = "Auto Delete", Icon = "trash" })
-
--- Create paragraph first
-local deleteStatusParagraph = Tabs.PlaceTab:Paragraph({
-    Title = "Auto Delete Status",
-    Desc = "Ready to delete slow pets",
-    Image = "trash",
-    ImageSize = 18,
-})
-
-local function formatDeleteStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("⚡ Speed Threshold: %d", deleteStatusData.speedThreshold or 100))
-    table.insert(lines, string.format("🔍 Scanned: %d | 🐌 Slow: %d | ❌ Deleted: %d", 
-        deleteStatusData.scannedPets or 0,
-        deleteStatusData.slowPetsFound or 0,
-        deleteStatusData.totalDeleted or 0))
-    
-    if deleteStatusData.currentPet then
-        table.insert(lines, string.format("🐾 Current: %s", tostring(deleteStatusData.currentPet)))
-    end
-    
-    table.insert(lines, string.format("🔄 Status: %s", tostring(deleteStatusData.lastAction or "Ready")))
-    return table.concat(lines, "\n")
-end
-
-local function updateDeleteStatusParagraph()
-    if not (deleteStatusParagraph and deleteStatusParagraph.SetDesc) then return end
-    local now = os.clock()
-    deleteStatusParagraph._last = deleteStatusParagraph._last or 0
-    if now - deleteStatusParagraph._last < 0.25 then return end
-    deleteStatusParagraph._last = now
-    deleteStatusParagraph:SetDesc(formatDeleteStatusDesc())
-end
+-- Delete status tracking removed per user request
 
 local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
     Title = "Speed Threshold",
@@ -2938,8 +2576,6 @@ local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
     Value = "100",
     Callback = function(value)
         deleteSpeedThreshold = tonumber(value) or 100
-        deleteStatusData.speedThreshold = deleteSpeedThreshold
-        updateDeleteStatusParagraph()
     end
 })
 
@@ -2950,8 +2586,6 @@ local function runAutoDelete()
             -- Get all pets in workspace.Pets
             local petsFolder = workspace:FindFirstChild("Pets")
             if not petsFolder then
-                deleteStatusData.lastAction = "No pets folder found"
-                updateDeleteStatusParagraph()
                 task.wait(1)
                 return
             end
@@ -2993,12 +2627,7 @@ local function runAutoDelete()
                 end
             end
             
-            deleteStatusData.scannedPets = scannedCount
-            deleteStatusData.slowPetsFound = #petsToDelete
-            
             if #petsToDelete == 0 then
-                deleteStatusData.lastAction = "No slow pets found to delete"
-                updateDeleteStatusParagraph()
                 task.wait(2)
                 return
             end
@@ -3007,9 +2636,7 @@ local function runAutoDelete()
             for i, petInfo in ipairs(petsToDelete) do
                 if not autoDeleteEnabled then break end
                 
-                deleteStatusData.currentPet = petInfo.name
-                deleteStatusData.lastAction = string.format("Deleting pet %s (Speed: %d)", petInfo.name, petInfo.speed)
-                updateDeleteStatusParagraph()
+                -- Deleting pet
                 
                 -- Fire delete remote
                 local args = {
@@ -3022,28 +2649,18 @@ local function runAutoDelete()
                 end)
                 
                 if success then
-                    deleteStatusData.totalDeleted = deleteStatusData.totalDeleted + 1
-                    deleteStatusData.lastAction = string.format("✅ Deleted %s (Speed: %d)", petInfo.name, petInfo.speed)
-                    updateDeleteStatusParagraph()
                     task.wait(0.5) -- Wait between deletions
                 else
-                    deleteStatusData.lastAction = string.format("❌ Failed to delete %s", petInfo.name)
-                    updateDeleteStatusParagraph()
                     task.wait(0.2)
                 end
             end
             
-            deleteStatusData.currentPet = nil
-            deleteStatusData.lastAction = string.format("Completed - Deleted %d slow pets", #petsToDelete)
-            updateDeleteStatusParagraph()
             task.wait(3) -- Wait before next scan
             
         end)
         
         if not ok then
             warn("Auto Delete error: " .. tostring(err))
-            deleteStatusData.lastAction = "Error: " .. tostring(err)
-            updateDeleteStatusParagraph()
             task.wait(1)
         end
     end
@@ -3054,22 +2671,16 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
     Callback = function(state)
+        loadAllSavedSettings() -- Load saved settings before starting
         autoDeleteEnabled = state
         if state and not autoDeleteThread then
-            deleteStatusData.totalDeleted = 0
-            deleteStatusData.scannedPets = 0
-            deleteStatusData.slowPetsFound = 0
             autoDeleteThread = task.spawn(function()
                 runAutoDelete()
                 autoDeleteThread = nil
             end)
             WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 3 })
-            deleteStatusData.lastAction = "Started"
-            updateDeleteStatusParagraph()
         elseif (not state) and autoDeleteThread then
             WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 3 })
-            deleteStatusData.lastAction = "Stopped"
-            updateDeleteStatusParagraph()
         end
     end
 })
@@ -3237,12 +2848,9 @@ local shopStatus = { lastAction = "Ready to upgrade!", upgradesTried = 0, upgrad
 local shopParagraph = Tabs.ShopTab:Paragraph({ Title = "🛒 Shop Status", Desc = "Shows upgrade progress", Image = "activity", ImageSize = 22 })
 local function setShopStatus(msg)
     shopStatus.lastAction = msg
-    if not (shopParagraph and shopParagraph.SetDesc) then return end
-    local now = os.clock()
-    shopParagraph._last = shopParagraph._last or 0
-    if now - shopParagraph._last < 0.25 then return end
-    shopParagraph._last = now
-    shopParagraph:SetDesc(string.format("Upgrades: %d done\nLast: %s", shopStatus.upgradesDone, shopStatus.lastAction))
+    if shopParagraph and shopParagraph.SetDesc then
+        shopParagraph:SetDesc(string.format("Upgrades: %d done\nLast: %s", shopStatus.upgradesDone, shopStatus.lastAction))
+    end
 end
 
 local function parseConveyorIndexFromId(idStr)
@@ -3369,58 +2977,19 @@ local FruitData = {
 local selectedFruits = {}
 local fruitSelectionVisible = false
 
--- Fruit auto buy status
-local fruitAutoBuyStatus = {
-    lastAction = "Ready to buy fruits!",
-    totalBought = 0,
-    lastCheck = "Never",
-    storeOpen = false,
-    selectedCount = 0
-}
+-- Fruit auto buy status removed per user request
 
--- Fruit auto buy status display
-local fruitStatusParagraph = Tabs.FruitTab:Paragraph({
-    Title = "🍎 Fruit Auto Buy Status",
-    Desc = "Ready to buy fruits!",
-                Image = "apple",
-    ImageSize = 18
-})
-
-local function updateFruitStatus()
-    if not (fruitStatusParagraph and fruitStatusParagraph.SetDesc) then return end
-    local now = os.clock()
-    fruitStatusParagraph._last = fruitStatusParagraph._last or 0
-    if now - fruitStatusParagraph._last < 0.25 then return end
-    fruitStatusParagraph._last = now
-    local lines = {}
-    table.insert(lines, "🍎 Selected Fruits: " .. tostring((fruitAutoBuyStatus and fruitAutoBuyStatus.selectedCount) or 0) .. " fruits")
-    if fruitAutoBuyStatus then
-        table.insert(lines, "🛒 Store Open: " .. (fruitAutoBuyStatus.storeOpen and "✅ Yes" or "❌ No"))
-        table.insert(lines, "📊 Total Bought: " .. tostring(fruitAutoBuyStatus.totalBought))
-        table.insert(lines, "🔄 Last Action: " .. tostring(fruitAutoBuyStatus.lastAction or ""))
-        table.insert(lines, "⏰ Last Check: " .. tostring(fruitAutoBuyStatus.lastCheck or "Never"))
-    end
-    fruitStatusParagraph:SetDesc(table.concat(lines, "\n"))
-end
+-- Fruit status display removed per user request
 
 Tabs.FruitTab:Button({
     Title = "🍎 Open Fruit Selection UI",
     Desc = "Open the modern glass-style fruit selection interface",
     Callback = function()
-        ensureSelectionsLoaded()
         if not fruitSelectionVisible then
             FruitSelection.Show(
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFruits = selectedItems
-                    
-                                         -- Update status display
-                     local fruitKeys = {}
-                     for k in pairs(selectedFruits) do table.insert(fruitKeys, k) end
-                     table.sort(fruitKeys)
-                     
-                     fruitAutoBuyStatus.selectedCount = #fruitKeys
-                     updateFruitStatus()
                 end,
                 function(isVisible)
                     fruitSelectionVisible = isVisible
@@ -3444,19 +3013,14 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
-        ensureSelectionsLoaded()
+        loadAllSavedSettings() -- Load saved settings before starting
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
                          autoBuyFruitThread = task.spawn(function()
                  while autoBuyFruitEnabled do
                      -- Auto buy fruit logic
                      if selectedFruits and next(selectedFruits) then
-                         fruitAutoBuyStatus.lastAction = "Checking fruits..."
-                         fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                         updateFruitStatus()
-                         
-                         -- Buying via remote does not require the store UI to be open
-                         fruitAutoBuyStatus.storeOpen = true
+                         -- Auto buy fruit logic
                          
                          local netWorth = FruitStoreSystem.getPlayerNetWorth()
                          local boughtAny = false
@@ -3467,16 +3031,10 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                                  
                                  -- Check if fruit is in stock
                                  if not FruitStoreSystem.isFruitInStock(fruitId) then
-                                     fruitAutoBuyStatus.lastAction = fruitId .. " is out of stock!"
-                                     fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                                     updateFruitStatus()
                                      task.wait(0.5)
                                  else
                                      -- Check if player can afford it
                                      if netWorth < fruitPrice then
-                                         fruitAutoBuyStatus.lastAction = "Cannot afford " .. fruitId .. " (Need: $" .. fruitPrice .. ", Have: $" .. netWorth .. ")"
-                                         fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                                         updateFruitStatus()
                                          task.wait(0.5)
                                      else
                                          -- Try to buy the fruit
@@ -3490,14 +3048,6 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                                          
                                          if success then
                                              boughtAny = true
-                                             fruitAutoBuyStatus.totalBought = fruitAutoBuyStatus.totalBought + 1
-                                             fruitAutoBuyStatus.lastAction = "Bought " .. fruitId .. " for $" .. fruitPrice
-                                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                                             updateFruitStatus()
-                                         else
-                                             fruitAutoBuyStatus.lastAction = "Failed to buy " .. fruitId
-                                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                                             updateFruitStatus()
                                          end
                                          
                                          task.wait(0.5) -- Wait between each fruit purchase
@@ -3508,28 +3058,18 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          
                          -- If no fruits were bought, wait longer before next attempt
                          if not boughtAny then
-                             fruitAutoBuyStatus.lastAction = "No fruits bought - waiting for stock/money"
-                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                             updateFruitStatus()
                              task.wait(2)
                          else
                              task.wait(1) -- Shorter wait if we bought something
                          end
                      else
-                         fruitAutoBuyStatus.lastAction = "No fruits selected - please select fruits first!"
-                         fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                         updateFruitStatus()
                          task.wait(2)
                      end
         end
     end)
-                         fruitAutoBuyStatus.lastAction = "Auto buy started! 🎉"
-             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-             updateFruitStatus()
+                         -- Auto buy started
          elseif (not state) and autoBuyFruitThread then
-             fruitAutoBuyStatus.lastAction = "Auto buy stopped"
-             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-             updateFruitStatus()
+             -- Auto buy stopped
         end
     end
 })
@@ -3538,10 +3078,6 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
 -- Create config manager
 local ConfigManager = Window.ConfigManager
 local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
-
--- Forward declarations for toggles that will be defined later
-local autoFeedToggle = nil
-local autoUnlockToggle = nil
 
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
@@ -3558,10 +3094,9 @@ local function registerConfigElements()
         zooConfig:Register("autoClaimDelay", autoClaimDelaySlider)
         zooConfig:Register("selectedPlaceEggs", placeEggDropdown)
         zooConfig:Register("automationPriority", priorityDropdown)
+        
+        -- Register fruit selection
         zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
-        if autoFeedToggle then zooConfig:Register("autoFeedEnabled", autoFeedToggle) end
-        if autoUnlockToggle then zooConfig:Register("autoUnlockEnabled", autoUnlockToggle) end
-        zooConfig:Register("antiAFKEnabled", antiAFKEnabled)
     end
 end
 
@@ -3805,35 +3340,7 @@ Tabs.SaveTab:Button({
                             selectedFruits = {}
                             selectedFeedFruits = {}
                             
-                            -- Reset status data
-                            statusData.selectedTypes = "None"
-                            statusData.selectedMutations = "None"
-                            
-                            -- Update status displays (with error handling)
-                            local function safeUpdateStatus(updateFunc, funcName)
-                                if updateFunc then
-                                    local ok, updateErr = pcall(function()
-                                        updateFunc()
-                                    end)
-                                    if not ok then
-                                        warn("Failed to update " .. funcName .. ": " .. tostring(updateErr))
-                                    end
-                                else
-                                    warn(funcName .. " function is nil")
-                                end
-                            end
-                            
-                            safeUpdateStatus(updateStatusParagraph, "status paragraph")
-                            safeUpdateStatus(updateFruitStatusParagraph, "fruit status paragraph")
-                            
-                            -- Reset auto feed status
-                            feedFruitStatus = {
-                                petsFound = 0,
-                                availablePets = 0,
-                                totalFeeds = 0,
-                                lastAction = "Ready to feed pets!"
-                            }
-                            safeUpdateStatus(updateFeedStatusParagraph, "feed status paragraph")
+                            -- Status updates removed per user request
                             
                             -- Refresh UI if visible (with comprehensive error handling)
                             local function safeRefresh(uiModule, moduleName)
@@ -3885,160 +3392,119 @@ task.spawn(function()
     
     -- Safe registration with error handling
     local success, err = pcall(function()
-        registerConfigElements() -- Register all UI elements for config
+    registerConfigElements() -- Register all UI elements for config
     end)
     
     if not success then
         warn("Failed to register config elements: " .. tostring(err))
     end
     
-    -- Safe loading with error handling
+            -- Safe loading with error handling
     if zooConfig then
-        local loadSuccess, loadErr = pcall(function()
-            zooConfig:Load()
-            
-            -- Load egg selections separately
-            local success, data = pcall(function()
-                if isfile("Zebux_EggSelections.json") then
-                    local jsonData = readfile("Zebux_EggSelections.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
+            local loadSuccess, loadErr = pcall(function()
+        zooConfig:Load()
+                
+                -- Load egg selections separately
+                local success, data = pcall(function()
+                    if isfile("Zebux_EggSelections.json") then
+                        local jsonData = readfile("Zebux_EggSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if success and data then
+                    -- Load egg selections
+                    selectedTypeSet = {}
+                    if data.eggs then
+                        for _, eggId in ipairs(data.eggs) do
+                            selectedTypeSet[eggId] = true
+                        end
+                    end
+                    
+                    -- Load mutation selections
+                    selectedMutationSet = {}
+                    if data.mutations then
+                        for _, mutationId in ipairs(data.mutations) do
+                            selectedMutationSet[mutationId] = true
+                        end
+                    end
+                    
+                    -- Update status display with loaded selections
+                    local eggKeys = {}
+                    for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
+                    table.sort(eggKeys)
+                    -- Selection updated
+                    
+                    -- Status update removed
+                end
+                
+                -- Load fruit selections separately
+                local fruitSuccess, fruitData = pcall(function()
+                    if isfile("Zebux_FruitSelections.json") then
+                        local jsonData = readfile("Zebux_FruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if fruitSuccess and fruitData then
+                    -- Load fruit selections
+                    selectedFruits = {}
+                    if fruitData.fruits then
+                        for _, fruitId in ipairs(fruitData.fruits) do
+                            selectedFruits[fruitId] = true
+                        end
+                    end
+                end
+                
+                -- Load feed fruit selections separately
+                local feedFruitSuccess, feedFruitData = pcall(function()
+                    if isfile("Zebux_FeedFruitSelections.json") then
+                        local jsonData = readfile("Zebux_FeedFruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if feedFruitSuccess and feedFruitData then
+                    -- Load feed fruit selections
+                    selectedFeedFruits = {}
+                    if feedFruitData.fruits then
+                        for _, fruitId in ipairs(feedFruitData.fruits) do
+                            selectedFeedFruits[fruitId] = true
+                        end
+                    end
                 end
             end)
             
-            if success and data then
-                -- Load egg selections
-                selectedTypeSet = {}
-                if data.eggs then
-                    for _, eggId in ipairs(data.eggs) do
-                        selectedTypeSet[eggId] = true
-                    end
-                end
-                
-                -- Load mutation selections
-                selectedMutationSet = {}
-                if data.mutations then
-                    for _, mutationId in ipairs(data.mutations) do
-                        selectedMutationSet[mutationId] = true
-                    end
-                end
-                
-                -- Update status display with loaded selections
-                local eggKeys = {}
-                for k in pairs(selectedTypeSet) do table.insert(eggKeys, k) end
-                table.sort(eggKeys)
-                statusData.selectedTypes = table.concat(eggKeys, ", ")
-                
-                local mutationKeys = {}
-                for k in pairs(selectedMutationSet) do table.insert(mutationKeys, k) end
-                table.sort(mutationKeys)
-                statusData.selectedMutations = table.concat(mutationKeys, ", ")
-                
-                updateStatusParagraph()
+            if loadSuccess then
+        WindUI:Notify({ 
+            Title = "📂 Auto-Load", 
+            Content = "Your saved settings have been loaded! 🎉", 
+            Duration = 3 
+        })
+            else
+                warn("Failed to load config: " .. tostring(loadErr))
+                WindUI:Notify({ 
+                    Title = "⚠️ Config Error", 
+                    Content = "Failed to load saved settings. Using defaults.", 
+            Duration = 3 
+        })
             end
-            
-            -- Load fruit selections separately
-            local fruitSuccess, fruitData = pcall(function()
-                if isfile("Zebux_FruitSelections.json") then
-                    local jsonData = readfile("Zebux_FruitSelections.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
-                end
-            end)
-            
-            if fruitSuccess and fruitData then
-                -- Load fruit selections
-                selectedFruits = {}
-                if fruitData.fruits then
-                    for _, fruitId in ipairs(fruitData.fruits) do
-                        selectedFruits[fruitId] = true
-                    end
-                end
-            end
-            
-            -- Load feed fruit selections separately
-            local feedFruitSuccess, feedFruitData = pcall(function()
-                if isfile("Zebux_FeedFruitSelections.json") then
-                    local jsonData = readfile("Zebux_FeedFruitSelections.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
-                end
-            end)
-            
-            if feedFruitSuccess and feedFruitData then
-                -- Load feed fruit selections
-                selectedFeedFruits = {}
-                if feedFruitData.fruits then
-                    for _, fruitId in ipairs(feedFruitData.fruits) do
-                        selectedFeedFruits[fruitId] = true
-                    end
-                end
-            end
-        end)
-        
-        if loadSuccess then
-            WindUI:Notify({ 
-                Title = "📂 Auto-Load", 
-                Content = "Your saved settings have been loaded! 🎉", 
-                Duration = 3 
-            })
-        else
-            warn("Failed to load config: " .. tostring(loadErr))
-            WindUI:Notify({ 
-                Title = "⚠️ Config Error", 
-                Content = "Failed to load saved settings. Using defaults.", 
-                Duration = 3 
-            })
-        end
     end
 end)
 
 -- ============ Auto Feed Tab ============
--- Feed Status Section
-Tabs.FeedTab:Section({ Title = "📊 Feed Status", Icon = "info" })
-feedStatusParagraph = Tabs.FeedTab:Paragraph({
-    Title = "🍽️ Auto Feed Status",
-    Desc = "Select fruits and turn on auto feed!",
-    Image = "heart",
-    ImageSize = 18,
-})
-
-function formatFeedStatusDesc()
-    local lines = {}
-    table.insert(lines, string.format("Big Pets Found: %d", feedFruitStatus.petsFound or 0))
-    table.insert(lines, string.format("Available to Feed: %d", feedFruitStatus.availablePets or 0))
-    table.insert(lines, string.format("Total Feeds: %d", feedFruitStatus.totalFeeds or 0))
-    if feedFruitStatus.lastFedPet then table.insert(lines, "Last Fed: " .. feedFruitStatus.lastFedPet) end
-    if feedFruitStatus.lastAction then table.insert(lines, "Status: " .. feedFruitStatus.lastAction) end
-    if selectedFeedFruits and next(selectedFeedFruits) then
-        local fruitKeys = {}
-        for k in pairs(selectedFeedFruits) do table.insert(fruitKeys, k) end
-        table.sort(fruitKeys)
-        table.insert(lines, "Selected Fruits: " .. table.concat(fruitKeys, ", "))
-    else
-        table.insert(lines, "Selected Fruits: None")
-    end
-    return table.concat(lines, "\n")
-end
-
-function updateFeedStatusParagraph()
-    if not (feedStatusParagraph and feedStatusParagraph.SetDesc) then return end
-    local now = os.clock()
-    feedStatusParagraph._last = feedStatusParagraph._last or 0
-    if now - feedStatusParagraph._last < 0.25 then return end
-    feedStatusParagraph._last = now
-    feedStatusParagraph:SetDesc(formatFeedStatusDesc())
-end
+-- Feed status section removed per user request
 
 -- Feed Fruit Selection UI Button
 Tabs.FeedTab:Button({
     Title = "🍎 Open Feed Fruit Selection UI",
     Desc = "Open the modern glass-style fruit selection interface for feeding",
     Callback = function()
-        ensureSelectionsLoaded()
         if not feedFruitSelectionVisible then
             FeedFruitSelection.Show(
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFeedFruits = selectedItems
-                    updateFeedStatusParagraph()
                 end,
                 function(isVisible)
                     feedFruitSelectionVisible = isVisible
@@ -4054,12 +3520,12 @@ Tabs.FeedTab:Button({
 })
 
 -- Auto Feed Toggle
-autoFeedToggle = Tabs.FeedTab:Toggle({
+local autoFeedToggle = Tabs.FeedTab:Toggle({
     Title = "🍽️ Auto Feed Pets",
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
     Callback = function(state)
-        ensureSelectionsLoaded()
+        loadAllSavedSettings() -- Load saved settings before starting
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
@@ -4079,37 +3545,74 @@ autoFeedToggle = Tabs.FeedTab:Toggle({
                     end
                     return selectedFeedFruits
                 end
-                AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeedStatusParagraph, getSelected)
+                AutoFeedSystem.runAutoFeed(autoFeedEnabled, {}, function() end, getSelected)
                 autoFeedThread = nil
             end)
             WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
-            feedFruitStatus.lastAction = "Started - Feeding Big Pets!"
-            updateFeedStatusParagraph()
         elseif (not state) and autoFeedThread then
             WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Stopped", Duration = 3 })
-            feedFruitStatus.lastAction = "Stopped"
-            updateFeedStatusParagraph()
         end
     end
 })
 
--- ============ Bug Report / Suggestions ============
--- Load bug report system from separate file
-pcall(function()
-    local bugSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/BugReport"))()
-    if bugSystem then
-        bugSystem(Tabs, WindUI, LocalPlayer)
-    else
-        Tabs.BugTab:Paragraph({
-            Title = "🐛 Bug Report System",
-            Desc = "Bug report system could not be loaded. Please check your internet connection.",
-            Image = "bug",
-            ImageSize = 18,
-        })
-        print("❌ Failed to load Bug Report System from external file")
-    end
-end)
+-- Bug report system removed per user request
 
 Window:OnClose(function()
     print("UI closed.")
 end)
+
+-- Function to load all saved settings before any function starts
+local function loadAllSavedSettings()
+	-- Load egg selections
+	if isfile("Zebux_EggSelections.json") then
+		local success, data = pcall(function()
+			local jsonData = readfile("Zebux_EggSelections.json")
+			return game:GetService("HttpService"):JSONDecode(jsonData)
+		end)
+		if success and data then
+			selectedTypeSet = {}
+			selectedMutationSet = {}
+			if data.eggs then
+				for _, eggId in ipairs(data.eggs) do
+					selectedTypeSet[eggId] = true
+				end
+			end
+			if data.mutations then
+				for _, mutationId in ipairs(data.mutations) do
+					selectedMutationSet[mutationId] = true
+				end
+			end
+		end
+	end
+	
+	-- Load fruit selections
+	if isfile("Zebux_FruitSelections.json") then
+		local success, data = pcall(function()
+			local jsonData = readfile("Zebux_FruitSelections.json")
+			return game:GetService("HttpService"):JSONDecode(jsonData)
+		end)
+		if success and data and data.fruits then
+			selectedFruits = {}
+			for _, fruitId in ipairs(data.fruits) do
+				selectedFruits[fruitId] = true
+			end
+		end
+	end
+	
+	-- Load feed fruit selections
+	if isfile("Zebux_FeedFruitSelections.json") then
+		local success, data = pcall(function()
+			local jsonData = readfile("Zebux_FeedFruitSelections.json")
+			return game:GetService("HttpService"):JSONDecode(jsonData)
+		end)
+		if success and data and data.fruits then
+			selectedFeedFruits = {}
+			for _, fruitId in ipairs(data.fruits) do
+				selectedFeedFruits[fruitId] = true
+			end
+		end
+	end
+	
+	-- Load config
+	zooConfig:Load()
+end
