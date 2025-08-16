@@ -107,14 +107,25 @@ end
 function FruitStoreSystem.getPlayerNetWorth()
     local player = Players.LocalPlayer
     if not player then return 0 end
-    
+
+    -- Match Auto Buy logic: prefer attribute, then fallback to leaderstats
+    local attr
+    if player.GetAttribute then
+        attr = player:GetAttribute("NetWorth")
+    end
+    if type(attr) == "number" then
+        return attr
+    end
+
     local leaderstats = player:FindFirstChild("leaderstats")
     if not leaderstats then return 0 end
-    
+
     local netWorth = leaderstats:FindFirstChild("NetWorth")
-    if not netWorth then return 0 end
-    
-    return netWorth.Value or 0
+    if netWorth and type(netWorth.Value) == "number" then
+        return netWorth.Value
+    end
+
+    return 0
 end
 
 function FruitStoreSystem.parsePrice(priceStr)
