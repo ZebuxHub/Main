@@ -38,6 +38,8 @@ function AutoFeedSystem.getBigPets()
                                     -- Look for pets in the area around this position
                                     local petsFolder = workspace:FindFirstChild("Pets")
                                     if petsFolder then
+                                        local petsInThisArea = 0 -- Count pets found in this BigPet area
+                                        
                                         for _, petModel in ipairs(petsFolder:GetChildren()) do
                                             if petModel:IsA("Model") then
                                                 local rootPart = petModel:FindFirstChild("RootPart")
@@ -49,28 +51,25 @@ function AutoFeedSystem.getBigPets()
                                                         local petPos = rootPart.Position
                                                         local distance = (petPos - gridCenterPos).Magnitude
                                                         
-                                                        -- If pet is within reasonable distance (adjust as needed)
-                                                        if distance < 50 then -- 50 studs radius
-                                                            -- Check if it's a Big Pet by looking for BigValue attribute
-                                                            local bigValue = rootPart:GetAttribute("BigValue")
-                                                            if bigValue then
-                                                                -- Additional verification: check for BigPetGUI
-                                                                local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                                                                if bigPetGUI then
-                                                                    table.insert(pets, {
-                                                                        model = petModel,
-                                                                        name = petModel.Name,
-                                                                        rootPart = rootPart,
-                                                                        bigPetGUI = bigPetGUI,
-                                                                        bigPetPart = bigPetPart.Name
-                                                                    })
-                                                                end
-                                                            end
+                                                        -- If pet is within 20 studs of BigPet area, consider it a Big Pet
+                                                        if distance < 20 then -- 20 studs radius
+                                                            -- No additional verification needed - if it's in the area, it's a Big Pet
+                                                            local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                                                            table.insert(pets, {
+                                                                model = petModel,
+                                                                name = petModel.Name,
+                                                                rootPart = rootPart,
+                                                                bigPetGUI = bigPetGUI,
+                                                                bigPetPart = bigPetPart.Name
+                                                            })
+                                                            petsInThisArea = petsInThisArea + 1
                                                         end
                                                     end
                                                 end
                                             end
                                         end
+                                        
+                                        -- If no pets found in this BigPet area, skip it (already handled by not adding to pets table)
                                     end
                                 end
                             end
