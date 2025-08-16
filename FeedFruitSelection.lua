@@ -119,24 +119,52 @@ local function getPlayerFruitInventory()
 		return {}
 	end
 
-	local fruitInventory = {}
-	for _, child in pairs(asset:GetChildren()) do
-		if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-			local normalized = normalizeFruitName(child.Name)
-			local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
-			if canonical then
-				local amount = child.Value
-				if type(amount) == "string" then
-					amount = tonumber(amount) or 0
-				end
-				if amount and amount > 0 then
-					fruitInventory[canonical] = amount
-				end
-			end
-		end
-	end
+    local fruitInventory = {}
 
-	return fruitInventory
+    -- First, read from Attributes on Asset (primary source)
+    local attrMap = {}
+    local ok, attrs = pcall(function()
+        return asset:GetAttributes()
+    end)
+    if ok and type(attrs) == "table" then
+        attrMap = attrs
+    end
+    for id, item in pairs(FruitData) do
+        local display = item.Name or id
+        local amount = attrMap[display] or attrMap[id]
+        if amount == nil then
+            -- Fallback by normalized key search
+            local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
+            for k, v in pairs(attrMap) do
+                local nk = normalizeFruitName(k)
+                if nk == wantA or nk == wantB then
+                    amount = v
+                    break
+                end
+            end
+        end
+        if type(amount) == "string" then amount = tonumber(amount) or 0 end
+        if type(amount) == "number" and amount > 0 then
+            fruitInventory[display] = amount
+        end
+    end
+
+    -- Also support legacy children-based values as fallback/merge
+    for _, child in pairs(asset:GetChildren()) do
+        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+            local normalized = normalizeFruitName(child.Name)
+            local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
+            if canonical then
+                local amount = child.Value
+                if type(amount) == "string" then amount = tonumber(amount) or 0 end
+                if type(amount) == "number" and amount > 0 then
+                    fruitInventory[canonical] = amount
+                end
+            end
+        end
+    end
+
+    return fruitInventory
 end
 
 -- UI Variables
