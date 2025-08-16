@@ -3684,7 +3684,7 @@ Tabs.SaveTab:Button({
                             -- Note: zooConfig:Clear() is not available, so we skip it
                             -- The config will be reset when the script restarts
                             
-                            -- Delete custom JSON files
+                            -- Delete custom JSON files (with error handling)
                             local filesToDelete = {
                                 "Zebux_EggSelections.json",
                                 "Zebux_FruitSelections.json", 
@@ -3692,8 +3692,13 @@ Tabs.SaveTab:Button({
                             }
                             
                             for _, fileName in ipairs(filesToDelete) do
-                                if isfile(fileName) then
-                                    delfile(fileName)
+                                local ok, deleteErr = pcall(function()
+                                    if isfile(fileName) then
+                                        delfile(fileName)
+                                    end
+                                end)
+                                if not ok then
+                                    warn("Failed to delete " .. fileName .. ": " .. tostring(deleteErr))
                                 end
                             end
                             
@@ -3707,9 +3712,22 @@ Tabs.SaveTab:Button({
                             statusData.selectedTypes = "None"
                             statusData.selectedMutations = "None"
                             
-                            -- Update status displays
-                            updateStatusParagraph()
-                            updateFruitStatusParagraph()
+                            -- Update status displays (with error handling)
+                            local function safeUpdateStatus(updateFunc, funcName)
+                                if updateFunc then
+                                    local ok, updateErr = pcall(function()
+                                        updateFunc()
+                                    end)
+                                    if not ok then
+                                        warn("Failed to update " .. funcName .. ": " .. tostring(updateErr))
+                                    end
+                                else
+                                    warn(funcName .. " function is nil")
+                                end
+                            end
+                            
+                            safeUpdateStatus(updateStatusParagraph, "status paragraph")
+                            safeUpdateStatus(updateFruitStatusParagraph, "fruit status paragraph")
                             
                             -- Reset auto feed status
                             feedFruitStatus = {
@@ -3718,23 +3736,29 @@ Tabs.SaveTab:Button({
                                 totalFeeds = 0,
                                 lastAction = "Ready to feed pets!"
                             }
-                            updateFeedStatusParagraph()
+                            safeUpdateStatus(updateFeedStatusParagraph, "feed status paragraph")
                             
-                            -- Refresh UI if visible (with error handling)
-                            local function safeRefresh(uiModule)
-                                if uiModule and uiModule.RefreshContent then
-                                    local ok, refreshErr = pcall(function()
-                                        uiModule.RefreshContent()
-                                    end)
-                                    if not ok then
-                                        warn("Failed to refresh UI: " .. tostring(refreshErr))
+                            -- Refresh UI if visible (with comprehensive error handling)
+                            local function safeRefresh(uiModule, moduleName)
+                                if uiModule then
+                                    if uiModule.RefreshContent then
+                                        local ok, refreshErr = pcall(function()
+                                            uiModule.RefreshContent()
+                                        end)
+                                        if not ok then
+                                            warn("Failed to refresh " .. moduleName .. " UI: " .. tostring(refreshErr))
+                                        end
+                                    else
+                                        warn(moduleName .. " UI module exists but has no RefreshContent method")
                                     end
+                                else
+                                    warn(moduleName .. " UI module is nil - not loaded yet")
                                 end
                             end
                             
-                            safeRefresh(EggSelection)
-                            safeRefresh(FruitSelection)
-                            safeRefresh(FeedFruitSelection)
+                            safeRefresh(EggSelection, "EggSelection")
+                            safeRefresh(FruitSelection, "FruitSelection")
+                            safeRefresh(FeedFruitSelection, "FeedFruitSelection")
                             
                             WindUI:Notify({ 
                                 Title = "🔄 Settings Reset", 
