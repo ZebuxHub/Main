@@ -10,113 +10,134 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- Function to get player's fruit inventory
-local function getPlayerFruitInventory()
-    local localPlayer = Players.LocalPlayer
-    if not localPlayer then
-        return {}
-    end
-    
-    local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then
-        return {}
-    end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then
-        return {}
-    end
-    
-    local asset = data:FindFirstChild("Asset")
-    if not asset then
-        return {}
-    end
-    
-    local fruitInventory = {}
-    
-    -- Check for fruit attributes in the Asset
-    for _, child in pairs(asset:GetChildren()) do
-        if child:IsA("StringValue") or child:IsA("IntValue") then
-            local fruitName = child.Name
-            local fruitAmount = child.Value
-            
-            -- Convert to number if it's a string
-            if type(fruitAmount) == "string" then
-                fruitAmount = tonumber(fruitAmount) or 0
-            end
-            
-            if fruitAmount and fruitAmount > 0 then
-                fruitInventory[fruitName] = fruitAmount
-            end
-        end
-    end
-    
-    return fruitInventory
+-- Name normalization helpers for inventory mapping
+local function normalizeFruitName(name)
+	if type(name) ~= "string" then return "" end
+	local lowered = string.lower(name)
+	lowered = lowered:gsub("[%s_%-%./]", "")
+	return lowered
 end
+
+-- Will be filled after FruitData is defined
+local FRUIT_CANONICAL = nil
 
 -- Hardcoded fruit data for feeding
 local FruitData = {
-    Strawberry = {
-        Name = "Strawberry",
-        Price = "5,000",
-        Icon = "🍓",
-        Rarity = 1
-    },
-    Blueberry = {
-        Name = "Blueberry", 
-        Price = "20,000",
-        Icon = "🫐",
-        Rarity = 1
-    },
-    Watermelon = {
-        Name = "Watermelon",
-        Price = "80,000", 
-        Icon = "🍉",
-        Rarity = 2
-    },
-    Apple = {
-        Name = "Apple",
-        Price = "400,000",
-        Icon = "🍎", 
-        Rarity = 2
-    },
-    Orange = {
-        Name = "Orange",
-        Price = "1,200,000",
-        Icon = "🍊",
-        Rarity = 3
-    },
-    Corn = {
-        Name = "Corn",
-        Price = "3,500,000",
-        Icon = "🌽",
-        Rarity = 3
-    },
-    Banana = {
-        Name = "Banana",
-        Price = "12,000,000",
-        Icon = "🍌",
-        Rarity = 4
-    },
-    Grape = {
-        Name = "Grape",
-        Price = "50,000,000",
-        Icon = "🍇",
-        Rarity = 4
-    },
-    Pear = {
-        Name = "Pear",
-        Price = "200,000,000",
-        Icon = "🍐",
-        Rarity = 5
-    },
-    Peach = {
-        Name = "Peach",
-        Price = "1,000,000,000",
-        Icon = "🍑",
-        Rarity = 5
-    }
+	Strawberry = {
+		Name = "Strawberry",
+		Price = "5,000",
+		Icon = "🍓",
+		Rarity = 1
+	},
+	Blueberry = {
+		Name = "Blueberry", 
+		Price = "20,000",
+		Icon = "🔵",
+		Rarity = 1
+	},
+	Watermelon = {
+		Name = "Watermelon",
+		Price = "80,000", 
+		Icon = "🍉",
+		Rarity = 2
+	},
+	Apple = {
+		Name = "Apple",
+		Price = "400,000",
+		Icon = "🍎", 
+		Rarity = 2
+	},
+	Orange = {
+		Name = "Orange",
+		Price = "1,200,000",
+		Icon = "🍊",
+		Rarity = 3
+	},
+	Corn = {
+		Name = "Corn",
+		Price = "3,500,000",
+		Icon = "🌽",
+		Rarity = 3
+	},
+	Banana = {
+		Name = "Banana",
+		Price = "12,000,000",
+		Icon = "🍌",
+		Rarity = 4
+	},
+	Grape = {
+		Name = "Grape",
+		Price = "50,000,000",
+		Icon = "🍇",
+		Rarity = 4
+	},
+	Pear = {
+		Name = "Pear",
+		Price = "200,000,000",
+		Icon = "🍐",
+		Rarity = 5
+	},
+	Peach = {
+		Name = "Peach",
+		Price = "1,000,000,000",
+		Icon = "🍑",
+		Rarity = 5
+	}
 }
+
+-- Build canonical name map from FruitData
+local function buildFruitCanonical()
+	local map = {}
+	for id, item in pairs(FruitData) do
+		local display = item.Name or id
+		map[normalizeFruitName(id)] = display
+		map[normalizeFruitName(display)] = display
+	end
+	return map
+end
+FRUIT_CANONICAL = buildFruitCanonical()
+
+-- Local function to read player's fruit inventory using canonical name matching
+local function getPlayerFruitInventory()
+	local localPlayer = Players.LocalPlayer
+	if not localPlayer then
+		return {}
+	end
+
+	local playerGui = localPlayer:FindFirstChild("PlayerGui")
+	if not playerGui then
+		return {}
+	end
+
+	local data = playerGui:FindFirstChild("Data")
+	if not data then
+		return {}
+	end
+
+	local asset = data:FindFirstChild("Asset")
+	if not asset then
+		return {}
+	end
+
+	local fruitInventory = {}
+	for _, child in pairs(asset:GetChildren()) do
+		if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+			local normalized = normalizeFruitName(child.Name)
+			local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
+			if canonical then
+				local amount = child.Value
+				if type(amount) == "string" then
+					amount = tonumber(amount) or 0
+				end
+				if amount and amount > 0 then
+					fruitInventory[canonical] = amount
+				end
+			end
+		end
+	end
+
+	return fruitInventory
+end
 
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
