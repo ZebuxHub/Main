@@ -3679,12 +3679,10 @@ Tabs.SaveTab:Button({
                     Title = "✅ Reset",
                     Variant = "Primary",
                     Callback = function()
-                        -- Reset all settings to defaults
+                                                -- Reset all settings to defaults
                         local success, err = pcall(function()
-                            -- Try to clear config file if it exists and has a Clear method
-                            if zooConfig and zooConfig.Clear then
-                            zooConfig:Clear()
-                            end
+                            -- Note: zooConfig:Clear() is not available, so we skip it
+                            -- The config will be reset when the script restarts
                             
                             -- Delete custom JSON files
                             local filesToDelete = {
@@ -3722,16 +3720,21 @@ Tabs.SaveTab:Button({
                             }
                             updateFeedStatusParagraph()
                             
-                            -- Refresh UI if visible
-                            if EggSelection and EggSelection.RefreshContent then
-                                EggSelection.RefreshContent()
+                            -- Refresh UI if visible (with error handling)
+                            local function safeRefresh(uiModule)
+                                if uiModule and uiModule.RefreshContent then
+                                    local ok, refreshErr = pcall(function()
+                                        uiModule.RefreshContent()
+                                    end)
+                                    if not ok then
+                                        warn("Failed to refresh UI: " .. tostring(refreshErr))
+                                    end
+                                end
                             end
-                            if FruitSelection and FruitSelection.RefreshContent then
-                                FruitSelection.RefreshContent()
-                            end
-                            if FeedFruitSelection and FeedFruitSelection.RefreshContent then
-                                FeedFruitSelection.RefreshContent()
-                            end
+                            
+                            safeRefresh(EggSelection)
+                            safeRefresh(FruitSelection)
+                            safeRefresh(FeedFruitSelection)
                             
                             WindUI:Notify({ 
                                 Title = "🔄 Settings Reset", 
