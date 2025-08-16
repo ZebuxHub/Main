@@ -424,7 +424,7 @@ function FeedFruitSelection.CreateUI()
     minimizedSize = UDim2.new(0, 600, 0, 60)
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim2.new(0, 12)
+    corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = MainFrame
     
     local stroke = Instance.new("UIStroke")
