@@ -416,18 +416,30 @@ local function createItemCard(itemId, itemData, parent)
     
     -- Click effect
     card.MouseButton1Click:Connect(function()
+        print("🎯 Card clicked:", itemId)
+        print("Current selectedItems:", selectedItems)
+        print("onSelectionChanged callback:", onSelectionChanged and "exists" or "nil")
+        
         if selectedItems[itemId] then
             selectedItems[itemId] = nil
             checkmark.Visible = false
             TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+            print("Deselected:", itemId)
         else
             selectedItems[itemId] = true
             checkmark.Visible = true
             TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            print("Selected:", itemId)
         end
         
+        print("Updated selectedItems:", selectedItems)
+        
         if onSelectionChanged then
+            print("Calling onSelectionChanged callback...")
             onSelectionChanged(selectedItems)
+            print("Callback completed")
+        else
+            print("❌ No onSelectionChanged callback!")
         end
     end)
     
@@ -769,8 +781,14 @@ end
 
 -- Public Functions
 function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
+    print("🎯 EggSelection.Show called")
+    print("Callback provided:", callback and "yes" or "no")
+    print("Toggle callback provided:", toggleCallback and "yes" or "no")
+    
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
+    
+    print("onSelectionChanged set to:", onSelectionChanged and "function" or "nil")
     
     -- Apply saved selections if provided
     if savedEggs then
