@@ -64,7 +64,7 @@ function AutoFeedSystem.isPetEating(petData)
     end
     
     local feedTime = feedText.Text
-    return feedTime ~= "00:00"
+    return feedTime ~= "00:00" and feedTime ~= "???"
 end
 
 function AutoFeedSystem.equipFruit(fruitName)
