@@ -3354,18 +3354,9 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
                          updateFruitStatus()
                          
-                         -- Check if fruit store UI is open (required for buying)
-                         local fruitStoreUI = FruitStoreSystem.getFoodStoreUI()
-                         fruitAutoBuyStatus.storeOpen = fruitStoreUI ~= nil
+                         -- Buying via remote does not require the store UI to be open
+                         fruitAutoBuyStatus.storeOpen = true
                          
-                         if not fruitStoreUI then
-                             fruitAutoBuyStatus.lastAction = "Store not open - please open fruit store first!"
-                             fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
-                             updateFruitStatus()
-                             task.wait(3) -- Wait longer before checking again
-        return
-    end
-    
                          local netWorth = FruitStoreSystem.getPlayerNetWorth()
                          local boughtAny = false
                          
@@ -3961,7 +3952,23 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
-                AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeedStatusParagraph, function() return selectedFeedFruits end)
+                -- Ensure selections are loaded before starting
+                local function getSelected()
+                    -- if empty, try to lazy-load from file once
+                    if not selectedFeedFruits or not next(selectedFeedFruits) then
+                        pcall(function()
+                            if isfile("Zebux_FeedFruitSelections.json") then
+                                local data = game:GetService("HttpService"):JSONDecode(readfile("Zebux_FeedFruitSelections.json"))
+                                if data and data.fruits then
+                                    selectedFeedFruits = {}
+                                    for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
+                                end
+                            end
+                        end)
+                    end
+                    return selectedFeedFruits
+                end
+                AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeedStatusParagraph, getSelected)
                 autoFeedThread = nil
             end)
             WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
