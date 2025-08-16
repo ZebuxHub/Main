@@ -1466,6 +1466,8 @@ local MutationData = {
 local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
 local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
 local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FeedFruitSelection.lua"))()
+local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSystem.lua"))()
+local FruitStoreSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
 
 -- UI state
 local selectedTypeSet = {}
@@ -1809,148 +1811,7 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     end
 })
 
--- Auto Feed Functions
-local function getBigPets()
-    local pets = {}
-    local petsFolder = workspace:FindFirstChild("Pets")
-    
-    if not petsFolder then
-        return pets
-    end
-    
-    for _, petModel in ipairs(petsFolder:GetChildren()) do
-        if petModel:IsA("Model") then
-            local rootPart = petModel:FindFirstChild("RootPart")
-            if rootPart then
-                -- Check if it's a Big Pet by looking for BigValue attribute
-                local bigValue = rootPart:GetAttribute("BigValue")
-                if bigValue then
-                    -- Additional verification: check for BigPetGUI
-                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                    if bigPetGUI then
-                        table.insert(pets, {
-                            model = petModel,
-                            name = petModel.Name,
-                            rootPart = rootPart,
-                            bigPetGUI = bigPetGUI
-                        })
-                    end
-                end
-            end
-        end
-    end
-    
-    return pets
-end
-
-local function isPetEating(petData)
-    if not petData or not petData.bigPetGUI then
-        return true -- Assume eating if we can't check
-    end
-    
-    local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
-    if not feedGUI then
-        return true -- Assume eating if no feed GUI
-    end
-    
-    local feedText = feedGUI:FindFirstChild("TXT")
-    if not feedText or not feedText:IsA("TextLabel") then
-        return true -- Assume eating if no text
-    end
-    
-    local feedTime = feedText.Text
-    return feedTime ~= "00:00"
-end
-
-local function equipFruit(fruitName)
-    local args = {
-        "Focus",
-        fruitName
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to equip fruit " .. tostring(fruitName) .. ": " .. tostring(err))
-        return false
-    end
-    return true
-end
-
-local function feedPet(petName)
-    local args = {
-        "Feed",
-        petName
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to feed pet " .. tostring(petName) .. ": " .. tostring(err))
-        return false
-    end
-    return true
-end
-
-local function runAutoFeed()
-    while autoFeedEnabled do
-        local bigPets = getBigPets()
-        feedFruitStatus.petsFound = #bigPets
-        feedFruitStatus.availablePets = 0
-        
-        if #bigPets == 0 then
-            feedFruitStatus.lastAction = "No Big Pets found"
-            updateFeedStatusParagraph()
-            task.wait(2)
-            continue
-        end
-        
-        -- Check each pet for feeding opportunity
-        for _, petData in ipairs(bigPets) do
-            if not autoFeedEnabled then break end
-            
-            if not isPetEating(petData) then
-                feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
-                
-                -- Check if we have selected fruits
-                if selectedFeedFruits and next(selectedFeedFruits) then
-                    -- Try to feed with selected fruits
-                    for fruitName, _ in pairs(selectedFeedFruits) do
-                        if not autoFeedEnabled then break end
-                        
-                        -- Equip the fruit first
-                        if equipFruit(fruitName) then
-                            task.wait(0.1) -- Small delay between equip and feed
-                            
-                            -- Feed the pet
-                            if feedPet(petData.name) then
-                                feedFruitStatus.lastFedPet = petData.name
-                                feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                feedFruitStatus.lastAction = "Fed " .. petData.name .. " with " .. fruitName
-                                updateFeedStatusParagraph()
-                                
-                                task.wait(1) -- Wait before trying next pet
-                                break -- Move to next pet
-                            end
-                        end
-                        
-                        task.wait(0.2) -- Small delay between fruit attempts
-                    end
-                else
-                    feedFruitStatus.lastAction = "No fruits selected for feeding"
-                    updateFeedStatusParagraph()
-                end
-            end
-        end
-        
-        if feedFruitStatus.availablePets == 0 then
-            feedFruitStatus.lastAction = "All pets are currently eating"
-            updateFeedStatusParagraph()
-        end
-        
-        task.wait(2) -- Check every 2 seconds
-    end
-end
+-- Auto Feed Functions moved to AutoFeedSystem.lua
 
 -- Event-driven Auto Place functionality
 local placeConnections = {}
@@ -3408,104 +3269,7 @@ local FruitData = {
     VoltGinkgo = { Price = "80,000,000,000" }
 }
 
--- Helper functions for fruit buying (from FruitStoreSystem.lua)
-local function getFoodStoreUI()
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    local gui = pg:FindFirstChild("ScreenFoodStore")
-    if not gui then return nil end
-    return gui
-end
-
-local function getFoodStoreLST()
-    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    local data = pg:FindFirstChild("Data")
-    if not data then return nil end
-    local store = data:FindFirstChild("FoodStore")
-    if not store then return nil end
-    local lst = store:FindFirstChild("LST")
-    return lst
-end
-
-local function candidateKeysForFruit(fruitName)
-    local keys = {}
-    local base = tostring(fruitName)
-    table.insert(keys, base)
-    table.insert(keys, string.upper(base))
-    table.insert(keys, string.lower(base))
-    do
-        local cleaned = base:gsub("%s+", "")
-        table.insert(keys, cleaned)
-    end
-    return keys
-end
-
-local function readStockFromLST(lst, fruitName)
-    if not lst then return nil end
-    local keys = candidateKeysForFruit(fruitName)
-    -- Prefer attributes
-    if lst.GetAttribute then
-        for _, key in ipairs(keys) do
-            local val = lst:GetAttribute(key)
-            if val ~= nil then
-                local num = tonumber(val)
-                if num ~= nil then return num end
-                -- sometimes boolean-like; treat true as 1
-                if type(val) == "boolean" then return val and 1 or 0 end
-            end
-        end
-    end
-    -- Fallback: child Value objects
-    for _, key in ipairs(keys) do
-        local child = lst:FindFirstChild(key)
-        if child and child:IsA("ValueBase") then
-            local num = tonumber(child.Value)
-            if num ~= nil then return num end
-        end
-    end
-    return nil
-end
-
-local function isFruitInStock(fruitName)
-    -- First, try attribute-based stock via Data.FoodStore.LST
-    local lst = getFoodStoreLST()
-    if lst then
-        local qty = readStockFromLST(lst, fruitName)
-        if qty ~= nil then return qty > 0 end
-    end
-    -- Fallback to UI if present
-    local gui = getFoodStoreUI()
-    if not gui then return false end
-    local root = gui:FindFirstChild("Root")
-    if not root then return false end
-    local frame = root:FindFirstChild("Frame")
-    if not frame then return false end
-    local scroller = frame:FindFirstChild("ScrollingFrame")
-    if not scroller then return false end
-    local item = scroller:FindFirstChild(fruitName)
-    if not item then return false end
-    local btn = item:FindFirstChild("ItemButton")
-    if not btn then return false end
-    local stock = btn:FindFirstChild("StockLabel")
-    if not stock or not stock:IsA("TextLabel") then return false end
-    local txt = tostring(stock.Text or "")
-    if txt == "" then return false end
-    -- Consider out-of-stock texts like "0" or words; treat any non-empty as available unless it matches 0
-    local num = tonumber(txt)
-    if num ~= nil then return num > 0 end
-    return true
-end
-
--- Price parsing function
-local function parsePrice(priceStr)
-    if type(priceStr) == "number" then
-        return priceStr
-    end
-    -- Remove commas and convert to number
-    local cleanPrice = priceStr:gsub(",", "")
-    return tonumber(cleanPrice) or 0
-end
+-- Helper functions moved to FruitStoreSystem.lua
 
 -- Fruit selection state
 local selectedFruits = {}
@@ -3591,7 +3355,7 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                          updateFruitStatus()
                          
                          -- Check if fruit store UI is open (required for buying)
-                         local fruitStoreUI = getFoodStoreUI()
+                         local fruitStoreUI = FruitStoreSystem.getFoodStoreUI()
                          fruitAutoBuyStatus.storeOpen = fruitStoreUI ~= nil
                          
                          if not fruitStoreUI then
@@ -3602,15 +3366,15 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                              return
                          end
                          
-                         local netWorth = getPlayerNetWorth()
+                         local netWorth = FruitStoreSystem.getPlayerNetWorth()
                          local boughtAny = false
                          
                          for fruitId, _ in pairs(selectedFruits) do
                              if FruitData[fruitId] then
-                                 local fruitPrice = parsePrice(FruitData[fruitId].Price)
+                                 local fruitPrice = FruitStoreSystem.parsePrice(FruitData[fruitId].Price)
                                  
                                  -- Check if fruit is in stock
-                                 if not isFruitInStock(fruitId) then
+                                 if not FruitStoreSystem.isFruitInStock(fruitId) then
                                      fruitAutoBuyStatus.lastAction = fruitId .. " is out of stock!"
                                      fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
                                      updateFruitStatus()
@@ -4110,7 +3874,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
-                runAutoFeed()
+                AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFruitStatus, updateFeedStatusParagraph)
                 autoFeedThread = nil
             end)
             WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
