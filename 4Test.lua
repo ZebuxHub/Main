@@ -3363,9 +3363,9 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                              fruitAutoBuyStatus.lastCheck = os.date("%H:%M:%S")
                              updateFruitStatus()
                              task.wait(3) -- Wait longer before checking again
-                             return
-                         end
-                         
+        return
+    end
+    
                          local netWorth = FruitStoreSystem.getPlayerNetWorth()
                          local boughtAny = false
                          
@@ -3683,7 +3683,7 @@ Tabs.SaveTab:Button({
                         local success, err = pcall(function()
                             -- Try to clear config file if it exists and has a Clear method
                             if zooConfig and zooConfig.Clear then
-                                zooConfig:Clear()
+                            zooConfig:Clear()
                             end
                             
                             -- Delete custom JSON files
@@ -3910,6 +3910,7 @@ Tabs.FeedTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFeedFruits = selectedItems
+                    print("🍎 Feed Fruit Selection Updated:", selectedItems and next(selectedItems) and "Has selections" or "No selections")
                     updateFeedStatusParagraph()
                 end,
                 function(isVisible)
@@ -3933,6 +3934,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Callback = function(state)
         autoFeedEnabled = state
         if state and not autoFeedThread then
+            print("🚀 Starting Auto Feed with selectedFeedFruits:", selectedFeedFruits and next(selectedFeedFruits) and "Has selections" or "No selections")
             autoFeedThread = task.spawn(function()
                 AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedFeedFruits, feedFruitStatus, updateFeedStatusParagraph)
                 autoFeedThread = nil
