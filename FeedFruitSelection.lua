@@ -339,7 +339,6 @@ local function createItemCard(itemId, itemData, parent)
             TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
         end
         
-        print("🍎 UI Click - selectedItems:", selectedItems and next(selectedItems) and "Has selections" or "No selections")
         if onSelectionChanged then
             onSelectionChanged(selectedItems)
         end
@@ -592,13 +591,11 @@ function FeedFruitSelection.Show(callback, toggleCallback, savedFruits)
     onToggleChanged = toggleCallback
     
     -- Apply saved selections if provided
-    print("🍎 Show function - savedFruits:", savedFruits and next(savedFruits) and "Has saved selections" or "No saved selections")
     if savedFruits then
         for fruitId, _ in pairs(savedFruits) do
             selectedItems[fruitId] = true
         end
     end
-    print("🍎 Show function - selectedItems after loading:", selectedItems and next(selectedItems) and "Has selections" or "No selections")
     
     if not ScreenGui then
         FeedFruitSelection.CreateUI()
