@@ -638,7 +638,7 @@ function FruitSelection.Show(callback, toggleCallback, savedFruits)
     end
     
     -- Wait a frame to ensure UI is created
-    task.wait()
+    task.wait(0.1)
     FruitSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
