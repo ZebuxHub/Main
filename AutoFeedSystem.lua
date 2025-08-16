@@ -6,6 +6,7 @@ local AutoFeedSystem = {}
 
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
 -- Auto Feed Functions
 function AutoFeedSystem.getBigPets()
@@ -46,6 +47,50 @@ function AutoFeedSystem.getBigPets()
     end
     
     return pets
+end
+
+-- Function to get player's fruit inventory
+function AutoFeedSystem.getPlayerFruitInventory()
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then
+        return {}
+    end
+    
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return {}
+    end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then
+        return {}
+    end
+    
+    local asset = data:FindFirstChild("Asset")
+    if not asset then
+        return {}
+    end
+    
+    local fruitInventory = {}
+    
+    -- Check for fruit attributes in the Asset
+    for _, child in pairs(asset:GetChildren()) do
+        if child:IsA("StringValue") or child:IsA("IntValue") then
+            local fruitName = child.Name
+            local fruitAmount = child.Value
+            
+            -- Convert to number if it's a string
+            if type(fruitAmount) == "string" then
+                fruitAmount = tonumber(fruitAmount) or 0
+            end
+            
+            if fruitAmount and fruitAmount > 0 then
+                fruitInventory[fruitName] = fruitAmount
+            end
+        end
+    end
+    
+    return fruitInventory
 end
 
 function AutoFeedSystem.isPetEating(petData)
@@ -120,39 +165,67 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                 -- Get current selected fruits from main script
                 local selectedFeedFruits = getSelectedFruits and getSelectedFruits() or {}
                 
+                -- Debug: Check if selections are being lost
+                local fruitCount = 0
+                local fruitList = {}
+                if selectedFeedFruits then
+                    for fruitName, _ in pairs(selectedFeedFruits) do
+                        fruitCount = fruitCount + 1
+                        table.insert(fruitList, fruitName)
+                    end
+                end
+                
+                -- Log current selections for debugging
+                if fruitCount > 0 then
+                    print("🍎 Auto Feed Debug - Current selections:", table.concat(fruitList, ", "))
+                else
+                    print("🍎 Auto Feed Debug - No fruit selections found!")
+                end
+                
                 -- Check if we have selected fruits
-                if selectedFeedFruits and next(selectedFeedFruits) then
-                                        -- Try to feed with selected fruits
+                if selectedFeedFruits and fruitCount > 0 then
+                                        -- Get player's fruit inventory
+                    local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
+                    
+                    -- Try to feed with selected fruits
                     for fruitName, _ in pairs(selectedFeedFruits) do
                         if not autoFeedEnabled then break end
                         
-                        -- Update status to show which pet we're trying to feed
-                        feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName
-                        updateFeedStatusParagraph()
-                        
-                        -- Always equip the fruit before feeding (every time)
-                        if AutoFeedSystem.equipFruit(fruitName) then
-                            task.wait(0.1) -- Small delay between equip and feed
+                        -- Check if player has this fruit
+                        local fruitAmount = fruitInventory[fruitName] or 0
+                        if fruitAmount <= 0 then
+                            feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
+                            updateFeedStatusParagraph()
+                            task.wait(0.5)
+                        else
+                            -- Update status to show which pet we're trying to feed
+                            feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
+                            updateFeedStatusParagraph()
                             
-                            -- Feed the pet
-                            if AutoFeedSystem.feedPet(petData.name) then
-                                feedFruitStatus.lastFedPet = petData.name
-                                feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
-                                updateFeedStatusParagraph()
+                            -- Always equip the fruit before feeding (every time)
+                            if AutoFeedSystem.equipFruit(fruitName) then
+                                task.wait(0.1) -- Small delay between equip and feed
                                 
-                                task.wait(1) -- Wait before trying next pet
-                                break -- Move to next pet
+                                -- Feed the pet
+                                if AutoFeedSystem.feedPet(petData.name) then
+                                    feedFruitStatus.lastFedPet = petData.name
+                                    feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
+                                    feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
+                                    updateFeedStatusParagraph()
+                                    
+                                    task.wait(1) -- Wait before trying next pet
+                                    break -- Move to next pet
+                                else
+                                    feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName
+                                    updateFeedStatusParagraph()
+                                end
                             else
-                                feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName
+                                feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name
                                 updateFeedStatusParagraph()
                             end
-                        else
-                            feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name
-                            updateFeedStatusParagraph()
+                            
+                            task.wait(0.2) -- Small delay between fruit attempts
                         end
-                        
-                        task.wait(0.2) -- Small delay between fruit attempts
                     end
                 else
                     feedFruitStatus.lastAction = "No fruits selected for feeding"
