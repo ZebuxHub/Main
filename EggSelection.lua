@@ -131,7 +131,7 @@ local MutationData = {
         Icon = "🔥",
         Rarity = 100
     },
-    Dino = {
+    Jurassic = {
         Name = "Jurassic",
         Icon = "🦕",
         Rarity = 100
@@ -803,9 +803,13 @@ function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
         end
     end
     
-    if not ScreenGui then
-        EggSelection.CreateUI()
+    -- Always destroy and recreate UI to ensure fresh data
+    if ScreenGui then
+        ScreenGui:Destroy()
+        ScreenGui = nil
     end
+    
+    EggSelection.CreateUI()
     
     -- Wait a frame to ensure UI is created
     task.wait()
