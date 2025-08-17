@@ -1600,15 +1600,10 @@ local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubuserconten
 local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSystem.lua"))()
 -- FruitStoreSystem functions are now implemented locally in the auto buy fruit section
 local AutoQuestSystem = nil
--- Auto Quest variables (will be set by the system)
+
+-- Auto Quest integration
 local autoQuestEnabled = false
 local autoQuestThread = nil
-local autoQuestToggle = nil
-local targetPlayerDropdown = nil
-local sendEggDropdown = nil
-local sellPetDropdown = nil
-local claimAllToggle = nil
-local refreshToggle = nil
 
 -- UI state
 local eggSelectionVisible = false
@@ -3496,16 +3491,11 @@ local function registerUIElements()
     registerIfExists("autoUpgradeEnabled", autoUpgradeToggle)
     registerIfExists("autoBuyFruitEnabled", autoBuyFruitToggle)
     registerIfExists("autoFeedEnabled", autoFeedToggle)
-    registerIfExists("autoQuestEnabled", autoQuestToggle)
+    -- Auto Quest toggles will be registered by the AutoQuestSystem module
     
     -- Register dropdowns
     registerIfExists("placeEggDropdown", placeEggDropdown)
     registerIfExists("placeMutationDropdown", placeMutationDropdown)
-    registerIfExists("targetPlayerDropdown", targetPlayerDropdown)
-    registerIfExists("sendEggDropdown", sendEggDropdown)
-    registerIfExists("sellPetDropdown", sellPetDropdown)
-    registerIfExists("claimAllToggle", claimAllToggle)
-    registerIfExists("refreshToggle", refreshToggle)
     -- priorityDropdown removed
     
     -- Register sliders/inputs
@@ -3809,31 +3799,24 @@ task.spawn(function()
     -- Register all UI elements with WindUI config
     registerUIElements()
 
-    -- Load local AutoQuest module and initialize its UI
+    -- Load local AutoQuest module and initialize its UI. Keep it after base UI exists so it can attach to Window and Config
     pcall(function()
         local autoQuestModule = nil
         -- Try local file first (if present in environment with filesystem)
         if isfile and isfile("AutoQuestSystem.lua") then
             autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
         end
-
+        -- Fallback: let user host in their repo if preferred (commented)
+        -- if not autoQuestModule then
+        --     autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
+        -- end
         if autoQuestModule and autoQuestModule.Init then
-            local questUI = autoQuestModule.Init({
+            AutoQuestSystem = autoQuestModule.Init({
                 WindUI = WindUI,
                 Window = Window,
                 Config = zebuxConfig,
                 waitForSettingsReady = waitForSettingsReady,
             })
-            
-            -- Store UI elements for config registration
-            if questUI then
-                autoQuestToggle = questUI.questToggle
-                targetPlayerDropdown = questUI.targetPlayerDropdown
-                sendEggDropdown = questUI.sendEggDropdown
-                sellPetDropdown = questUI.sellPetDropdown
-                claimAllToggle = questUI.claimAllToggle
-                refreshToggle = questUI.refreshToggle
-            end
         end
     end)
     
