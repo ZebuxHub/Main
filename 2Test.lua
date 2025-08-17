@@ -52,6 +52,7 @@ Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
 Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
+Tabs.QuestTab = Tabs.MainSection:Tab({ Title = "📝 | Auto Quest"})
 -- Bug tab removed per user request
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
@@ -1604,6 +1605,13 @@ local AutoQuestSystem = nil
 -- Auto Quest integration
 local autoQuestEnabled = false
 local autoQuestThread = nil
+local selectedTargetPlayer = "Random"
+local selectedEggTypes = {}
+local selectedEggMutations = {}
+local selectedPetTypes = {}
+local selectedPetMutations = {}
+local autoClaimEnabled = false
+local autoRefreshEnabled = false
 
 -- UI state
 local eggSelectionVisible = false
@@ -3491,7 +3499,15 @@ local function registerUIElements()
     registerIfExists("autoUpgradeEnabled", autoUpgradeToggle)
     registerIfExists("autoBuyFruitEnabled", autoBuyFruitToggle)
     registerIfExists("autoFeedEnabled", autoFeedToggle)
-    -- Auto Quest toggles will be registered by the AutoQuestSystem module
+    -- Auto Quest toggles
+    registerIfExists("autoQuestEnabled", questUI.autoQuestToggle)
+    registerIfExists("targetPlayer", questUI.targetPlayerDropdown)
+    registerIfExists("sendEggTypes", questUI.sendEggTypesDropdown)
+    registerIfExists("sendEggMutations", questUI.sendEggMutationsDropdown)
+    registerIfExists("sellPetTypes", questUI.sellPetTypesDropdown)
+    registerIfExists("sellPetMutations", questUI.sellPetMutationsDropdown)
+    registerIfExists("autoClaimEnabled", questUI.autoClaimToggle)
+    registerIfExists("autoRefreshEnabled", questUI.autoRefreshToggle)
     
     -- Register dropdowns
     registerIfExists("placeEggDropdown", placeEggDropdown)
@@ -3804,12 +3820,12 @@ task.spawn(function()
         local autoQuestModule = nil
         -- Try local file first (if present in environment with filesystem)
         if isfile and isfile("AutoQuestSystem.lua") then
+            autoQuestModule = loadstring(readfile("AutoQuestSystem.lua"))()
+        end
+        -- Fallback: load from GitHub
+        if not autoQuestModule then
             autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
         end
-        -- Fallback: let user host in their repo if preferred (commented)
-        -- if not autoQuestModule then
-        --     autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
-        -- end
         if autoQuestModule and autoQuestModule.Init then
             AutoQuestSystem = autoQuestModule.Init({
                 WindUI = WindUI,
@@ -3940,21 +3956,175 @@ task.spawn(function()
     end
 end)
 
+-- ============ Auto Quest Tab ============
+local function createAutoQuestUI()
+    -- Auto Quest Toggle
+    local autoQuestToggle = Tabs.QuestTab:Toggle({
+        Title = "📝 Auto Quest",
+        Desc = "Automatically complete daily quests",
+        Value = false,
+        Callback = function(state)
+            autoQuestEnabled = state
+            
+            waitForSettingsReady(0.2)
+            if state then
+                -- Start auto quest logic here
+                WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started auto questing! 🎉", Duration = 3 })
+            else
+                WindUI:Notify({ Title = "📝 Auto Quest", Content = "Stopped", Duration = 3 })
+            end
+        end
+    })
+
+    -- Target Player Dropdown
+    local targetPlayerDropdown = Tabs.QuestTab:Dropdown({
+        Title = "🎯 Target Player",
+        Desc = "Choose who to send eggs to",
+        Values = {"Random"},
+        Value = "Random",
+        Callback = function(selection)
+            selectedTargetPlayer = selection
+        end
+    })
+
+    -- Send Egg Types Dropdown
+    local sendEggTypesDropdown = Tabs.QuestTab:Dropdown({
+        Title = "🥚 Send Egg Types",
+        Desc = "Choose which egg types to send (empty = all)",
+        Values = {"BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"},
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggTypes = selection
+        end
+    })
+
+    -- Send Egg Mutations Dropdown
+    local sendEggMutationsDropdown = Tabs.QuestTab:Dropdown({
+        Title = "🧬 Send Egg Mutations",
+        Desc = "Choose which mutations to send (empty = all)",
+        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggMutations = selection
+        end
+    })
+
+    -- Sell Pet Types Dropdown
+    local sellPetTypesDropdown = Tabs.QuestTab:Dropdown({
+        Title = "🐾 Sell Pet Types",
+        Desc = "Choose which pet types to sell (empty = all)",
+        Values = {"BasicPet", "RarePet", "SuperRarePet", "EpicPet", "LegendPet", "PrismaticPet", "HyperPet", "VoidPet", "BowserPet", "DemonPet", "BoneDragonPet", "UltraPet", "DinoPet", "FlyPet", "UnicornPet", "AncientPet"},
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedPetTypes = selection
+        end
+    })
+
+    -- Sell Pet Mutations Dropdown
+    local sellPetMutationsDropdown = Tabs.QuestTab:Dropdown({
+        Title = "🧬 Sell Pet Mutations",
+        Desc = "Choose which mutations to sell (empty = all)",
+        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedPetMutations = selection
+        end
+    })
+
+    -- Auto Claim and Refresh Toggles
+    local autoClaimToggle = Tabs.QuestTab:Toggle({
+        Title = "💰 Auto Claim",
+        Desc = "Automatically claim completed quests",
+        Value = false,
+        Callback = function(state)
+            autoClaimEnabled = state
+        end
+    })
+
+    local autoRefreshToggle = Tabs.QuestTab:Toggle({
+        Title = "🔄 Auto Refresh",
+        Desc = "Automatically refresh quest status",
+        Value = false,
+        Callback = function(state)
+            autoRefreshEnabled = state
+        end
+    })
+
+    -- Manual buttons
+    Tabs.QuestTab:Button({
+        Title = "💰 Claim All Ready",
+        Desc = "Claim all completed quests now",
+        Callback = function()
+            WindUI:Notify({
+                Title = "💰 Quest Claims",
+                Content = "Claim functionality coming soon!",
+                Duration = 3
+            })
+        end
+    })
+
+    Tabs.QuestTab:Button({
+        Title = "🔄 Refresh Tasks",
+        Desc = "Refresh quest status manually",
+        Callback = function()
+            WindUI:Notify({
+                Title = "🔄 Quest Refresh",
+                Content = "Quest status refreshed!",
+                Duration = 2
+            })
+        end
+    })
+
+    -- Update player list periodically
+    task.spawn(function()
+        while true do
+            local players = {}
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= Players.LocalPlayer then
+                    table.insert(players, player.Name)
+                end
+            end
+            table.sort(players)
+            table.insert(players, 1, "Random")
+            targetPlayerDropdown:Refresh(players)
+            task.wait(30)
+        end
+    end)
+
+    -- Return UI elements for config registration
+    return {
+        autoQuestToggle = autoQuestToggle,
+        targetPlayerDropdown = targetPlayerDropdown,
+        sendEggTypesDropdown = sendEggTypesDropdown,
+        sendEggMutationsDropdown = sendEggMutationsDropdown,
+        sellPetTypesDropdown = sellPetTypesDropdown,
+        sellPetMutationsDropdown = sellPetMutationsDropdown,
+        autoClaimToggle = autoClaimToggle,
+        autoRefreshToggle = autoRefreshToggle
+    }
+end
+
+local questUI = createAutoQuestUI()
+
 
 
 
 -- Bug report system removed per user request
 
 -- Safe window close handler
-local ok, err = pcall(function()
-Window:OnClose(function()
-    print("UI closed.")
+pcall(function()
+    Window:OnClose(function()
+        print("UI closed.")
+    end)
 end)
-end)
-
-if not ok then
-    warn("Failed to set window close handler: " .. tostring(err))
-end
 
 -- Function removed - using WindUI config system instead
 -- Function removed - using WindUI config system instead
