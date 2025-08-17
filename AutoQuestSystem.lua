@@ -550,60 +550,62 @@ end
 
 local function buyMutatedEgg()
     -- Use existing auto buy logic but target only mutated eggs
-    local success, foundMutatedEgg = pcall(function()
-        local islandName = safeGetAttribute(LocalPlayer, "AssignedIslandName", nil)
-        if not islandName then return false end
-        
-        -- Get conveyor belts (reuse logic from main script)
-        local art = workspace:FindFirstChild("Art")
-        if not art then return false end
-        
-        local island = art:FindFirstChild(islandName)
-        if not island then return false end
-        
-        local env = island:FindFirstChild("ENV")
-        if not env then return false end
-        
-        local conveyorRoot = env:FindFirstChild("Conveyor")
-        if not conveyorRoot then return false end
-        
-        -- Check all conveyor belts for mutated eggs
-        for i = 1, 9 do
-            local conveyor = conveyorRoot:FindFirstChild("Conveyor" .. i)
-            if conveyor then
-                local belt = conveyor:FindFirstChild("Belt")
-                if belt then
-                    for _, eggModel in ipairs(belt:GetChildren()) do
-                        if eggModel:IsA("Model") then
-                            -- Check if egg has mutation
-                            local eggType = safeGetAttribute(eggModel, "Type", nil)
-                            if eggType then
-                                -- Check for mutation by looking for GUI text
-                                local rootPart = eggModel:FindFirstChild("RootPart")
-                                if rootPart then
-                                    local eggGUI = rootPart:FindFirstChild("GUI")
-                                    if eggGUI then
-                                        local mutateLabel = eggGUI:FindFirstChild("EggGUI")
-                                        if mutateLabel then
-                                            mutateLabel = mutateLabel:FindFirstChild("Mutate")
-                                            if mutateLabel and mutateLabel:IsA("TextLabel") and mutateLabel.Text ~= "" then
-                                                -- This egg has a mutation, try to buy it
-                                                local buySuccess = pcall(function()
-                                                    local args = {"BuyEgg", eggModel.Name}
-                                                    ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-                                                    
-                                                    -- Focus the egg
-                                                    focusItem(eggModel.Name)
-                                                    
-                                                    actionCounter = actionCounter + 1
-                                                end)
-                                                
-                                                if buySuccess then
-                                                    return true
-        end
-    end
-        end
-    end
+    local islandName = safeGetAttribute(LocalPlayer, "AssignedIslandName", nil)
+    if not islandName then return false, "No island assigned" end
+    
+    -- Get conveyor belts (reuse logic from main script)
+    local art = workspace:FindFirstChild("Art")
+    if not art then return false, "Art folder not found" end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return false, "Island not found" end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return false, "ENV folder not found" end
+    
+    local conveyorRoot = env:FindFirstChild("Conveyor")
+    if not conveyorRoot then return false, "Conveyor folder not found" end
+    
+    -- Check all conveyor belts for mutated eggs
+    for i = 1, 9 do
+        local conveyor = conveyorRoot:FindFirstChild("Conveyor" .. i)
+        if conveyor then
+            local belt = conveyor:FindFirstChild("Belt")
+            if belt then
+                for _, eggModel in ipairs(belt:GetChildren()) do
+                    if eggModel:IsA("Model") then
+                        -- Check if egg has mutation
+                        local eggType = safeGetAttribute(eggModel, "Type", nil)
+                        if eggType then
+                            -- Check for mutation by looking for GUI text
+                            local rootPart = eggModel:FindFirstChild("RootPart")
+                            if rootPart then
+                                local eggGUI = rootPart:FindFirstChild("GUI")
+                                if eggGUI then
+                                    local mutateLabel = eggGUI:FindFirstChild("EggGUI")
+                                    if mutateLabel then
+                                        mutateLabel = mutateLabel:FindFirstChild("Mutate")
+                                        if mutateLabel and mutateLabel:IsA("TextLabel") and mutateLabel.Text ~= "" then
+                                            -- This egg has a mutation, try to buy it
+                                            print("Auto Quest: Found mutated egg, attempting to buy: " .. eggModel.Name)
+                                            
+                                            local buySuccess = pcall(function()
+                                                local args = {"BuyEgg", eggModel.Name}
+                                                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                                            end)
+                                            
+                                            if buySuccess then
+                                                -- Focus the egg after buying
+                                                wait(0.2)
+                                                focusItem(eggModel.Name)
+                                                actionCounter = actionCounter + 1
+                                                print("Auto Quest: Successfully bought mutated egg: " .. eggModel.Name)
+                                                return true, "Bought mutated egg: " .. eggModel.Name
+                                            else
+                                                print("Auto Quest: Failed to buy mutated egg: " .. eggModel.Name)
+                                            end
+                                        end
+                                    end
                                 end
                             end
                         end
@@ -611,17 +613,9 @@ local function buyMutatedEgg()
                 end
             end
         end
-        
-        return false
-    end)
-    
-    -- Return both success status and whether a mutated egg was found
-    if not success then
-        warn("Error in buyMutatedEgg: " .. tostring(foundMutatedEgg))
-        return false, "Error occurred"
     end
     
-    return foundMutatedEgg, foundMutatedEgg and "Bought mutated egg" or "Waiting for mutated egg"
+    return false, "No mutated eggs found on conveyor"
 end
 
 local function saveAutomationStates()
