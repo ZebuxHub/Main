@@ -994,7 +994,7 @@ function AutoQuestSystem.Init(dependencies)
     
     -- Status display
     questStatusParagraph = QuestTab:Paragraph({
-        Title = "📝 Quest Status",
+        Title = "Quest List:",
         Desc = "Loading quest information...",
         Image = "clipboard-list",
         ImageSize = 22
