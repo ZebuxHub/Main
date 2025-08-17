@@ -215,7 +215,6 @@ end
 -- Auto state variables (declared early so close handler can reference)
 
 local autoFeedEnabled = false
-local autoQuestEnabled = false
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local autoHatchEnabled = false
@@ -1601,6 +1600,15 @@ local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubuserconten
 local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSystem.lua"))()
 -- FruitStoreSystem functions are now implemented locally in the auto buy fruit section
 local AutoQuestSystem = nil
+-- Auto Quest variables (will be set by the system)
+local autoQuestEnabled = false
+local autoQuestThread = nil
+local autoQuestToggle = nil
+local targetPlayerDropdown = nil
+local sendEggDropdown = nil
+local sellPetDropdown = nil
+local claimAllToggle = nil
+local refreshToggle = nil
 
 -- UI state
 local eggSelectionVisible = false
@@ -1674,42 +1682,32 @@ local autoFeedThread = nil
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
     
-    -- Check if we're in BuyMutateEgg mode
-    if _G.buyMutateEggMode then
+    -- Read Type first - check if this is the egg type we want
+    local eggType = eggInstance:GetAttribute("Type")
+        or eggInstance:GetAttribute("EggType")
+        or eggInstance:GetAttribute("Name")
+    if not eggType then return false, nil, nil end
+    eggType = tostring(eggType)
+    
+    -- If eggs are selected, check if this is the type we want
+    if selectedTypeSet and next(selectedTypeSet) then
+    if not selectedTypeSet[eggType] then return false, nil, nil end
+    end
+    
+    -- Now check mutation if mutations are selected
+    if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutation(eggInstance.Name)
-        -- Only buy eggs with mutations
-        if not eggMutation or eggMutation == "" then
+        
+        if not eggMutation then
+            -- If mutations are selected but egg has no mutation, skip this egg
             return false, nil, nil
         end
-        -- Skip type/mutation filters in BuyMutateEgg mode
-    else
-        -- Read Type first - check if this is the egg type we want
-        local eggType = eggInstance:GetAttribute("Type")
-            or eggInstance:GetAttribute("EggType")
-            or eggInstance:GetAttribute("Name")
-        if not eggType then return false, nil, nil end
-        eggType = tostring(eggType)
         
-        -- If eggs are selected, check if this is the type we want
-        if selectedTypeSet and next(selectedTypeSet) then
-        if not selectedTypeSet[eggType] then return false, nil, nil end
-        end
-        
-        -- Now check mutation if mutations are selected
-        if selectedMutationSet and next(selectedMutationSet) then
-            local eggMutation = getEggMutation(eggInstance.Name)
-            
-            if not eggMutation then
-                -- If mutations are selected but egg has no mutation, skip this egg
-                return false, nil, nil
-            end
-            
-            -- Check if egg has a selected mutation
-                               -- getEggMutation handles "Dino" -> "Jurassic" conversion
-                       if not selectedMutationSet[eggMutation] then
-                           return false, nil, nil
-                       end
-        end
+        -- Check if egg has a selected mutation
+                           -- getEggMutation handles "Dino" -> "Jurassic" conversion
+                   if not selectedMutationSet[eggMutation] then
+                       return false, nil, nil
+                   end
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -2882,7 +2880,6 @@ Window:OnClose(function()
     autoBuyEnabled = false
     autoPlaceEnabled = false
     autoFeedEnabled = false
-    autoQuestEnabled = false
 end)
 
 
@@ -3499,10 +3496,16 @@ local function registerUIElements()
     registerIfExists("autoUpgradeEnabled", autoUpgradeToggle)
     registerIfExists("autoBuyFruitEnabled", autoBuyFruitToggle)
     registerIfExists("autoFeedEnabled", autoFeedToggle)
+    registerIfExists("autoQuestEnabled", autoQuestToggle)
     
     -- Register dropdowns
     registerIfExists("placeEggDropdown", placeEggDropdown)
     registerIfExists("placeMutationDropdown", placeMutationDropdown)
+    registerIfExists("targetPlayerDropdown", targetPlayerDropdown)
+    registerIfExists("sendEggDropdown", sendEggDropdown)
+    registerIfExists("sellPetDropdown", sellPetDropdown)
+    registerIfExists("claimAllToggle", claimAllToggle)
+    registerIfExists("refreshToggle", refreshToggle)
     -- priorityDropdown removed
     
     -- Register sliders/inputs
@@ -3806,33 +3809,31 @@ task.spawn(function()
     -- Register all UI elements with WindUI config
     registerUIElements()
 
-    -- Load local AutoQuest module and initialize its UI. Keep it after base UI exists so it can attach to Window and Config
+    -- Load local AutoQuest module and initialize its UI
     pcall(function()
         local autoQuestModule = nil
         -- Try local file first (if present in environment with filesystem)
         if isfile and isfile("AutoQuestSystem.lua") then
             autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
         end
-        -- Fallback: let user host in their repo if preferred (commented)
-        -- if not autoQuestModule then
-        --     autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
-        -- end
+
         if autoQuestModule and autoQuestModule.Init then
-            -- Make global variables accessible to AutoQuestSystem
-            _G.autoBuyEnabled = autoBuyEnabled
-            _G.autoPlaceEnabled = autoPlaceEnabled
-            _G.autoHatchEnabled = autoHatchEnabled
-            _G.autoBuyToggle = autoBuyToggle
-            _G.autoPlaceToggle = autoPlaceToggle
-            _G.autoHatchToggle = autoHatchToggle
-            _G.WindUI = WindUI
-            
-            AutoQuestSystem = autoQuestModule.Init({
+            local questUI = autoQuestModule.Init({
                 WindUI = WindUI,
                 Window = Window,
                 Config = zebuxConfig,
                 waitForSettingsReady = waitForSettingsReady,
             })
+            
+            -- Store UI elements for config registration
+            if questUI then
+                autoQuestToggle = questUI.questToggle
+                targetPlayerDropdown = questUI.targetPlayerDropdown
+                sendEggDropdown = questUI.sendEggDropdown
+                sellPetDropdown = questUI.sellPetDropdown
+                claimAllToggle = questUI.claimAllToggle
+                refreshToggle = questUI.refreshToggle
+            end
         end
     end)
     
