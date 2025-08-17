@@ -3360,6 +3360,38 @@ Tabs.SaveTab:Button({
     end
 })
 
+-- Debug button for auto feed system
+Tabs.FeedTab:Button({
+    Title = "🔍 Debug Auto Feed System",
+    Desc = "Check auto feed system status and troubleshoot issues",
+    Callback = function()
+        -- Call the debug function from AutoFeedSystem
+        if AutoFeedSystem and AutoFeedSystem.debugAutoFeed then
+            AutoFeedSystem.debugAutoFeed()
+        else
+            WindUI:Notify({ Title = "🔍 Auto Feed Debug", Content = "AutoFeedSystem not loaded", Duration = 3 })
+        end
+        
+        -- Also show current status
+        local message = string.format("🍽️ Auto Feed System Debug:\n")
+        message = message .. string.format("🔄 Auto Feed Enabled: %s\n", tostring(autoFeedEnabled))
+        message = message .. string.format("🧵 Auto Feed Thread: %s\n", tostring(autoFeedThread ~= nil))
+        message = message .. string.format("🍎 Selected Feed Fruits: %d\n", selectedFeedFruits and next(selectedFeedFruits) and 1 or 0)
+        
+        if selectedFeedFruits and next(selectedFeedFruits) then
+            local fruitList = {}
+            for fruitName, _ in pairs(selectedFeedFruits) do
+                table.insert(fruitList, fruitName)
+            end
+            message = message .. string.format("📋 Selected: %s", table.concat(fruitList, ", "))
+        else
+            message = message .. string.format("📋 Selected: None")
+        end
+        
+        WindUI:Notify({ Title = "🍽️ Auto Feed Debug", Content = message, Duration = 8 })
+    end
+})
+
 -- ============ Config System ============
 -- Create config manager
 local ConfigManager = Window.ConfigManager
