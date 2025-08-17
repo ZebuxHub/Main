@@ -97,6 +97,12 @@ local sessionLimits = {
 -- Saved automation states for restoration
 local savedStates = {}
 
+-- Status tracking for BuyMutateEgg task
+local buyMutateEggStatus = "Ready"
+local buyMutateEggRetries = 0
+local maxBuyMutateRetries = 30 -- Give up after 30 attempts (30 seconds)
+local buyMutateEggThread = nil -- Background thread for continuous monitoring
+
 -- UI elements (will be assigned during Init)
 local questToggle = nil
 local claimReadyToggle = nil
@@ -287,8 +293,8 @@ local function getCurrentTasks()
     local success, err = pcall(function()
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if not playerGui then return end
-        
-        local data = playerGui:FindFirstChild("Data")
+    
+    local data = playerGui:FindFirstChild("Data")
         if not data then return end
         
         local taskData = data:FindFirstChild("DinoEventTaskData")
@@ -523,8 +529,7 @@ local function enableHatchingAutomation()
     if autoHatchToggle and autoHatchToggle.SetValue then autoHatchToggle:SetValue(true) end
 end
 
--- Add status tracking for BuyMutateEgg task
-local buyMutateEggStatus = "Ready"
+
 
 local function updateQuestStatus()
     if not questStatusParagraph then return end
@@ -618,7 +623,7 @@ local function executeQuestTasks()
     while questEnabled do
         local tasks = getCurrentTasks()
         if #tasks == 0 then
-            task.wait(5)
+            wait(5)
             continue
         end
         
@@ -654,7 +659,7 @@ local function executeQuestTasks()
             -- Check if task is ready to claim
             if progress >= target and claimed < maxClaimed then
                 claimTask(task.Id)
-                task.wait(1)
+                wait(1)
             -- Skip completed tasks
             elseif claimed >= maxClaimed then
                 -- Task is completed, skip to next
@@ -665,13 +670,21 @@ local function executeQuestTasks()
                 if task.CompleteType == "HatchEgg" then
                     saveAutomationStates()
                     enableHatchingAutomation()
-                    -- Let existing automation handle hatching
-                    task.wait(2)
+                    
+                    -- Check if we have eggs to hatch
+                    local eggInventory = getEggInventory()
+                    if #eggInventory > 0 then
+                        -- Let existing automation handle hatching
+                        wait(2)
+                    else
+                        -- No eggs available, skip to next task
+                        wait(0.5) -- Brief pause before checking other tasks
+                    end
                     
                 elseif task.CompleteType == "SendEgg" then
                     local eggInventory = getEggInventory()
                     if #eggInventory == 0 then
-                        task.wait(2)
+                        wait(2)
                     else
                         local excludeTypes = {}
                         local excludeMutations = {}
@@ -715,25 +728,25 @@ local function executeQuestTasks()
                                 
                                 if targetPlayer then
                                     sendEggToPlayer(eggToSend.uid, targetPlayer)
-                                    task.wait(1)
+                                    wait(1)
                                 else
                                     -- Player not found, try random
                                     targetPlayer = getRandomPlayer()
                                     if targetPlayer then
                                         sendEggToPlayer(eggToSend.uid, targetPlayer)
-                                        task.wait(1)
+                                        wait(1)
                                     end
                                 end
                             end
                         else
-                            task.wait(5)
+                            wait(5)
+                            end
                         end
-                    end
-                
+                        
                 elseif task.CompleteType == "SellPet" then
                     local petInventory = getPetInventory()
                     if #petInventory == 0 then
-                        task.wait(2)
+                        wait(2)
                     else
                         local excludeTypes = {}
                         local excludeMutations = {}
@@ -762,26 +775,20 @@ local function executeQuestTasks()
                             
                             if petToSell then
                                 sellPet(petToSell.uid)
-                                task.wait(1)
+                                wait(1)
                             end
                         else
-                            task.wait(5)
+                            wait(5)
                         end
                     end
                     
                 elseif task.CompleteType == "BuyMutateEgg" then
-                    local buySuccess, statusMessage = buyMutatedEgg()
-                    buyMutateEggStatus = statusMessage or "Waiting for mutated egg"
-                    
-                    if buySuccess then
-                        task.wait(1) -- Shorter wait if successful
-                    else
-                        task.wait(3) -- Longer wait if no mutated eggs found
-                    end
+                    -- BuyMutateEgg runs in background thread, just skip here
+                    -- The background monitor will handle buying and auto-claiming
                     
                 elseif task.CompleteType == "OnlineTime" then
                     -- Just wait and claim when ready
-                    task.wait(5)
+                    wait(5)
                 end
             end
         end
@@ -792,9 +799,9 @@ local function executeQuestTasks()
         if not anyTaskActive then
             -- All tasks completed, restore automation states
             restoreAutomationStates()
-            task.wait(10)
+            wait(10)
         else
-            task.wait(1)
+            wait(1)
         end
     end
     
@@ -804,87 +811,150 @@ end
 
 -- Auto claim function
 local function runAutoClaimReady()
-    while questEnabled and claimReadyToggle do
+    while questEnabled do
+        if not claimReadyToggle then
+            wait(1)
+            continue
+        end
+        
         local claimEnabled = false
         if claimReadyToggle.GetValue then
             local success, result = pcall(function() return claimReadyToggle:GetValue() end)
             claimEnabled = success and result or false
         end
         
-        if not claimEnabled then
-            task.wait(3)
-            continue
-        end
-        
-        local tasks = getCurrentTasks()
-        
-        for _, task in ipairs(tasks) do
-            local progress = task.Progress or 0
-            local target = task.CompleteValue or 1
-            local claimed = task.ClaimedCount or 0
-            local maxClaimed = task.RepeatCount or 1
+        if claimEnabled then
+            local tasks = getCurrentTasks()
             
-            if progress >= target and claimed < maxClaimed then
-                claimTask(task.Id)
+            for _, task in ipairs(tasks) do
+                local progress = task.Progress or 0
+                local target = task.CompleteValue or 1
+                local claimed = task.ClaimedCount or 0
+                local maxClaimed = task.RepeatCount or 1
+                
+                if progress >= target and claimed < maxClaimed then
+                    claimTask(task.Id)
+                    wait(0.5) -- Small delay between claims
+                end
             end
         end
         
-        task.wait(3)
+        wait(2) -- Check every 2 seconds
+    end
+end
+
+-- Background BuyMutateEgg monitor
+local function runBuyMutateEggMonitor()
+    while questEnabled do
+        local tasks = getCurrentTasks()
+        local hasBuyMutateTask = false
+        
+        -- Check if we have an active BuyMutateEgg task
+        for _, task in ipairs(tasks) do
+            if task.CompleteType == "BuyMutateEgg" then
+                local progress = task.Progress or 0
+                local target = task.CompleteValue or 1
+                local claimed = task.ClaimedCount or 0
+                local maxClaimed = task.RepeatCount or 1
+                
+                -- Only monitor if task is not completed
+                if progress < target and claimed < maxClaimed then
+                    hasBuyMutateTask = true
+                    
+                    -- Try to buy mutated egg in background
+                    local buySuccess, statusMessage = buyMutatedEgg()
+                    
+                    if buySuccess then
+                        buyMutateEggStatus = "Found mutated egg! Auto-claiming..."
+                        buyMutateEggRetries = 0
+                        
+                        -- Auto-claim the task
+                        wait(1) -- Brief delay to ensure egg is processed
+                        claimTask(task.Id)
+                        buyMutateEggStatus = "Mutated egg claimed!"
+                        wait(2) -- Brief celebration pause
+                    else
+                        buyMutateEggRetries = buyMutateEggRetries + 1
+                        
+                        if buyMutateEggRetries >= maxBuyMutateRetries then
+                            buyMutateEggStatus = "No mutated eggs found - taking break"
+                            buyMutateEggRetries = 0
+                            wait(30) -- Take a break
+                        else
+                            buyMutateEggStatus = string.format("Monitoring for mutated eggs (%d/%d)", 
+                                buyMutateEggRetries, maxBuyMutateRetries)
+                        end
+                    end
+                    break
+                end
+            end
+        end
+        
+        if not hasBuyMutateTask then
+            buyMutateEggStatus = "No BuyMutateEgg task active"
+            wait(5) -- Check less frequently when no task
+        else
+            wait(2) -- Check every 2 seconds when monitoring
+        end
     end
 end
 
 -- Auto refresh function
 local function runAutoRefreshTasks()
-    while questEnabled and refreshTaskToggle do
+    while questEnabled do
+        if not refreshTaskToggle then
+            wait(5)
+            continue
+        end
+        
         local refreshEnabled = false
         if refreshTaskToggle.GetValue then
             local success, result = pcall(function() return refreshTaskToggle:GetValue() end)
             refreshEnabled = success and result or false
         end
         
-        if not refreshEnabled then
-            task.wait(10)
-            continue
+        if refreshEnabled then
+            -- Update quest status
+            updateQuestStatus()
+            
+            -- Refresh dropdowns (use SetValues method for WindUI)
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            end
+            
+            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
+                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
+            end
+            
+            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
+                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
+            end
+            
+            if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
+                pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
+            end
+            
+            if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
+                pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
+            end
         end
         
-        updateQuestStatus()
-        
-        -- Refresh dropdowns (use SetValues method for WindUI)
-        if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-            pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
-        end
-        
-        if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-            pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
-        end
-        
-        if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-            pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
-        end
-        
-        if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
-            pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
-        end
-        
-        if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
-            pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
-        end
-        
-        task.wait(10)
+        wait(5) -- Refresh every 5 seconds
     end
 end
 
 -- Main quest execution function
 local function runAutoQuest()
-    -- Start the auto claim and refresh threads when quest starts
+    -- Start the auto claim, refresh, and BuyMutateEgg monitor threads when quest starts
     local claimThread = task.spawn(runAutoClaimReady)
     local refreshThread = task.spawn(runAutoRefreshTasks)
+    buyMutateEggThread = task.spawn(runBuyMutateEggMonitor)
     
     while questEnabled do
         local ok, err = pcall(executeQuestTasks)
         if not ok then
             warn("Auto Quest error: " .. tostring(err))
-            task.wait(5)
+            wait(5)
         end
     end
     
@@ -897,6 +967,11 @@ local function runAutoQuest()
     pcall(function() 
         if refreshThread then
             task.cancel(refreshThread)
+        end
+    end)
+    pcall(function() 
+        if buyMutateEggThread then
+            task.cancel(buyMutateEggThread)
         end
     end)
 end
@@ -915,7 +990,7 @@ function AutoQuestSystem.Init(dependencies)
     getAutoHatchEnabled = dependencies.getAutoHatchEnabled
     
     -- Create the Quest tab
-    local QuestTab = Window:Tab({ Title = "📝 | Auto Quest", Icon = "clipboard-list" })
+    local QuestTab = Window:Tab({ Title = "📝 | Auto Quest"})
     
     -- Status display
     questStatusParagraph = QuestTab:Paragraph({
