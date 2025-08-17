@@ -58,9 +58,9 @@ Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 -- Function to load all saved settings before any function starts
 local function loadAllSettings()
     -- Load WindUI config for simple UI elements
-    if zooConfig then
+    if zebuxConfig then
         local loadSuccess, loadErr = pcall(function()
-            zooConfig:Load()
+            zebuxConfig:Load()
         end)
         
         if not loadSuccess then
@@ -147,9 +147,9 @@ end
 -- Function to save all settings (WindUI config + custom selections)
 local function saveAllSettings()
     -- Save WindUI config for simple UI elements
-    if zooConfig then
+    if zebuxConfig then
         local saveSuccess, saveErr = pcall(function()
-            zooConfig:Save()
+            zebuxConfig:Save()
         end)
         
         if not saveSuccess then
@@ -1661,11 +1661,6 @@ local autoBuyThread = nil
 -- Auto Feed variables
 local autoFeedEnabled = false
 local autoFeedThread = nil
--- Auto Quest integration variables
-local autoQuestEnabled = false
-local autoQuestThread = nil
-local originalAutoStates = {} -- Store original states when quest takes over
-local questTaskActive = false -- Flag to indicate quest is controlling other systems
 
 -- Feed status tracking removed per user request
 
@@ -2876,7 +2871,6 @@ Window:OnClose(function()
     autoBuyEnabled = false
     autoPlaceEnabled = false
     autoFeedEnabled = false
-    autoQuestEnabled = false
 end)
 
 
@@ -3493,14 +3487,11 @@ local function registerUIElements()
     registerIfExists("autoUpgradeEnabled", autoUpgradeToggle)
     registerIfExists("autoBuyFruitEnabled", autoBuyFruitToggle)
     registerIfExists("autoFeedEnabled", autoFeedToggle)
-    -- Auto Quest toggle is registered within AutoQuestSystem.Init()
     
     -- Register dropdowns
     registerIfExists("placeEggDropdown", placeEggDropdown)
     registerIfExists("placeMutationDropdown", placeMutationDropdown)
     -- priorityDropdown removed
-    
-    -- Auto Quest elements are registered within AutoQuestSystem.Init()
     
     -- Register sliders/inputs
     registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
@@ -3808,30 +3799,32 @@ task.spawn(function()
         local autoQuestModule = nil
         -- Try local file first (if present in environment with filesystem)
         if isfile and isfile("AutoQuestSystem.lua") then
-            autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
+            autoQuestModule = loadstring(readfile("AutoQuestSystem.lua"))()
         end
-        -- Fallback: let user host in their repo if preferred (commented)
-        -- if not autoQuestModule then
-        --     autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
-        -- end
+        -- Fallback: try from same directory
+        if not autoQuestModule then
+            local success, result = pcall(function()
+                return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
+            end)
+            if success then
+                autoQuestModule = result
+            end
+        end
         if autoQuestModule and autoQuestModule.Init then
-                         AutoQuestSystem = autoQuestModule.Init({
-                 WindUI = WindUI,
-                 Window = Window,
-                 Config = zebuxConfig,
-                 waitForSettingsReady = waitForSettingsReady,
-                 -- Pass references to existing auto systems for quest integration
-                 autoBuyEnabled = autoBuyEnabled,
-                 autoPlaceEnabled = autoPlaceEnabled,
-                 autoHatchEnabled = autoHatchEnabled,
-                 setAutoBuyEnabled = function(state) autoBuyEnabled = state end,
-                 setAutoPlaceEnabled = function(state) autoPlaceEnabled = state end,
-                 setAutoHatchEnabled = function(state) autoHatchEnabled = state end,
-                 -- Pass UI elements for quest to control
-                 autoBuyToggle = autoBuyToggle,
-                 autoPlaceToggle = autoPlaceToggle,
-                 autoHatchToggle = autoHatchToggle
-             })
+            AutoQuestSystem = autoQuestModule.Init({
+                WindUI = WindUI,
+                Window = Window,
+                Config = zebuxConfig,
+                waitForSettingsReady = waitForSettingsReady,
+                -- Pass existing automation references so AutoQuest can control them
+                autoBuyToggle = autoBuyToggle,
+                autoPlaceToggle = autoPlaceToggle,
+                autoHatchToggle = autoHatchToggle,
+                -- Pass automation state variables
+                getAutoBuyEnabled = function() return autoBuyEnabled end,
+                getAutoPlaceEnabled = function() return autoPlaceEnabled end,
+                getAutoHatchEnabled = function() return autoHatchEnabled end,
+            })
         end
     end)
     
