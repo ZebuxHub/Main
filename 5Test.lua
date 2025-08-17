@@ -1141,6 +1141,11 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     end
 })
 
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoClaimEnabled", autoClaimToggle)
+end
+
 local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Title = "⏰ Claim Speed",
     Desc = "How fast to collect money (lower = faster)",
@@ -1420,6 +1425,11 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
         end
     end
 })
+
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoHatchEnabled", autoHatchToggle)
+end
 
 Tabs.HatchTab:Button({
     Title = "⚡ Hatch Nearest Egg",
@@ -1815,6 +1825,11 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
         end
     end
 })
+
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoBuyEnabled", autoBuyToggle)
+end
 
 -- Auto Feed Functions moved to AutoFeedSystem.lua
 
@@ -2460,6 +2475,11 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     end
 })
 
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
+end
+
 
 -- Auto Unlock Tile functionality
 local autoUnlockEnabled = false
@@ -2591,6 +2611,11 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
         end
     end
 })
+
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoUnlockEnabled", autoUnlockToggle)
+end
 
 Tabs.PlaceTab:Button({
     Title = "🔓 Unlock All Affordable Now",
@@ -2769,6 +2794,11 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     end
 })
 
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
+end
+
 -- Anchor workflow removed (no longer needed)
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
 
@@ -2894,6 +2924,11 @@ local autoDinoToggle = Tabs.PackTab:Toggle({
     end
 })
 
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoDinoEnabled", autoDinoToggle)
+end
+
 Tabs.PackTab:Button({
     Title = "🦕 Claim Dino Now",
     Desc = "Claim dino pack right now (if available)",
@@ -3003,6 +3038,11 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     end
 })
 
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
+end
+
 Tabs.ShopTab:Button({
     Title = "🛒 Upgrade All Now",
     Desc = "Upgrade everything you can afford right now",
@@ -3100,6 +3140,13 @@ local function getPlayerNetWorth()
     local player = Players.LocalPlayer
     if not player then return 0 end
     
+    -- First try to get from Attributes (as you mentioned)
+    local attrValue = player:GetAttribute("NetWorth")
+    if type(attrValue) == "number" then 
+        return attrValue 
+    end
+    
+    -- Fallback to leaderstats
     local leaderstats = player:FindFirstChild("leaderstats")
     if not leaderstats then return 0 end
     
@@ -3128,10 +3175,20 @@ local function getFoodStoreUI()
 end
 
 local function getFoodStoreLST()
-    local foodStoreUI = getFoodStoreUI()
-    if not foodStoreUI then return nil end
+    local player = Players.LocalPlayer
+    if not player then return nil end
     
-    return foodStoreUI:FindFirstChild("LST")
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return nil end
+    
+    local foodStore = data:FindFirstChild("FoodStore")
+    if not foodStore then return nil end
+    
+    local lst = foodStore:FindFirstChild("LST")
+    return lst
 end
 
 local function isFruitInStock(fruitId)
@@ -3145,6 +3202,13 @@ local function isFruitInStock(fruitId)
     table.insert(candidates, string.lower(underscoreVersion))
     
     for _, candidate in ipairs(candidates) do
+        -- First try to get from Attributes (as you mentioned)
+        local stockValue = lst:GetAttribute(candidate)
+        if type(stockValue) == "number" and stockValue > 0 then
+            return true
+        end
+        
+        -- Fallback to TextLabel
         local stockLabel = lst:FindFirstChild(candidate)
         if stockLabel and stockLabel:IsA("TextLabel") then
             local stockText = stockLabel.Text
@@ -3212,14 +3276,19 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
                     else
                         task.wait(2)
                     end
-                end
-            end)
+        end
+    end)
             WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
         elseif (not state) and autoBuyFruitThread then
             WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
         end
     end
 })
+
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
+end
 
 -- Debug button for auto buy fruit
 Tabs.FruitTab:Button({
@@ -3257,6 +3326,37 @@ Tabs.FruitTab:Button({
         end
         
         WindUI:Notify({ Title = "🔍 Auto Buy Fruit Debug", Content = message, Duration = 8 })
+    end
+})
+
+-- Debug button for toggle loading
+Tabs.SaveTab:Button({
+    Title = "🔍 Debug Toggle Loading",
+    Desc = "Check if toggles are loading correctly",
+    Callback = function()
+        local message = string.format("🔧 Toggle Loading Debug:\n")
+        message = message .. string.format("⚙️ Config Manager: %s\n", tostring(zooConfig ~= nil))
+        message = message .. string.format("🥚 Auto Buy Toggle: %s\n", tostring(autoBuyToggle ~= nil))
+        message = message .. string.format("🏠 Auto Place Toggle: %s\n", tostring(autoPlaceToggle ~= nil))
+        message = message .. string.format("⚡ Auto Hatch Toggle: %s\n", tostring(autoHatchToggle ~= nil))
+        message = message .. string.format("💰 Auto Claim Toggle: %s\n", tostring(autoClaimToggle ~= nil))
+        message = message .. string.format("🛒 Auto Upgrade Toggle: %s\n", tostring(autoUpgradeToggle ~= nil))
+        message = message .. string.format("🦕 Auto Dino Toggle: %s\n", tostring(autoDinoToggle ~= nil))
+        message = message .. string.format("🍎 Auto Buy Fruit Toggle: %s\n", tostring(autoBuyFruitToggle ~= nil))
+        message = message .. string.format("🍽️ Auto Feed Toggle: %s\n", tostring(autoFeedToggle ~= nil))
+        
+        -- Check toggle states
+        message = message .. string.format("\n📊 Toggle States:\n")
+        message = message .. string.format("🥚 Auto Buy: %s\n", tostring(autoBuyEnabled))
+        message = message .. string.format("🏠 Auto Place: %s\n", tostring(autoPlaceEnabled))
+        message = message .. string.format("⚡ Auto Hatch: %s\n", tostring(autoHatchEnabled))
+        message = message .. string.format("💰 Auto Claim: %s\n", tostring(autoClaimEnabled))
+        message = message .. string.format("🛒 Auto Upgrade: %s\n", tostring(autoUpgradeEnabled))
+        message = message .. string.format("🦕 Auto Dino: %s\n", tostring(autoDinoEnabled))
+        message = message .. string.format("🍎 Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
+        message = message .. string.format("🍽️ Auto Feed: %s\n", tostring(autoFeedEnabled))
+        
+        WindUI:Notify({ Title = "🔧 Toggle Loading Debug", Content = message, Duration = 8 })
     end
 })
 
@@ -3330,11 +3430,11 @@ Tabs.SaveTab:Button({
         end)
         
         if success then
-            WindUI:Notify({ 
-                Title = "💾 Settings Saved", 
-                Content = "All your settings have been saved! 🎉", 
-                Duration = 3 
-            })
+        WindUI:Notify({ 
+            Title = "💾 Settings Saved", 
+            Content = "All your settings have been saved! 🎉", 
+            Duration = 3 
+        })
         else
             WindUI:Notify({ 
                 Title = "❌ Save Failed", 
@@ -3354,11 +3454,11 @@ Tabs.SaveTab:Button({
         end)
         
         if success then
-            WindUI:Notify({ 
-                Title = "📂 Settings Loaded", 
-                Content = "Your settings have been loaded! 🎉", 
-                Duration = 3 
-            })
+        WindUI:Notify({ 
+            Title = "📂 Settings Loaded", 
+            Content = "Your settings have been loaded! 🎉", 
+            Duration = 3 
+        })
         else
             WindUI:Notify({ 
                 Title = "❌ Load Failed", 
@@ -3474,18 +3574,9 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Register config elements and auto-load when script starts
+-- Auto-load settings after all UI elements are created
 task.spawn(function()
-    task.wait(2) -- Wait longer for UI to fully load
-    
-    -- Register config elements
-    local success, err = pcall(function()
-        registerConfigElements()
-    end)
-    
-    if not success then
-        warn("Failed to register config elements: " .. tostring(err))
-    end
+    task.wait(1) -- Wait for UI to fully load
     
     -- Load all settings (WindUI config + custom selections)
     local loadSuccess, loadErr = pcall(function()
@@ -3566,6 +3657,11 @@ end)
         end
     end
 })
+
+-- Register with config system
+if zooConfig then
+    zooConfig:Register("autoFeedEnabled", autoFeedToggle)
+end
 
 -- Bug report system removed per user request
 
