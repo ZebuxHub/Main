@@ -44,7 +44,135 @@ Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
 -- Bug tab removed per user request
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
--- Function to load all saved settings before any function starts (moved to end of file)
+-- Function to load all saved settings before any function starts
+local function loadAllSettings()
+    -- Load WindUI config for simple UI elements
+    if zooConfig then
+        local loadSuccess, loadErr = pcall(function()
+            zooConfig:Load()
+        end)
+        
+        if not loadSuccess then
+            warn("Failed to load WindUI config: " .. tostring(loadErr))
+        end
+    end
+    
+    -- Load custom selection variables from JSON files
+    local success, data = pcall(function()
+        if isfile("Zebux_EggSelections.json") then
+            local jsonData = readfile("Zebux_EggSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if success and data then
+        selectedTypeSet = {}
+        if data.eggs then
+            for _, eggId in ipairs(data.eggs) do
+                selectedTypeSet[eggId] = true
+            end
+        end
+        
+        selectedMutationSet = {}
+        if data.mutations then
+            for _, mutationId in ipairs(data.mutations) do
+                selectedMutationSet[mutationId] = true
+            end
+        end
+    end
+    
+    -- Load fruit selections
+    local fruitSuccess, fruitData = pcall(function()
+        if isfile("Zebux_FruitSelections.json") then
+            local jsonData = readfile("Zebux_FruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if fruitSuccess and fruitData then
+        selectedFruits = {}
+        if fruitData.fruits then
+            for _, fruitId in ipairs(fruitData.fruits) do
+                selectedFruits[fruitId] = true
+            end
+        end
+    end
+    
+    -- Load feed fruit selections
+    local feedFruitSuccess, feedFruitData = pcall(function()
+        if isfile("Zebux_FeedFruitSelections.json") then
+            local jsonData = readfile("Zebux_FeedFruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if feedFruitSuccess and feedFruitData then
+        selectedFeedFruits = {}
+        if feedFruitData.fruits then
+            for _, fruitId in ipairs(feedFruitData.fruits) do
+                selectedFeedFruits[fruitId] = true
+            end
+        end
+    end
+end
+
+-- Function to save all settings (WindUI config + custom selections)
+local function saveAllSettings()
+    -- Save WindUI config for simple UI elements
+    if zooConfig then
+        local saveSuccess, saveErr = pcall(function()
+            zooConfig:Save()
+        end)
+        
+        if not saveSuccess then
+            warn("Failed to save WindUI config: " .. tostring(saveErr))
+        end
+    end
+    
+    -- Save custom selection variables to JSON files
+    local eggSelections = {
+        eggs = {},
+        mutations = {}
+    }
+    
+    for eggId, _ in pairs(selectedTypeSet) do
+        table.insert(eggSelections.eggs, eggId)
+    end
+    
+    for mutationId, _ in pairs(selectedMutationSet) do
+        table.insert(eggSelections.mutations, mutationId)
+    end
+    
+    pcall(function()
+        writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
+    end)
+    
+    -- Save fruit selections
+    local fruitSelections = {
+        fruits = {}
+    }
+    
+    for fruitId, _ in pairs(selectedFruits) do
+        table.insert(fruitSelections.fruits, fruitId)
+    end
+    
+    pcall(function()
+        writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
+    end)
+    
+    -- Save feed fruit selections
+    local feedFruitSelections = {
+        fruits = {}
+    }
+    
+    for fruitId, _ in pairs(selectedFeedFruits) do
+        table.insert(feedFruitSelections.fruits, fruitId)
+    end
+    
+    pcall(function()
+        writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
+    end)
+end
 
 -- Auto state variables (declared early so close handler can reference)
 
@@ -998,6 +1126,8 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     Desc = "Automatically collects money from your pets",
     Value = false,
     Callback = function(state)
+        -- Load settings before starting
+        loadAllSettings()
         autoClaimEnabled = state
         if state and not autoClaimThread then
             autoClaimThread = task.spawn(function()
@@ -2749,6 +2879,8 @@ local autoDinoToggle = Tabs.PackTab:Toggle({
     Desc = "Automatically claims dino packs when ready (checks claim count)",
     Value = false,
     Callback = function(state)
+        -- Load settings before starting
+        loadAllSettings()
         autoDinoEnabled = state
         if state and not autoDinoThread then
             autoDinoThread = task.spawn(function()
@@ -2838,6 +2970,8 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     Desc = "Automatically upgrades conveyor when you have enough money",
     Value = false,
     Callback = function(state)
+        -- Load settings before starting
+        loadAllSettings()
         autoUpgradeEnabled = state
         if state and not autoUpgradeThread then
             autoUpgradeThread = task.spawn(function()
@@ -3037,6 +3171,8 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 local function registerConfigElements()
     if zooConfig then
         -- Only register simple UI elements that don't cause serialization issues
+        -- Complex selection tables (selectedTypeSet, selectedMutationSet, selectedFruits, selectedFeedFruits) 
+        -- are handled by custom JSON save/load system
         if autoBuyToggle then zooConfig:Register("autoBuyEnabled", autoBuyToggle) end
         if autoPlaceToggle then zooConfig:Register("autoPlaceEnabled", autoPlaceToggle) end
         if autoHatchToggle then zooConfig:Register("autoHatchEnabled", autoHatchToggle) end
@@ -3092,49 +3228,7 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         local success, err = pcall(function()
-            if zooConfig then
-                zooConfig:Save()
-                
-                -- Save custom selection variables separately
-                local eggSelections = {
-                    eggs = {},
-                    mutations = {}
-                }
-                
-                for eggId, _ in pairs(selectedTypeSet) do
-                    table.insert(eggSelections.eggs, eggId)
-                end
-                
-                for mutationId, _ in pairs(selectedMutationSet) do
-                    table.insert(eggSelections.mutations, mutationId)
-                end
-                
-                writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
-                
-                -- Save fruit selections
-                local fruitSelections = {
-                    fruits = {}
-                }
-                
-                for fruitId, _ in pairs(selectedFruits) do
-                    table.insert(fruitSelections.fruits, fruitId)
-                end
-                
-                writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
-                
-                -- Save feed fruit selections
-                local feedFruitSelections = {
-                    fruits = {}
-                }
-                
-                for fruitId, _ in pairs(selectedFeedFruits) do
-                    table.insert(feedFruitSelections.fruits, fruitId)
-                end
-                
-                writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
-            else
-                error("Config manager not available")
-            end
+            saveAllSettings()
         end)
         
         if success then
@@ -3158,69 +3252,7 @@ Tabs.SaveTab:Button({
     Desc = "Load your saved settings",
     Callback = function()
         local success, err = pcall(function()
-            if zooConfig then
-                zooConfig:Load()
-                
-                -- Load custom selection variables
-                local success, data = pcall(function()
-                    if isfile("Zebux_EggSelections.json") then
-                        local jsonData = readfile("Zebux_EggSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if success and data then
-                    selectedTypeSet = {}
-                    if data.eggs then
-                        for _, eggId in ipairs(data.eggs) do
-                            selectedTypeSet[eggId] = true
-                        end
-                    end
-                    
-                    selectedMutationSet = {}
-                    if data.mutations then
-                        for _, mutationId in ipairs(data.mutations) do
-                            selectedMutationSet[mutationId] = true
-                        end
-                    end
-                end
-                
-                -- Load fruit selections
-                local fruitSuccess, fruitData = pcall(function()
-                    if isfile("Zebux_FruitSelections.json") then
-                        local jsonData = readfile("Zebux_FruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if fruitSuccess and fruitData then
-                    selectedFruits = {}
-                    if fruitData.fruits then
-                        for _, fruitId in ipairs(fruitData.fruits) do
-                            selectedFruits[fruitId] = true
-                        end
-                    end
-                end
-                
-                -- Load feed fruit selections
-                local feedFruitSuccess, feedFruitData = pcall(function()
-                    if isfile("Zebux_FeedFruitSelections.json") then
-                        local jsonData = readfile("Zebux_FeedFruitSelections.json")
-                        return game:GetService("HttpService"):JSONDecode(jsonData)
-                    end
-                end)
-                
-                if feedFruitSuccess and feedFruitData then
-                    selectedFeedFruits = {}
-                    if feedFruitData.fruits then
-                        for _, fruitId in ipairs(feedFruitData.fruits) do
-                            selectedFeedFruits[fruitId] = true
-                        end
-                    end
-                end
-            else
-                error("Config manager not available")
-            end
+            loadAllSettings()
         end)
         
         if success then
@@ -3344,78 +3376,6 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Function to load all settings (WindUI config + custom selections)
-local function loadAllSettings()
-    -- Load WindUI config
-    if zooConfig then
-        local loadSuccess, loadErr = pcall(function()
-            zooConfig:Load()
-        end)
-        
-        if not loadSuccess then
-            warn("Failed to load WindUI config: " .. tostring(loadErr))
-        end
-    end
-    
-    -- Load custom selection variables
-    local success, data = pcall(function()
-        if isfile("Zebux_EggSelections.json") then
-            local jsonData = readfile("Zebux_EggSelections.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
-    end)
-    
-    if success and data then
-        selectedTypeSet = {}
-        if data.eggs then
-            for _, eggId in ipairs(data.eggs) do
-                selectedTypeSet[eggId] = true
-            end
-        end
-        
-        selectedMutationSet = {}
-        if data.mutations then
-            for _, mutationId in ipairs(data.mutations) do
-                selectedMutationSet[mutationId] = true
-            end
-        end
-    end
-    
-    -- Load fruit selections
-    local fruitSuccess, fruitData = pcall(function()
-        if isfile("Zebux_FruitSelections.json") then
-            local jsonData = readfile("Zebux_FruitSelections.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
-    end)
-    
-    if fruitSuccess and fruitData then
-        selectedFruits = {}
-        if fruitData.fruits then
-            for _, fruitId in ipairs(fruitData.fruits) do
-                selectedFruits[fruitId] = true
-            end
-        end
-    end
-    
-    -- Load feed fruit selections
-    local feedFruitSuccess, feedFruitData = pcall(function()
-        if isfile("Zebux_FeedFruitSelections.json") then
-            local jsonData = readfile("Zebux_FeedFruitSelections.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
-    end)
-    
-    if feedFruitSuccess and feedFruitData then
-        selectedFeedFruits = {}
-        if feedFruitData.fruits then
-            for _, fruitId in ipairs(feedFruitData.fruits) do
-                selectedFeedFruits[fruitId] = true
-            end
-        end
-    end
-end
-
 -- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
@@ -3429,14 +3389,20 @@ task.spawn(function()
         warn("Failed to register config elements: " .. tostring(err))
     end
     
-    -- Load all settings
-    loadAllSettings()
+    -- Load all settings (WindUI config + custom selections)
+    local loadSuccess, loadErr = pcall(function()
+        loadAllSettings()
+    end)
     
-    WindUI:Notify({ 
-        Title = "📂 Auto-Load", 
-        Content = "Your saved settings have been loaded! 🎉", 
-        Duration = 3 
-    })
+    if loadSuccess then
+        WindUI:Notify({ 
+            Title = "📂 Auto-Load", 
+            Content = "Your saved settings have been loaded! 🎉", 
+            Duration = 3 
+        })
+    else
+        warn("Failed to load settings: " .. tostring(loadErr))
+    end
 end)
 
 -- ============ Auto Feed Tab ============
