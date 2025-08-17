@@ -179,6 +179,7 @@ local isfile = isfile
 -- Forward declarations
 local findAndHatchReadyEggs
 local getOwnerUserIdDeep
+local buyAnyCheapestEgg
 
 -- Helper functions
 local function safeGetAttribute(instance, attributeName, default)
@@ -816,7 +817,22 @@ local function executeQuestTasks()
                 elseif task.CompleteType == "SendEgg" then
                     local eggInventory = getEggInventory()
                     if #eggInventory == 0 then
-                        wait(2)
+                        -- Check if Auto Buy is enabled - if so, let it handle buying
+                        if getAutoBuyEnabled and getAutoBuyEnabled() then
+                            print("Auto Quest SendEgg: Auto Buy is enabled, letting it handle egg purchases")
+                            wait(3) -- Wait longer for Auto Buy to work
+                        else
+                            -- No eggs available, try to buy one
+                            print("Auto Quest SendEgg: No eggs in inventory, trying to buy one")
+                            local buySuccess, buyMessage = buyAnyCheapestEgg()
+                            if buySuccess then
+                                print("Auto Quest SendEgg: " .. buyMessage)
+                                wait(1) -- Wait for purchase to process
+                            else
+                                print("Auto Quest SendEgg: Failed to buy egg - " .. buyMessage)
+                                wait(2)
+                            end
+                        end
                     else
                         local excludeTypes = {}
                         local excludeMutations = {}
@@ -1098,7 +1114,7 @@ local function getBestEggForPlacement()
 end
 
 -- Helper function to buy cheapest available egg
-local function buyAnyCheapestEgg()
+buyAnyCheapestEgg = function()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     
@@ -1541,10 +1557,15 @@ local function runBuyMutateEggMonitor()
                 if progress < target and claimed < maxClaimed then
                     hasBuyMutateTask = true
                     
-                    -- Try to buy mutated egg in background
-                    local buySuccess, statusMessage = buyMutatedEgg()
-                    
-                    if buySuccess then
+                    -- Check if Auto Buy is enabled - if so, let it handle buying
+                    if getAutoBuyEnabled and getAutoBuyEnabled() then
+                        buyMutateEggStatus = "Auto Buy is enabled - letting it handle purchases"
+                        wait(2)
+                    else
+                        -- Try to buy mutated egg in background
+                        local buySuccess, statusMessage = buyMutatedEgg()
+                        
+                        if buySuccess then
                         buyMutateEggStatus = "Found mutated egg! Auto-claiming..."
                         buyMutateEggRetries = 0
                         
@@ -1565,7 +1586,8 @@ local function runBuyMutateEggMonitor()
                                 buyMutateEggRetries, maxBuyMutateRetries)
                         end
                     end
-                    break
+                end
+                break
                 end
             end
         end
