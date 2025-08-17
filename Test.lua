@@ -215,6 +215,7 @@ end
 -- Auto state variables (declared early so close handler can reference)
 
 local autoFeedEnabled = false
+local autoQuestEnabled = false
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 local autoHatchEnabled = false
@@ -1673,32 +1674,42 @@ local autoFeedThread = nil
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
     
-    -- Read Type first - check if this is the egg type we want
-    local eggType = eggInstance:GetAttribute("Type")
-        or eggInstance:GetAttribute("EggType")
-        or eggInstance:GetAttribute("Name")
-    if not eggType then return false, nil, nil end
-    eggType = tostring(eggType)
-    
-    -- If eggs are selected, check if this is the type we want
-    if selectedTypeSet and next(selectedTypeSet) then
-    if not selectedTypeSet[eggType] then return false, nil, nil end
-    end
-    
-    -- Now check mutation if mutations are selected
-    if selectedMutationSet and next(selectedMutationSet) then
+    -- Check if we're in BuyMutateEgg mode
+    if _G.buyMutateEggMode then
         local eggMutation = getEggMutation(eggInstance.Name)
-        
-        if not eggMutation then
-            -- If mutations are selected but egg has no mutation, skip this egg
+        -- Only buy eggs with mutations
+        if not eggMutation or eggMutation == "" then
             return false, nil, nil
         end
+        -- Skip type/mutation filters in BuyMutateEgg mode
+    else
+        -- Read Type first - check if this is the egg type we want
+        local eggType = eggInstance:GetAttribute("Type")
+            or eggInstance:GetAttribute("EggType")
+            or eggInstance:GetAttribute("Name")
+        if not eggType then return false, nil, nil end
+        eggType = tostring(eggType)
         
-        -- Check if egg has a selected mutation
-                           -- getEggMutation handles "Dino" -> "Jurassic" conversion
-                   if not selectedMutationSet[eggMutation] then
-                       return false, nil, nil
-                   end
+        -- If eggs are selected, check if this is the type we want
+        if selectedTypeSet and next(selectedTypeSet) then
+        if not selectedTypeSet[eggType] then return false, nil, nil end
+        end
+        
+        -- Now check mutation if mutations are selected
+        if selectedMutationSet and next(selectedMutationSet) then
+            local eggMutation = getEggMutation(eggInstance.Name)
+            
+            if not eggMutation then
+                -- If mutations are selected but egg has no mutation, skip this egg
+                return false, nil, nil
+            end
+            
+            -- Check if egg has a selected mutation
+                               -- getEggMutation handles "Dino" -> "Jurassic" conversion
+                       if not selectedMutationSet[eggMutation] then
+                           return false, nil, nil
+                       end
+        end
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -2871,6 +2882,7 @@ Window:OnClose(function()
     autoBuyEnabled = false
     autoPlaceEnabled = false
     autoFeedEnabled = false
+    autoQuestEnabled = false
 end)
 
 
@@ -3806,6 +3818,15 @@ task.spawn(function()
         --     autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
         -- end
         if autoQuestModule and autoQuestModule.Init then
+            -- Make global variables accessible to AutoQuestSystem
+            _G.autoBuyEnabled = autoBuyEnabled
+            _G.autoPlaceEnabled = autoPlaceEnabled
+            _G.autoHatchEnabled = autoHatchEnabled
+            _G.autoBuyToggle = autoBuyToggle
+            _G.autoPlaceToggle = autoPlaceToggle
+            _G.autoHatchToggle = autoHatchToggle
+            _G.WindUI = WindUI
+            
             AutoQuestSystem = autoQuestModule.Init({
                 WindUI = WindUI,
                 Window = Window,
