@@ -1271,7 +1271,8 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoHatchEnabled = state
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
@@ -1669,7 +1670,8 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     Desc = "Instantly buys eggs as soon as they appear on the conveyor belt!",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoBuyEnabled = state
         if state and not autoBuyThread then
             autoBuyThread = task.spawn(function()
@@ -2305,7 +2307,8 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
@@ -2444,7 +2447,8 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically unlock tiles when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoUnlockEnabled = state
         if state and not autoUnlockThread then
             autoUnlockThread = task.spawn(function()
@@ -2620,7 +2624,8 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoDeleteEnabled = state
         if state and not autoDeleteThread then
             autoDeleteThread = task.spawn(function()
@@ -2961,7 +2966,8 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
                          autoBuyFruitThread = task.spawn(function()
@@ -3088,6 +3094,44 @@ Tabs.SaveTab:Button({
         local success, err = pcall(function()
             if zooConfig then
                 zooConfig:Save()
+                
+                -- Save custom selection variables separately
+                local eggSelections = {
+                    eggs = {},
+                    mutations = {}
+                }
+                
+                for eggId, _ in pairs(selectedTypeSet) do
+                    table.insert(eggSelections.eggs, eggId)
+                end
+                
+                for mutationId, _ in pairs(selectedMutationSet) do
+                    table.insert(eggSelections.mutations, mutationId)
+                end
+                
+                writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
+                
+                -- Save fruit selections
+                local fruitSelections = {
+                    fruits = {}
+                }
+                
+                for fruitId, _ in pairs(selectedFruits) do
+                    table.insert(fruitSelections.fruits, fruitId)
+                end
+                
+                writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
+                
+                -- Save feed fruit selections
+                local feedFruitSelections = {
+                    fruits = {}
+                }
+                
+                for fruitId, _ in pairs(selectedFeedFruits) do
+                    table.insert(feedFruitSelections.fruits, fruitId)
+                end
+                
+                writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
             else
                 error("Config manager not available")
             end
@@ -3116,6 +3160,64 @@ Tabs.SaveTab:Button({
         local success, err = pcall(function()
             if zooConfig then
                 zooConfig:Load()
+                
+                -- Load custom selection variables
+                local success, data = pcall(function()
+                    if isfile("Zebux_EggSelections.json") then
+                        local jsonData = readfile("Zebux_EggSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if success and data then
+                    selectedTypeSet = {}
+                    if data.eggs then
+                        for _, eggId in ipairs(data.eggs) do
+                            selectedTypeSet[eggId] = true
+                        end
+                    end
+                    
+                    selectedMutationSet = {}
+                    if data.mutations then
+                        for _, mutationId in ipairs(data.mutations) do
+                            selectedMutationSet[mutationId] = true
+                        end
+                    end
+                end
+                
+                -- Load fruit selections
+                local fruitSuccess, fruitData = pcall(function()
+                    if isfile("Zebux_FruitSelections.json") then
+                        local jsonData = readfile("Zebux_FruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if fruitSuccess and fruitData then
+                    selectedFruits = {}
+                    if fruitData.fruits then
+                        for _, fruitId in ipairs(fruitData.fruits) do
+                            selectedFruits[fruitId] = true
+                        end
+                    end
+                end
+                
+                -- Load feed fruit selections
+                local feedFruitSuccess, feedFruitData = pcall(function()
+                    if isfile("Zebux_FeedFruitSelections.json") then
+                        local jsonData = readfile("Zebux_FeedFruitSelections.json")
+                        return game:GetService("HttpService"):JSONDecode(jsonData)
+                    end
+                end)
+                
+                if feedFruitSuccess and feedFruitData then
+                    selectedFeedFruits = {}
+                    if feedFruitData.fruits then
+                        for _, fruitId in ipairs(feedFruitData.fruits) do
+                            selectedFeedFruits[fruitId] = true
+                        end
+                    end
+                end
             else
                 error("Config manager not available")
             end
@@ -3242,6 +3344,78 @@ Tabs.SaveTab:Button({
     end
 })
 
+-- Function to load all settings (WindUI config + custom selections)
+local function loadAllSettings()
+    -- Load WindUI config
+    if zooConfig then
+        local loadSuccess, loadErr = pcall(function()
+            zooConfig:Load()
+        end)
+        
+        if not loadSuccess then
+            warn("Failed to load WindUI config: " .. tostring(loadErr))
+        end
+    end
+    
+    -- Load custom selection variables
+    local success, data = pcall(function()
+        if isfile("Zebux_EggSelections.json") then
+            local jsonData = readfile("Zebux_EggSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if success and data then
+        selectedTypeSet = {}
+        if data.eggs then
+            for _, eggId in ipairs(data.eggs) do
+                selectedTypeSet[eggId] = true
+            end
+        end
+        
+        selectedMutationSet = {}
+        if data.mutations then
+            for _, mutationId in ipairs(data.mutations) do
+                selectedMutationSet[mutationId] = true
+            end
+        end
+    end
+    
+    -- Load fruit selections
+    local fruitSuccess, fruitData = pcall(function()
+        if isfile("Zebux_FruitSelections.json") then
+            local jsonData = readfile("Zebux_FruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if fruitSuccess and fruitData then
+        selectedFruits = {}
+        if fruitData.fruits then
+            for _, fruitId in ipairs(fruitData.fruits) do
+                selectedFruits[fruitId] = true
+            end
+        end
+    end
+    
+    -- Load feed fruit selections
+    local feedFruitSuccess, feedFruitData = pcall(function()
+        if isfile("Zebux_FeedFruitSelections.json") then
+            local jsonData = readfile("Zebux_FeedFruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if feedFruitSuccess and feedFruitData then
+        selectedFeedFruits = {}
+        if feedFruitData.fruits then
+            for _, fruitId in ipairs(feedFruitData.fruits) do
+                selectedFeedFruits[fruitId] = true
+            end
+        end
+    end
+end
+
 -- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
@@ -3255,22 +3429,14 @@ task.spawn(function()
         warn("Failed to register config elements: " .. tostring(err))
     end
     
-    -- Load config
-    if zooConfig then
-        local loadSuccess, loadErr = pcall(function()
-            zooConfig:Load()
-        end)
-        
-        if loadSuccess then
-            WindUI:Notify({ 
-                Title = "📂 Auto-Load", 
-                Content = "Your saved settings have been loaded! 🎉", 
-                Duration = 3 
-            })
-        else
-            warn("Failed to load config: " .. tostring(loadErr))
-        end
-    end
+    -- Load all settings
+    loadAllSettings()
+    
+    WindUI:Notify({ 
+        Title = "📂 Auto-Load", 
+        Content = "Your saved settings have been loaded! 🎉", 
+        Duration = 3 
+    })
 end)
 
 -- ============ Auto Feed Tab ============
@@ -3306,7 +3472,8 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
     Callback = function(state)
-        -- Settings loading handled by WindUI config system
+        -- Load settings before starting
+        loadAllSettings()
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
