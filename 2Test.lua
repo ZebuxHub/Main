@@ -17,6 +17,7 @@ local selectedTypeSet = {}
 local selectedMutationSet = {}
 local selectedFruits = {}
 local selectedFeedFruits = {}
+local updateCustomUISelection
 
 -- Window
 local Window = WindUI:CreateWindow({
@@ -1192,7 +1193,6 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     Value = false,
     Callback = function(state)
         autoClaimEnabled = state
-        updateSetting("toggles", "autoClaimEnabled", state)
         
         if state and not autoClaimThread then
             autoClaimThread = task.spawn(function()
@@ -1217,7 +1217,6 @@ local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Rounding = 0,
     Callback = function(value)
         autoClaimDelay = math.clamp((tonumber(value) or 100) / 1000, 0, 2)
-        updateSetting("sliders", "autoClaimDelay", value)
     end
 })
 
@@ -1470,7 +1469,6 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Value = false,
     Callback = function(state)
         autoHatchEnabled = state
-        updateSetting("toggles", "autoHatchEnabled", state)
         
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
@@ -1538,7 +1536,6 @@ local priorityDropdown = Tabs.HatchTab:Dropdown({
         else
             automationPriority = "Place"
         end
-        updateSetting("dropdowns", "automationPriority", selection)
         WindUI:Notify({ 
             Title = "🎯 Priority Set", 
             Content = "Priority set to: " .. selection, 
@@ -1642,7 +1639,7 @@ Tabs.AutoTab:Button({
             EggSelection.Show(
                 function(selectedItems)
                     -- Handle selection changes
-                    selectedTypeSet = {}
+            selectedTypeSet = {}
                     selectedMutationSet = {}
                     
                     if selectedItems then
@@ -1653,8 +1650,8 @@ Tabs.AutoTab:Button({
                                     selectedTypeSet[itemId] = true
                                 elseif MutationData[itemId] then
                                     selectedMutationSet[itemId] = true
-                                end
-                            end
+                end
+            end
                         end
                     end
                     
@@ -1876,7 +1873,6 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     Value = false,
     Callback = function(state)
         autoBuyEnabled = state
-        updateSetting("toggles", "autoBuyEnabled", state)
         
         if state and not autoBuyThread then
             autoBuyThread = task.spawn(function()
@@ -1949,7 +1945,6 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     AllowNone = true,
     Callback = function(selection)
         selectedEggTypes = selection
-        updateSetting("dropdowns", "selectedPlaceEggs", selection)
     end
 })
 
@@ -1963,7 +1958,6 @@ local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
     AllowNone = true,
     Callback = function(selection)
         selectedMutations = selection
-        updateSetting("dropdowns", "selectedPlaceMutations", selection)
     end
 })
 
@@ -1974,16 +1968,16 @@ local function updateAvailableEggs()
     
     -- Create sets for faster lookup
     local selectedTypeSet = {}
-    for _, type in ipairs(selectedEggTypes) do
+        for _, type in ipairs(selectedEggTypes) do
         selectedTypeSet[type] = true
     end
     
     local selectedMutationSet = {}
     for _, mutation in ipairs(selectedMutations) do
         selectedMutationSet[mutation] = true
-    end
-    
-    for _, eggInfo in ipairs(eggs) do
+        end
+        
+        for _, eggInfo in ipairs(eggs) do
         local shouldInclude = true
         
         -- Check egg type filter
@@ -1997,9 +1991,9 @@ local function updateAvailableEggs()
         if shouldInclude and #selectedMutations > 0 then
             if not eggInfo.mutation or not selectedMutationSet[eggInfo.mutation] then
                 shouldInclude = false
-            end
         end
-        
+    end
+    
         if shouldInclude then
             table.insert(availableEggs, eggInfo)
         end
@@ -2545,7 +2539,6 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Value = false,
     Callback = function(state)
         autoPlaceEnabled = state
-        updateSetting("toggles", "autoPlaceEnabled", state)
         
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
@@ -2687,7 +2680,6 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Value = false,
     Callback = function(state)
         autoUnlockEnabled = state
-        updateSetting("toggles", "autoUnlockEnabled", state)
         
         if state and not autoUnlockThread then
             autoUnlockThread = task.spawn(function()
@@ -2770,7 +2762,6 @@ local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
     Value = "100",
     Callback = function(value)
         deleteSpeedThreshold = tonumber(value) or 100
-        updateSetting("inputs", "deleteSpeedThreshold", value)
     end
 })
 
@@ -2867,7 +2858,6 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Value = false,
     Callback = function(state)
         autoDeleteEnabled = state
-        updateSetting("toggles", "autoDeleteEnabled", state)
         
         if state and not autoDeleteThread then
             autoDeleteThread = task.spawn(function()
@@ -2994,7 +2984,6 @@ local autoDinoToggle = Tabs.PackTab:Toggle({
     Value = false,
     Callback = function(state)
         autoDinoEnabled = state
-        updateSetting("toggles", "autoDinoEnabled", state)
         
         if state and not autoDinoThread then
             autoDinoThread = task.spawn(function()
@@ -3087,7 +3076,6 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     Value = false,
     Callback = function(state)
         autoUpgradeEnabled = state
-        updateSetting("toggles", "autoUpgradeEnabled", state)
         
         if state and not autoUpgradeThread then
             autoUpgradeThread = task.spawn(function()
@@ -3307,7 +3295,6 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Value = false,
     Callback = function(state)
         autoBuyFruitEnabled = state
-        updateSetting("toggles", "autoBuyFruitEnabled", state)
         
         if state and not autoBuyFruitThread then
             autoBuyFruitThread = task.spawn(function()
@@ -3492,15 +3479,15 @@ Tabs.FeedTab:Button({
         local localPlayer = game:GetService("Players").LocalPlayer
         if not localPlayer then
             WindUI:Notify({ Title = "❌ Error", Content = "LocalPlayer not found", Duration = 3 })
-            return
-        end
-        
+        return
+    end
+    
         local petsFolder = workspace:FindFirstChild("Pets")
         if not petsFolder then
             WindUI:Notify({ Title = "❌ Error", Content = "Pets folder not found", Duration = 3 })
-            return
-        end
-        
+        return
+    end
+    
         local message = "🍽️ Pet Feed Time Check:\n"
         local bigPetCount = 0
         
@@ -3540,233 +3527,126 @@ Tabs.FeedTab:Button({
     end
 })
 
--- ============ Enhanced Auto-Save System ============
-local SETTINGS_FILE = "Zebux_Settings.json"
-local SETTINGS_BACKUP_FILE = "Zebux_Settings_Backup.json"
-local SETTINGS_VERSION = "1.0"
+-- ============ WindUI ConfigManager System ============
 
--- Global settings object to track all UI states
-local AllSettings = {
-    version = SETTINGS_VERSION,
-    lastSaved = 0,
-    
-    -- Toggle states
-    toggles = {},
-    
-    -- Dropdown selections
-    dropdowns = {},
-    
-    -- Slider values
-    sliders = {},
-    
-    -- Input values
-    inputs = {},
-    
-    -- Custom UI selections
-    customUI = {
-        eggSelections = {},
-        fruitSelections = {},
-        feedFruitSelections = {},
-        autoPlaceSelections = {
-            eggTypes = {},
-            mutations = {}
-        }
-    }
+-- 1. Load ConfigManager
+local ConfigManager = Window.ConfigManager
+
+-- 2. Create Config File
+local zebuxConfig = ConfigManager:CreateConfig("zebuxConfig")
+
+-- Custom UI selections storage (separate from WindUI config)
+local customSelections = {
+    eggSelections = {},
+    fruitSelections = {},
+    feedFruitSelections = {}
 }
 
--- Auto-save function that saves everything immediately
-local function autoSaveSettings()
+-- Function to save custom UI selections
+local function saveCustomSelections()
     local success, err = pcall(function()
-        -- Update timestamp
-        AllSettings.lastSaved = tick()
-        
-        -- Create backup of current settings
-        if isfile(SETTINGS_FILE) then
-            writefile(SETTINGS_BACKUP_FILE, readfile(SETTINGS_FILE))
-        end
-        
-        -- Save all settings to JSON
-        local jsonData = game:GetService("HttpService"):JSONEncode(AllSettings)
-        writefile(SETTINGS_FILE, jsonData)
-        
-
-        
-        -- Show brief save indicator
-        WindUI:Notify({
-            Title = "💾 Auto-Saved",
-            Content = "Settings saved automatically",
-            Duration = 1,
-            Icon = "check"
-        })
+        local jsonData = game:GetService("HttpService"):JSONEncode(customSelections)
+        writefile("Zebux_CustomSelections.json", jsonData)
     end)
     
     if not success then
-        warn("Auto-save failed: " .. tostring(err))
+        warn("Failed to save custom selections: " .. tostring(err))
     end
 end
 
--- Load all settings from JSON
-local function loadAllSettings()
+-- Function to load custom UI selections
+local function loadCustomSelections()
     local success, err = pcall(function()
-        if isfile(SETTINGS_FILE) then
-            local jsonData = readfile(SETTINGS_FILE)
-            local loadedSettings = game:GetService("HttpService"):JSONDecode(jsonData)
-            
-            if loadedSettings and loadedSettings.version then
-                AllSettings = loadedSettings
+        if isfile("Zebux_CustomSelections.json") then
+            local jsonData = readfile("Zebux_CustomSelections.json")
+            local loaded = game:GetService("HttpService"):JSONDecode(jsonData)
+            if loaded then
+                customSelections = loaded
                 
-                -- Apply loaded settings to variables
-                if AllSettings.toggles then
-                    autoBuyEnabled = AllSettings.toggles.autoBuyEnabled or false
-                    autoHatchEnabled = AllSettings.toggles.autoHatchEnabled or false
-                    autoClaimEnabled = AllSettings.toggles.autoClaimEnabled or false
-                    autoPlaceEnabled = AllSettings.toggles.autoPlaceEnabled or false
-                    autoUnlockEnabled = AllSettings.toggles.autoUnlockEnabled or false
-                    autoDeleteEnabled = AllSettings.toggles.autoDeleteEnabled or false
-                    autoDinoEnabled = AllSettings.toggles.autoDinoEnabled or false
-                    autoUpgradeEnabled = AllSettings.toggles.autoUpgradeEnabled or false
-                    autoBuyFruitEnabled = AllSettings.toggles.autoBuyFruitEnabled or false
-                    autoFeedEnabled = AllSettings.toggles.autoFeedEnabled or false
-                end
-                
-                if AllSettings.dropdowns then
-                    selectedEggTypes = AllSettings.dropdowns.selectedPlaceEggs or {}
-                    selectedMutations = AllSettings.dropdowns.selectedPlaceMutations or {}
-                end
-                
-                if AllSettings.customUI then
-                    if AllSettings.customUI.eggSelections then
-                        selectedTypeSet = {}
-                        for _, eggId in ipairs(AllSettings.customUI.eggSelections.eggs or {}) do
-                            selectedTypeSet[eggId] = true
-                        end
-                        selectedMutationSet = {}
-                        for _, mutationId in ipairs(AllSettings.customUI.eggSelections.mutations or {}) do
-                            selectedMutationSet[mutationId] = true
-                        end
+                -- Apply loaded selections to variables
+                if customSelections.eggSelections then
+                    selectedTypeSet = {}
+                    for _, eggId in ipairs(customSelections.eggSelections.eggs or {}) do
+                        selectedTypeSet[eggId] = true
                     end
-                    
-                    if AllSettings.customUI.fruitSelections then
-                        selectedFruits = {}
-                        for _, fruitId in ipairs(AllSettings.customUI.fruitSelections or {}) do
-                            selectedFruits[fruitId] = true
-                        end
-                    end
-                    
-                    if AllSettings.customUI.feedFruitSelections then
-                        selectedFeedFruits = {}
-                        for _, fruitId in ipairs(AllSettings.customUI.feedFruitSelections or {}) do
-                            selectedFeedFruits[fruitId] = true
-                        end
-                    end
-                    
-                    if AllSettings.customUI.autoPlaceSelections then
-                        selectedEggTypes = AllSettings.customUI.autoPlaceSelections.eggTypes or {}
-                        selectedMutations = AllSettings.customUI.autoPlaceSelections.mutations or {}
+                    selectedMutationSet = {}
+                    for _, mutationId in ipairs(customSelections.eggSelections.mutations or {}) do
+                        selectedMutationSet[mutationId] = true
                     end
                 end
                 
-                return true
+                if customSelections.fruitSelections then
+                    selectedFruits = {}
+                    for _, fruitId in ipairs(customSelections.fruitSelections or {}) do
+                        selectedFruits[fruitId] = true
+                    end
+                end
+                
+                if customSelections.feedFruitSelections then
+                    selectedFeedFruits = {}
+                    for _, fruitId in ipairs(customSelections.feedFruitSelections or {}) do
+                        selectedFeedFruits[fruitId] = true
+                    end
+                end
             end
         end
-        return false
     end)
     
     if not success then
-        warn("Load settings failed: " .. tostring(err))
-        return false
+        warn("Failed to load custom selections: " .. tostring(err))
     end
-    
-    return err -- err contains the return value from the pcall
 end
 
 -- Function to update custom UI selections
-local function updateCustomUISelection(uiType, selections)
-    if not AllSettings.customUI then
-        AllSettings.customUI = {}
-    end
-    
+updateCustomUISelection = function(uiType, selections)
     if uiType == "eggSelections" then
-        AllSettings.customUI.eggSelections = {
+        customSelections.eggSelections = {
             eggs = {},
             mutations = {}
         }
         for eggId, _ in pairs(selections.eggs or {}) do
-            table.insert(AllSettings.customUI.eggSelections.eggs, eggId)
+            table.insert(customSelections.eggSelections.eggs, eggId)
         end
         for mutationId, _ in pairs(selections.mutations or {}) do
-            table.insert(AllSettings.customUI.eggSelections.mutations, mutationId)
+            table.insert(customSelections.eggSelections.mutations, mutationId)
         end
     elseif uiType == "fruitSelections" then
-        AllSettings.customUI.fruitSelections = {}
+        customSelections.fruitSelections = {}
         for fruitId, _ in pairs(selections) do
-            table.insert(AllSettings.customUI.fruitSelections, fruitId)
+            table.insert(customSelections.fruitSelections, fruitId)
         end
     elseif uiType == "feedFruitSelections" then
-        AllSettings.customUI.feedFruitSelections = {}
+        customSelections.feedFruitSelections = {}
         for fruitId, _ in pairs(selections) do
-            table.insert(AllSettings.customUI.feedFruitSelections, fruitId)
+            table.insert(customSelections.feedFruitSelections, fruitId)
         end
     end
     
-    autoSaveSettings()
+    saveCustomSelections()
 end
 
--- Function to update settings when UI changes
-local function updateSetting(category, key, value)
-    if not AllSettings[category] then
-        AllSettings[category] = {}
-    end
-    AllSettings[category][key] = value
-    autoSaveSettings()
-end
-
--- Function to update toggle visual states after loading
-local function updateToggleStates()
-    print("🔄 Updating toggle visual states...")
+-- Register all UI elements with WindUI ConfigManager
+local function registerUIElements()
+    -- Register toggles
+    zebuxConfig:Register("autoBuyEnabled", autoBuyToggle)
+    zebuxConfig:Register("autoHatchEnabled", autoHatchToggle)
+    zebuxConfig:Register("autoClaimEnabled", autoClaimToggle)
+    zebuxConfig:Register("autoPlaceEnabled", autoPlaceToggle)
+    zebuxConfig:Register("autoUnlockEnabled", autoUnlockToggle)
+    zebuxConfig:Register("autoDeleteEnabled", autoDeleteToggle)
+    zebuxConfig:Register("autoDinoEnabled", autoDinoToggle)
+    zebuxConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
+    zebuxConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
+    zebuxConfig:Register("autoFeedEnabled", autoFeedToggle)
     
-    -- Manually set toggle visual states to match loaded values
-    if autoBuyToggle and autoBuyToggle.SetValue then
-        pcall(function() autoBuyToggle:SetValue(autoBuyEnabled) end)
-    end
-    if autoHatchToggle and autoHatchToggle.SetValue then
-        pcall(function() autoHatchToggle:SetValue(autoHatchEnabled) end)
-    end
-    if autoClaimToggle and autoClaimToggle.SetValue then
-        pcall(function() autoClaimToggle:SetValue(autoClaimEnabled) end)
-    end
-    if autoPlaceToggle and autoPlaceToggle.SetValue then
-        pcall(function() autoPlaceToggle:SetValue(autoPlaceEnabled) end)
-    end
-    if autoUnlockToggle and autoUnlockToggle.SetValue then
-        pcall(function() autoUnlockToggle:SetValue(autoUnlockEnabled) end)
-    end
-    if autoDeleteToggle and autoDeleteToggle.SetValue then
-        pcall(function() autoDeleteToggle:SetValue(autoDeleteEnabled) end)
-    end
-    if autoDinoToggle and autoDinoToggle.SetValue then
-        pcall(function() autoDinoToggle:SetValue(autoDinoEnabled) end)
-    end
-    if autoUpgradeToggle and autoUpgradeToggle.SetValue then
-        pcall(function() autoUpgradeToggle:SetValue(autoUpgradeEnabled) end)
-    end
-    if autoBuyFruitToggle and autoBuyFruitToggle.SetValue then
-        pcall(function() autoBuyFruitToggle:SetValue(autoBuyFruitEnabled) end)
-    end
-    if autoFeedToggle and autoFeedToggle.SetValue then
-        pcall(function() autoFeedToggle:SetValue(autoFeedEnabled) end)
-    end
+    -- Register dropdowns
+    zebuxConfig:Register("placeEggDropdown", placeEggDropdown)
+    zebuxConfig:Register("placeMutationDropdown", placeMutationDropdown)
+    zebuxConfig:Register("priorityDropdown", priorityDropdown)
     
-    -- Log current toggle states for debugging
-    print("Toggle States:")
-    print("  Auto Buy: " .. tostring(autoBuyEnabled))
-    print("  Auto Place: " .. tostring(autoPlaceEnabled))
-    print("  Auto Hatch: " .. tostring(autoHatchEnabled))
-    print("  Auto Claim: " .. tostring(autoClaimEnabled))
-    print("  Auto Upgrade: " .. tostring(autoUpgradeEnabled))
-    print("  Auto Dino: " .. tostring(autoDinoEnabled))
-    print("  Auto Buy Fruit: " .. tostring(autoBuyFruitEnabled))
-    print("  Auto Feed: " .. tostring(autoFeedEnabled))
+    -- Register sliders/inputs
+    zebuxConfig:Register("autoClaimDelaySlider", autoClaimDelaySlider)
+    zebuxConfig:Register("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
 end
 
 -- ============ Anti-AFK System ============
@@ -3806,7 +3686,8 @@ Tabs.SaveTab:Button({
     Title = "💾 Manual Save",
     Desc = "Manually save all your current settings",
     Callback = function()
-        autoSaveSettings()
+        zebuxConfig:Save()
+        saveCustomSelections()
         WindUI:Notify({ 
             Title = "💾 Settings Saved", 
             Content = "All your settings have been saved! 🎉", 
@@ -3819,20 +3700,13 @@ Tabs.SaveTab:Button({
     Title = "📂 Manual Load",
     Desc = "Manually load your saved settings",
     Callback = function()
-        local success = loadAllSettings()
-        if success then
-            WindUI:Notify({ 
-                Title = "📂 Settings Loaded", 
-                Content = "Your settings have been loaded! 🎉", 
-                Duration = 3 
-            })
-        else
-            WindUI:Notify({ 
-                Title = "❌ Load Failed", 
-                Content = "No saved settings found or load failed", 
-                Duration = 3 
-            })
-        end
+        zebuxConfig:Load()
+        loadCustomSelections()
+        WindUI:Notify({ 
+            Title = "📂 Settings Loaded", 
+            Content = "Your settings have been loaded! 🎉", 
+            Duration = 3 
+        })
     end
 })
 
@@ -3849,11 +3723,12 @@ Tabs.SaveTab:Button({
 })
 
 Tabs.SaveTab:Button({
-    Title = "🔍 Debug Toggle Loading",
-    Desc = "Check toggle loading status and force update",
+    Title = "🔍 Debug Config System",
+    Desc = "Check WindUI config system status",
     Callback = function()
-        local message = "🔍 Toggle Loading Debug:\n"
-        message = message .. string.format("Config Manager: %s\n", tostring(zooConfig ~= nil))
+        local message = "🔍 WindUI Config Debug:\n"
+        message = message .. string.format("Config Manager: %s\n", tostring(ConfigManager ~= nil))
+        message = message .. string.format("Zebux Config: %s\n", tostring(zebuxConfig ~= nil))
         
         -- Check toggle variables
         message = message .. string.format("Auto Buy: %s\n", tostring(autoBuyEnabled))
@@ -3865,11 +3740,10 @@ Tabs.SaveTab:Button({
         message = message .. string.format("Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
         message = message .. string.format("Auto Feed: %s\n", tostring(autoFeedEnabled))
         
-        -- Force update toggle states
-        updateToggleStates()
-        message = message .. "\n✅ Toggle states updated!"
+        -- Show custom selections
+        message = message .. string.format("Custom Selections: %s\n", tostring(customSelections ~= nil))
         
-        WindUI:Notify({ Title = "🔍 Toggle Debug", Content = message, Duration = 8 })
+        WindUI:Notify({ Title = "🔍 Config Debug", Content = message, Duration = 8 })
     end
 })
 
@@ -3877,37 +3751,24 @@ Tabs.SaveTab:Button({
     Title = "🔄 Manual Load Settings",
     Desc = "Manually load all settings (WindUI + Custom)",
     Callback = function()
-        -- Load WindUI config first
-        if zooConfig then
-            local configSuccess, configErr = pcall(function()
-                zooConfig:Load()
-            end)
-            if not configSuccess then
-                warn("Failed to load WindUI config: " .. tostring(configErr))
-            end
+        -- Load WindUI config
+        local configSuccess, configErr = pcall(function()
+            zebuxConfig:Load()
+        end)
+        if not configSuccess then
+            warn("Failed to load WindUI config: " .. tostring(configErr))
         end
         
-        -- Then load custom settings
+        -- Load custom selections
         local customSuccess, customErr = pcall(function()
-            loadAllSettings()
+            loadCustomSelections()
         end)
         
         if customSuccess then
-            -- Update toggle visual states with error handling
-            task.wait(0.5)
-            local updateSuccess, updateErr = pcall(function()
-                updateToggleStates()
-            end)
-            
-            if updateSuccess then
-                WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
-            else
-                warn("Failed to update toggle states: " .. tostring(updateErr))
-                WindUI:Notify({ Title = "⚠️ Manual Load", Content = "Settings loaded but toggle update failed", Duration = 3 })
-            end
+            WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
         else
-            warn("Failed to load custom settings: " .. tostring(customErr))
-            WindUI:Notify({ Title = "❌ Manual Load", Content = "Failed to load settings: " .. tostring(customErr), Duration = 5 })
+            warn("Failed to load custom selections: " .. tostring(customErr))
+            WindUI:Notify({ Title = "⚠️ Manual Load", Content = "Settings loaded but custom selections failed", Duration = 3 })
         end
     end
 })
@@ -3917,7 +3778,14 @@ Tabs.SaveTab:Button({
     Desc = "Export your settings to clipboard",
     Callback = function()
         local success, err = pcall(function()
-            local jsonData = game:GetService("HttpService"):JSONEncode(AllSettings)
+            -- Get WindUI config data
+            local configData = ConfigManager:AllConfigs()
+            -- Combine with custom selections
+            local exportData = {
+                windUIConfig = configData,
+                customSelections = customSelections
+            }
+            local jsonData = game:GetService("HttpService"):JSONEncode(exportData)
             setclipboard(jsonData)
         end)
         
@@ -3943,11 +3811,23 @@ Tabs.SaveTab:Button({
     Callback = function()
         local success, err = pcall(function()
             local clipboardData = getclipboard()
-            local importedSettings = game:GetService("HttpService"):JSONDecode(clipboardData)
+            local importedData = game:GetService("HttpService"):JSONDecode(clipboardData)
             
-            if importedSettings and importedSettings.version then
-                AllSettings = importedSettings
-                loadAllSettings() -- Apply the imported settings
+            if importedData and importedData.windUIConfig then
+                -- Import WindUI config
+                for configName, configData in pairs(importedData.windUIConfig) do
+                    local config = ConfigManager:GetConfig(configName)
+                    if config then
+                        config:LoadFromData(configData)
+                    end
+                end
+                
+                -- Import custom selections
+                if importedData.customSelections then
+                    customSelections = importedData.customSelections
+                    saveCustomSelections()
+                end
+                
                 WindUI:Notify({ 
                     Title = "📥 Settings Imported", 
                     Content = "Settings imported successfully! 🎉", 
@@ -3986,42 +3866,25 @@ Tabs.SaveTab:Button({
                     Title = "✅ Reset",
                     Variant = "Primary",
                     Callback = function()
-                                                -- Reset all settings to defaults
                         local success, err = pcall(function()
-                            -- Delete settings files
-                            local filesToDelete = {
-                                SETTINGS_FILE,
-                                SETTINGS_BACKUP_FILE
-                            }
-                            
-                            for _, fileName in ipairs(filesToDelete) do
-                                local ok, deleteErr = pcall(function()
-                                    if isfile(fileName) then
-                                        delfile(fileName)
-                                    end
-                                end)
-                                if not ok then
-                                    warn("Failed to delete " .. fileName .. ": " .. tostring(deleteErr))
+                            -- Delete WindUI config files
+                            local configFiles = listfiles("WindUI/Zebux/config")
+                            for _, file in ipairs(configFiles) do
+                                if file:match("zebuxConfig%.json$") then
+                                    delfile(file)
                                 end
                             end
                             
-                            -- Reset AllSettings to defaults
-                            AllSettings = {
-                                version = SETTINGS_VERSION,
-                                lastSaved = 0,
-                                toggles = {},
-                                dropdowns = {},
-                                sliders = {},
-                                inputs = {},
-                                customUI = {
-                                    eggSelections = {},
-                                    fruitSelections = {},
-                                    feedFruitSelections = {},
-                                    autoPlaceSelections = {
-                                        eggTypes = {},
-                                        mutations = {}
-                                    }
-                                }
+                            -- Delete custom selections file
+                            if isfile("Zebux_CustomSelections.json") then
+                                delfile("Zebux_CustomSelections.json")
+                            end
+                            
+                            -- Reset custom selections
+                            customSelections = {
+                                eggSelections = {},
+                                fruitSelections = {},
+                                feedFruitSelections = {}
                             }
                             
                             -- Reset all variables to defaults
@@ -4043,9 +3906,7 @@ Tabs.SaveTab:Button({
                             selectedEggTypes = {}
                             selectedMutations = {}
                             
-                            -- Status updates removed per user request
-                            
-                            -- Refresh UI if visible (with comprehensive error handling)
+                            -- Refresh UI if visible
                             local function safeRefresh(uiModule, moduleName)
                                 if uiModule then
                                     if uiModule.RefreshContent then
@@ -4100,40 +3961,20 @@ task.spawn(function()
         Duration = 2 
     })
     
-    -- Load all settings from JSON
-    local loadSuccess, loadErr = pcall(function()
-        return loadAllSettings()
-    end)
+    -- Register all UI elements with WindUI config
+    registerUIElements()
     
-    if loadSuccess and loadErr then -- loadErr contains the return value
-        -- Update toggle visual states to match loaded values
-        task.wait(1) -- Delay to ensure toggles are created
-        local updateSuccess, updateErr = pcall(function()
-            updateToggleStates()
-        end)
-        
-        if updateSuccess then
-            WindUI:Notify({ 
-                Title = "📂 Auto-Load Complete", 
-                Content = "Your saved settings have been loaded! 🎉", 
-                Duration = 3 
-            })
-        else
-            warn("Failed to update toggle states: " .. tostring(updateErr))
-            WindUI:Notify({ 
-                Title = "📂 Auto-Load Complete", 
-                Content = "Settings loaded but toggle update failed", 
-                Duration = 3 
-            })
-        end
-    else
-        warn("Failed to load settings: " .. tostring(loadErr))
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load Complete", 
-            Content = "No saved settings found or load failed", 
-            Duration = 3 
-        })
-    end
+    -- Load WindUI config settings
+    zebuxConfig:Load()
+    
+    -- Load custom UI selections
+    loadCustomSelections()
+    
+    WindUI:Notify({ 
+        Title = "📂 Auto-Load Complete", 
+        Content = "Your saved settings have been loaded! 🎉", 
+        Duration = 3 
+    })
 end)
 
 -- ============ Auto Feed Tab ============
@@ -4171,7 +4012,6 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Value = false,
     Callback = function(state)
         autoFeedEnabled = state
-        updateSetting("toggles", "autoFeedEnabled", state)
         
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
@@ -4179,7 +4019,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
                 local function getSelected()
                     -- if empty, try to lazy-load from file once
                     if not selectedFeedFruits or not next(selectedFeedFruits) then
-                        pcall(function()
+pcall(function()
                             if isfile("Zebux_FeedFruitSelections.json") then
                                 local data = game:GetService("HttpService"):JSONDecode(readfile("Zebux_FeedFruitSelections.json"))
                                 if data and data.fruits then
@@ -4223,7 +4063,7 @@ Tabs.SaveTab:Button({
     Desc = "Check if toggles are loading correctly",
     Callback = function()
         local message = string.format("🔧 Toggle Loading Debug:\n")
-        message = message .. string.format("⚙️ Config Manager: %s\n", tostring(zooConfig ~= nil))
+        message = message .. string.format("⚙️ Config Manager: %s\n", tostring(ConfigManager ~= nil))
         message = message .. string.format("🥚 Auto Buy Toggle: %s\n", tostring(autoBuyToggle ~= nil))
         message = message .. string.format("🏠 Auto Place Toggle: %s\n", tostring(autoPlaceToggle ~= nil))
         message = message .. string.format("⚡ Auto Hatch Toggle: %s\n", tostring(autoHatchToggle ~= nil))
@@ -4252,13 +4092,14 @@ Tabs.SaveTab:Button({
 
 -- Safe window close handler
 local ok, err = pcall(function()
-    Window:OnClose(function()
-        print("UI closed.")
-    end)
+Window:OnClose(function()
+    print("UI closed.")
+end)
 end)
 
 if not ok then
     warn("Failed to set window close handler: " .. tostring(err))
 end
 
+-- Function removed - using WindUI config system instead
 -- Function removed - using WindUI config system instead
