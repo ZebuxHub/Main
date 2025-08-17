@@ -168,6 +168,7 @@ local getAutoHatchEnabled = nil
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
 -- File system functions
@@ -177,6 +178,7 @@ local isfile = isfile
 
 -- Forward declarations
 local findAndHatchReadyEggs
+local getOwnerUserIdDeep
 
 -- Helper functions
 local function safeGetAttribute(instance, attributeName, default)
@@ -1005,7 +1007,7 @@ local function getEmptyFarmTiles()
             
             if not hasEgg then
                 table.insert(emptyTiles, tile)
-            end
+                            end
                         end
                     end
                     
@@ -1157,77 +1159,219 @@ local function buyAnyCheapestEgg()
     return false, "No proximity prompt found"
 end
 
--- Helper function to find and hatch ready eggs
-findAndHatchReadyEggs = function()
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    
-    if not LocalPlayer or not LocalPlayer.Character then
-        return false, "Player not found"
+-- Helper functions for ready egg detection (same as main script)
+local function isStringEmpty(s)
+    return type(s) == "string" and (s == "" or s:match("^%s*$") ~= nil)
+end
+
+local function isReadyText(text)
+    if type(text) ~= "string" then return false end
+    -- Empty or whitespace means ready
+    if isStringEmpty(text) then return true end
+    -- Percent text like "100%", "100.0%", "100.00%" also counts as ready
+    local num = text:match("^%s*(%d+%.?%d*)%s*%%%s*$")
+    if num then
+        local n = tonumber(num)
+        if n and n >= 100 then return true end
     end
-    
-    -- Find player's island
-    local islandsFolder = workspace:FindFirstChild("Islands")
-    if not islandsFolder then
-        return false, "Islands not found"
+    -- Words that often mean ready
+    local lower = string.lower(text)
+    if string.find(lower, "hatch", 1, true) or string.find(lower, "ready", 1, true) then
+        return true
     end
-    
-    local playerIslandName = LocalPlayer:GetAttribute("AssignedIslandName")
-    if not playerIslandName then
-        return false, "No assigned island"
-    end
-    
-    local playerIsland = islandsFolder:FindFirstChild(playerIslandName)
-    if not playerIsland then
-        return false, "Player island not found"
-    end
-    
-    local tilesFolder = playerIsland:FindFirstChild("Tiles")
-    if not tilesFolder then
-        return false, "Tiles folder not found"
-    end
-    
-    local hatchedCount = 0
-    
-    -- Look for eggs on tiles that are ready to hatch
-    for _, tile in pairs(tilesFolder:GetChildren()) do
-        if tile:IsA("Model") and tile.Name == "Tile" then
-            for _, eggModel in pairs(tile:GetChildren()) do
-                if eggModel:IsA("Model") and eggModel.Name == "Egg" then
-                    -- Check if egg has a proximity prompt (indicating it's ready to hatch)
-                    local proximityPrompt = eggModel:FindFirstChildOfClass("ProximityPrompt")
-                    if proximityPrompt and proximityPrompt.Enabled then
-                        -- Check hatch time - look for EggGui with time display
-                        local eggGui = eggModel:FindFirstChild("EggGui")
-                        if eggGui then
-                            local timeLabel = eggGui:FindFirstChild("Time")
-                            if timeLabel and timeLabel:IsA("TextLabel") then
-                                local timeText = timeLabel.Text
-                                -- If time shows 00:00 or similar, it's ready to hatch
-                                if timeText == "00:00" or timeText == "0:00" or timeText == "Hatch!" or timeText == "Ready!" or timeText == "???" then
-                                    -- Trigger the proximity prompt to hatch
-                                    game:GetService("ProximityPromptService"):PromptTriggered(proximityPrompt)
-                                    hatchedCount = hatchedCount + 1
-                                    print(string.format("Auto Placement: Hatched ready egg (%s)", timeText))
-                                    wait(0.5) -- Small delay between hatches
-                                    
-                                    -- Limit to 5 hatches per cycle
-                                    if hatchedCount >= 5 then
-                                        return true, string.format("Hatched %d ready eggs", hatchedCount)
-                                    end
-                                end
-                            end
-                        end
-                    end
+    return false
+end
+
+local function isHatchReady(model)
+    -- Look for TimeBar/TXT text being empty anywhere under the model
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("TextLabel") and d.Name == "TXT" then
+            local parent = d.Parent
+            if parent and parent.Name == "TimeBar" then
+                if isReadyText(d.Text) then
+                    return true
                 end
             end
+        end
+        if d:IsA("ProximityPrompt") and type(d.ActionText) == "string" then
+            local at = string.lower(d.ActionText)
+            if string.find(at, "hatch", 1, true) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function playerOwnsInstance(inst)
+    if not inst then return false end
+    local ownerId = getOwnerUserIdDeep(inst)
+    local lp = Players.LocalPlayer
+    return ownerId ~= nil and lp and lp.UserId == ownerId
+end
+
+getOwnerUserIdDeep = function(inst)
+    local current = inst
+    while current and current ~= workspace do
+        if current.GetAttribute then
+            local uidAttr = current:GetAttribute("UserId")
+            if type(uidAttr) == "number" then return uidAttr end
+            if type(uidAttr) == "string" then
+                local n = tonumber(uidAttr)
+                if n then return n end
+            end
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
+local function collectOwnedEggs()
+    local owned = {}
+    local container = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if not container then
+        -- No PlayerBuiltBlocks found
+        return owned
+    end
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("Model") and playerOwnsInstance(child) then
+            table.insert(owned, child)
+        end
+    end
+    -- also allow owned nested models (fallback)
+    if #owned == 0 then
+        for _, child in ipairs(container:GetDescendants()) do
+            if child:IsA("Model") and playerOwnsInstance(child) then
+                table.insert(owned, child)
+            end
+        end
+    end
+    return owned
+end
+
+local function filterReadyEggs(models)
+    local ready = {}
+    for _, m in ipairs(models or {}) do
+        if isHatchReady(m) then table.insert(ready, m) end
+    end
+    return ready
+end
+
+local function pressPromptE(prompt)
+    if typeof(prompt) ~= "Instance" or not prompt:IsA("ProximityPrompt") then return false end
+    -- Try executor helper first
+    if _G and typeof(_G.fireproximityprompt) == "function" then
+        local s = pcall(function() _G.fireproximityprompt(prompt, prompt.HoldDuration or 0) end)
+        if s then return true end
+    end
+    -- Pure client fallback: simulate the prompt key with VirtualInput
+    local key = prompt.KeyboardKeyCode
+    if key == Enum.KeyCode.Unknown or key == nil then key = Enum.KeyCode.E end
+    -- LoS and distance flexibility
+    pcall(function()
+        prompt.RequiresLineOfSight = false
+        prompt.Enabled = true
+    end)
+    local hold = prompt.HoldDuration or 0
+    VirtualInputManager:SendKeyEvent(true, key, false, game)
+    if hold > 0 then wait(hold + 0.05) end
+    VirtualInputManager:SendKeyEvent(false, key, false, game)
+    return true
+end
+
+local function getModelPosition(model)
+    if not model or not model.GetPivot then return nil end
+    local ok, cf = pcall(function() return model:GetPivot() end)
+    if ok and cf then return cf.Position end
+    local pp = model.PrimaryPart or model:FindFirstChild("RootPart")
+    return pp and pp.Position or nil
+end
+
+-- Player helpers for proximity-based placement
+local function getPlayerRootPosition()
+    local char = Players.LocalPlayer and Players.LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    return hrp.Position
+end
+
+local function walkTo(position, timeout)
+    local char = Players.LocalPlayer and Players.LocalPlayer.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    hum:MoveTo(position)
+    local reached = hum.MoveToFinished:Wait(timeout or 5)
+    return reached
+end
+
+local function tryHatchModel(model)
+    -- Double-check ownership before proceeding
+    if not playerOwnsInstance(model) then
+        return false, "Not owner"
+    end
+    -- Find a ProximityPrompt named "E" or any prompt on the model
+    local prompt
+    -- Prefer a prompt on a part named Prompt or with ActionText that implies hatch
+    for _, inst in ipairs(model:GetDescendants()) do
+        if inst:IsA("ProximityPrompt") then
+            prompt = inst
+            if inst.ActionText and string.len(inst.ActionText) > 0 then break end
+        end
+    end
+    if not prompt then return false, "No prompt" end
+    local pos = getModelPosition(model)
+    if not pos then return false, "No position" end
+    walkTo(pos, 6)
+    -- Ensure we are within MaxActivationDistance by nudging forward if necessary
+    local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and (hrp.Position - pos).Magnitude > (prompt.MaxActivationDistance or 10) - 1 then
+        local dir = (pos - hrp.Position).Unit
+        hrp.CFrame = CFrame.new(pos - dir * 1.5, pos)
+        wait(0.1)
+    end
+    local ok = pressPromptE(prompt)
+    return ok
+end
+
+-- Helper function to find and hatch ready eggs (using main script logic)
+findAndHatchReadyEggs = function()
+    local hatchedCount = 0
+    
+    -- Use the same logic as the main script
+    local owned = collectOwnedEggs()
+    if #owned == 0 then
+        return false, "No eggs found"
+    end
+    
+    local readyEggs = filterReadyEggs(owned)
+    if #readyEggs == 0 then
+        return false, "No ready eggs found"
+    end
+    
+    -- Try nearest first
+    local me = getPlayerRootPosition()
+    table.sort(readyEggs, function(a, b)
+        local pa = getModelPosition(a) or Vector3.new()
+        local pb = getModelPosition(b) or Vector3.new()
+        return (pa - me).Magnitude < (pb - me).Magnitude
+    end)
+    
+    -- Hatch up to 5 eggs per cycle
+    for i = 1, math.min(5, #readyEggs) do
+        local model = readyEggs[i]
+        if tryHatchModel(model) then
+            hatchedCount = hatchedCount + 1
+            print(string.format("Auto Placement: Hatched ready egg %d/%d", i, #readyEggs))
+            wait(0.5) -- Small delay between hatches
         end
     end
     
     if hatchedCount > 0 then
         return true, string.format("Hatched %d ready eggs", hatchedCount)
     else
-        return false, "No ready eggs found"
+        return false, "Failed to hatch any eggs"
     end
 end
 
@@ -1276,7 +1420,7 @@ local function autoDeleteSlowPets(speedThreshold)
                         end
                     end
                 end
-    end
+            end
     
     return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
 end
