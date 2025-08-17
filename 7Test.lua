@@ -42,20 +42,6 @@ local Window = WindUI:CreateWindow({
     -- No keysystem
 })
 
-Window:EditOpenButton({
-    Title = "Open Example UI",
-    Icon = "monitor",
-    CornerRadius = UDim.new(0,16),
-    StrokeThickness = 2,
-    Color = ColorSequence.new( -- gradient
-        Color3.fromHex("FF0F7B"), 
-        Color3.fromHex("F89B29")
-    ),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true,
-})
-
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 | Buy Eggs"})
@@ -2877,8 +2863,20 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
 
 
 
--- Anchor workflow removed (no longer needed)
-Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
+-- Enhanced Open Button UI
+Window:EditOpenButton({
+    Title = "Build A Zoo",
+    Icon = "monitor",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new( -- gradient
+        Color3.fromHex("FF0F7B"), 
+        Color3.fromHex("F89B29")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
 
 -- Close callback
 Window:OnClose(function()
