@@ -1612,6 +1612,13 @@ local selectedPetTypes = {}
 local selectedPetMutations = {}
 local autoClaimEnabled = false
 local autoRefreshEnabled = false
+local taskPriorityOrder = {
+    BuyMutateEgg = 1,
+    HatchEgg = 2,
+    SendEgg = 3,
+    SellPet = 4,
+    OnlineTime = 5
+}
 
 -- UI state
 local eggSelectionVisible = false
@@ -3506,8 +3513,9 @@ local function registerUIElements()
     registerIfExists("sendEggMutations", questUI.sendEggMutationsDropdown)
     registerIfExists("sellPetTypes", questUI.sellPetTypesDropdown)
     registerIfExists("sellPetMutations", questUI.sellPetMutationsDropdown)
-    registerIfExists("autoClaimEnabled", questUI.autoClaimToggle)
-    registerIfExists("autoRefreshEnabled", questUI.autoRefreshToggle)
+    registerIfExists("autoClaimEnabledQuest", questUI.autoClaimToggle)
+    registerIfExists("autoRefreshEnabledQuest", questUI.autoRefreshToggle)
+    registerIfExists("taskPriorityOrder", questUI.taskPriorityDropdown)
     
     -- Register dropdowns
     registerIfExists("placeEggDropdown", placeEggDropdown)
@@ -3833,6 +3841,24 @@ task.spawn(function()
                 Config = zebuxConfig,
                 waitForSettingsReady = waitForSettingsReady,
             })
+            
+            -- Pass initial priority order to AutoQuestSystem
+            if AutoQuestSystem and AutoQuestSystem.SetPriorityOrder then
+                AutoQuestSystem.SetPriorityOrder(taskPriorityOrder)
+            end
+            
+            -- Pass initial settings to AutoQuestSystem
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     end)
     
@@ -3968,70 +3994,17 @@ local function createAutoQuestUI()
             
             waitForSettingsReady(0.2)
             if state then
-                -- Start auto quest logic here
-                WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started auto questing! 🎉", Duration = 3 })
-                
-                -- Start the auto quest thread
-                if not autoQuestThread then
-                    autoQuestThread = task.spawn(function()
-                        while autoQuestEnabled do
-                            -- Check for quest tasks and handle them
-                            local taskData = Players.LocalPlayer.PlayerGui:FindFirstChild("Data"):FindFirstChild("DinoEventTaskData")
-                            if taskData then
-                                local tasksFolder = taskData:FindFirstChild("Tasks")
-                                if tasksFolder then
-                                    for i = 1, 3 do
-                                        local taskSlot = tasksFolder:FindFirstChild(tostring(i))
-                                        if taskSlot then
-                                            local taskId = taskSlot:GetAttribute("Id")
-                                            local progress = taskSlot:GetAttribute("Progress") or 0
-                                            local claimedCount = taskSlot:GetAttribute("ClaimedCount") or 0
-                                            
-                                            -- Handle HatchEgg and BuyMutateEgg tasks
-                                            if taskId == "Task_1" or taskId == "Task_7" then -- HatchEgg tasks
-                                                if progress < 5 and not autoHatchEnabled then
-                                                    -- Temporarily enable auto hatch for quest
-                                                    autoHatchEnabled = true
-                                                    if not autoHatchThread then
-                                                        autoHatchThread = task.spawn(function()
-                                                            runAutoHatch()
-                                                            autoHatchThread = nil
-                                                        end)
-                                                    end
-                                                elseif progress >= 5 and autoHatchEnabled then
-                                                    -- Disable auto hatch when quest is complete
-                                                    autoHatchEnabled = false
-                                                end
-                                            elseif taskId == "Task_5" then -- BuyMutateEgg task
-                                                if progress < 1 and not autoBuyEnabled then
-                                                    -- Temporarily enable auto buy for quest
-                                                    autoBuyEnabled = true
-                                                    if not autoBuyThread then
-                                                        autoBuyThread = task.spawn(function()
-                                                            runAutoBuy()
-                                                            autoBuyThread = nil
-                                                        end)
-                                                    end
-                                                elseif progress >= 1 and autoBuyEnabled then
-                                                    -- Disable auto buy when quest is complete
-                                                    autoBuyEnabled = false
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                            
-                            task.wait(5) -- Check every 5 seconds
-                        end
-                    end)
+                -- Start auto quest using AutoQuestSystem
+                if AutoQuestSystem and AutoQuestSystem.StartQuest then
+                    AutoQuestSystem.StartQuest()
+                    WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started auto questing! 🎉", Duration = 3 })
                 end
             else
-                -- Stop auto quest
-                if autoQuestThread then
-                    autoQuestThread = nil
+                -- Stop auto quest using AutoQuestSystem
+                if AutoQuestSystem and AutoQuestSystem.StopQuest then
+                    AutoQuestSystem.StopQuest()
+                    WindUI:Notify({ Title = "📝 Auto Quest", Content = "Stopped", Duration = 3 })
                 end
-                WindUI:Notify({ Title = "📝 Auto Quest", Content = "Stopped", Duration = 3 })
             end
         end
     })
@@ -4044,6 +4017,18 @@ local function createAutoQuestUI()
         Value = "Random",
         Callback = function(selection)
             selectedTargetPlayer = selection
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     })
 
@@ -4057,6 +4042,18 @@ local function createAutoQuestUI()
         AllowNone = true,
         Callback = function(selection)
             selectedEggTypes = selection
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     })
 
@@ -4070,6 +4067,18 @@ local function createAutoQuestUI()
         AllowNone = true,
         Callback = function(selection)
             selectedEggMutations = selection
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     })
 
@@ -4083,6 +4092,18 @@ local function createAutoQuestUI()
         AllowNone = true,
         Callback = function(selection)
             selectedPetTypes = selection
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     })
 
@@ -4096,6 +4117,18 @@ local function createAutoQuestUI()
         AllowNone = true,
         Callback = function(selection)
             selectedPetMutations = selection
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     })
 
@@ -4106,6 +4139,18 @@ local function createAutoQuestUI()
         Value = false,
         Callback = function(state)
             autoClaimEnabled = state
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
         end
     })
 
@@ -4115,6 +4160,40 @@ local function createAutoQuestUI()
         Value = false,
         Callback = function(state)
             autoRefreshEnabled = state
+            -- Update AutoQuestSystem settings
+            if AutoQuestSystem and AutoQuestSystem.SetSettings then
+                AutoQuestSystem.SetSettings({
+                    targetPlayer = selectedTargetPlayer,
+                    eggTypes = selectedEggTypes,
+                    eggMutations = selectedEggMutations,
+                    petTypes = selectedPetTypes,
+                    petMutations = selectedPetMutations,
+                    autoClaim = autoClaimEnabled,
+                    autoRefresh = autoRefreshEnabled
+                })
+            end
+        end
+    })
+
+    -- Task Priority Dropdown
+    local taskPriorityDropdown = Tabs.QuestTab:Dropdown({
+        Title = "🎯 Task Priority Order",
+        Desc = "Choose the order tasks are executed (top = highest priority)",
+        Values = {"BuyMutateEgg", "HatchEgg", "SendEgg", "SellPet", "OnlineTime"},
+        Value = {"BuyMutateEgg", "HatchEgg", "SendEgg", "SellPet", "OnlineTime"},
+        Multi = true,
+        AllowNone = false,
+        Callback = function(selection)
+            -- Store priority order as a table for easy lookup
+            taskPriorityOrder = {}
+            for i, taskType in ipairs(selection) do
+                taskPriorityOrder[taskType] = i
+            end
+            
+            -- Pass priority order to AutoQuestSystem if it's loaded
+            if AutoQuestSystem and AutoQuestSystem.SetPriorityOrder then
+                AutoQuestSystem.SetPriorityOrder(taskPriorityOrder)
+            end
         end
     })
 
@@ -4193,14 +4272,33 @@ local function createAutoQuestUI()
         statusText = statusText .. string.format("🥚 Available Eggs: %d\n", eggCount)
         statusText = statusText .. string.format("🐾 Available Pets: %d\n", petCount)
         statusText = statusText .. string.format("🎯 Target Player: %s\n", selectedTargetPlayer)
+        
+        -- Show priority order
+        local priorityText = "🎯 Priority Order: "
+        local priorityList = {}
+        for taskType, priority in pairs(taskPriorityOrder) do
+            table.insert(priorityList, {taskType = taskType, priority = priority})
+        end
+        table.sort(priorityList, function(a, b) return a.priority < b.priority end)
+        for i, item in ipairs(priorityList) do
+            if i > 1 then priorityText = priorityText .. " → " end
+            priorityText = priorityText .. item.taskType
+        end
+        statusText = statusText .. priorityText .. "\n"
+        
         statusText = statusText .. string.format("📝 Active Quests: %d\n", #tasks)
         
         if #tasks > 0 then
             statusText = statusText .. "\n📋 Current Tasks:\n"
             for i, task in ipairs(tasks) do
                 if i <= 3 then -- Show max 3 tasks
+                    -- Get task description from AutoQuestSystem if available
+                    local taskDesc = task.id
+                    if AutoQuestSystem and AutoQuestSystem.GetTaskDescription then
+                        taskDesc = AutoQuestSystem.GetTaskDescription(task.id) or task.id
+                    end
                     statusText = statusText .. string.format("  %s: %d/%d (%d claimed)\n", 
-                        task.id, task.progress, task.completeValue or 0, task.claimedCount)
+                        taskDesc, task.progress, task.completeValue or 0, task.claimedCount)
                 end
             end
         end
@@ -4295,7 +4393,8 @@ local function createAutoQuestUI()
         sellPetTypesDropdown = sellPetTypesDropdown,
         sellPetMutationsDropdown = sellPetMutationsDropdown,
         autoClaimToggle = autoClaimToggle,
-        autoRefreshToggle = autoRefreshToggle
+        autoRefreshToggle = autoRefreshToggle,
+        taskPriorityDropdown = taskPriorityDropdown
     }
 end
 
