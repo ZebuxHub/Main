@@ -8,14 +8,14 @@ local AutoQuestSystem = {}
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Task Configuration
+-- Task Configuration - Map Task IDs to Complete Types for easier reading
 local TaskConfig = {
-    Task_1 = { Id = "Task_1", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 5, Desc = "K_DINO_DESC_Task_1", Icon = "rbxassetid://90239318564009" },
-    Task_3 = { Id = "Task_3", TaskPoints = 20, RepeatCount = 1, CompleteType = "SellPet", CompleteValue = 5, Desc = "K_DINO_DESC_Task_3", Icon = "rbxassetid://90239318564009" },
-    Task_4 = { Id = "Task_4", TaskPoints = 20, RepeatCount = 1, CompleteType = "SendEgg", CompleteValue = 5, Desc = "K_DINO_DESC_Task_4", Icon = "rbxassetid://90239318564009" },
-    Task_5 = { Id = "Task_5", TaskPoints = 20, RepeatCount = 1, CompleteType = "BuyMutateEgg", CompleteValue = 1, Desc = "K_DINO_DESC_Task_5", Icon = "rbxassetid://90239318564009" },
-    Task_7 = { Id = "Task_7", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 10, Desc = "K_DINO_DESC_Task_7", Icon = "rbxassetid://90239318564009" },
-    Task_8 = { Id = "Task_8", TaskPoints = 15, RepeatCount = 6, CompleteType = "OnlineTime", CompleteValue = 900, Desc = "K_DINO_DESC_Task_8", Icon = "rbxassetid://90239318564009" }
+    Task_1 = { Id = "Task_1", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 5, Desc = "Hatch 5 Eggs", Icon = "rbxassetid://90239318564009" },
+    Task_3 = { Id = "Task_3", TaskPoints = 20, RepeatCount = 1, CompleteType = "SellPet", CompleteValue = 5, Desc = "Sell 5 Pets", Icon = "rbxassetid://90239318564009" },
+    Task_4 = { Id = "Task_4", TaskPoints = 20, RepeatCount = 1, CompleteType = "SendEgg", CompleteValue = 5, Desc = "Send 5 Eggs", Icon = "rbxassetid://90239318564009" },
+    Task_5 = { Id = "Task_5", TaskPoints = 20, RepeatCount = 1, CompleteType = "BuyMutateEgg", CompleteValue = 1, Desc = "Buy 1 Mutate Egg", Icon = "rbxassetid://90239318564009" },
+    Task_7 = { Id = "Task_7", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 10, Desc = "Hatch 10 Eggs", Icon = "rbxassetid://90239318564009" },
+    Task_8 = { Id = "Task_8", TaskPoints = 15, RepeatCount = 6, CompleteType = "OnlineTime", CompleteValue = 900, Desc = "Online for 15 minutes", Icon = "rbxassetid://90239318564009" }
 }
 
 -- Quest State
@@ -311,8 +311,9 @@ local function runAutoQuest()
                 return
             end
             
-            -- Sort tasks by priority: BuyMutateEgg → HatchEgg → SendEgg → SellPet → OnlineTime
-            local taskPriority = {
+            -- Sort tasks by user-defined priority order
+            -- Default priority if not set: BuyMutateEgg → HatchEgg → SendEgg → SellPet → OnlineTime
+            local taskPriority = taskPriorityOrder or {
                 BuyMutateEgg = 1,
                 HatchEgg = 2,
                 SendEgg = 3,
@@ -438,176 +439,15 @@ function AutoQuestSystem.SetSettings(settings)
     end
 end
 
+function AutoQuestSystem.SetPriorityOrder(priorityOrder)
+    if priorityOrder then
+        taskPriorityOrder = priorityOrder
+    end
+end
+
 -- Initialize function for main script integration
 function AutoQuestSystem.Init(dependencies)
-    local WindUI = dependencies.WindUI
-    local Window = dependencies.Window
-    local Config = dependencies.Config
-    local waitForSettingsReady = dependencies.waitForSettingsReady
-    
-    -- Create Auto Quest tab
-    local Tabs = Window:GetTabs()
-    local MainSection = Tabs.MainSection
-    local QuestTab = MainSection:Tab({ Title = "📝 | Auto Quest" })
-    
-    -- Auto Quest Toggle
-    local autoQuestToggle = QuestTab:Toggle({
-        Title = "📝 Auto Quest",
-        Desc = "Automatically complete daily quests",
-        Value = false,
-        Callback = function(state)
-            waitForSettingsReady(0.2)
-            if state then
-                AutoQuestSystem.StartQuest()
-            else
-                AutoQuestSystem.StopQuest()
-            end
-        end
-    })
-    
-    -- Target Player Dropdown
-    local targetPlayerDropdown = QuestTab:Dropdown({
-        Title = "🎯 Target Player",
-        Desc = "Choose who to send eggs to",
-        Values = {"Random"},
-        Value = "Random",
-        Callback = function(selection)
-            selectedTargetPlayer = selection
-        end
-    })
-    
-    -- Send Egg Types Dropdown
-    local sendEggTypesDropdown = QuestTab:Dropdown({
-        Title = "🥚 Send Egg Types",
-        Desc = "Choose which egg types to send (empty = all)",
-        Values = {"BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"},
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedEggTypes = selection
-        end
-    })
-    
-    -- Send Egg Mutations Dropdown
-    local sendEggMutationsDropdown = QuestTab:Dropdown({
-        Title = "🧬 Send Egg Mutations",
-        Desc = "Choose which mutations to send (empty = all)",
-        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedEggMutations = selection
-        end
-    })
-    
-    -- Sell Pet Types Dropdown
-    local sellPetTypesDropdown = QuestTab:Dropdown({
-        Title = "🐾 Sell Pet Types",
-        Desc = "Choose which pet types to sell (empty = all)",
-        Values = {"BasicPet", "RarePet", "SuperRarePet", "EpicPet", "LegendPet", "PrismaticPet", "HyperPet", "VoidPet", "BowserPet", "DemonPet", "BoneDragonPet", "UltraPet", "DinoPet", "FlyPet", "UnicornPet", "AncientPet"},
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedPetTypes = selection
-        end
-    })
-    
-    -- Sell Pet Mutations Dropdown
-    local sellPetMutationsDropdown = QuestTab:Dropdown({
-        Title = "🧬 Sell Pet Mutations",
-        Desc = "Choose which mutations to sell (empty = all)",
-        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedPetMutations = selection
-        end
-    })
-    
-    -- Auto Claim Toggle
-    local autoClaimToggle = QuestTab:Toggle({
-        Title = "💰 Auto Claim",
-        Desc = "Automatically claim completed quests",
-        Value = false,
-        Callback = function(state)
-            autoClaimEnabled = state
-        end
-    })
-    
-    -- Auto Refresh Toggle
-    local autoRefreshToggle = QuestTab:Toggle({
-        Title = "🔄 Auto Refresh",
-        Desc = "Automatically refresh quest status",
-        Value = false,
-        Callback = function(state)
-            autoRefreshEnabled = state
-        end
-    })
-    
-    -- Manual buttons
-    QuestTab:Button({
-        Title = "💰 Claim All Ready",
-        Desc = "Claim all completed quests now",
-        Callback = function()
-            local tasks = getCurrentTasks()
-            local claimed = 0
-            
-            for _, task in ipairs(tasks) do
-                if task.canClaim then
-                    if claimTaskReward(task.id) then
-                        claimed = claimed + 1
-                        task.wait(0.5)
-                    end
-                end
-            end
-            
-            WindUI:Notify({
-                Title = "💰 Quest Claims",
-                Content = "Claimed " .. claimed .. " quest rewards!",
-                Duration = 3
-            })
-        end
-    })
-    
-    QuestTab:Button({
-        Title = "🔄 Refresh Tasks",
-        Desc = "Refresh quest status manually",
-        Callback = function()
-            currentTasks = getCurrentTasks()
-            WindUI:Notify({
-                Title = "🔄 Quest Refresh",
-                Content = "Quest status refreshed!",
-                Duration = 2
-            })
-        end
-    })
-    
-    -- Update player list periodically
-    task.spawn(function()
-        while true do
-            local players = getAvailablePlayers()
-            table.insert(players, 1, "Random")
-            targetPlayerDropdown:Refresh(players)
-            task.wait(30)
-        end
-    end)
-    
-    -- Register with config
-    if Config then
-        Config:Register("autoQuestEnabled", autoQuestToggle)
-        Config:Register("targetPlayer", targetPlayerDropdown)
-        Config:Register("sendEggTypes", sendEggTypesDropdown)
-        Config:Register("sendEggMutations", sendEggMutationsDropdown)
-        Config:Register("sellPetTypes", sellPetTypesDropdown)
-        Config:Register("sellPetMutations", sellPetMutationsDropdown)
-        Config:Register("autoClaimEnabled", autoClaimToggle)
-        Config:Register("autoRefreshEnabled", autoRefreshToggle)
-    end
-    
+    -- Just return the AutoQuestSystem object - UI is handled in main script
     return AutoQuestSystem
 end
 
