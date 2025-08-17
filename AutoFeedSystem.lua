@@ -172,6 +172,7 @@ function AutoFeedSystem.isPetEating(petData)
     
     -- Check if the pet is currently eating (not ready to eat)
     -- Return true if eating, false if ready to eat
+    -- Pet is ready to eat when text is "00:00", "???", or ""
     return feedTime ~= "00:00" and feedTime ~= "???" and feedTime ~= ""
 end
 
@@ -237,7 +238,20 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                 if not autoFeedEnabled then break end
                 
                 local isEating = AutoFeedSystem.isPetEating(petData)
-                print("🍎 Auto Feed Debug - Pet " .. petData.name .. " eating status: " .. tostring(isEating))
+                
+                -- Get the actual feed time text for debugging
+                local feedTimeText = "unknown"
+                if petData.bigPetGUI then
+                    local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
+                    if feedGUI then
+                        local feedText = feedGUI:FindFirstChild("TXT")
+                        if feedText and feedText:IsA("TextLabel") then
+                            feedTimeText = feedText.Text
+                        end
+                    end
+                end
+                
+                print("🍎 Auto Feed Debug - Pet " .. petData.name .. " feed time: '" .. tostring(feedTimeText) .. "' eating status: " .. tostring(isEating))
                 
                 if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
