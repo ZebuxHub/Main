@@ -10,6 +10,26 @@ local HardcodedEggTypes = {
     "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"
 }
 
+-- Egg hatch time data for prioritization (fastest first)
+local EggHatchTimes = {
+    BasicEgg = 5,
+    RareEgg = 20,
+    SuperRareEgg = 40,
+    FlyEgg = 60,
+    AncientEgg = 60,
+    EpicEgg = 120,
+    LegendEgg = 360,
+    PrismaticEgg = 720,
+    HyperEgg = 2160,
+    VoidEgg = 2880,
+    BowserEgg = 4320,
+    DemonEgg = 5400,
+    DinoEgg = 7200,
+    BoneDragonEgg = 7200,
+    UltraEgg = 14400,
+    UnicornEgg = 14400
+}
+
 local HardcodedPetTypes = {
     "Capy1", "Capy2", "Pig", "Capy3", "Dog", "Cat", "CapyL1", "Cow", "CapyL2", 
     "Sheep", "CapyL3", "Horse", "Zebra", "Giraffe", "Hippo", "Elephant", "Rabbit", 
@@ -103,16 +123,35 @@ local buyMutateEggRetries = 0
 local maxBuyMutateRetries = 30 -- Give up after 30 attempts (30 seconds)
 local buyMutateEggThread = nil -- Background thread for continuous monitoring
 
+-- Auto delete settings
+local autoDeleteMinSpeed = 0 -- Minimum speed threshold for auto-deletion (user configurable)
+
+-- Smart egg placement variables
+local currentPlacementTarget = nil -- Locks onto current best available option
+local placementTargetTime = math.huge -- Track the locked target hatch time
+
+-- Custom settings that need manual save/load
+local customAutoQuestSettings = {
+    autoDeleteMinSpeed = 0,
+    currentPlacementTarget = nil,
+    placementTargetTime = math.huge,
+    sessionLimits = {
+        sendEggCount = 0,
+        sellPetCount = 0,
+        maxSendEgg = 5,
+        maxSellPet = 5
+    }
+}
+
 -- UI elements (will be assigned during Init)
 local questToggle = nil
-local claimReadyToggle = nil
-local refreshTaskToggle = nil
 local targetPlayerDropdown = nil
 local sendEggTypeDropdown = nil
 local sendEggMutationDropdown = nil
 local sellPetTypeDropdown = nil
 local sellPetMutationDropdown = nil
 local questStatusParagraph = nil
+local autoDeleteSlider = nil
 
 -- Dependencies (passed from main script)
 local WindUI = nil
@@ -128,7 +167,13 @@ local getAutoHatchEnabled = nil
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
+
+-- File system functions
+local writefile = writefile
+local readfile = readfile
+local isfile = isfile
 
 -- Helper functions
 local function safeGetAttribute(instance, attributeName, default)
@@ -139,6 +184,79 @@ local function safeGetAttribute(instance, attributeName, default)
         return instance:GetAttribute(attributeName)
     end)
     return success and result or default
+end
+
+-- Custom settings save/load functions
+local function saveCustomAutoQuestSettings()
+    if not writefile or not HttpService then return end
+    
+    -- Update custom settings with current values
+    customAutoQuestSettings.autoDeleteMinSpeed = autoDeleteMinSpeed
+    customAutoQuestSettings.currentPlacementTarget = currentPlacementTarget
+    customAutoQuestSettings.placementTargetTime = placementTargetTime
+    customAutoQuestSettings.sessionLimits = {
+        sendEggCount = sessionLimits.sendEggCount or 0,
+        sellPetCount = sessionLimits.sellPetCount or 0,
+        maxSendEgg = sessionLimits.maxSendEgg or 5,
+        maxSellPet = sessionLimits.maxSellPet or 5
+    }
+    
+    local success, encoded = pcall(function()
+        return HttpService:JSONEncode(customAutoQuestSettings)
+    end)
+    
+    if success then
+        pcall(function()
+            writefile("AutoQuestCustomSettings.json", encoded)
+            print("Auto Quest: Custom settings saved")
+        end)
+    end
+end
+
+local function loadCustomAutoQuestSettings()
+    if not readfile or not isfile or not HttpService then return end
+    
+    if not isfile("AutoQuestCustomSettings.json") then
+        print("Auto Quest: No custom settings file found, using defaults")
+        return
+    end
+    
+    local success, fileContent = pcall(function()
+        return readfile("AutoQuestCustomSettings.json")
+    end)
+    
+    if not success then
+        print("Auto Quest: Failed to read custom settings file")
+        return
+    end
+    
+    local decoded = nil
+    success, decoded = pcall(function()
+        return HttpService:JSONDecode(fileContent)
+    end)
+    
+    if success and decoded then
+        -- Load custom settings
+        autoDeleteMinSpeed = decoded.autoDeleteMinSpeed or 0
+        currentPlacementTarget = decoded.currentPlacementTarget
+        placementTargetTime = decoded.placementTargetTime or math.huge
+        
+        if decoded.sessionLimits then
+            sessionLimits.sendEggCount = decoded.sessionLimits.sendEggCount or 0
+            sessionLimits.sellPetCount = decoded.sessionLimits.sellPetCount or 0
+            sessionLimits.maxSendEgg = decoded.sessionLimits.maxSendEgg or 5
+            sessionLimits.maxSellPet = decoded.sessionLimits.maxSellPet or 5
+        end
+        
+        -- Update UI elements if they exist
+        if autoDeleteSlider and autoDeleteSlider.SetValue then
+            pcall(function() autoDeleteSlider:SetValue(tostring(autoDeleteMinSpeed)) end)
+        end
+        
+        print("Auto Quest: Custom settings loaded successfully")
+    else
+        print("Auto Quest: Failed to decode custom settings file")
+    end
 end
 
 local function refreshPlayerList()
@@ -809,37 +927,362 @@ local function executeQuestTasks()
     restoreAutomationStates()
 end
 
--- Auto claim function
+-- Auto claim function (always active when quest enabled)
 local function runAutoClaimReady()
     while questEnabled do
-        if not claimReadyToggle then
-            wait(1)
-            continue
-        end
+        local tasks = getCurrentTasks()
         
-        local claimEnabled = false
-        if claimReadyToggle.GetValue then
-            local success, result = pcall(function() return claimReadyToggle:GetValue() end)
-            claimEnabled = success and result or false
-        end
-        
-        if claimEnabled then
-            local tasks = getCurrentTasks()
+        for _, task in ipairs(tasks) do
+            local progress = task.Progress or 0
+            local target = task.CompleteValue or 1
+            local claimed = task.ClaimedCount or 0
+            local maxClaimed = task.RepeatCount or 1
             
-            for _, task in ipairs(tasks) do
+            if progress >= target and claimed < maxClaimed then
+                claimTask(task.Id)
+                wait(0.5) -- Small delay between claims
+            end
+        end
+        
+        wait(2) -- Check every 2 seconds
+    end
+end
+
+-- Helper function to check for empty farm tiles
+local function getEmptyFarmTiles()
+    local emptyTiles = {}
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    if not LocalPlayer or not LocalPlayer.Character then
+        return emptyTiles
+    end
+    
+    local islandsFolder = workspace:FindFirstChild("Islands")
+    if not islandsFolder then
+        return emptyTiles
+    end
+    
+    local playerIslandName = LocalPlayer:GetAttribute("AssignedIslandName")
+    if not playerIslandName then
+        return emptyTiles
+    end
+    
+    local playerIsland = islandsFolder:FindFirstChild(playerIslandName)
+    if not playerIsland then
+        return emptyTiles
+    end
+    
+    local tilesFolder = playerIsland:FindFirstChild("Tiles")
+    if not tilesFolder then
+        return emptyTiles
+    end
+    
+    -- Check each tile for occupancy
+    for _, tile in pairs(tilesFolder:GetChildren()) do
+        if tile:IsA("Model") and tile.Name == "Tile" then
+            local hasEgg = false
+            
+            -- Check if tile has any eggs
+            for _, child in pairs(tile:GetChildren()) do
+                if child:IsA("Model") and child.Name ~= "Tile" then
+                    hasEgg = true
+                    break
+                end
+            end
+            
+            if not hasEgg then
+                table.insert(emptyTiles, tile)
+            end
+        end
+    end
+    
+    return emptyTiles
+end
+
+-- Smart fallback egg selection with priority locking
+
+-- Helper function to get best egg for placement (smart fallback system)
+local function getBestEggForPlacement()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return nil
+    end
+    
+    local eggFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+    if not eggFolder then
+        return nil
+    end
+    
+    local availableEggs = {}
+    
+    -- Collect all available eggs with their hatch times
+    for _, eggData in pairs(eggFolder:GetChildren()) do
+        if eggData:IsA("Configuration") then
+            local eggType = eggData:GetAttribute("T")
+            local eggMutation = eggData:GetAttribute("M")
+            local eggValue = eggData:GetAttribute("NetWorth") or 0
+            local hatchTime = EggHatchTimes[eggType] or math.huge
+            
+            table.insert(availableEggs, {
+                uid = eggData.Name,
+                type = eggType,
+                mutation = eggMutation,
+                value = eggValue,
+                hatchTime = hatchTime
+            })
+        end
+    end
+    
+    if #availableEggs == 0 then
+        -- Reset target when no eggs available
+        currentPlacementTarget = nil
+        placementTargetTime = math.huge
+        return nil
+    end
+    
+    -- Sort eggs by hatch time (fastest first)
+    table.sort(availableEggs, function(a, b) return a.hatchTime < b.hatchTime end)
+    
+    -- Smart fallback logic
+    if not currentPlacementTarget then
+        -- No current target, pick the fastest available
+        currentPlacementTarget = availableEggs[1].type
+        placementTargetTime = availableEggs[1].hatchTime
+        print(string.format("Auto Placement: Locked onto %s (hatch: %ds) as target", 
+            currentPlacementTarget, placementTargetTime))
+        saveCustomAutoQuestSettings()
+    end
+    
+    -- Look for our current target first
+    for _, egg in ipairs(availableEggs) do
+        if egg.type == currentPlacementTarget then
+            -- Found our locked target, use it
+            return egg
+        end
+    end
+    
+    -- Current target not available, check if we should upgrade
+    local fastestAvailable = availableEggs[1]
+    
+    -- Only upgrade to significantly faster eggs (at least 2x faster)
+    if fastestAvailable.hatchTime < (placementTargetTime / 2) then
+        currentPlacementTarget = fastestAvailable.type
+        placementTargetTime = fastestAvailable.hatchTime
+        print(string.format("Auto Placement: Upgraded target to %s (hatch: %ds) - significantly faster!", 
+            currentPlacementTarget, placementTargetTime))
+        saveCustomAutoQuestSettings()
+        return fastestAvailable
+    else
+        -- Fallback to next best available (don't change target)
+        print(string.format("Auto Placement: Target %s unavailable, using fallback %s (hatch: %ds)", 
+            currentPlacementTarget, fastestAvailable.type, fastestAvailable.hatchTime))
+        return fastestAvailable
+    end
+end
+
+-- Helper function to buy cheapest available egg
+local function buyAnyCheapestEgg()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    if not LocalPlayer then
+        return false, "Player not found"
+    end
+    
+    local playerNetWorth = LocalPlayer:GetAttribute("NetWorth") or 0
+    
+    -- Find conveyor belts
+    local conveyorBelts = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name == "ConveyorBelt" and obj:IsA("Model") then
+            table.insert(conveyorBelts, obj)
+        end
+    end
+    
+    if #conveyorBelts == 0 then
+        return false, "No conveyor belts found"
+    end
+    
+    local cheapestEgg = nil
+    local lowestPrice = math.huge
+    
+    -- Find cheapest affordable egg
+    for _, belt in pairs(conveyorBelts) do
+        for _, eggModel in pairs(belt:GetChildren()) do
+            if eggModel:IsA("Model") and eggModel.Name == "Egg" then
+                local eggGui = eggModel:FindFirstChild("EggGui")
+                if eggGui then
+                    local priceLabel = eggGui:FindFirstChild("Price")
+                    if priceLabel and priceLabel:IsA("TextLabel") then
+                        local priceText = priceLabel.Text
+                        local price = tonumber(priceText:match("%d+"))
+                        
+                        if price and price < lowestPrice and price <= playerNetWorth then
+                            lowestPrice = price
+                            cheapestEgg = eggModel
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if not cheapestEgg then
+        return false, "No affordable eggs found"
+    end
+    
+    -- Buy the cheapest egg
+    local proximityPrompt = cheapestEgg:FindFirstChildOfClass("ProximityPrompt")
+    if proximityPrompt then
+        game:GetService("ProximityPromptService"):PromptTriggered(proximityPrompt)
+        wait(0.5)
+        return true, "Bought cheapest egg for placement"
+    end
+    
+    return false, "No proximity prompt found"
+end
+
+-- Helper function to auto-delete slow pets
+local function autoDeleteSlowPets(speedThreshold)
+    if speedThreshold <= 0 then
+        return 0, "Auto-delete disabled (speed threshold: 0)"
+    end
+    
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return 0, "Player data not found"
+    end
+    
+    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+    if not petsFolder then
+        return 0, "Pets folder not found"
+    end
+    
+    local deletedCount = 0
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local PetRE = ReplicatedStorage:FindFirstChild("PetRE")
+    
+    if not PetRE then
+        return 0, "PetRE not found"
+    end
+    
+    -- Find pets with speed below threshold
+    for _, petData in pairs(petsFolder:GetChildren()) do
+        if petData:IsA("Configuration") then
+            local petSpeed = petData:GetAttribute("Speed") or 0
+            local petLocked = petData:GetAttribute("LK") or 0
+            local petUID = petData.Name
+            
+            -- Only delete unlocked pets below speed threshold
+            if petLocked == 0 and petSpeed < speedThreshold then
+                PetRE:FireServer('Sell', petUID)
+                deletedCount = deletedCount + 1
+                wait(0.1) -- Small delay between deletions
+                
+                -- Limit to 5 deletions per cycle to avoid spam
+                if deletedCount >= 5 then
+                    break
+                end
+            end
+        end
+    end
+    
+    return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
+end
+
+-- Auto placement system
+local function runAutoPlacementSystem()
+    while questEnabled do
+        local tasks = getCurrentTasks()
+        local hasHatchTask = false
+        
+        -- Check if we have an active HatchEgg task
+        for _, task in ipairs(tasks) do
+            if task.CompleteType == "HatchEgg" then
                 local progress = task.Progress or 0
                 local target = task.CompleteValue or 1
                 local claimed = task.ClaimedCount or 0
                 local maxClaimed = task.RepeatCount or 1
                 
-                if progress >= target and claimed < maxClaimed then
-                    claimTask(task.Id)
-                    wait(0.5) -- Small delay between claims
+                if progress < target and claimed < maxClaimed then
+                    hasHatchTask = true
+                    break
                 end
             end
         end
         
-        wait(2) -- Check every 2 seconds
+        if hasHatchTask then
+            -- Check for empty tiles
+            local emptyTiles = getEmptyFarmTiles()
+            
+            if #emptyTiles > 0 then
+                -- We have empty tiles, check for eggs to place
+                local bestEgg = getBestEggForPlacement()
+                
+                if bestEgg then
+                    -- We have an egg, try to place it
+                    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                    local CharacterRE = ReplicatedStorage:FindFirstChild("CharacterRE")
+                    
+                    if CharacterRE then
+                        CharacterRE:FireServer("Focus", bestEgg.uid)
+                        wait(0.5)
+                        
+                        -- Click on the first empty tile
+                        local VirtualInputManager = game:GetService("VirtualInputManager")
+                        local camera = workspace.CurrentCamera
+                        local tilePosition = emptyTiles[1].Position
+                        local screenPoint = camera:WorldToScreenPoint(tilePosition)
+                        
+                        VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 1)
+                        wait(0.1)
+                        VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 1)
+                        
+                        print(string.format("Auto Placement: Placed %s (hatch: %ds) on empty tile", 
+                            bestEgg.type, bestEgg.hatchTime))
+                        wait(2) -- Wait before next placement attempt
+                    end
+                else
+                    -- No eggs available, try to buy one
+                    local buySuccess, buyMessage = buyAnyCheapestEgg()
+                    if buySuccess then
+                        print("Auto Placement: " .. buyMessage)
+                        wait(1) -- Wait for purchase to process
+                    else
+                        wait(5) -- Wait longer if buying failed
+                    end
+                end
+            else
+                -- No empty tiles, try auto-deletion if enabled
+                if autoDeleteMinSpeed > 0 then
+                    local deletedCount, deleteMessage = autoDeleteSlowPets(autoDeleteMinSpeed)
+                    print("Auto Placement: " .. deleteMessage)
+                    
+                    if deletedCount > 0 then
+                        wait(2) -- Wait for deletion to process, then check for empty tiles again
+                    else
+                        wait(10) -- Wait longer if no pets were deleted
+                    end
+                else
+                    -- Auto-delete disabled, just wait
+                    wait(10)
+                end
+            end
+        else
+            -- No HatchEgg task active, reset placement target
+            if currentPlacementTarget then
+                print("Auto Placement: Reset target - no HatchEgg task active")
+                currentPlacementTarget = nil
+                placementTargetTime = math.huge
+                saveCustomAutoQuestSettings()
+            end
+            wait(5)
+        end
     end
 end
 
@@ -899,44 +1342,31 @@ local function runBuyMutateEggMonitor()
     end
 end
 
--- Auto refresh function
+-- Auto refresh function (always active when quest enabled)
 local function runAutoRefreshTasks()
     while questEnabled do
-        if not refreshTaskToggle then
-            wait(5)
-            continue
+        -- Update quest status
+        updateQuestStatus()
+        
+        -- Refresh dropdowns (use SetValues method for WindUI)
+        if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+            pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
         end
         
-        local refreshEnabled = false
-        if refreshTaskToggle.GetValue then
-            local success, result = pcall(function() return refreshTaskToggle:GetValue() end)
-            refreshEnabled = success and result or false
+        if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
+            pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
         end
         
-        if refreshEnabled then
-            -- Update quest status
-            updateQuestStatus()
-            
-            -- Refresh dropdowns (use SetValues method for WindUI)
-            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
-            end
-            
-            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
-            end
-            
-            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
-            end
-            
-            if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
-                pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
-            end
-            
-            if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
-                pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
-            end
+        if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
+            pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
+        end
+        
+        if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
+            pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
+        end
+        
+        if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
+            pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
         end
         
         wait(5) -- Refresh every 5 seconds
@@ -945,10 +1375,11 @@ end
 
 -- Main quest execution function
 local function runAutoQuest()
-    -- Start the auto claim, refresh, and BuyMutateEgg monitor threads when quest starts
+    -- Start all background threads when quest starts
     local claimThread = task.spawn(runAutoClaimReady)
     local refreshThread = task.spawn(runAutoRefreshTasks)
     buyMutateEggThread = task.spawn(runBuyMutateEggMonitor)
+    local placementThread = task.spawn(runAutoPlacementSystem)
     
     while questEnabled do
         local ok, err = pcall(executeQuestTasks)
@@ -972,6 +1403,11 @@ local function runAutoQuest()
     pcall(function() 
         if buyMutateEggThread then
             task.cancel(buyMutateEggThread)
+        end
+    end)
+    pcall(function() 
+        if placementThread then
+            task.cancel(placementThread)
         end
     end)
 end
@@ -1000,10 +1436,30 @@ function AutoQuestSystem.Init(dependencies)
         ImageSize = 22
     })
     
+    -- Auto-delete settings
+    autoDeleteSlider = QuestTab:Input({
+        Title = "Auto Delete Speed Threshold",
+        Desc = "Delete pets below this speed when no tiles are empty (0 = disabled)",
+        Default = "0",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            local numValue = tonumber(value) or 0
+            autoDeleteMinSpeed = numValue
+            if numValue > 0 then
+                print("Auto Delete: Enabled for pets below speed " .. numValue)
+            else
+                print("Auto Delete: Disabled")
+            end
+            -- Auto-save custom settings when changed
+            saveCustomAutoQuestSettings()
+        end,
+    })
+    
     -- Main toggle
     questToggle = QuestTab:Toggle({
         Title = "📝 Auto Quest",
-        Desc = "Automatically complete daily quest tasks",
+        Desc = "Automatically complete daily quest tasks (Auto Claim & Refresh built-in)",
         Value = false,
         Callback = function(state)
             questEnabled = state
@@ -1014,7 +1470,7 @@ function AutoQuestSystem.Init(dependencies)
                     runAutoQuest()
                     questThread = nil
                 end)
-                WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started quest automation! 🎉", Duration = 3 })
+                WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started quest automation! (Auto Claim & Refresh enabled) 🎉", Duration = 3 })
             elseif not state and questThread then
                 WindUI:Notify({ Title = "📝 Auto Quest", Content = "Stopped", Duration = 3 })
             end
@@ -1082,27 +1538,7 @@ function AutoQuestSystem.Init(dependencies)
     
     QuestTab:Section({ Title = "🔄 Automation", Icon = "refresh-cw" })
     
-    -- Auto claim toggle
-    claimReadyToggle = QuestTab:Toggle({
-        Title = "🏆 Auto Claim Ready",
-        Desc = "Automatically claim tasks when they reach 100%",
-        Value = true,
-        Callback = function(state)
-            -- The runAutoClaimReady function will check the toggle state itself
-            -- No need to start/stop threads here since main quest loop handles it
-        end
-    })
-    
-    -- Auto refresh toggle
-    refreshTaskToggle = QuestTab:Toggle({
-        Title = "🔄 Auto Refresh Tasks",
-        Desc = "Automatically refresh task status and dropdown lists",
-        Value = true,
-        Callback = function(state)
-            -- The runAutoRefreshTasks function will check the toggle state itself
-            -- No need to start/stop threads here since main quest loop handles it
-        end
-    })
+
     
     QuestTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
     
@@ -1205,14 +1641,16 @@ function AutoQuestSystem.Init(dependencies)
     -- Register UI elements with config
     if Config then
         Config:Register("questEnabled", questToggle)
-        Config:Register("claimReadyEnabled", claimReadyToggle)
-        Config:Register("refreshTaskEnabled", refreshTaskToggle)
         Config:Register("targetPlayer", targetPlayerDropdown)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
         Config:Register("sellPetTypeFilter", sellPetTypeDropdown)
         Config:Register("sellPetMutationFilter", sellPetMutationDropdown)
+        Config:Register("autoDeleteSpeed", autoDeleteSlider)
     end
+    
+    -- Load custom settings on initialization
+    loadCustomAutoQuestSettings()
     
     -- Initial status update
     task.spawn(function()
