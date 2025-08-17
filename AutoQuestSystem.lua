@@ -3,6 +3,27 @@
 
 local AutoQuestSystem = {}
 
+-- Hardcoded data lists (always available regardless of player inventory)
+local HardcodedEggTypes = {
+    "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", 
+    "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", 
+    "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"
+}
+
+local HardcodedPetTypes = {
+    "Capy1", "Capy2", "Pig", "Capy3", "Dog", "Cat", "CapyL1", "Cow", "CapyL2", 
+    "Sheep", "CapyL3", "Horse", "Zebra", "Giraffe", "Hippo", "Elephant", "Rabbit", 
+    "Mouse", "Ankylosaurus", "Tiger", "Fox", "Panda", "Toucan", "Bee", "Snake", 
+    "Butterfly", "Penguin", "Velociraptor", "Stegosaurus", "Seaturtle", "Bear", 
+    "Lion", "Rhino", "Kangroo", "Gorilla", "Ostrich", "Triceratops", "Pachycephalosaur", 
+    "Pterosaur", "Rex", "Dragon", "Baldeagle", "Griffin", "Brontosaurus", "Plesiosaur", 
+    "Spinosaurus", "Unicorn", "Toothless", "Tyrannosaurus", "Mosasaur"
+}
+
+local HardcodedMutations = {
+    "Golden", "Diamond", "Electric", "Fire", "Jurassic"
+}
+
 -- Task configuration data
 local TaskConfig = {
     Task_1 = {
@@ -206,32 +227,32 @@ local function getPetInventory()
     return inventory
 end
 
-local function getUniqueTypes(inventory)
+local function getAllEggTypes()
+    -- Return hardcoded list for eggs
     local types = {}
-    local typeSet = {}
-    
-    for _, item in ipairs(inventory) do
-        if not typeSet[item.type] then
-            typeSet[item.type] = true
-            table.insert(types, item.type)
-        end
+    for _, eggType in ipairs(HardcodedEggTypes) do
+        table.insert(types, eggType)
     end
-    
     table.sort(types)
     return types
 end
 
-local function getUniqueMutations(inventory)
-    local mutations = {}
-    local mutationSet = {}
-    
-    for _, item in ipairs(inventory) do
-        if item.mutation and not mutationSet[item.mutation] then
-            mutationSet[item.mutation] = true
-            table.insert(mutations, item.mutation)
-        end
+local function getAllPetTypes()
+    -- Return hardcoded list for pets
+    local types = {}
+    for _, petType in ipairs(HardcodedPetTypes) do
+        table.insert(types, petType)
     end
-    
+    table.sort(types)
+    return types
+end
+
+local function getAllMutations()
+    -- Return hardcoded list for mutations
+    local mutations = {}
+    for _, mutation in ipairs(HardcodedMutations) do
+        table.insert(mutations, mutation)
+    end
     table.sort(mutations)
     return mutations
 end
@@ -399,8 +420,8 @@ end
 
 local function buyMutatedEgg()
     -- Use existing auto buy logic but target only mutated eggs
-    local success, err = pcall(function()
-        local islandName = LocalPlayer:GetAttribute("AssignedIslandName")
+    local success, foundMutatedEgg = pcall(function()
+        local islandName = safeGetAttribute(LocalPlayer, "AssignedIslandName", nil)
         if not islandName then return false end
         
         -- Get conveyor belts (reuse logic from main script)
@@ -437,14 +458,19 @@ local function buyMutatedEgg()
                                             mutateLabel = mutateLabel:FindFirstChild("Mutate")
                                             if mutateLabel and mutateLabel:IsA("TextLabel") and mutateLabel.Text ~= "" then
                                                 -- This egg has a mutation, try to buy it
-                                                local args = {"BuyEgg", eggModel.Name}
-                                                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                                                local buySuccess = pcall(function()
+                                                    local args = {"BuyEgg", eggModel.Name}
+                                                    ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                                                    
+                                                    -- Focus the egg
+                                                    focusItem(eggModel.Name)
+                                                    
+                                                    actionCounter = actionCounter + 1
+                                                end)
                                                 
-                                                -- Focus the egg
-                                                focusItem(eggModel.Name)
-                                                
-                                                actionCounter = actionCounter + 1
-                                                return true
+                                                if buySuccess then
+                                                    return true
+                                                end
                                             end
                                         end
                                     end
@@ -459,7 +485,13 @@ local function buyMutatedEgg()
         return false
     end)
     
-    return success
+    -- Return both success status and whether a mutated egg was found
+    if not success then
+        warn("Error in buyMutatedEgg: " .. tostring(foundMutatedEgg))
+        return false, "Error occurred"
+    end
+    
+    return foundMutatedEgg, foundMutatedEgg and "Bought mutated egg" or "Waiting for mutated egg"
 end
 
 local function saveAutomationStates()
@@ -491,10 +523,14 @@ local function enableHatchingAutomation()
     if autoHatchToggle and autoHatchToggle.SetValue then autoHatchToggle:SetValue(true) end
 end
 
+-- Add status tracking for BuyMutateEgg task
+local buyMutateEggStatus = "Ready"
+
 local function updateQuestStatus()
     if not questStatusParagraph then return end
     
     local tasks = getCurrentTasks()
+    local statusText = "📝 Quest Status:\n"
     
     if #tasks == 0 then
         statusText = statusText .. "No active tasks found."
@@ -514,6 +550,11 @@ local function updateQuestStatus()
                 taskStatus = "🏆 READY TO CLAIM"
             else
                 taskStatus = string.format("⏳ %d/%d (%d%%)", progress, target, progressPercent)
+                
+                -- Add special status for BuyMutateEgg task
+                if task.CompleteType == "BuyMutateEgg" then
+                    taskStatus = taskStatus .. " - " .. buyMutateEggStatus
+                end
             end
             
             statusText = statusText .. string.format("\n%s (%s): %s", task.Id, task.CompleteType, taskStatus)
@@ -729,8 +770,14 @@ local function executeQuestTasks()
                     end
                     
                 elseif task.CompleteType == "BuyMutateEgg" then
-                    buyMutatedEgg()
-                    task.wait(2)
+                    local buySuccess, statusMessage = buyMutatedEgg()
+                    buyMutateEggStatus = statusMessage or "Waiting for mutated egg"
+                    
+                    if buySuccess then
+                        task.wait(1) -- Shorter wait if successful
+                    else
+                        task.wait(3) -- Longer wait if no mutated eggs found
+                    end
                     
                 elseif task.CompleteType == "OnlineTime" then
                     -- Just wait and claim when ready
@@ -808,19 +855,19 @@ local function runAutoRefreshTasks()
         end
         
         if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-            pcall(function() sendEggTypeDropdown:SetValues(getUniqueTypes(getEggInventory())) end)
+            pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
         end
         
         if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-            pcall(function() sendEggMutationDropdown:SetValues(getUniqueMutations(getEggInventory())) end)
+            pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
         end
         
         if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
-            pcall(function() sellPetTypeDropdown:SetValues(getUniqueTypes(getPetInventory())) end)
+            pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
         end
         
         if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
-            pcall(function() sellPetMutationDropdown:SetValues(getUniqueMutations(getPetInventory())) end)
+            pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
         end
         
         task.wait(10)
@@ -916,7 +963,7 @@ function AutoQuestSystem.Init(dependencies)
     sendEggTypeDropdown = QuestTab:Dropdown({
         Title = "🚫 Exclude Egg Types",
         Desc = "Select egg types to NOT send (empty = send all types)",
-        Values = getUniqueTypes(getEggInventory()),
+        Values = getAllEggTypes(),
         Value = {},
         Multi = true,
         AllowNone = true,
@@ -927,7 +974,7 @@ function AutoQuestSystem.Init(dependencies)
     sendEggMutationDropdown = QuestTab:Dropdown({
         Title = "🚫 Exclude Egg Mutations", 
         Desc = "Select mutations to NOT send (empty = send all mutations)",
-        Values = getUniqueMutations(getEggInventory()),
+        Values = getAllMutations(),
         Value = {},
         Multi = true,
         AllowNone = true,
@@ -940,7 +987,7 @@ function AutoQuestSystem.Init(dependencies)
     sellPetTypeDropdown = QuestTab:Dropdown({
         Title = "🚫 Exclude Pet Types",
         Desc = "Select pet types to NOT sell (empty = sell all types)",
-        Values = getUniqueTypes(getPetInventory()),
+        Values = getAllPetTypes(),
         Value = {},
         Multi = true,
         AllowNone = true,
@@ -951,7 +998,7 @@ function AutoQuestSystem.Init(dependencies)
     sellPetMutationDropdown = QuestTab:Dropdown({
         Title = "🚫 Exclude Pet Mutations",
         Desc = "Select mutations to NOT sell (empty = sell all mutations)",
-        Values = getUniqueMutations(getPetInventory()),
+        Values = getAllMutations(),
         Value = {},
         Multi = true,
         AllowNone = true,
@@ -1026,16 +1073,16 @@ function AutoQuestSystem.Init(dependencies)
                 pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
             end
             if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-                pcall(function() sendEggTypeDropdown:SetValues(getUniqueTypes(getEggInventory())) end)
+                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
             end
             if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-                pcall(function() sendEggMutationDropdown:SetValues(getUniqueMutations(getEggInventory())) end)
+                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
             end
             if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
-                pcall(function() sellPetTypeDropdown:SetValues(getUniqueTypes(getPetInventory())) end)
+                pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
             end
             if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
-                pcall(function() sellPetMutationDropdown:SetValues(getUniqueMutations(getPetInventory())) end)
+                pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
             end
             
             WindUI:Notify({
@@ -1102,16 +1149,16 @@ function AutoQuestSystem.Init(dependencies)
             pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
         end
         if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-            pcall(function() sendEggTypeDropdown:SetValues(getUniqueTypes(getEggInventory())) end)
+            pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
         end
         if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-            pcall(function() sendEggMutationDropdown:SetValues(getUniqueMutations(getEggInventory())) end)
+            pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
         end
         if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
-            pcall(function() sellPetTypeDropdown:SetValues(getUniqueTypes(getPetInventory())) end)
+            pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
         end
         if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
-            pcall(function() sellPetMutationDropdown:SetValues(getUniqueMutations(getPetInventory())) end)
+            pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
         end
     end)
     
