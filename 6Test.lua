@@ -52,8 +52,9 @@ Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
 Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
--- Bug tab removed per user request
+Tabs.QuestTab = Tabs.MainSection:Tab({ Title = "📝 | Auto Quest"})
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
+
 
 -- Function to load all saved settings before any function starts
 local function loadAllSettings()
@@ -222,6 +223,16 @@ local antiAFKEnabled = false
 local antiAFKConnection = nil
 local autoHatchThread = nil
 -- Priority system removed per user request
+
+-- Auto Quest state variables
+local autoQuestEnabled = false
+local autoQuestThread = nil
+local questStatus = {
+    lastUpdate = "Ready",
+    activeTasks = {},
+    completedTasks = {},
+    sessionStats = { sent = 0, sold = 0, hatched = 0, bought = 0, claimed = 0 }
+}
 
 -- Egg config loader
 local eggConfig = {}
@@ -3806,14 +3817,35 @@ task.spawn(function()
         --     autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
         -- end
         if autoQuestModule and autoQuestModule.Init then
-            AutoQuestSystem = autoQuestModule.Init({
+            questSystem = autoQuestModule.Init({
                 WindUI = WindUI,
                 Window = Window,
                 Config = zebuxConfig,
                 waitForSettingsReady = waitForSettingsReady,
+                LocalPlayer = LocalPlayer,
+                ReplicatedStorage = ReplicatedStorage,
             })
+            
+            -- Update dropdown values with quest system data
+            if questSystem then
+                questTargetPlayerDropdown:Refresh(questSystem.getAllPlayers())
+                questSendEggTNamesDropdown:Refresh(questSystem.getAvailableEggTNames())
+                questSendEggMutationsDropdown:Refresh(questSystem.getAvailableEggMutations())
+                questSellPetTNamesDropdown:Refresh(questSystem.getAvailablePetTNames())
+                questSellPetMutationsDropdown:Refresh(questSystem.getAvailablePetMutations())
+            end
         end
     end)
+    
+    -- Register Auto Quest elements after they're created
+    registerIfExists("autoQuestEnabled", autoQuestToggle)
+    registerIfExists("questClaimAllEnabled", questClaimAllToggle)
+    registerIfExists("questRefreshEnabled", questRefreshToggle)
+    registerIfExists("questTargetPlayer", questTargetPlayerDropdown)
+    registerIfExists("questSendEggTNames", questSendEggTNamesDropdown)
+    registerIfExists("questSendEggMutations", questSendEggMutationsDropdown)
+    registerIfExists("questSellPetTNames", questSellPetTNamesDropdown)
+    registerIfExists("questSellPetMutations", questSellPetMutationsDropdown)
     
     -- Load WindUI config settings
     zebuxConfig:Load()
@@ -3953,3 +3985,254 @@ end
 
 -- Function removed - using WindUI config system instead
 -- Function removed - using WindUI config system instead
+
+-- ============ Auto Quest System ============
+
+-- Quest state variables
+local autoQuestEnabled = false
+local autoQuestThread = nil
+local questSystem = nil
+
+-- Quest UI variables
+local questTargetPlayer = "Random Player"
+local questSendEggTNames = {}
+local questSendEggMutations = {}
+local questSellPetTNames = {}
+local questSellPetMutations = {}
+local questClaimAllEnabled = false
+local questRefreshEnabled = false
+
+-- Quest UI Elements
+Tabs.QuestTab:Section({ Title = "📝 Quest Status", Icon = "list" })
+
+questStatusParagraph = Tabs.QuestTab:Paragraph({
+    Title = "📊 Quest Progress",
+    Desc = "Ready to start quests",
+    Image = "activity",
+    ImageSize = 22
+})
+
+function updateQuestStatus()
+    if not questSystem then return end
+    
+    local currentTasks = questSystem.getCurrentQuestTasks()
+    local questState = questSystem.questState
+    local desc = "Active Tasks: " .. #currentTasks .. "\n"
+    
+    for _, task in ipairs(currentTasks) do
+        desc = desc .. string.format("• %s: %d/%d (%s)\n", 
+            task.id, task.progress, task.completeValue, task.completeType)
+    end
+    
+    desc = desc .. "\nSession Stats:\n"
+    desc = desc .. string.format("• Sent: %d | Sold: %d | Hatched: %d | Bought: %d | Claimed: %d",
+        questState.sessionStats.sent, questState.sessionStats.sold, 
+        questState.sessionStats.hatched, questState.sessionStats.bought, 
+        questState.sessionStats.claimed)
+    
+    questStatusParagraph:SetDesc(desc)
+end
+
+Tabs.QuestTab:Section({ Title = "🎯 Quest Settings", Icon = "settings" })
+
+-- Target player dropdown
+questTargetPlayerDropdown = Tabs.QuestTab:Dropdown({
+    Title = "🎯 Target Player",
+    Desc = "Choose who to send eggs to",
+    Values = {"Random Player"},
+    Value = "Random Player",
+    Callback = function(selection)
+        questTargetPlayer = selection
+        if questSystem then
+            questSystem.questState.targetPlayer = selection
+        end
+    end
+})
+
+-- Send Egg T-names dropdown
+questSendEggTNamesDropdown = Tabs.QuestTab:Dropdown({
+    Title = "🥚 Send Egg T-Names",
+    Desc = "Filter eggs by T attribute (leave empty for all)",
+    Values = {},
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        questSendEggTNames = selection
+        if questSystem then
+            questSystem.questState.sendEggTNames = selection
+        end
+    end
+})
+
+-- Send Egg Mutations dropdown
+questSendEggMutationsDropdown = Tabs.QuestTab:Dropdown({
+    Title = "🧬 Send Egg Mutations",
+    Desc = "Filter eggs by M attribute (leave empty for all)",
+    Values = {},
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        questSendEggMutations = selection
+        if questSystem then
+            questSystem.questState.sendEggMutations = selection
+        end
+    end
+})
+
+-- Sell Pet T-names dropdown
+questSellPetTNamesDropdown = Tabs.QuestTab:Dropdown({
+    Title = "🐾 Sell Pet T-Names",
+    Desc = "Filter pets by T attribute (leave empty for all)",
+    Values = {},
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        questSellPetTNames = selection
+        if questSystem then
+            questSystem.questState.sellPetTNames = selection
+        end
+    end
+})
+
+-- Sell Pet Mutations dropdown
+questSellPetMutationsDropdown = Tabs.QuestTab:Dropdown({
+    Title = "🧬 Sell Pet Mutations",
+    Desc = "Filter pets by M attribute (leave empty for all)",
+    Values = {},
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        questSellPetMutations = selection
+        if questSystem then
+            questSystem.questState.sellPetMutations = selection
+        end
+    end
+})
+
+Tabs.QuestTab:Section({ Title = "⚙️ Quest Controls", Icon = "play" })
+
+-- Auto Quest toggle
+autoQuestToggle = Tabs.QuestTab:Toggle({
+    Title = "📝 Auto Quest",
+    Desc = "Automatically complete daily quests",
+    Value = false,
+    Callback = function(state)
+        autoQuestEnabled = state
+        
+        if questSystem then
+            questSystem.questState.enabled = state
+        end
+        
+        waitForSettingsReady(0.2)
+        if state and not autoQuestThread and questSystem then
+            autoQuestThread = task.spawn(function()
+                questSystem.runAutoQuest()
+                autoQuestThread = nil
+            end)
+            WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started quest automation! 🎉", Duration = 3 })
+        elseif (not state) and autoQuestThread then
+            WindUI:Notify({ Title = "📝 Auto Quest", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+-- Claim All toggle
+questClaimAllToggle = Tabs.QuestTab:Toggle({
+    Title = "💰 Auto Claim All",
+    Desc = "Automatically claim completed quests",
+    Value = false,
+    Callback = function(state)
+        questClaimAllEnabled = state
+        if questSystem then
+            questSystem.questState.claimAllEnabled = state
+        end
+    end
+})
+
+-- Refresh Tasks toggle
+questRefreshToggle = Tabs.QuestTab:Toggle({
+    Title = "🔄 Auto Refresh Tasks",
+    Desc = "Continuously refresh task status",
+    Value = false,
+    Callback = function(state)
+        questRefreshEnabled = state
+        if questSystem then
+            questSystem.questState.refreshEnabled = state
+        end
+        
+        if state then
+            task.spawn(function()
+                while questRefreshEnabled do
+                    updateQuestStatus()
+                    task.wait(2)
+                end
+            end)
+        end
+    end
+})
+
+-- Manual buttons
+Tabs.QuestTab:Button({
+    Title = "🔄 Refresh Now",
+    Desc = "Manually refresh quest status",
+    Callback = function()
+        updateQuestStatus()
+        WindUI:Notify({ Title = "🔄 Refresh", Content = "Quest status updated!", Duration = 2 })
+    end
+})
+
+Tabs.QuestTab:Button({
+    Title = "💰 Claim All Ready",
+    Desc = "Claim all completed quests",
+    Callback = function()
+        if not questSystem then return end
+        
+        local currentTasks = questSystem.getCurrentQuestTasks()
+        local claimedCount = 0
+        
+        for _, task in ipairs(currentTasks) do
+            if task.canClaim then
+                if questSystem.claimQuestReward(task.id) then
+                    claimedCount = claimedCount + 1
+                end
+                task.wait(0.2)
+            end
+        end
+        
+        WindUI:Notify({ 
+            Title = "💰 Claims", 
+            Content = string.format("Claimed %d quest rewards! 🎉", claimedCount), 
+            Duration = 3 
+        })
+    end
+})
+
+Tabs.QuestTab:Button({
+    Title = "🛑 Emergency Stop",
+    Desc = "Stop all quest actions immediately",
+    Callback = function()
+        autoQuestEnabled = false
+        questClaimAllEnabled = false
+        questRefreshEnabled = false
+        
+        if questSystem then
+            questSystem.questState.enabled = false
+            questSystem.questState.claimAllEnabled = false
+            questSystem.questState.refreshEnabled = false
+        end
+        
+        if autoQuestThread then
+            autoQuestThread = nil
+        end
+        
+        WindUI:Notify({ 
+            Title = "🛑 Emergency Stop", 
+            Content = "All quest actions stopped!", 
+            Duration = 3 
+        })
+    end
+})
