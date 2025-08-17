@@ -207,30 +207,30 @@ local function executeSendEggTask(task)
     for _, egg in ipairs(eggs) do
         if sent >= needed then break end
         
-        -- Check type filter
+        -- Check type filter (EXCLUDE logic)
         if #selectedEggTypes > 0 then
-            local typeMatch = false
-            for _, selectedType in ipairs(selectedEggTypes) do
-                if egg.type == selectedType then
-                    typeMatch = true
+            local shouldExclude = false
+            for _, excludedType in ipairs(selectedEggTypes) do
+                if egg.type == excludedType then
+                    shouldExclude = true
                     break
                 end
             end
-            if not typeMatch then
+            if shouldExclude then
                 continue
             end
         end
         
-        -- Check mutation filter
+        -- Check mutation filter (EXCLUDE logic)
         if #selectedEggMutations > 0 and egg.mutation then
-            local mutationMatch = false
-            for _, selectedMutation in ipairs(selectedEggMutations) do
-                if egg.mutation == selectedMutation then
-                    mutationMatch = true
+            local shouldExclude = false
+            for _, excludedMutation in ipairs(selectedEggMutations) do
+                if egg.mutation == excludedMutation then
+                    shouldExclude = true
                     break
                 end
             end
-            if not mutationMatch then
+            if shouldExclude then
                 continue
             end
         end
@@ -256,30 +256,30 @@ local function executeSellPetTask(task)
             continue
         end
         
-        -- Check type filter
+        -- Check type filter (EXCLUDE logic)
         if #selectedPetTypes > 0 then
-            local typeMatch = false
-            for _, selectedType in ipairs(selectedPetTypes) do
-                if pet.type == selectedType then
-                    typeMatch = true
+            local shouldExclude = false
+            for _, excludedType in ipairs(selectedPetTypes) do
+                if pet.type == excludedType then
+                    shouldExclude = true
                     break
                 end
             end
-            if not typeMatch then
+            if shouldExclude then
                 continue
             end
         end
         
-        -- Check mutation filter
+        -- Check mutation filter (EXCLUDE logic)
         if #selectedPetMutations > 0 and pet.mutation then
-            local mutationMatch = false
-            for _, selectedMutation in ipairs(selectedPetMutations) do
-                if pet.mutation == selectedMutation then
-                    mutationMatch = true
+            local shouldExclude = false
+            for _, excludedMutation in ipairs(selectedPetMutations) do
+                if pet.mutation == excludedMutation then
+                    shouldExclude = true
                     break
                 end
             end
-            if not mutationMatch then
+            if shouldExclude then
                 continue
             end
         end
@@ -311,38 +311,79 @@ local function runAutoQuest()
                 return
             end
             
+            -- Sort tasks by priority: BuyMutateEgg → HatchEgg → SendEgg → SellPet → OnlineTime
+            local taskPriority = {
+                BuyMutateEgg = 1,
+                HatchEgg = 2,
+                SendEgg = 3,
+                SellPet = 4,
+                OnlineTime = 5
+            }
+            
+            table.sort(currentTasks, function(a, b)
+                local priorityA = taskPriority[a.completeType] or 999
+                local priorityB = taskPriority[b.completeType] or 999
+                return priorityA < priorityB
+            end)
+            
+            local taskCompleted = false
+            
             for _, task in ipairs(currentTasks) do
                 if not autoQuestEnabled then break end
                 
+                -- Skip if task is already completed
+                if task.isCompleted then
+                    continue
+                end
+                
+                -- Handle claimable tasks
                 if task.canClaim then
                     if autoClaimEnabled then
                         if claimTaskReward(task.id) then
+                            taskCompleted = true
                             task.wait(0.5)
+                            break -- Move to next task
                         end
                     end
-                elseif not task.isCompleted then
-                    local success, message
-                    
-                    if task.completeType == "SendEgg" then
-                        success, message = executeSendEggTask(task)
-                    elseif task.completeType == "SellPet" then
-                        success, message = executeSellPetTask(task)
-                    elseif task.completeType == "OnlineTime" then
-                        success, message = executeOnlineTimeTask(task)
-                    end
-                    
-                    if success then
-                        task.wait(1)
-                    else
-                        task.wait(5)
-                    end
+                    continue
+                end
+                
+                -- Execute task based on type
+                local success, message
+                
+                if task.completeType == "SendEgg" then
+                    success, message = executeSendEggTask(task)
+                elseif task.completeType == "SellPet" then
+                    success, message = executeSellPetTask(task)
+                elseif task.completeType == "OnlineTime" then
+                    success, message = executeOnlineTimeTask(task)
+                elseif task.completeType == "HatchEgg" then
+                    -- HatchEgg is handled by main script's auto hatch system
+                    success = true
+                    message = "HatchEgg task - handled by auto hatch system"
+                elseif task.completeType == "BuyMutateEgg" then
+                    -- BuyMutateEgg is handled by main script's auto buy system
+                    success = true
+                    message = "BuyMutateEgg task - handled by auto buy system"
+                end
+                
+                if success then
+                    taskCompleted = true
+                    task.wait(1)
+                    break -- Move to next task after successful execution
+                else
+                    -- If task failed, try next task instead of waiting
+                    continue
                 end
             end
             
-            if autoRefreshEnabled then
-                task.wait(10)
-            else
-                task.wait(5)
+            -- If no tasks were completed, wait before next cycle
+            if not taskCompleted then
+                if autoRefreshEnabled then
+                    task.wait(10)
+                else
+                    task.wait(5)
+                end
             end
             
         end)
