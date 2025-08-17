@@ -817,22 +817,64 @@ local function executeQuestTasks()
                 elseif task.CompleteType == "SendEgg" then
                     local eggInventory = getEggInventory()
                     if #eggInventory == 0 then
-                        -- Check if Auto Buy is enabled - if so, let it handle buying
-                        if getAutoBuyEnabled and getAutoBuyEnabled() then
-                            print("Auto Quest SendEgg: Auto Buy is enabled, letting it handle egg purchases")
-                            wait(3) -- Wait longer for Auto Buy to work
-                        else
-                            -- No eggs available, try to buy one
-                            print("Auto Quest SendEgg: No eggs in inventory, trying to buy one")
-                            local buySuccess, buyMessage = buyAnyCheapestEgg()
-                            if buySuccess then
-                                print("Auto Quest SendEgg: " .. buyMessage)
-                                wait(1) -- Wait for purchase to process
-                            else
-                                print("Auto Quest SendEgg: Failed to buy egg - " .. buyMessage)
-                                wait(2)
+                        -- Use same Auto Buy logic as main script
+                        print("Auto Quest SendEgg: No eggs in inventory, scanning conveyor belts")
+                        
+                        local islandName = safeGetAttribute(LocalPlayer, "AssignedIslandName", nil)
+                        if islandName then
+                            local art = workspace:FindFirstChild("Art")
+                            if art then
+                                local island = art:FindFirstChild(islandName)
+                                if island then
+                                    local env = island:FindFirstChild("ENV")
+                                    if env then
+                                        local conveyorRoot = env:FindFirstChild("Conveyor")
+                                        if conveyorRoot then
+                                            local foundEgg = false
+                                            
+                                            -- Check all conveyor belts for any eggs
+                                            for i = 1, 9 do
+                                                local conveyor = conveyorRoot:FindFirstChild("Conveyor" .. i)
+                                                if conveyor then
+                                                    local belt = conveyor:FindFirstChild("Belt")
+                                                    if belt then
+                                                        for _, eggModel in pairs(belt:GetChildren()) do
+                                                            if eggModel:IsA("Model") then
+                                                                local netWorth = LocalPlayer:GetAttribute("NetWorth") or 0
+                                                                local eggType = safeGetAttribute(eggModel, "Type", nil)
+                                                                local price = safeGetAttribute(eggModel, "Price", 0)
+                                                                
+                                                                if eggType and price and netWorth >= price then
+                                                                    -- Buy this egg
+                                                                    local buySuccess = pcall(function()
+                                                                        local args = {"BuyEgg", eggModel.Name}
+                                                                        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                                                                        focusItem(eggModel.Name)
+                                                                    end)
+                                                                    
+                                                                    if buySuccess then
+                                                                        print("Auto Quest SendEgg: Bought egg for sending")
+                                                                        foundEgg = true
+                                                                        break
+                                                                    end
+                                                                end
+                                                            end
+                                                        end
+                                                        if foundEgg then break end
+                                                    end
+                                                end
+                                            end
+                                            
+                                            if not foundEgg then
+                                                print("Auto Quest SendEgg: No affordable eggs found on conveyor")
+                                            end
+                                        end
+                                    end
+                                end
                             end
                         end
+                        
+                        wait(2) -- Wait for purchase to process
                     else
                         local excludeTypes = {}
                         local excludeMutations = {}
@@ -1557,15 +1599,10 @@ local function runBuyMutateEggMonitor()
                 if progress < target and claimed < maxClaimed then
                     hasBuyMutateTask = true
                     
-                    -- Check if Auto Buy is enabled - if so, let it handle buying
-                    if getAutoBuyEnabled and getAutoBuyEnabled() then
-                        buyMutateEggStatus = "Auto Buy is enabled - letting it handle purchases"
-                        wait(2)
-                    else
-                        -- Try to buy mutated egg in background
-                        local buySuccess, statusMessage = buyMutatedEgg()
-                        
-                        if buySuccess then
+                                        -- Try to buy mutated egg continuously until found
+                    local buySuccess, statusMessage = buyMutatedEgg()
+                    
+                    if buySuccess then
                         buyMutateEggStatus = "Found mutated egg! Auto-claiming..."
                         buyMutateEggRetries = 0
                         
@@ -1576,17 +1613,9 @@ local function runBuyMutateEggMonitor()
                         wait(2) -- Brief celebration pause
                     else
                         buyMutateEggRetries = buyMutateEggRetries + 1
-                        
-                        if buyMutateEggRetries >= maxBuyMutateRetries then
-                            buyMutateEggStatus = "No mutated eggs found - taking break"
-                            buyMutateEggRetries = 0
-                            wait(30) -- Take a break
-                        else
-                            buyMutateEggStatus = string.format("Monitoring for mutated eggs (%d/%d)", 
-                                buyMutateEggRetries, maxBuyMutateRetries)
-                        end
+                        buyMutateEggStatus = string.format("Monitoring for mutated eggs (%d attempts)", buyMutateEggRetries)
+                        -- No break - keep trying continuously
                     end
-                end
                 break
                 end
             end
