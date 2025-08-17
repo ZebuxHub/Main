@@ -18,6 +18,7 @@ local selectedMutationSet = {}
 local selectedFruits = {}
 local selectedFeedFruits = {}
 local updateCustomUISelection
+local autoFeedToggle
 
 -- Window
 local Window = WindUI:CreateWindow({
