@@ -12,7 +12,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
--- Selection state variables (declared early for loadAllSavedSettings)
+-- Selection state variables
 local selectedTypeSet = {}
 local selectedMutationSet = {}
 local selectedFruits = {}
@@ -1271,7 +1271,7 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
+        -- Settings loading handled by WindUI config system
         autoHatchEnabled = state
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
@@ -1440,7 +1440,7 @@ Tabs.AutoTab:Button({
             EggSelection.Show(
                 function(selectedItems)
                     -- Handle selection changes
-                    selectedTypeSet = {}
+            selectedTypeSet = {}
                     selectedMutationSet = {}
                     
                     if selectedItems then
@@ -1451,8 +1451,8 @@ Tabs.AutoTab:Button({
                                     selectedTypeSet[itemId] = true
                                 elseif MutationData[itemId] then
                                     selectedMutationSet[itemId] = true
-                                end
-                            end
+                end
+            end
                         end
                     end
                     
@@ -1669,7 +1669,7 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     Desc = "Instantly buys eggs as soon as they appear on the conveyor belt!",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
+        -- Settings loading handled by WindUI config system
         autoBuyEnabled = state
         if state and not autoBuyThread then
             autoBuyThread = task.spawn(function()
@@ -2256,8 +2256,8 @@ local function runAutoPlace()
             local readyEggs = filterReadyEggs(owned)
             
             if #readyEggs > 0 then
-                task.wait(1.0)
-                return
+            task.wait(1.0)
+            return
             end
         end
         
@@ -2305,7 +2305,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
+        -- Settings loading handled by WindUI config system
         autoPlaceEnabled = state
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
@@ -2444,7 +2444,7 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically unlock tiles when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
+        -- Settings loading handled by WindUI config system
         autoUnlockEnabled = state
         if state and not autoUnlockThread then
             autoUnlockThread = task.spawn(function()
@@ -2620,7 +2620,7 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
+        -- Settings loading handled by WindUI config system
         autoDeleteEnabled = state
         if state and not autoDeleteThread then
             autoDeleteThread = task.spawn(function()
@@ -2961,60 +2961,63 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
+        -- Settings loading handled by WindUI config system
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
-            autoBuyFruitThread = task.spawn(function()
-                while autoBuyFruitEnabled do
-                    -- Auto buy fruit logic
-                    if selectedFruits and next(selectedFruits) then
-                        local netWorth = FruitStoreSystem.getPlayerNetWorth()
-                        local boughtAny = false
-                        
-                        for fruitId, _ in pairs(selectedFruits) do
-                            if FruitData[fruitId] then
-                                local fruitPrice = FruitStoreSystem.parsePrice(FruitData[fruitId].Price)
-                                
-                                -- Check if fruit is in stock
-                                if not FruitStoreSystem.isFruitInStock(fruitId) then
-                                    task.wait(0.5)
-                                else
-                                    -- Check if player can afford it
-                                    if netWorth < fruitPrice then
-                                        task.wait(0.5)
-                                    else
-                                        -- Try to buy the fruit
-                                        local success = pcall(function()
-                                            -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
-                                            local args = {
-                                                fruitId
-                                            }
-                                            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
-                                        end)
-                                        
-                                        if success then
-                                            boughtAny = true
-                                        end
-                                        
-                                        task.wait(0.5) -- Wait between each fruit purchase
-                                    end
-                                end
-                            end
-                        end
-                        
-                        -- If no fruits were bought, wait longer before next attempt
-                        if not boughtAny then
-                            task.wait(2)
-                        else
-                            task.wait(1) -- Shorter wait if we bought something
-                        end
-                    else
-                        task.wait(2)
-                    end
-                end
-            end)
-            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
-        elseif (not state) and autoBuyFruitThread then
-            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
+                         autoBuyFruitThread = task.spawn(function()
+                 while autoBuyFruitEnabled do
+                     -- Auto buy fruit logic
+                     if selectedFruits and next(selectedFruits) then
+                         -- Auto buy fruit logic
+                         
+                         local netWorth = FruitStoreSystem.getPlayerNetWorth()
+                         local boughtAny = false
+                         
+                         for fruitId, _ in pairs(selectedFruits) do
+                             if FruitData[fruitId] then
+                                 local fruitPrice = FruitStoreSystem.parsePrice(FruitData[fruitId].Price)
+                                 
+                                 -- Check if fruit is in stock
+                                 if not FruitStoreSystem.isFruitInStock(fruitId) then
+                                     task.wait(0.5)
+                                 else
+                                     -- Check if player can afford it
+                                     if netWorth < fruitPrice then
+                                         task.wait(0.5)
+                                     else
+                                         -- Try to buy the fruit
+                                         local success = pcall(function()
+                                             -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
+                                             local args = {
+                                                 fruitId
+                                             }
+                                             ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+                                         end)
+                                         
+                                         if success then
+                                             boughtAny = true
+                                         end
+                                         
+                                         task.wait(0.5) -- Wait between each fruit purchase
+                                     end
+                                 end
+                             end
+                         end
+                         
+                         -- If no fruits were bought, wait longer before next attempt
+                         if not boughtAny then
+                             task.wait(2)
+                         else
+                             task.wait(1) -- Shorter wait if we bought something
+                         end
+                     else
+                         task.wait(2)
+                     end
+        end
+    end)
+                         -- Auto buy started
+         elseif (not state) and autoBuyFruitThread then
+             -- Auto buy stopped
         end
     end
 })
@@ -3027,32 +3030,21 @@ local zooConfig = ConfigManager:CreateConfig("BuildAZooConfig")
 -- Register all UI elements for config (will be done after UI creation)
 local function registerConfigElements()
     if zooConfig then
-        -- Only register UI elements that exist and are properly initialized
-        local elementsToRegister = {
-            {name = "autoBuyEnabled", element = autoBuyToggle},
-            {name = "autoPlaceEnabled", element = autoPlaceToggle},
-            {name = "autoHatchEnabled", element = autoHatchToggle},
-            {name = "autoClaimEnabled", element = autoClaimToggle},
-            {name = "autoUpgradeEnabled", element = autoUpgradeToggle},
-            {name = "autoDinoEnabled", element = autoDinoToggle},
-            {name = "autoDeleteEnabled", element = autoDeleteToggle},
-            {name = "autoDeleteSpeed", element = autoDeleteSpeedSlider},
-            {name = "autoClaimDelay", element = autoClaimDelaySlider},
-            {name = "selectedPlaceEggs", element = placeEggDropdown},
-            {name = "automationPriority", element = priorityDropdown},
-            {name = "autoBuyFruitEnabled", element = autoBuyFruitToggle}
-        }
+        -- Only register simple UI elements that don't cause serialization issues
+        if autoBuyToggle then zooConfig:Register("autoBuyEnabled", autoBuyToggle) end
+        if autoPlaceToggle then zooConfig:Register("autoPlaceEnabled", autoPlaceToggle) end
+        if autoHatchToggle then zooConfig:Register("autoHatchEnabled", autoHatchToggle) end
+        if autoClaimToggle then zooConfig:Register("autoClaimEnabled", autoClaimToggle) end
+        if autoUpgradeToggle then zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle) end
+        if autoDinoToggle then zooConfig:Register("autoDinoEnabled", autoDinoToggle) end
+        if autoDeleteToggle then zooConfig:Register("autoDeleteEnabled", autoDeleteToggle) end
+        if autoDeleteSpeedSlider then zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider) end
+        if autoClaimDelaySlider then zooConfig:Register("autoClaimDelay", autoClaimDelaySlider) end
+        if placeEggDropdown then zooConfig:Register("selectedPlaceEggs", placeEggDropdown) end
+        if priorityDropdown then zooConfig:Register("automationPriority", priorityDropdown) end
         
-        for _, item in ipairs(elementsToRegister) do
-            if item.element and type(item.element) == "table" then
-                local success, err = pcall(function()
-                    zooConfig:Register(item.name, item.element)
-                end)
-                if not success then
-                    warn("Failed to register " .. item.name .. ": " .. tostring(err))
-                end
-            end
-        end
+        -- Register fruit selection
+        if autoBuyFruitToggle then zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle) end
     end
 end
 
@@ -3094,57 +3086,11 @@ Tabs.SaveTab:Button({
     Desc = "Save all your current settings",
     Callback = function()
         local success, err = pcall(function()
-            -- Save toggle states
-            local toggleStates = {
-                autoBuyEnabled = autoBuyEnabled,
-                autoPlaceEnabled = autoPlaceEnabled,
-                autoHatchEnabled = autoHatchEnabled,
-                autoClaimEnabled = autoClaimEnabled,
-                autoUpgradeEnabled = autoUpgradeEnabled,
-                autoDinoEnabled = autoDinoEnabled,
-                autoDeleteEnabled = autoDeleteEnabled,
-                autoBuyFruitEnabled = autoBuyFruitEnabled,
-                autoFeedEnabled = autoFeedEnabled
-            }
-            writefile("Zebux_ToggleStates.json", game:GetService("HttpService"):JSONEncode(toggleStates))
-            
-            -- Save egg selections separately using writefile
-            local eggSelections = {
-                eggs = {},
-                mutations = {}
-            }
-            
-            for eggId, _ in pairs(selectedTypeSet) do
-                table.insert(eggSelections.eggs, eggId)
+            if zooConfig then
+                zooConfig:Save()
+            else
+                error("Config manager not available")
             end
-            
-            for mutationId, _ in pairs(selectedMutationSet) do
-                table.insert(eggSelections.mutations, mutationId)
-            end
-            
-            writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
-            
-            -- Save fruit selections separately
-            local fruitSelections = {
-                fruits = {}
-            }
-            
-            for fruitId, _ in pairs(selectedFruits) do
-                table.insert(fruitSelections.fruits, fruitId)
-            end
-            
-            writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
-            
-            -- Save feed fruit selections separately
-            local feedFruitSelections = {
-                fruits = {}
-            }
-            
-            for fruitId, _ in pairs(selectedFeedFruits) do
-                table.insert(feedFruitSelections.fruits, fruitId)
-            end
-            
-            writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
         end)
         
         if success then
@@ -3168,97 +3114,10 @@ Tabs.SaveTab:Button({
     Desc = "Load your saved settings",
     Callback = function()
         local success, err = pcall(function()
-            -- Load toggle states
-            local toggleSuccess, toggleData = pcall(function()
-                if isfile("Zebux_ToggleStates.json") then
-                    local jsonData = readfile("Zebux_ToggleStates.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
-                end
-            end)
-            
-            if toggleSuccess and toggleData then
-                -- Apply toggle states
-                if toggleData.autoBuyEnabled then autoBuyToggle:SetValue(true) end
-                if toggleData.autoPlaceEnabled then autoPlaceToggle:SetValue(true) end
-                if toggleData.autoHatchEnabled then autoHatchToggle:SetValue(true) end
-                if toggleData.autoClaimEnabled then autoClaimToggle:SetValue(true) end
-                if toggleData.autoUpgradeEnabled then autoUpgradeToggle:SetValue(true) end
-                if toggleData.autoDinoEnabled then autoDinoToggle:SetValue(true) end
-                if toggleData.autoDeleteEnabled then autoDeleteToggle:SetValue(true) end
-                if toggleData.autoBuyFruitEnabled then autoBuyFruitToggle:SetValue(true) end
-                if toggleData.autoFeedEnabled then autoFeedToggle:SetValue(true) end
-            end
-            
-            -- Load egg selections separately
-            local success, data = pcall(function()
-                if isfile("Zebux_EggSelections.json") then
-                    local jsonData = readfile("Zebux_EggSelections.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
-                end
-            end)
-            
-            if success and data then
-                -- Load egg selections
-                selectedTypeSet = {}
-                if data.eggs then
-                    for _, eggId in ipairs(data.eggs) do
-                        selectedTypeSet[eggId] = true
-                    end
-                end
-                
-                -- Load mutation selections
-                selectedMutationSet = {}
-                if data.mutations then
-                    for _, mutationId in ipairs(data.mutations) do
-                        selectedMutationSet[mutationId] = true
-                    end
-                end
-                
-                -- Update UI if visible
-                if EggSelection and EggSelection.IsVisible and EggSelection.IsVisible() then
-                    EggSelection.RefreshContent()
-                end
-            end
-            
-            -- Load fruit selections separately
-            local fruitSuccess, fruitData = pcall(function()
-                if isfile("Zebux_FruitSelections.json") then
-                    local jsonData = readfile("Zebux_FruitSelections.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
-                end
-            end)
-            
-            if fruitSuccess and fruitData then
-                -- Load fruit selections
-                selectedFruits = {}
-                if fruitData.fruits then
-                    for _, fruitId in ipairs(fruitData.fruits) do
-                        selectedFruits[fruitId] = true
-                    end
-                end
-                
-                -- Update UI if visible
-                if FruitSelection and FruitSelection.IsVisible and FruitSelection.IsVisible() then
-                    FruitSelection.RefreshContent()
-                end
-            end
-            
-            -- Load feed fruit selections separately
-            local feedFruitSuccess, feedFruitData = pcall(function()
-                if isfile("Zebux_FeedFruitSelections.json") then
-                    local jsonData = readfile("Zebux_FeedFruitSelections.json")
-                    return game:GetService("HttpService"):JSONDecode(jsonData)
-                end
-            end)
-            
-            if feedFruitSuccess and feedFruitData then
-                -- Load feed fruit selections
-                selectedFeedFruits = {}
-                if feedFruitData.fruits then
-                    for _, fruitId in ipairs(feedFruitData.fruits) do
-                        selectedFeedFruits[fruitId] = true
-                    end
-                end
+            if zooConfig then
+                zooConfig:Load()
+            else
+                error("Config manager not available")
             end
         end)
         
@@ -3383,112 +3242,34 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Load saved settings when script starts
+-- Register config elements and auto-load when script starts
 task.spawn(function()
     task.wait(2) -- Wait longer for UI to fully load
     
-    local loadedCount = 0
-    
-    -- Load toggle states
-    local toggleSuccess, toggleData = pcall(function()
-        if isfile("Zebux_ToggleStates.json") then
-            local jsonData = readfile("Zebux_ToggleStates.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
+    -- Register config elements
+    local success, err = pcall(function()
+        registerConfigElements()
     end)
     
-    if toggleSuccess and toggleData then
-        -- Apply toggle states
-        if toggleData.autoBuyEnabled then autoBuyToggle:SetValue(true) end
-        if toggleData.autoPlaceEnabled then autoPlaceToggle:SetValue(true) end
-        if toggleData.autoHatchEnabled then autoHatchToggle:SetValue(true) end
-        if toggleData.autoClaimEnabled then autoClaimToggle:SetValue(true) end
-        if toggleData.autoUpgradeEnabled then autoUpgradeToggle:SetValue(true) end
-        if toggleData.autoDinoEnabled then autoDinoToggle:SetValue(true) end
-        if toggleData.autoDeleteEnabled then autoDeleteToggle:SetValue(true) end
-        if toggleData.autoBuyFruitEnabled then autoBuyFruitToggle:SetValue(true) end
-        if toggleData.autoFeedEnabled then autoFeedToggle:SetValue(true) end
-        loadedCount = loadedCount + 1
+    if not success then
+        warn("Failed to register config elements: " .. tostring(err))
     end
     
-    -- Load custom JSON files only (skip problematic WindUI config)
-    local success, data = pcall(function()
-        if isfile("Zebux_EggSelections.json") then
-            local jsonData = readfile("Zebux_EggSelections.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
-    end)
-    
-    if success and data then
-        -- Load egg selections
-        selectedTypeSet = {}
-        if data.eggs then
-            for _, eggId in ipairs(data.eggs) do
-                selectedTypeSet[eggId] = true
-                loadedCount = loadedCount + 1
-            end
-        end
+    -- Load config
+    if zooConfig then
+        local loadSuccess, loadErr = pcall(function()
+            zooConfig:Load()
+        end)
         
-        -- Load mutation selections
-        selectedMutationSet = {}
-        if data.mutations then
-            for _, mutationId in ipairs(data.mutations) do
-                selectedMutationSet[mutationId] = true
-                loadedCount = loadedCount + 1
-            end
+        if loadSuccess then
+            WindUI:Notify({ 
+                Title = "📂 Auto-Load", 
+                Content = "Your saved settings have been loaded! 🎉", 
+                Duration = 3 
+            })
+        else
+            warn("Failed to load config: " .. tostring(loadErr))
         end
-    end
-    
-    -- Load fruit selections separately
-    local fruitSuccess, fruitData = pcall(function()
-        if isfile("Zebux_FruitSelections.json") then
-            local jsonData = readfile("Zebux_FruitSelections.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
-    end)
-    
-    if fruitSuccess and fruitData then
-        -- Load fruit selections
-        selectedFruits = {}
-        if fruitData.fruits then
-            for _, fruitId in ipairs(fruitData.fruits) do
-                selectedFruits[fruitId] = true
-                loadedCount = loadedCount + 1
-            end
-        end
-    end
-    
-    -- Load feed fruit selections separately
-    local feedFruitSuccess, feedFruitData = pcall(function()
-        if isfile("Zebux_FeedFruitSelections.json") then
-            local jsonData = readfile("Zebux_FeedFruitSelections.json")
-            return game:GetService("HttpService"):JSONDecode(jsonData)
-        end
-    end)
-    
-    if feedFruitSuccess and feedFruitData then
-        -- Load feed fruit selections
-        selectedFeedFruits = {}
-        if feedFruitData.fruits then
-            for _, fruitId in ipairs(feedFruitData.fruits) do
-                selectedFeedFruits[fruitId] = true
-                loadedCount = loadedCount + 1
-            end
-        end
-    end
-    
-    if loadedCount > 0 then
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load", 
-            Content = "Loaded " .. loadedCount .. " saved selections! 🎉", 
-            Duration = 3 
-        })
-    else
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load", 
-            Content = "No saved settings found. Use 'Save Settings' to save your selections.", 
-            Duration = 3 
-        })
     end
 end)
 
@@ -3525,7 +3306,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
     Callback = function(state)
-        -- Settings loading removed - using auto-load instead
+        -- Settings loading handled by WindUI config system
         autoFeedEnabled = state
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
@@ -3540,8 +3321,8 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
                                     selectedFeedFruits = {}
                                     for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
                                 end
-                            end
-                        end)
+    end
+end)
                     end
                     return selectedFeedFruits
                 end
@@ -3561,4 +3342,4 @@ Window:OnClose(function()
     print("UI closed.")
 end)
 
--- Function removed - using auto-load instead
+-- Function removed - using WindUI config system instead
