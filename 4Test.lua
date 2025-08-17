@@ -1553,7 +1553,7 @@ local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/
 local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
 local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FeedFruitSelection.lua"))()
 local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSystem.lua"))()
-local FruitStoreSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitStoreSystem.lua"))()
+-- FruitStoreSystem functions are now implemented locally in the auto buy fruit section
 
 -- UI state
 local eggSelectionVisible = false
@@ -3095,6 +3095,69 @@ Tabs.FruitTab:Button({
 local autoBuyFruitEnabled = false
 local autoBuyFruitThread = nil
 
+-- Helper functions for fruit buying
+local function getPlayerNetWorth()
+    local player = Players.LocalPlayer
+    if not player then return 0 end
+    
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if not leaderstats then return 0 end
+    
+    local netWorth = leaderstats:FindFirstChild("NetWorth")
+    if not netWorth then return 0 end
+    
+    return netWorth.Value or 0
+end
+
+local function parsePrice(priceStr)
+    if type(priceStr) == "number" then
+        return priceStr
+    end
+    local cleanPrice = priceStr:gsub(",", "")
+    return tonumber(cleanPrice) or 0
+end
+
+local function getFoodStoreUI()
+    local player = Players.LocalPlayer
+    if not player then return nil end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    
+    return playerGui:FindFirstChild("ScreenFoodStore")
+end
+
+local function getFoodStoreLST()
+    local foodStoreUI = getFoodStoreUI()
+    if not foodStoreUI then return nil end
+    
+    return foodStoreUI:FindFirstChild("LST")
+end
+
+local function isFruitInStock(fruitId)
+    local lst = getFoodStoreLST()
+    if not lst then return false end
+    
+    -- Try different possible key formats
+    local candidates = {fruitId, string.lower(fruitId), string.upper(fruitId)}
+    local underscoreVersion = fruitId:gsub(" ", "_")
+    table.insert(candidates, underscoreVersion)
+    table.insert(candidates, string.lower(underscoreVersion))
+    
+    for _, candidate in ipairs(candidates) do
+        local stockLabel = lst:FindFirstChild(candidate)
+        if stockLabel and stockLabel:IsA("TextLabel") then
+            local stockText = stockLabel.Text
+            local stockNumber = tonumber(stockText:match("%d+"))
+            if stockNumber and stockNumber > 0 then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
 local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Title = "🍎 Auto Buy Fruit",
     Desc = "Automatically buy selected fruits when you have enough money",
@@ -3104,61 +3167,96 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
         loadAllSettings()
         autoBuyFruitEnabled = state
         if state and not autoBuyFruitThread then
-                         autoBuyFruitThread = task.spawn(function()
-                 while autoBuyFruitEnabled do
-                     -- Auto buy fruit logic
-                     if selectedFruits and next(selectedFruits) then
-                         -- Auto buy fruit logic
-                         
-                         local netWorth = FruitStoreSystem.getPlayerNetWorth()
-                         local boughtAny = false
-                         
-                         for fruitId, _ in pairs(selectedFruits) do
-                             if FruitData[fruitId] then
-                                 local fruitPrice = FruitStoreSystem.parsePrice(FruitData[fruitId].Price)
-                                 
-                                 -- Check if fruit is in stock
-                                 if not FruitStoreSystem.isFruitInStock(fruitId) then
-                                     task.wait(0.5)
-                                 else
-                                     -- Check if player can afford it
-                                     if netWorth < fruitPrice then
-                                         task.wait(0.5)
-                                     else
-                                         -- Try to buy the fruit
-                                         local success = pcall(function()
-                                             -- Fire the fruit buying remote (correct format from FruitStoreSystem.lua)
-                                             local args = {
-                                                 fruitId
-                                             }
-                                             ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
-                                         end)
-                                         
-                                         if success then
-                                             boughtAny = true
-                                         end
-                                         
-                                         task.wait(0.5) -- Wait between each fruit purchase
-                                     end
-                                 end
-                             end
-                         end
-                         
-                         -- If no fruits were bought, wait longer before next attempt
-                         if not boughtAny then
-                             task.wait(2)
-                         else
-                             task.wait(1) -- Shorter wait if we bought something
-                         end
-                     else
-                         task.wait(2)
-                     end
+            autoBuyFruitThread = task.spawn(function()
+                while autoBuyFruitEnabled do
+                    -- Auto buy fruit logic
+                    if selectedFruits and next(selectedFruits) then
+                        local netWorth = getPlayerNetWorth()
+                        local boughtAny = false
+                        
+                        for fruitId, _ in pairs(selectedFruits) do
+                            if FruitData[fruitId] then
+                                local fruitPrice = parsePrice(FruitData[fruitId].Price)
+                                
+                                -- Check if fruit is in stock
+                                if not isFruitInStock(fruitId) then
+                                    task.wait(0.5)
+                                else
+                                    -- Check if player can afford it
+                                    if netWorth < fruitPrice then
+                                        task.wait(0.5)
+                                    else
+                                        -- Try to buy the fruit
+                                        local success = pcall(function()
+                                            -- Fire the fruit buying remote
+                                            local args = {fruitId}
+                                            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+                                        end)
+                                        
+                                        if success then
+                                            boughtAny = true
+                                        end
+                                        
+                                        task.wait(0.5) -- Wait between each fruit purchase
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- If no fruits were bought, wait longer before next attempt
+                        if not boughtAny then
+                            task.wait(2)
+                        else
+                            task.wait(1) -- Shorter wait if we bought something
+                        end
+                    else
+                        task.wait(2)
+                    end
+                end
+            end)
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
+        elseif (not state) and autoBuyFruitThread then
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
         end
-    end)
-                         -- Auto buy started
-         elseif (not state) and autoBuyFruitThread then
-             -- Auto buy stopped
+    end
+})
+
+-- Debug button for auto buy fruit
+Tabs.FruitTab:Button({
+    Title = "🔍 Debug Auto Buy Fruit",
+    Desc = "Check auto buy fruit system status",
+    Callback = function()
+        local netWorth = getPlayerNetWorth()
+        local foodStoreUI = getFoodStoreUI()
+        local lst = getFoodStoreLST()
+        local selectedCount = 0
+        
+        if selectedFruits then
+            for _, _ in pairs(selectedFruits) do
+                selectedCount = selectedCount + 1
+            end
         end
+        
+        local message = string.format("🍎 Auto Buy Fruit Debug:\n")
+        message = message .. string.format("💰 NetWorth: %s\n", tostring(netWorth))
+        message = message .. string.format("🛒 Food Store UI: %s\n", tostring(foodStoreUI ~= nil))
+        message = message .. string.format("📊 LST Found: %s\n", tostring(lst ~= nil))
+        message = message .. string.format("🍎 Selected Fruits: %d\n", selectedCount)
+        message = message .. string.format("🔄 Auto Buy Enabled: %s\n", tostring(autoBuyFruitEnabled))
+        message = message .. string.format("🧵 Auto Buy Thread: %s\n", tostring(autoBuyFruitThread ~= nil))
+        
+        if selectedFruits and next(selectedFruits) then
+            message = message .. string.format("📋 Selected: ")
+            local fruitList = {}
+            for fruitId, _ in pairs(selectedFruits) do
+                table.insert(fruitList, fruitId)
+            end
+            message = message .. table.concat(fruitList, ", ")
+        else
+            message = message .. string.format("📋 Selected: None")
+        end
+        
+        WindUI:Notify({ Title = "🔍 Auto Buy Fruit Debug", Content = message, Duration = 8 })
     end
 })
 
