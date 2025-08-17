@@ -211,7 +211,7 @@ local autoHatchEnabled = false
 local antiAFKEnabled = false
 local antiAFKConnection = nil
 local autoHatchThread = nil
-local automationPriority = "Hatch" -- "Hatch" or "Place"
+-- Priority system removed per user request
 
 -- Egg config loader
 local eggConfig = {}
@@ -854,23 +854,23 @@ local function isTileUnlocked(islandName, tilePosition)
     return true -- Tile is unlocked
 end
 
--- Debug function to show the relationship between farm splits and locks
+-- Debug function removed per user request
 local function debugTileLockRelationship()
     local islandName = getAssignedIslandName()
     if not islandName then
-        WindUI:Notify({ Title = "🔍 Debug", Content = "No island assigned!", Duration = 3 })
+        -- Debug notify removed
         return
     end
     
     local art = workspace:FindFirstChild("Art")
     if not art then
-        WindUI:Notify({ Title = "🔍 Debug", Content = "No Art folder found!", Duration = 3 })
+        -- Debug notify removed
         return
     end
     
     local island = art:FindFirstChild(islandName)
     if not island then
-        WindUI:Notify({ Title = "🔍 Debug", Content = "Island not found: " .. islandName, Duration = 3 })
+        -- Debug notify removed
         return
     end
     
@@ -986,7 +986,7 @@ local function debugTileLockRelationship()
     
     message = message .. string.format("\n📈 Summary: %d unlocked, %d locked", unlockedCount, lockedCount)
     
-    WindUI:Notify({ Title = "🔍 Tile Lock Debug", Content = message, Duration = 10 })
+    -- Debug notify removed
 end
 
 local function getPetUID()
@@ -1421,10 +1421,7 @@ end
 local function runAutoHatch()
     while autoHatchEnabled do
         -- Check priority - if Auto Place is running and has priority, pause hatching
-        if autoPlaceEnabled and automationPriority == "Place" then
-            task.wait(1.0)
-            return
-        end
+        -- Priority system removed
         
         local ok, err = pcall(function()
             local owned = collectOwnedEggs()
@@ -1446,9 +1443,7 @@ local function runAutoHatch()
             end)
             for _, m in ipairs(eggs) do
                 -- Check priority again before each hatch
-                if autoPlaceEnabled and automationPriority == "Place" then
-                    return
-                end
+                -- Priority system removed
                 
                 -- Moving to hatch
                 tryHatchModel(m)
@@ -1472,10 +1467,7 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
         
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
-            if autoPlaceEnabled and automationPriority == "Place" then
-                WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Auto Place has priority - Hatch paused", Duration = 3 })
-                return
-            end
+            -- Priority system removed
             autoHatchThread = task.spawn(function()
                 runAutoHatch()
                 autoHatchThread = nil
@@ -1515,34 +1507,7 @@ Tabs.HatchTab:Button({
     end
 })
 
--- Priority system UI
-Tabs.HatchTab:Section({ Title = "🎯 Priority Settings", Icon = "target" })
-
-Tabs.HatchTab:Paragraph({
-    Title = "🎯 Automation Priority",
-    Desc = "Choose which automation should work when both Auto Hatch and Auto Place are enabled",
-    Image = "target",
-    ImageSize = 18,
-})
-
-local priorityDropdown = Tabs.HatchTab:Dropdown({
-    Title = "🎯 Choose Priority",
-    Desc = "Select which automation has priority",
-    Values = { "⚡ Auto Hatch First", "🏠 Auto Place First" },
-    Value = "⚡ Auto Hatch First",
-    Callback = function(selection)
-        if selection == "⚡ Auto Hatch First" then
-            automationPriority = "Hatch"
-        else
-            automationPriority = "Place"
-        end
-        WindUI:Notify({ 
-            Title = "🎯 Priority Set", 
-            Content = "Priority set to: " .. selection, 
-            Duration = 3 
-        })
-    end
-})
+-- Priority system UI removed
 
 local function placePetAtPart(farmPart, petUID)
     if not farmPart or not petUID then return false end
@@ -2484,15 +2449,7 @@ local function runAutoPlace()
     while autoPlaceEnabled do
         -- Check priority - if Auto Hatch is running and has priority, pause placing
         -- But allow Auto Place to work if Auto Hatch has no eggs to work with
-        if autoHatchEnabled and automationPriority == "Hatch" then
-            local owned = collectOwnedEggs()
-            local readyEggs = filterReadyEggs(owned)
-            
-            if #readyEggs > 0 then
-            task.wait(1.0)
-            return
-            end
-        end
+        -- Priority system removed
         
         local islandName = getAssignedIslandName()
         -- Status update removed
@@ -2508,19 +2465,7 @@ local function runAutoPlace()
         
         -- Wait until disabled or island changes
         while autoPlaceEnabled do
-            -- Check priority again during monitoring
-            if autoHatchEnabled and automationPriority == "Hatch" then
-                local owned = collectOwnedEggs()
-                local readyEggs = filterReadyEggs(owned)
-                
-                if #readyEggs > 0 then
-                -- Status update removed
-                -- Status update removed
-                return
-                else
-                    -- Auto Hatch has no eggs to work with, so Auto Place can work
-                end
-            end
+            -- Priority system removed
             
             local currentIsland = getAssignedIslandName()
             if currentIsland ~= islandName then
@@ -2542,10 +2487,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
-            if autoHatchEnabled and automationPriority == "Hatch" then
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Auto Hatch has priority - Place paused", Duration = 3 })
-                return
-            end
+            -- Priority system removed
             -- Reset counters
             
             autoPlaceThread = task.spawn(function()
@@ -2721,33 +2663,7 @@ Tabs.PlaceTab:Button({
     end
 })
 
-Tabs.PlaceTab:Button({
-    Title = "🔧 Debug Auto Unlock Status",
-    Desc = "Check auto unlock system status",
-    Callback = function()
-        local lockedTiles = getLockedTiles()
-        local netWorth = getPlayerNetWorth()
-        local affordableCount = 0
-        
-        for _, lockInfo in ipairs(lockedTiles) do
-            local cost = tonumber(lockInfo.cost) or 0
-            if netWorth >= cost then
-                affordableCount = affordableCount + 1
-            end
-        end
-        
-        local message = string.format("🔓 Auto Unlock Debug:\n")
-        message = message .. string.format("🏝️ Island: %s\n", getAssignedIslandName() or "None")
-        message = message .. string.format("💰 NetWorth: %s\n", tostring(netWorth))
-        message = message .. string.format("🔒 Total Locks: %d\n", #lockedTiles)
-        message = message .. string.format("💸 Affordable: %d\n", affordableCount)
-        message = message .. string.format("🔄 Auto Unlock Enabled: %s\n", tostring(autoUnlockEnabled))
-        message = message .. string.format("🧵 Auto Unlock Thread: %s\n", tostring(autoUnlockThread ~= nil))
-        -- Status removed per user request
-        
-        WindUI:Notify({ Title = "🔧 Auto Unlock Debug", Content = message, Duration = 8 })
-    end
-})
+ 
 
 -- Auto Delete functionality
 local autoDeleteEnabled = false
@@ -3057,6 +2973,10 @@ local function chooseAffordableUpgrades(netWorth)
     for key, entry in pairs(conveyorConfig) do
         if type(entry) == "table" then
             local cost = entry.Cost or entry.Price or (entry.Base and entry.Base.Price)
+            if type(cost) == "string" then
+                local clean = tostring(cost):gsub("[^%d%.]", "")
+                cost = tonumber(clean)
+            end
             local idLike = entry.ID or entry.Id or entry.Name or key
             local idx = parseConveyorIndexFromId(idLike)
             if idx and type(cost) == "number" and netWorth >= cost and idx >= 1 and idx <= 9 and not purchasedUpgrades[idx] then
@@ -3079,7 +2999,18 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
         
         if state and not autoUpgradeThread then
             autoUpgradeThread = task.spawn(function()
+                -- Ensure conveyor config is loaded
+                if not conveyorConfig or not next(conveyorConfig) then
+                    loadConveyorConfig()
+                end
                 while autoUpgradeEnabled do
+                    -- Attempt reload if config still not present
+                    if not conveyorConfig or not next(conveyorConfig) then
+                        setShopStatus("Waiting for config...")
+                        loadConveyorConfig()
+                        task.wait(1)
+                        -- continue loop
+                    end
                     local net = getPlayerNetWorth()
                     local actions = chooseAffordableUpgrades(net)
                     if #actions == 0 then
@@ -3353,179 +3284,15 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
 
 
 
--- Debug button for auto buy fruit
-Tabs.FruitTab:Button({
-    Title = "🔍 Debug Auto Buy Fruit",
-    Desc = "Check auto buy fruit system status",
-    Callback = function()
-        local netWorth = getPlayerNetWorth()
-        local foodStoreUI = getFoodStoreUI()
-        local lst = getFoodStoreLST()
-        local selectedCount = 0
-        
-        if selectedFruits then
-            for _, _ in pairs(selectedFruits) do
-                selectedCount = selectedCount + 1
-            end
-        end
-        
-        local message = string.format("🍎 Auto Buy Fruit Debug:\n")
-        message = message .. string.format("💰 NetWorth: %s\n", tostring(netWorth))
-        message = message .. string.format("🛒 Food Store UI: %s\n", tostring(foodStoreUI ~= nil))
-        message = message .. string.format("📊 LST Found: %s\n", tostring(lst ~= nil))
-        message = message .. string.format("🍎 Selected Fruits: %d\n", selectedCount)
-        message = message .. string.format("🔄 Auto Buy Enabled: %s\n", tostring(autoBuyFruitEnabled))
-        message = message .. string.format("🧵 Auto Buy Thread: %s\n", tostring(autoBuyFruitThread ~= nil))
-        
-        if selectedFruits and next(selectedFruits) then
-            message = message .. string.format("📋 Selected: ")
-            local fruitList = {}
-            for fruitId, _ in pairs(selectedFruits) do
-                table.insert(fruitList, fruitId)
-            end
-            message = message .. table.concat(fruitList, ", ")
-        else
-            message = message .. string.format("📋 Selected: None")
-        end
-        
-        WindUI:Notify({ Title = "🔍 Auto Buy Fruit Debug", Content = message, Duration = 8 })
-    end
-})
+ 
 
 
 
--- Debug button for auto feed system
-Tabs.FeedTab:Button({
-    Title = "🔍 Debug Auto Feed System",
-    Desc = "Check auto feed system status and troubleshoot issues",
-    Callback = function()
-        -- Call the debug function from AutoFeedSystem
-        if AutoFeedSystem and AutoFeedSystem.debugAutoFeed then
-            AutoFeedSystem.debugAutoFeed()
-        else
-            WindUI:Notify({ Title = "🔍 Auto Feed Debug", Content = "AutoFeedSystem not loaded", Duration = 3 })
-        end
-        
-        -- Also show current status
-        local message = string.format("🍽️ Auto Feed System Debug:\n")
-        message = message .. string.format("🔄 Auto Feed Enabled: %s\n", tostring(autoFeedEnabled))
-        message = message .. string.format("🧵 Auto Feed Thread: %s\n", tostring(autoFeedThread ~= nil))
-        message = message .. string.format("🍎 Selected Feed Fruits: %d\n", selectedFeedFruits and next(selectedFeedFruits) and 1 or 0)
-        
-        if selectedFeedFruits and next(selectedFeedFruits) then
-            local fruitList = {}
-            for fruitName, _ in pairs(selectedFeedFruits) do
-                table.insert(fruitList, fruitName)
-            end
-            message = message .. string.format("📋 Selected: %s", table.concat(fruitList, ", "))
-        else
-            message = message .. string.format("📋 Selected: None")
-        end
-        
-        WindUI:Notify({ Title = "🍽️ Auto Feed Debug", Content = message, Duration = 8 })
-    end
-})
+ 
 
--- Debug button for auto place system
-Tabs.PlaceTab:Button({
-    Title = "🔍 Debug Auto Place System",
-    Desc = "Check auto place system status and egg/mutation filtering",
-    Callback = function()
-        local eggs = listAvailableEggUIDs()
-        local message = string.format("🏠 Auto Place System Debug:\n")
-        message = message .. string.format("🔄 Auto Place Enabled: %s\n", tostring(autoPlaceEnabled))
-        message = message .. string.format("🧵 Auto Place Thread: %s\n", tostring(autoPlaceThread ~= nil))
-        message = message .. string.format("🥚 Total Available Eggs: %d\n", #eggs)
-        message = message .. string.format("📋 Selected Egg Types: %d\n", #selectedEggTypes)
-        message = message .. string.format("🧬 Selected Mutations: %d\n", #selectedMutations)
-        
-        -- Show selected egg types
-        if #selectedEggTypes > 0 then
-            message = message .. string.format("🥚 Egg Types: %s\n", table.concat(selectedEggTypes, ", "))
-        else
-            message = message .. string.format("🥚 Egg Types: All\n")
-        end
-        
-        -- Show selected mutations
-        if #selectedMutations > 0 then
-            message = message .. string.format("🧬 Mutations: %s\n", table.concat(selectedMutations, ", "))
-        else
-            message = message .. string.format("🧬 Mutations: All\n")
-        end
-        
-        -- Show filtered eggs
-        updateAvailableEggs()
-        message = message .. string.format("✅ Filtered Eggs: %d\n", #availableEggs)
-        
-        -- Show some example eggs with their mutations
-        local exampleCount = 0
-        for _, eggInfo in ipairs(eggs) do
-            if exampleCount < 5 then
-                local mutationText = eggInfo.mutation or "None"
-                message = message .. string.format("  %s (%s) -> %s\n", eggInfo.uid, eggInfo.type, mutationText)
-                exampleCount = exampleCount + 1
-            end
-        end
-        
-        WindUI:Notify({ Title = "🏠 Auto Place Debug", Content = message, Duration = 10 })
-    end
-})
+ 
 
--- Debug button to check pet feed time text
-Tabs.FeedTab:Button({
-    Title = "🔍 Check Pet Feed Time",
-    Desc = "Check the actual feed time text for Big Pets",
-    Callback = function()
-        local localPlayer = game:GetService("Players").LocalPlayer
-        if not localPlayer then
-            WindUI:Notify({ Title = "❌ Error", Content = "LocalPlayer not found", Duration = 3 })
-        return
-    end
-    
-        local petsFolder = workspace:FindFirstChild("Pets")
-        if not petsFolder then
-            WindUI:Notify({ Title = "❌ Error", Content = "Pets folder not found", Duration = 3 })
-        return
-    end
-    
-        local message = "🍽️ Pet Feed Time Check:\n"
-        local bigPetCount = 0
-        
-        for _, petModel in ipairs(petsFolder:GetChildren()) do
-            if petModel:IsA("Model") then
-                local rootPart = petModel:FindFirstChild("RootPart")
-                if rootPart then
-                    local petUserId = rootPart:GetAttribute("UserId")
-                    if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                        local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                        if bigPetGUI then
-                            bigPetCount = bigPetCount + 1
-                            local feedGUI = bigPetGUI:FindFirstChild("Feed")
-                            if feedGUI then
-                                local feedText = feedGUI:FindFirstChild("TXT")
-                                if feedText and feedText:IsA("TextLabel") then
-                                    local feedTime = feedText.Text
-                                    local feedVisible = feedGUI.Visible
-                                    message = message .. string.format("Pet %s: '%s' (visible: %s)\n", petModel.Name, tostring(feedTime), tostring(feedVisible))
-                                else
-                                    message = message .. string.format("Pet %s: No feed text\n", petModel.Name)
-                                end
-                            else
-                                message = message .. string.format("Pet %s: No feed GUI\n", petModel.Name)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        if bigPetCount == 0 then
-            message = message .. "No Big Pets found"
-        end
-        
-        WindUI:Notify({ Title = "🍽️ Feed Time Check", Content = message, Duration = 8 })
-    end
-})
+ 
 
 -- ============ WindUI ConfigManager System ============
 
@@ -3642,7 +3409,7 @@ local function registerUIElements()
     -- Register dropdowns
     zebuxConfig:Register("placeEggDropdown", placeEggDropdown)
     zebuxConfig:Register("placeMutationDropdown", placeMutationDropdown)
-    zebuxConfig:Register("priorityDropdown", priorityDropdown)
+    -- priorityDropdown removed
     
     -- Register sliders/inputs
     zebuxConfig:Register("autoClaimDelaySlider", autoClaimDelaySlider)
@@ -3722,30 +3489,7 @@ Tabs.SaveTab:Button({
     end
 })
 
-Tabs.SaveTab:Button({
-    Title = "🔍 Debug Config System",
-    Desc = "Check WindUI config system status",
-    Callback = function()
-        local message = "🔍 WindUI Config Debug:\n"
-        message = message .. string.format("Config Manager: %s\n", tostring(ConfigManager ~= nil))
-        message = message .. string.format("Zebux Config: %s\n", tostring(zebuxConfig ~= nil))
-        
-        -- Check toggle variables
-        message = message .. string.format("Auto Buy: %s\n", tostring(autoBuyEnabled))
-        message = message .. string.format("Auto Place: %s\n", tostring(autoPlaceEnabled))
-        message = message .. string.format("Auto Hatch: %s\n", tostring(autoHatchEnabled))
-        message = message .. string.format("Auto Claim: %s\n", tostring(autoClaimEnabled))
-        message = message .. string.format("Auto Upgrade: %s\n", tostring(autoUpgradeEnabled))
-        message = message .. string.format("Auto Dino: %s\n", tostring(autoDinoEnabled))
-        message = message .. string.format("Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
-        message = message .. string.format("Auto Feed: %s\n", tostring(autoFeedEnabled))
-        
-        -- Show custom selections
-        message = message .. string.format("Custom Selections: %s\n", tostring(customSelections ~= nil))
-        
-        WindUI:Notify({ Title = "🔍 Config Debug", Content = message, Duration = 8 })
-    end
-})
+ 
 
 Tabs.SaveTab:Button({
     Title = "🔄 Manual Load Settings",
@@ -3955,7 +3699,7 @@ task.spawn(function()
     task.wait(3) -- Wait longer for UI to fully load
     
     -- Show loading notification
-    WindUI:Notify({ 
+        WindUI:Notify({ 
         Title = "📂 Loading Settings", 
         Content = "Loading your saved settings...", 
         Duration = 2 
@@ -3972,9 +3716,9 @@ task.spawn(function()
     
     WindUI:Notify({ 
         Title = "📂 Auto-Load Complete", 
-        Content = "Your saved settings have been loaded! 🎉", 
-        Duration = 3 
-    })
+            Content = "Your saved settings have been loaded! 🎉", 
+            Duration = 3 
+        })
 end)
 
 -- ============ Auto Feed Tab ============
@@ -4057,36 +3801,6 @@ pcall(function()
 
 
 
--- Debug button for toggle loading (moved here after all toggles are defined)
-Tabs.SaveTab:Button({
-    Title = "🔍 Debug Toggle Loading",
-    Desc = "Check if toggles are loading correctly",
-    Callback = function()
-        local message = string.format("🔧 Toggle Loading Debug:\n")
-        message = message .. string.format("⚙️ Config Manager: %s\n", tostring(ConfigManager ~= nil))
-        message = message .. string.format("🥚 Auto Buy Toggle: %s\n", tostring(autoBuyToggle ~= nil))
-        message = message .. string.format("🏠 Auto Place Toggle: %s\n", tostring(autoPlaceToggle ~= nil))
-        message = message .. string.format("⚡ Auto Hatch Toggle: %s\n", tostring(autoHatchToggle ~= nil))
-        message = message .. string.format("💰 Auto Claim Toggle: %s\n", tostring(autoClaimToggle ~= nil))
-        message = message .. string.format("🛒 Auto Upgrade Toggle: %s\n", tostring(autoUpgradeToggle ~= nil))
-        message = message .. string.format("🦕 Auto Dino Toggle: %s\n", tostring(autoDinoToggle ~= nil))
-        message = message .. string.format("🍎 Auto Buy Fruit Toggle: %s\n", tostring(autoBuyFruitToggle ~= nil))
-        message = message .. string.format("🍽️ Auto Feed Toggle: %s\n", tostring(autoFeedToggle ~= nil))
-        
-        -- Check toggle states
-        message = message .. string.format("\n📊 Toggle States:\n")
-        message = message .. string.format("🥚 Auto Buy: %s\n", tostring(autoBuyEnabled))
-        message = message .. string.format("🏠 Auto Place: %s\n", tostring(autoPlaceEnabled))
-        message = message .. string.format("⚡ Auto Hatch: %s\n", tostring(autoHatchEnabled))
-        message = message .. string.format("💰 Auto Claim: %s\n", tostring(autoClaimEnabled))
-        message = message .. string.format("🛒 Auto Upgrade: %s\n", tostring(autoUpgradeEnabled))
-        message = message .. string.format("🦕 Auto Dino: %s\n", tostring(autoDinoEnabled))
-        message = message .. string.format("🍎 Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
-        message = message .. string.format("🍽️ Auto Feed: %s\n", tostring(autoFeedEnabled))
-        
-        WindUI:Notify({ Title = "🔧 Toggle Loading Debug", Content = message, Duration = 8 })
-    end
-})
 
 -- Bug report system removed per user request
 
