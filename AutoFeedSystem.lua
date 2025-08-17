@@ -160,6 +160,11 @@ function AutoFeedSystem.isPetEating(petData)
         return true -- Assume eating if no feed GUI
     end
     
+    -- Check if Feed frame is visible - if not visible, pet is ready to feed
+    if not feedGUI.Visible then
+        return false -- Pet is ready to feed
+    end
+    
     local feedText = feedGUI:FindFirstChild("TXT")
     if not feedText or not feedText:IsA("TextLabel") then
         return true -- Assume eating if no text
@@ -170,10 +175,44 @@ function AutoFeedSystem.isPetEating(petData)
         return true -- Assume eating if no valid text
     end
     
-    -- Check if the pet is currently eating (not ready to eat)
-    -- Return true if eating, false if ready to eat
-    -- Pet is ready to eat when text is "00:00", "???", or ""
-    return feedTime ~= "00:00" and feedTime ~= "???" and feedTime ~= ""
+    -- Check for stuck timer (00:01 for more than 2 seconds)
+    local currentTime = tick()
+    local petKey = petData.name
+    
+    -- Initialize stuck timer tracking if not exists
+    if not AutoFeedSystem.stuckTimers then
+        AutoFeedSystem.stuckTimers = {}
+    end
+    
+    if feedTime == "00:01" then
+        if not AutoFeedSystem.stuckTimers[petKey] then
+            -- First time seeing 00:01, start timer
+            AutoFeedSystem.stuckTimers[petKey] = currentTime
+            return true -- Still eating for now
+        else
+            -- Check how long it's been stuck at 00:01
+            local stuckDuration = currentTime - AutoFeedSystem.stuckTimers[petKey]
+            if stuckDuration > 2 then
+                -- Been stuck for more than 2 seconds, check if Feed frame is visible
+                print("🍎 Auto Feed Debug - Pet " .. petKey .. " stuck at 00:01 for " .. string.format("%.1f", stuckDuration) .. "s, Feed visible: " .. tostring(feedGUI.Visible))
+                
+                if not feedGUI.Visible then
+                    -- Feed frame not visible, pet is ready to feed
+                    AutoFeedSystem.stuckTimers[petKey] = nil -- Reset timer
+                    return false
+                end
+            end
+            return true -- Still eating
+        end
+    else
+        -- Timer is not 00:01, reset stuck timer
+        AutoFeedSystem.stuckTimers[petKey] = nil
+        
+        -- Check if the pet is currently eating (not ready to eat)
+        -- Return true if eating, false if ready to eat
+        -- Pet is ready to eat when text is "00:00", "???", or ""
+        return feedTime ~= "00:00" and feedTime ~= "???" and feedTime ~= ""
+    end
 end
 
 function AutoFeedSystem.equipFruit(fruitName)
@@ -428,9 +467,18 @@ function AutoFeedSystem.debugAutoFeed()
                             local feedText = feedGUI:FindFirstChild("TXT")
                             if feedText and feedText:IsA("TextLabel") then
                                 local feedTime = feedText.Text
-                                print("🍎 Auto Feed Debug - Pet " .. petModel.Name .. " feed time: '" .. tostring(feedTime) .. "'")
+                                local feedVisible = feedGUI.Visible
+                                print("🍎 Auto Feed Debug - Pet " .. petModel.Name .. " feed time: '" .. tostring(feedTime) .. "' visible: " .. tostring(feedVisible))
                                 
-                                if feedTime == "00:00" or feedTime == "???" or feedTime == "" then
+                                -- Check if ready using the same logic as isPetEating
+                                local isReady = false
+                                if not feedVisible then
+                                    isReady = true
+                                elseif feedTime == "00:00" or feedTime == "???" or feedTime == "" then
+                                    isReady = true
+                                end
+                                
+                                if isReady then
                                     availablePets = availablePets + 1
                                     print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " is ready to eat")
                                 else
