@@ -1206,10 +1206,7 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoClaimEnabled", autoClaimToggle)
-end
+
 
 local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Title = "⏰ Claim Speed",
@@ -1492,10 +1489,7 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoHatchEnabled", autoHatchToggle)
-end
+
 
 Tabs.HatchTab:Button({
     Title = "⚡ Hatch Nearest Egg",
@@ -2573,10 +2567,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoPlaceEnabled", autoPlaceToggle)
-end
+
 
 
 -- Auto Unlock Tile functionality
@@ -2710,10 +2701,7 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoUnlockEnabled", autoUnlockToggle)
-end
+
 
 Tabs.PlaceTab:Button({
     Title = "🔓 Unlock All Affordable Now",
@@ -2893,10 +2881,7 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoDeleteEnabled", autoDeleteToggle)
-end
+
 
 -- Anchor workflow removed (no longer needed)
 Window:EditOpenButton({ Title = "Build A Zoo", Icon = "monitor", Draggable = true })
@@ -3023,10 +3008,7 @@ local autoDinoToggle = Tabs.PackTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoDinoEnabled", autoDinoToggle)
-end
+
 
 Tabs.PackTab:Button({
     Title = "🦕 Claim Dino Now",
@@ -3137,10 +3119,7 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
-end
+
 
 Tabs.ShopTab:Button({
     Title = "🛒 Upgrade All Now",
@@ -3385,10 +3364,7 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
-end
+
 
 -- Debug button for auto buy fruit
 Tabs.FruitTab:Button({
@@ -3747,9 +3723,39 @@ end
 
 -- Function to update toggle visual states after loading
 local function updateToggleStates()
-    -- WindUI should automatically handle loading toggle states
-    -- We just need to ensure the UI reflects the current state
     print("🔄 Updating toggle visual states...")
+    
+    -- Manually set toggle visual states to match loaded values
+    if autoBuyToggle and autoBuyToggle.SetValue then
+        pcall(function() autoBuyToggle:SetValue(autoBuyEnabled) end)
+    end
+    if autoHatchToggle and autoHatchToggle.SetValue then
+        pcall(function() autoHatchToggle:SetValue(autoHatchEnabled) end)
+    end
+    if autoClaimToggle and autoClaimToggle.SetValue then
+        pcall(function() autoClaimToggle:SetValue(autoClaimEnabled) end)
+    end
+    if autoPlaceToggle and autoPlaceToggle.SetValue then
+        pcall(function() autoPlaceToggle:SetValue(autoPlaceEnabled) end)
+    end
+    if autoUnlockToggle and autoUnlockToggle.SetValue then
+        pcall(function() autoUnlockToggle:SetValue(autoUnlockEnabled) end)
+    end
+    if autoDeleteToggle and autoDeleteToggle.SetValue then
+        pcall(function() autoDeleteToggle:SetValue(autoDeleteEnabled) end)
+    end
+    if autoDinoToggle and autoDinoToggle.SetValue then
+        pcall(function() autoDinoToggle:SetValue(autoDinoEnabled) end)
+    end
+    if autoUpgradeToggle and autoUpgradeToggle.SetValue then
+        pcall(function() autoUpgradeToggle:SetValue(autoUpgradeEnabled) end)
+    end
+    if autoBuyFruitToggle and autoBuyFruitToggle.SetValue then
+        pcall(function() autoBuyFruitToggle:SetValue(autoBuyFruitEnabled) end)
+    end
+    if autoFeedToggle and autoFeedToggle.SetValue then
+        pcall(function() autoFeedToggle:SetValue(autoFeedEnabled) end)
+    end
     
     -- Log current toggle states for debugging
     print("Toggle States:")
@@ -4083,24 +4089,6 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Function to update toggle visual states after loading
-local function updateToggleStates()
-    -- WindUI should automatically handle loading toggle states
-    -- We just need to ensure the UI reflects the current state
-    print("🔄 Updating toggle visual states...")
-    
-    -- Log current toggle states for debugging
-    print("Toggle States:")
-    print("  Auto Buy: " .. tostring(autoBuyEnabled))
-    print("  Auto Place: " .. tostring(autoPlaceEnabled))
-    print("  Auto Hatch: " .. tostring(autoHatchEnabled))
-    print("  Auto Claim: " .. tostring(autoClaimEnabled))
-    print("  Auto Upgrade: " .. tostring(autoUpgradeEnabled))
-    print("  Auto Dino: " .. tostring(autoDinoEnabled))
-    print("  Auto Buy Fruit: " .. tostring(autoBuyFruitEnabled))
-    print("  Auto Feed: " .. tostring(autoFeedEnabled))
-end
-
 -- Auto-load settings after all UI elements are created
 task.spawn(function()
     task.wait(3) -- Wait longer for UI to fully load
@@ -4227,10 +4215,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     end
 })
 
--- Register with config system
-if zooConfig then
-    zooConfig:Register("autoFeedEnabled", autoFeedToggle)
-end
+
 
 -- Debug button for toggle loading (moved here after all toggles are defined)
 Tabs.SaveTab:Button({
