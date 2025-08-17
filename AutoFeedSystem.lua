@@ -216,6 +216,7 @@ end
 
 function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeedStatusParagraph, getSelectedFruits)
     while autoFeedEnabled do
+        local shouldContinue = true
         local ok, err = pcall(function()
             local bigPets = AutoFeedSystem.getBigPets()
             feedFruitStatus.petsFound = #bigPets
@@ -226,8 +227,8 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                 if updateFeedStatusParagraph then
                     updateFeedStatusParagraph()
                 end
-                task.wait(2)
-                return -- Use return instead of continue
+                shouldContinue = false
+                return
             end
             
             -- Check each pet for feeding opportunity
@@ -362,9 +363,13 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                 updateFeedStatusParagraph()
             end
             task.wait(1) -- Wait before retrying
+        elseif not shouldContinue then
+            -- No big pets found, wait longer before checking again
+            task.wait(3)
+        else
+            -- Normal operation, wait before next cycle
+            task.wait(2)
         end
-        
-        task.wait(2) -- Check every 2 seconds
     end
 end
 
