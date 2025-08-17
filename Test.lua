@@ -3799,7 +3799,7 @@ task.spawn(function()
         local autoQuestModule = nil
         -- Try local file first (if present in environment with filesystem)
         if isfile and isfile("AutoQuestSystem.lua") then
-            autoQuestModule = loadstring(readfile("AutoQuestSystem.lua"))()
+            autoQuestModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
         end
         -- Fallback: let user host in their repo if preferred (commented)
         -- if not autoQuestModule then
