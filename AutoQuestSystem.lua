@@ -231,6 +231,35 @@ function AutoQuest.Init(ctx)
 		ImageSize = 18,
 	})
 
+	QuestTab:Button({
+		Title = "📘 Quick Start",
+		Desc = "Open a short guide on setup and behavior",
+		Callback = function()
+			local text = table.concat({
+				"1) Target Player: Choose a username in this server, 'Random' (excludes you), or 'Manual' and type a name.",
+				"2) Send Egg filters (Exclude):",
+				"   - Exclude Egg T: Do NOT send eggs whose T is in this list (empty = send all).",
+				"   - Exclude Egg Mutation M: Do NOT send eggs whose M is in this list.",
+				"3) Sell Pet filters (Exclude):",
+				"   - Exclude Pet T/M: Do NOT sell pets with these T/M values.",
+				"   - Respect LK: Skips pets where LK == 1.",
+				"4) BuyMutateEgg: Buys only mutated eggs (ignores your filters) then focuses them.",
+				"5) OnlineTime: Claims when progress reaches 900 seconds (up to daily repeat).",
+				"6) Gifts & Sales are paced ~0.25s per action; if Random target leaves, a new random is chosen.",
+				"7) Everything saves via the same Settings Manager; it auto-loads on next run.",
+			}, "\n")
+			WindUI:Popup({
+				Title = "Auto Quest - Quick Start",
+				Icon = "book",
+				IconThemed = true,
+				Content = text,
+				Buttons = {
+					{ Title = "OK", Variant = "Primary", Callback = function() end }
+				}
+			})
+		end
+	})
+
 	local autoQuestEnabled = false
 	local autoQuestThread = nil
 
