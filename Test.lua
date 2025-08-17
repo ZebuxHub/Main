@@ -3839,7 +3839,7 @@ Tabs.FeedTab:Button({
 })
 
 -- Auto Feed Toggle
-local autoFeedToggle = Tabs.FeedTab:Toggle({
+autoFeedToggle = Tabs.FeedTab:Toggle({
     Title = "🍽️ Auto Feed Pets",
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
@@ -3888,6 +3888,15 @@ pcall(function()
         end
     end
 })
+
+-- Late-register auto feed toggle (it is created after the initial registration call)
+pcall(function()
+    if zebuxConfig and autoFeedToggle then
+        zebuxConfig:Register("autoFeedEnabled", autoFeedToggle)
+        -- Reload once to apply saved state to this newly registered control
+        zebuxConfig:Load()
+    end
+end)
 
 
 
