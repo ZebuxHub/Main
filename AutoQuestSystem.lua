@@ -175,6 +175,9 @@ local writefile = writefile
 local readfile = readfile
 local isfile = isfile
 
+-- Forward declarations
+local findAndHatchReadyEggs
+
 -- Helper functions
 local function safeGetAttribute(instance, attributeName, default)
     if not instance or not instance.GetAttribute then
@@ -339,8 +342,8 @@ local function getPetInventory()
                         type = petType,
                         mutation = petMutation
                     })
-                end
-            end
+        end
+    end
         end
     end)
     
@@ -375,8 +378,8 @@ local function getAllMutations()
     -- Return hardcoded list for mutations
     local mutations = {}
     for _, mutation in ipairs(HardcodedMutations) do
-        table.insert(mutations, mutation)
-    end
+                table.insert(mutations, mutation)
+            end
     table.sort(mutations)
     return mutations
 end
@@ -594,10 +597,10 @@ local function buyMutatedEgg()
                                                 
                                                 if buySuccess then
                                                     return true
-                                                end
-                                            end
-                                        end
-                                    end
+        end
+    end
+        end
+    end
                                 end
                             end
                         end
@@ -677,9 +680,9 @@ local function updateQuestStatus()
                 -- Add special status for BuyMutateEgg task
                 if task.CompleteType == "BuyMutateEgg" then
                     taskStatus = taskStatus .. " - " .. buyMutateEggStatus
-                end
-            end
-            
+                            end
+                        end
+                        
             statusText = statusText .. string.format("\n%s (%s): %s", task.Id, task.CompleteType, taskStatus)
         end
     end
@@ -697,13 +700,13 @@ local function checkInventoryDialog(taskType, requiredTypes, requiredMutations, 
     for _, item in ipairs(availableItems) do
         if shouldSendItem(item, requiredTypes, requiredMutations) then
             table.insert(matchingItems, item)
-        end
-    end
-    
+                            end
+                        end
+                        
     if #matchingItems == 0 then
         -- For Lua 5.1, we'll use a simpler approach with a shared variable
         local userChoice = nil
-        
+                        
                             Window:Dialog({
             Title = "⚠️ No Matching Items",
             Content = string.format("No %s items match your selected filters.\nDo you want to continue anyway?", taskType),
@@ -789,14 +792,23 @@ local function executeQuestTasks()
                     saveAutomationStates()
                     enableHatchingAutomation()
                     
-                    -- Check if we have eggs to hatch
-                    local eggInventory = getEggInventory()
-                    if #eggInventory > 0 then
-                        -- Let existing automation handle hatching
-                        wait(2)
+                    -- PRIORITY 1: Check for ready-to-hatch eggs on farm first
+                    local hatchSuccess, hatchMessage = findAndHatchReadyEggs()
+                    if hatchSuccess then
+                        print("Auto Quest HatchEgg: " .. hatchMessage)
+                        wait(1) -- Brief wait after hatching ready eggs
                     else
-                        -- No eggs available, skip to next task
-                        wait(0.5) -- Brief pause before checking other tasks
+                        -- PRIORITY 2: Check if we have eggs in inventory to place
+                        local eggInventory = getEggInventory()
+                        if #eggInventory > 0 then
+                            -- Let existing automation handle placing and hatching
+                            print("Auto Quest HatchEgg: Letting automation handle egg placement")
+                            wait(2)
+                        else
+                            -- PRIORITY 3: No eggs available, auto placement system will handle buying
+                            print("Auto Quest HatchEgg: No eggs available, auto placement will handle")
+                            wait(0.5) -- Brief pause before checking other tasks
+                        end
                     end
                     
                 elseif task.CompleteType == "SendEgg" then
@@ -905,7 +917,7 @@ local function executeQuestTasks()
                     -- The background monitor will handle buying and auto-claiming
                     
                 elseif task.CompleteType == "OnlineTime" then
-                    -- Just wait and claim when ready
+                        -- Just wait and claim when ready
                     wait(5)
                 end
             end
@@ -987,16 +999,16 @@ local function getEmptyFarmTiles()
             for _, child in pairs(tile:GetChildren()) do
                 if child:IsA("Model") and child.Name ~= "Tile" then
                     hasEgg = true
-                    break
-                end
-            end
+                                    break
+                                end
+                            end
             
             if not hasEgg then
                 table.insert(emptyTiles, tile)
             end
-        end
-    end
-    
+                        end
+                    end
+                    
     return emptyTiles
 end
 
@@ -1145,6 +1157,80 @@ local function buyAnyCheapestEgg()
     return false, "No proximity prompt found"
 end
 
+-- Helper function to find and hatch ready eggs
+findAndHatchReadyEggs = function()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    if not LocalPlayer or not LocalPlayer.Character then
+        return false, "Player not found"
+    end
+    
+    -- Find player's island
+    local islandsFolder = workspace:FindFirstChild("Islands")
+    if not islandsFolder then
+        return false, "Islands not found"
+    end
+    
+    local playerIslandName = LocalPlayer:GetAttribute("AssignedIslandName")
+    if not playerIslandName then
+        return false, "No assigned island"
+    end
+    
+    local playerIsland = islandsFolder:FindFirstChild(playerIslandName)
+    if not playerIsland then
+        return false, "Player island not found"
+    end
+    
+    local tilesFolder = playerIsland:FindFirstChild("Tiles")
+    if not tilesFolder then
+        return false, "Tiles folder not found"
+    end
+    
+    local hatchedCount = 0
+    
+    -- Look for eggs on tiles that are ready to hatch
+    for _, tile in pairs(tilesFolder:GetChildren()) do
+        if tile:IsA("Model") and tile.Name == "Tile" then
+            for _, eggModel in pairs(tile:GetChildren()) do
+                if eggModel:IsA("Model") and eggModel.Name == "Egg" then
+                    -- Check if egg has a proximity prompt (indicating it's ready to hatch)
+                    local proximityPrompt = eggModel:FindFirstChildOfClass("ProximityPrompt")
+                    if proximityPrompt and proximityPrompt.Enabled then
+                        -- Check hatch time - look for EggGui with time display
+                        local eggGui = eggModel:FindFirstChild("EggGui")
+                        if eggGui then
+                            local timeLabel = eggGui:FindFirstChild("Time")
+                            if timeLabel and timeLabel:IsA("TextLabel") then
+                                local timeText = timeLabel.Text
+                                -- If time shows 00:00 or similar, it's ready to hatch
+                                if timeText == "00:00" or timeText == "0:00" or timeText == "Hatch!" or timeText == "Ready!" or timeText == "???" then
+                                    -- Trigger the proximity prompt to hatch
+                                    game:GetService("ProximityPromptService"):PromptTriggered(proximityPrompt)
+                                    hatchedCount = hatchedCount + 1
+                                    print(string.format("Auto Placement: Hatched ready egg (%s)", timeText))
+                                    wait(0.5) -- Small delay between hatches
+                                    
+                                    -- Limit to 5 hatches per cycle
+                                    if hatchedCount >= 5 then
+                                        return true, string.format("Hatched %d ready eggs", hatchedCount)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if hatchedCount > 0 then
+        return true, string.format("Hatched %d ready eggs", hatchedCount)
+    else
+        return false, "No ready eggs found"
+    end
+end
+
 -- Helper function to auto-delete slow pets
 local function autoDeleteSlowPets(speedThreshold)
     if speedThreshold <= 0 then
@@ -1186,10 +1272,10 @@ local function autoDeleteSlowPets(speedThreshold)
                 
                 -- Limit to 5 deletions per cycle to avoid spam
                 if deletedCount >= 5 then
-                    break
+                            break
+                        end
+                    end
                 end
-            end
-        end
     end
     
     return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
@@ -1217,62 +1303,69 @@ local function runAutoPlacementSystem()
         end
         
         if hasHatchTask then
-            -- Check for empty tiles
-            local emptyTiles = getEmptyFarmTiles()
-            
-            if #emptyTiles > 0 then
-                -- We have empty tiles, check for eggs to place
-                local bestEgg = getBestEggForPlacement()
-                
-                if bestEgg then
-                    -- We have an egg, try to place it
-                    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                    local CharacterRE = ReplicatedStorage:FindFirstChild("CharacterRE")
-                    
-                    if CharacterRE then
-                        CharacterRE:FireServer("Focus", bestEgg.uid)
-                        wait(0.5)
-                        
-                        -- Click on the first empty tile
-                        local VirtualInputManager = game:GetService("VirtualInputManager")
-                        local camera = workspace.CurrentCamera
-                        local tilePosition = emptyTiles[1].Position
-                        local screenPoint = camera:WorldToScreenPoint(tilePosition)
-                        
-                        VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 1)
-                        wait(0.1)
-                        VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 1)
-                        
-                        print(string.format("Auto Placement: Placed %s (hatch: %ds) on empty tile", 
-                            bestEgg.type, bestEgg.hatchTime))
-                        wait(2) -- Wait before next placement attempt
-                    end
-                else
-                    -- No eggs available, try to buy one
-                    local buySuccess, buyMessage = buyAnyCheapestEgg()
-                    if buySuccess then
-                        print("Auto Placement: " .. buyMessage)
-                        wait(1) -- Wait for purchase to process
-                    else
-                        wait(5) -- Wait longer if buying failed
-                    end
-                end
+            -- PRIORITY 1: Check for ready-to-hatch eggs first
+            local hatchSuccess, hatchMessage = findAndHatchReadyEggs()
+            if hatchSuccess then
+                print("Auto Placement: " .. hatchMessage)
+                wait(2) -- Wait after hatching before continuing
             else
-                -- No empty tiles, try auto-deletion if enabled
-                if autoDeleteMinSpeed > 0 then
-                    local deletedCount, deleteMessage = autoDeleteSlowPets(autoDeleteMinSpeed)
-                    print("Auto Placement: " .. deleteMessage)
+                -- PRIORITY 2: Check for empty tiles to place new eggs
+                local emptyTiles = getEmptyFarmTiles()
+                
+                if #emptyTiles > 0 then
+                    -- We have empty tiles, check for eggs to place
+                    local bestEgg = getBestEggForPlacement()
                     
-                    if deletedCount > 0 then
-                        wait(2) -- Wait for deletion to process, then check for empty tiles again
+                                            if bestEgg then
+                            -- We have an egg, try to place it
+                            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                            local CharacterRE = ReplicatedStorage:FindFirstChild("CharacterRE")
+                            
+                            if CharacterRE then
+                                CharacterRE:FireServer("Focus", bestEgg.uid)
+                                wait(0.5)
+                                
+                                -- Click on the first empty tile
+                                local VirtualInputManager = game:GetService("VirtualInputManager")
+                                local camera = workspace.CurrentCamera
+                                local tilePosition = emptyTiles[1].Position
+                                local screenPoint = camera:WorldToScreenPoint(tilePosition)
+                                
+                                VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 1)
+                                wait(0.1)
+                                VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 1)
+                                
+                                print(string.format("Auto Placement: Placed %s (hatch: %ds) on empty tile", 
+                                    bestEgg.type, bestEgg.hatchTime))
+                                wait(2) -- Wait before next placement attempt
+                            end
+                        else
+                            -- No eggs available, try to buy one
+                            local buySuccess, buyMessage = buyAnyCheapestEgg()
+                            if buySuccess then
+                                print("Auto Placement: " .. buyMessage)
+                                wait(1) -- Wait for purchase to process
+                            else
+                                wait(5) -- Wait longer if buying failed
+                            end
+                        end
                     else
-                        wait(10) -- Wait longer if no pets were deleted
+                        -- No empty tiles, try auto-deletion if enabled
+                        if autoDeleteMinSpeed > 0 then
+                            local deletedCount, deleteMessage = autoDeleteSlowPets(autoDeleteMinSpeed)
+                            print("Auto Placement: " .. deleteMessage)
+                            
+                            if deletedCount > 0 then
+                                wait(2) -- Wait for deletion to process, then check for empty tiles again
+                            else
+                                wait(10) -- Wait longer if no pets were deleted
+                            end
+                        else
+                            -- Auto-delete disabled, just wait
+                            wait(10)
+                        end
                     end
-                else
-                    -- Auto-delete disabled, just wait
-                    wait(10)
                 end
-            end
         else
             -- No HatchEgg task active, reset placement target
             if currentPlacementTarget then
