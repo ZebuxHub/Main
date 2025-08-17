@@ -3987,10 +3987,10 @@ local function createAutoQuestUI()
         end
     })
 
-    -- Send Egg Types Dropdown
+    -- Send Egg Types Dropdown (Exclude)
     local sendEggTypesDropdown = Tabs.QuestTab:Dropdown({
-        Title = "🥚 Send Egg Types",
-        Desc = "Choose which egg types to send (empty = all)",
+        Title = "🥚 Exclude Egg Types",
+        Desc = "Choose which egg types to EXCLUDE from sending (empty = send all)",
         Values = {"BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"},
         Value = {},
         Multi = true,
@@ -4000,10 +4000,10 @@ local function createAutoQuestUI()
         end
     })
 
-    -- Send Egg Mutations Dropdown
+    -- Send Egg Mutations Dropdown (Exclude)
     local sendEggMutationsDropdown = Tabs.QuestTab:Dropdown({
-        Title = "🧬 Send Egg Mutations",
-        Desc = "Choose which mutations to send (empty = all)",
+        Title = "🧬 Exclude Egg Mutations",
+        Desc = "Choose which mutations to EXCLUDE from sending (empty = send all)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
         Multi = true,
@@ -4013,10 +4013,10 @@ local function createAutoQuestUI()
         end
     })
 
-    -- Sell Pet Types Dropdown
+    -- Sell Pet Types Dropdown (Exclude)
     local sellPetTypesDropdown = Tabs.QuestTab:Dropdown({
-        Title = "🐾 Sell Pet Types",
-        Desc = "Choose which pet types to sell (empty = all)",
+        Title = "🐾 Exclude Pet Types",
+        Desc = "Choose which pet types to EXCLUDE from selling (empty = sell all)",
         Values = {"BasicPet", "RarePet", "SuperRarePet", "EpicPet", "LegendPet", "PrismaticPet", "HyperPet", "VoidPet", "BowserPet", "DemonPet", "BoneDragonPet", "UltraPet", "DinoPet", "FlyPet", "UnicornPet", "AncientPet"},
         Value = {},
         Multi = true,
@@ -4026,10 +4026,10 @@ local function createAutoQuestUI()
         end
     })
 
-    -- Sell Pet Mutations Dropdown
+    -- Sell Pet Mutations Dropdown (Exclude)
     local sellPetMutationsDropdown = Tabs.QuestTab:Dropdown({
-        Title = "🧬 Sell Pet Mutations",
-        Desc = "Choose which mutations to sell (empty = all)",
+        Title = "🧬 Exclude Pet Mutations",
+        Desc = "Choose which mutations to EXCLUDE from selling (empty = sell all)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
         Multi = true,
@@ -4058,16 +4058,134 @@ local function createAutoQuestUI()
         end
     })
 
+    -- Status Display
+    local statusParagraph = Tabs.QuestTab:Paragraph({
+        Title = "📊 Quest Status",
+        Desc = "Loading quest status...",
+        Image = "activity",
+        ImageSize = 22
+    })
+
+    -- Function to update status
+    local function updateQuestStatus()
+        local function getCurrentTasks()
+            local tasks = {}
+            local taskData = Players.LocalPlayer.PlayerGui:FindFirstChild("Data"):FindFirstChild("DinoEventTaskData")
+            if not taskData then return tasks end
+            
+            local tasksFolder = taskData:FindFirstChild("Tasks")
+            if not tasksFolder then return tasks end
+            
+            for i = 1, 3 do
+                local taskSlot = tasksFolder:FindFirstChild(tostring(i))
+                if taskSlot then
+                    local taskId = taskSlot:GetAttribute("Id")
+                    local progress = taskSlot:GetAttribute("Progress") or 0
+                    local claimedCount = taskSlot:GetAttribute("ClaimedCount") or 0
+                    
+                    if taskId then
+                        table.insert(tasks, {
+                            slot = i,
+                            id = taskId,
+                            progress = progress,
+                            claimedCount = claimedCount
+                        })
+                    end
+                end
+            end
+            
+            return tasks
+        end
+
+        local function getInventoryCounts()
+            local eggCount = 0
+            local petCount = 0
+            
+            -- Count eggs
+            local data = Players.LocalPlayer.PlayerGui:FindFirstChild("Data")
+            if data then
+                local eggContainer = data:FindFirstChild("Egg")
+                if eggContainer then
+                    for _, egg in ipairs(eggContainer:GetChildren()) do
+                        if #egg:GetChildren() == 0 then
+                            eggCount = eggCount + 1
+                        end
+                    end
+                end
+                
+                local petsContainer = data:FindFirstChild("Pets")
+                if petsContainer then
+                    for _, pet in ipairs(petsContainer:GetChildren()) do
+                        if pet:IsA("Configuration") then
+                            petCount = petCount + 1
+                        end
+                    end
+                end
+            end
+            
+            return eggCount, petCount
+        end
+
+        local tasks = getCurrentTasks()
+        local eggCount, petCount = getInventoryCounts()
+        
+        local statusText = "📊 Quest Status:\n"
+        statusText = statusText .. string.format("🥚 Available Eggs: %d\n", eggCount)
+        statusText = statusText .. string.format("🐾 Available Pets: %d\n", petCount)
+        statusText = statusText .. string.format("🎯 Target Player: %s\n", selectedTargetPlayer)
+        statusText = statusText .. string.format("📝 Active Quests: %d\n", #tasks)
+        
+        if #tasks > 0 then
+            statusText = statusText .. "\n📋 Current Tasks:\n"
+            for i, task in ipairs(tasks) do
+                if i <= 3 then -- Show max 3 tasks
+                    statusText = statusText .. string.format("  %s: %d/%d (%d claimed)\n", 
+                        task.id, task.progress, task.completeValue or 0, task.claimedCount)
+                end
+            end
+        end
+        
+        -- Show filter info
+        if #selectedEggTypes > 0 then
+            statusText = statusText .. string.format("\n🚫 Excluded Egg Types: %s", table.concat(selectedEggTypes, ", "))
+        end
+        if #selectedEggMutations > 0 then
+            statusText = statusText .. string.format("\n🚫 Excluded Egg Mutations: %s", table.concat(selectedEggMutations, ", "))
+        end
+        if #selectedPetTypes > 0 then
+            statusText = statusText .. string.format("\n🚫 Excluded Pet Types: %s", table.concat(selectedPetTypes, ", "))
+        end
+        if #selectedPetMutations > 0 then
+            statusText = statusText .. string.format("\n🚫 Excluded Pet Mutations: %s", table.concat(selectedPetMutations, ", "))
+        end
+        
+        statusParagraph:SetDesc(statusText)
+    end
+
     -- Manual buttons
     Tabs.QuestTab:Button({
         Title = "💰 Claim All Ready",
         Desc = "Claim all completed quests now",
         Callback = function()
+            local tasks = getCurrentTasks()
+            local claimed = 0
+            
+            for _, task in ipairs(tasks) do
+                if task.canClaim then
+                    if claimTaskReward(task.id) then
+                        claimed = claimed + 1
+                        task.wait(0.5)
+                    end
+                end
+            end
+            
             WindUI:Notify({
                 Title = "💰 Quest Claims",
-                Content = "Claim functionality coming soon!",
+                Content = string.format("Claimed %d quest rewards!", claimed),
                 Duration = 3
             })
+            
+            updateQuestStatus()
         end
     })
 
@@ -4075,6 +4193,7 @@ local function createAutoQuestUI()
         Title = "🔄 Refresh Tasks",
         Desc = "Refresh quest status manually",
         Callback = function()
+            updateQuestStatus()
             WindUI:Notify({
                 Title = "🔄 Quest Refresh",
                 Content = "Quest status refreshed!",
@@ -4082,6 +4201,14 @@ local function createAutoQuestUI()
             })
         end
     })
+
+    -- Update status periodically
+    task.spawn(function()
+        while true do
+            updateQuestStatus()
+            task.wait(10) -- Update every 10 seconds
+        end
+    end)
 
     -- Update player list periodically
     task.spawn(function()
