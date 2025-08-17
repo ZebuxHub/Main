@@ -1,42 +1,45 @@
--- AutoQuestSystem.lua - Auto Quest System for Build A Zoo
--- Author: Zebux
--- Version: 1.0
-
+-- Auto Quest System Module
 local AutoQuestSystem = {}
 
--- Services
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- Task Configuration - Map Task IDs to Complete Types for easier reading
+-- Task configuration data
 local TaskConfig = {
-    Task_1 = { Id = "Task_1", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 5, Desc = "Hatch 5 Eggs", Icon = "rbxassetid://90239318564009" },
-    Task_3 = { Id = "Task_3", TaskPoints = 20, RepeatCount = 1, CompleteType = "SellPet", CompleteValue = 5, Desc = "Sell 5 Pets", Icon = "rbxassetid://90239318564009" },
-    Task_4 = { Id = "Task_4", TaskPoints = 20, RepeatCount = 1, CompleteType = "SendEgg", CompleteValue = 5, Desc = "Send 5 Eggs", Icon = "rbxassetid://90239318564009" },
-    Task_5 = { Id = "Task_5", TaskPoints = 20, RepeatCount = 1, CompleteType = "BuyMutateEgg", CompleteValue = 1, Desc = "Buy 1 Mutate Egg", Icon = "rbxassetid://90239318564009" },
-    Task_7 = { Id = "Task_7", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 10, Desc = "Hatch 10 Eggs", Icon = "rbxassetid://90239318564009" },
-    Task_8 = { Id = "Task_8", TaskPoints = 15, RepeatCount = 6, CompleteType = "OnlineTime", CompleteValue = 900, Desc = "Online for 15 minutes", Icon = "rbxassetid://90239318564009" }
+    Task_1 = { Id = "Task_1", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 5, Desc = "K_DINO_DESC_Task_1", Icon = "rbxassetid://90239318564009" },
+    Task_3 = { Id = "Task_3", TaskPoints = 20, RepeatCount = 1, CompleteType = "SellPet", CompleteValue = 5, Desc = "K_DINO_DESC_Task_3", Icon = "rbxassetid://90239318564009" },
+    Task_4 = { Id = "Task_4", TaskPoints = 20, RepeatCount = 1, CompleteType = "SendEgg", CompleteValue = 5, Desc = "K_DINO_DESC_Task_4", Icon = "rbxassetid://90239318564009" },
+    Task_5 = { Id = "Task_5", TaskPoints = 20, RepeatCount = 1, CompleteType = "BuyMutateEgg", CompleteValue = 1, Desc = "K_DINO_DESC_Task_5", Icon = "rbxassetid://90239318564009" },
+    Task_7 = { Id = "Task_7", TaskPoints = 20, RepeatCount = 1, CompleteType = "HatchEgg", CompleteValue = 10, Desc = "K_DINO_DESC_Task_7", Icon = "rbxassetid://90239318564009" },
+    Task_8 = { Id = "Task_8", TaskPoints = 15, RepeatCount = 6, CompleteType = "OnlineTime", CompleteValue = 900, Desc = "K_DINO_DESC_Task_8", Icon = "rbxassetid://90239318564009" }
 }
 
--- Quest State
-local autoQuestEnabled = false
-local autoQuestThread = nil
-local currentTasks = {}
-local selectedTargetPlayer = "Random"
-local selectedEggTypes = {}
-local selectedEggMutations = {}
-local selectedPetTypes = {}
-local selectedPetMutations = {}
-local autoClaimEnabled = false
-local autoRefreshEnabled = false
+-- Quest state
+local questState = {
+    enabled = false,
+    targetPlayer = "Random Player",
+    sendEggTNames = {},
+    sendEggMutations = {},
+    sellPetTNames = {},
+    sellPetMutations = {},
+    claimAllEnabled = false,
+    refreshEnabled = false,
+    sessionStats = { sent = 0, sold = 0, hatched = 0, bought = 0, claimed = 0 }
+}
 
--- Quest Functions
-local function getCurrentTasks()
+-- External dependencies (will be set by Init)
+local WindUI, Window, Config, waitForSettingsReady, LocalPlayer, ReplicatedStorage
+
+-- Helper functions
+local function getCurrentQuestTasks()
     local tasks = {}
-    local taskData = Players.LocalPlayer.PlayerGui:FindFirstChild("Data"):FindFirstChild("DinoEventTaskData")
-    if not taskData then return tasks end
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return tasks end
     
-    local tasksFolder = taskData:FindFirstChild("Tasks")
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return tasks end
+    
+    local dinoEventTaskData = data:FindFirstChild("DinoEventTaskData")
+    if not dinoEventTaskData then return tasks end
+    
+    local tasksFolder = dinoEventTaskData:FindFirstChild("Tasks")
     if not tasksFolder then return tasks end
     
     for i = 1, 3 do
@@ -53,11 +56,9 @@ local function getCurrentTasks()
                     id = taskId,
                     progress = progress,
                     claimedCount = claimedCount,
-                    completeValue = taskInfo.CompleteValue,
                     completeType = taskInfo.CompleteType,
+                    completeValue = taskInfo.CompleteValue,
                     repeatCount = taskInfo.RepeatCount,
-                    taskPoints = taskInfo.TaskPoints,
-                    isCompleted = progress >= taskInfo.CompleteValue,
                     canClaim = progress >= taskInfo.CompleteValue and claimedCount < taskInfo.RepeatCount
                 })
             end
@@ -67,395 +68,418 @@ local function getCurrentTasks()
     return tasks
 end
 
-local function claimTaskReward(taskId)
-    local args = {{ event = "claimreward", id = taskId }}
-    local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
-    end)
-    return success
-end
-
-local function getAvailablePlayers()
-    local players = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= Players.LocalPlayer then
+local function getAllPlayers()
+    local players = {"Random Player"}
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= LocalPlayer then
             table.insert(players, player.Name)
         end
     end
-    table.sort(players)
     return players
 end
 
-local function getRandomPlayer()
-    local players = getAvailablePlayers()
-    if #players > 0 then
-        return players[math.random(1, #players)]
-    end
-    return nil
-end
-
-local function getPlayerByName(name)
-    return Players:FindFirstChild(name)
-end
-
-local function getEggInventory()
-    local eggs = {}
-    local data = Players.LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not data then return eggs end
+local function getAvailableEggTNames()
+    local tNames = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return tNames end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return tNames end
     
     local eggContainer = data:FindFirstChild("Egg")
-    if not eggContainer then return eggs end
+    if not eggContainer then return tNames end
     
     for _, egg in ipairs(eggContainer:GetChildren()) do
-        if #egg:GetChildren() == 0 then
-            local eggType = egg:GetAttribute("T")
-            local mutation = egg:GetAttribute("M")
-            
-            if eggType then
-                table.insert(eggs, {
-                    uid = egg.Name,
-                    type = eggType,
-                    mutation = mutation
-                })
+        if #egg:GetChildren() == 0 then -- Available egg
+            local tName = egg:GetAttribute("T")
+            if tName and not table.find(tNames, tName) then
+                table.insert(tNames, tName)
             end
         end
     end
     
-    return eggs
+    table.sort(tNames)
+    return tNames
 end
 
-local function getPetInventory()
-    local pets = {}
-    local data = Players.LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not data then return pets end
+local function getAvailablePetTNames()
+    local tNames = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return tNames end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return tNames end
     
     local petsContainer = data:FindFirstChild("Pets")
-    if not petsContainer then return pets end
+    if not petsContainer then return tNames end
     
     for _, pet in ipairs(petsContainer:GetChildren()) do
-        if pet:IsA("Configuration") then
-            local petType = pet:GetAttribute("T")
-            local mutation = pet:GetAttribute("M")
-            local locked = pet:GetAttribute("LK") == 1
-            
-            if petType then
-                table.insert(pets, {
-                    name = pet.Name,
-                    type = petType,
-                    mutation = mutation,
-                    locked = locked
-                })
+        local tName = pet:GetAttribute("T")
+        if tName and not table.find(tNames, tName) then
+            table.insert(tNames, tName)
+        end
+    end
+    
+    table.sort(tNames)
+    return tNames
+end
+
+local function getAvailableEggMutations()
+    local mutations = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return mutations end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return mutations end
+    
+    local eggContainer = data:FindFirstChild("Egg")
+    if not eggContainer then return mutations end
+    
+    for _, egg in ipairs(eggContainer:GetChildren()) do
+        if #egg:GetChildren() == 0 then -- Available egg
+            local mutation = egg:GetAttribute("M")
+            if mutation and not table.find(mutations, mutation) then
+                table.insert(mutations, mutation)
             end
         end
     end
     
-    return pets
+    table.sort(mutations)
+    return mutations
 end
 
-local function focusEgg(eggUID)
-    local args = {"Focus", eggUID}
+local function getAvailablePetMutations()
+    local mutations = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return mutations end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return mutations end
+    
+    local petsContainer = data:FindFirstChild("Pets")
+    if not petsContainer then return mutations end
+    
+    for _, pet in ipairs(petsContainer:GetChildren()) do
+        local mutation = pet:GetAttribute("M")
+        if mutation and not table.find(mutations, mutation) then
+            table.insert(mutations, mutation)
+        end
+    end
+    
+    table.sort(mutations)
+    return mutations
+end
+
+local function claimQuestReward(taskId)
+    local args = {
+        {
+            event = "claimreward",
+            id = taskId
+        }
+    }
+    
     local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
     end)
+    
+    if success then
+        questState.sessionStats.claimed = questState.sessionStats.claimed + 1
+        WindUI:Notify({ 
+            Title = "📝 Quest Claimed", 
+            Content = "Claimed reward for " .. taskId .. "! 🎉", 
+            Duration = 3 
+        })
+    end
+    
     return success
 end
 
-local function sendEgg(eggUID, targetPlayer)
-    if not focusEgg(eggUID) then
-        return false
+local function sendEggToPlayer(eggUID, targetPlayerName)
+    if targetPlayerName == "Random Player" then
+        local players = game:GetService("Players"):GetPlayers()
+        local validPlayers = {}
+        for _, player in ipairs(players) do
+            if player ~= LocalPlayer then
+                table.insert(validPlayers, player)
+            end
+        end
+        
+        if #validPlayers == 0 then
+            return false, "No valid players found"
+        end
+        
+        local randomPlayer = validPlayers[math.random(1, #validPlayers)]
+        targetPlayerName = randomPlayer.Name
+    end
+    
+    local targetPlayer = game:GetService("Players"):FindFirstChild(targetPlayerName)
+    if not targetPlayer then
+        return false, "Target player not found"
+    end
+    
+    -- Focus egg first
+    local focusSuccess = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", eggUID)
+    end)
+    
+    if not focusSuccess then
+        return false, "Failed to focus egg"
     end
     
     task.wait(0.1)
     
-    local args = {targetPlayer}
-    local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
+    -- Send egg
+    local sendSuccess = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(targetPlayer)
     end)
     
-    return success
+    if sendSuccess then
+        questState.sessionStats.sent = questState.sessionStats.sent + 1
+        return true, "Sent egg to " .. targetPlayerName
+    else
+        return false, "Failed to send egg"
+    end
 end
 
-local function sellPet(petName)
-    local args = {"Sell", petName}
+local function sellPet(petUID)
+    local args = {
+        "Sell",
+        petUID
+    }
+    
     local success = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
     end)
-    return success
+    
+    if success then
+        questState.sessionStats.sold = questState.sessionStats.sold + 1
+        return true, "Sold pet " .. petUID
+    else
+        return false, "Failed to sell pet"
+    end
 end
 
--- Task Executors
-local function executeSendEggTask(task)
-    local eggs = getEggInventory()
-    local targetPlayer = selectedTargetPlayer
-    
-    if targetPlayer == "Random" then
-        targetPlayer = getRandomPlayer()
-    end
-    
-    if not targetPlayer then
-        return false, "No target player available"
-    end
-    
-    local playerInstance = getPlayerByName(targetPlayer)
-    if not playerInstance then
-        return false, "Target player not found"
-    end
-    
-    local needed = task.completeValue - task.progress
-    local sent = 0
-    
-    for _, egg in ipairs(eggs) do
-        if sent >= needed then break end
-        
-        -- Check type filter (EXCLUDE logic)
-        if #selectedEggTypes > 0 then
-            local shouldExclude = false
-            for _, excludedType in ipairs(selectedEggTypes) do
-                if egg.type == excludedType then
-                    shouldExclude = true
-                    break
-                end
-            end
-            if shouldExclude then
-                continue
-            end
-        end
-        
-        -- Check mutation filter (EXCLUDE logic)
-        if #selectedEggMutations > 0 and egg.mutation then
-            local shouldExclude = false
-            for _, excludedMutation in ipairs(selectedEggMutations) do
-                if egg.mutation == excludedMutation then
-                    shouldExclude = true
-                    break
-                end
-            end
-            if shouldExclude then
-                continue
-            end
-        end
-        
-        if sendEgg(egg.uid, playerInstance) then
-            sent = sent + 1
-            task.wait(0.3)
+local function itemMatchesFilters(item, tNames, mutations)
+    -- Check T name filter
+    if #tNames > 0 then
+        local itemT = item:GetAttribute("T")
+        if not itemT or not table.find(tNames, itemT) then
+            return false
         end
     end
     
-    return sent > 0, "Sent " .. sent .. " eggs"
+    -- Check mutation filter
+    if #mutations > 0 then
+        local itemM = item:GetAttribute("M")
+        if not itemM or not table.find(mutations, itemM) then
+            return false
+        end
+    end
+    
+    return true
 end
 
-local function executeSellPetTask(task)
-    local pets = getPetInventory()
-    local needed = task.completeValue - task.progress
-    local sold = 0
+local function getAvailableItemsForAction(actionType, tNames, mutations)
+    local items = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return items end
     
-    for _, pet in ipairs(pets) do
-        if sold >= needed then break end
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return items end
+    
+    local container = data:FindFirstChild(actionType == "SendEgg" and "Egg" or "Pets")
+    if not container then return items end
+    
+    for _, item in ipairs(container:GetChildren()) do
+        if actionType == "SendEgg" and #item:GetChildren() == 0 then -- Available egg
+            if itemMatchesFilters(item, tNames, mutations) then
+                table.insert(items, item.Name)
+            end
+        elseif actionType == "SellPet" then
+            -- Skip locked pets
+            if item:GetAttribute("LK") == 1 then
+                continue
+            end
+            if itemMatchesFilters(item, tNames, mutations) then
+                table.insert(items, item.Name)
+            end
+        end
+    end
+    
+    return items
+end
+
+-- Main quest execution loop
+local function runAutoQuest()
+    while questState.enabled do
+        local currentTasks = getCurrentQuestTasks()
         
-        if pet.locked then
+        if #currentTasks == 0 then
+            task.wait(5)
             continue
         end
         
-        -- Check type filter (EXCLUDE logic)
-        if #selectedPetTypes > 0 then
-            local shouldExclude = false
-            for _, excludedType in ipairs(selectedPetTypes) do
-                if pet.type == excludedType then
-                    shouldExclude = true
-                    break
-                end
-            end
-            if shouldExclude then
-                continue
-            end
-        end
-        
-        -- Check mutation filter (EXCLUDE logic)
-        if #selectedPetMutations > 0 and pet.mutation then
-            local shouldExclude = false
-            for _, excludedMutation in ipairs(selectedPetMutations) do
-                if pet.mutation == excludedMutation then
-                    shouldExclude = true
-                    break
-                end
-            end
-            if shouldExclude then
-                continue
-            end
-        end
-        
-        if sellPet(pet.name) then
-            sold = sold + 1
-            task.wait(0.3)
-        end
-    end
-    
-    return sold > 0, "Sold " .. sold .. " pets"
-end
-
-local function executeOnlineTimeTask(task)
-    if task.canClaim then
-        return claimTaskReward(task.id), "Claimed online time reward"
-    end
-    return false, "Waiting for online time"
-end
-
--- Main Quest Loop
-local function runAutoQuest()
-    while autoQuestEnabled do
-        local ok, err = pcall(function()
-            currentTasks = getCurrentTasks()
-            
-            if #currentTasks == 0 then
-                task.wait(5)
-                return
-            end
-            
-            -- Sort tasks by user-defined priority order
-            -- Default priority if not set: BuyMutateEgg → HatchEgg → SendEgg → SellPet → OnlineTime
-            local taskPriority = taskPriorityOrder or {
+        -- Sort tasks by priority
+        table.sort(currentTasks, function(a, b)
+            local priorityOrder = {
                 BuyMutateEgg = 1,
                 HatchEgg = 2,
                 SendEgg = 3,
                 SellPet = 4,
                 OnlineTime = 5
             }
-            
-            table.sort(currentTasks, function(a, b)
-                local priorityA = taskPriority[a.completeType] or 999
-                local priorityB = taskPriority[b.completeType] or 999
-                return priorityA < priorityB
-            end)
-            
-            local taskCompleted = false
-            
-            for _, task in ipairs(currentTasks) do
-                if not autoQuestEnabled then break end
-                
-                -- Skip if task is already completed
-                if task.isCompleted then
-                    continue
-                end
-                
-                -- Handle claimable tasks
-                if task.canClaim then
-                    if autoClaimEnabled then
-                        if claimTaskReward(task.id) then
-                            taskCompleted = true
-                            task.wait(0.5)
-                            break -- Move to next task
-                        end
-                    end
-                    continue
-                end
-                
-                -- Execute task based on type
-                local success, message
-                
-                if task.completeType == "SendEgg" then
-                    success, message = executeSendEggTask(task)
-                elseif task.completeType == "SellPet" then
-                    success, message = executeSellPetTask(task)
-                elseif task.completeType == "OnlineTime" then
-                    success, message = executeOnlineTimeTask(task)
-                elseif task.completeType == "HatchEgg" then
-                    -- HatchEgg is handled by main script's auto hatch system
-                    success = true
-                    message = "HatchEgg task - handled by auto hatch system"
-                elseif task.completeType == "BuyMutateEgg" then
-                    -- BuyMutateEgg is handled by main script's auto buy system
-                    success = true
-                    message = "BuyMutateEgg task - handled by auto buy system"
-                end
-                
-                if success then
-                    taskCompleted = true
-                    task.wait(1)
-                    break -- Move to next task after successful execution
-                else
-                    -- If task failed, try next task instead of waiting
-                    continue
-                end
-            end
-            
-            -- If no tasks were completed, wait before next cycle
-            if not taskCompleted then
-                if autoRefreshEnabled then
-                    task.wait(10)
-                else
-                    task.wait(5)
-                end
-            end
-            
+            return (priorityOrder[a.completeType] or 999) < (priorityOrder[b.completeType] or 999)
         end)
         
-        if not ok then
-            warn("Auto Quest error: " .. tostring(err))
-            task.wait(5)
+        -- Execute tasks simultaneously
+        for _, task in ipairs(currentTasks) do
+            if not questState.enabled then break end
+            
+            -- Check if task is already completed
+            if task.canClaim then
+                if questState.claimAllEnabled then
+                    claimQuestReward(task.id)
+                end
+                continue
+            end
+            
+            -- Execute task based on type
+            if task.completeType == "SendEgg" then
+                local availableEggs = getAvailableItemsForAction("SendEgg", questState.sendEggTNames, questState.sendEggMutations)
+                
+                if #availableEggs == 0 then
+                    -- Show dialog asking user to continue
+                    local shouldContinue = false
+                    Window:Dialog({
+                        Title = "⚠️ No Matching Eggs",
+                        Content = "No eggs match your selected filters. Continue with all eggs?",
+                        Icon = "alert-triangle",
+                        Buttons = {
+                            {
+                                Title = "❌ Cancel",
+                                Variant = "Secondary",
+                                Callback = function() shouldContinue = false end
+                            },
+                            {
+                                Title = "✅ Continue",
+                                Variant = "Primary",
+                                Callback = function() shouldContinue = true end
+                            }
+                        }
+                    })
+                    
+                    if not shouldContinue then
+                        continue
+                    end
+                    
+                    -- Get all available eggs
+                    availableEggs = getAvailableItemsForAction("SendEgg", {}, {})
+                end
+                
+                local sentCount = 0
+                for _, eggUID in ipairs(availableEggs) do
+                    if sentCount >= task.completeValue then break end
+                    if questState.sessionStats.sent >= 5 then break end -- Safety limit
+                    
+                    local success, message = sendEggToPlayer(eggUID, questState.targetPlayer)
+                    if success then
+                        sentCount = sentCount + 1
+                        task.wait(0.5) -- Rate limiting
+                    end
+                end
+                
+            elseif task.completeType == "SellPet" then
+                local availablePets = getAvailableItemsForAction("SellPet", questState.sellPetTNames, questState.sellPetMutations)
+                
+                if #availablePets == 0 then
+                    -- Show dialog asking user to continue
+                    local shouldContinue = false
+                    Window:Dialog({
+                        Title = "⚠️ No Matching Pets",
+                        Content = "No pets match your selected filters. Continue with all pets?",
+                        Icon = "alert-triangle",
+                        Buttons = {
+                            {
+                                Title = "❌ Cancel",
+                                Variant = "Secondary",
+                                Callback = function() shouldContinue = false end
+                            },
+                            {
+                                Title = "✅ Continue",
+                                Variant = "Primary",
+                                Callback = function() shouldContinue = true end
+                            }
+                        }
+                    })
+                    
+                    if not shouldContinue then
+                        continue
+                    end
+                    
+                    -- Get all available pets
+                    availablePets = getAvailableItemsForAction("SellPet", {}, {})
+                end
+                
+                local soldCount = 0
+                for _, petUID in ipairs(availablePets) do
+                    if soldCount >= task.completeValue then break end
+                    if questState.sessionStats.sold >= 5 then break end -- Safety limit
+                    
+                    local success, message = sellPet(petUID)
+                    if success then
+                        soldCount = soldCount + 1
+                        task.wait(0.5) -- Rate limiting
+                    end
+                end
+                
+            elseif task.completeType == "OnlineTime" then
+                -- Just wait and claim when ready
+                while task.progress < task.completeValue do
+                    task.wait(1)
+                    local currentTasks = getCurrentQuestTasks()
+                    for _, currentTask in ipairs(currentTasks) do
+                        if currentTask.id == task.id then
+                            task.progress = currentTask.progress
+                            break
+                        end
+                    end
+                end
+            end
+            
+            -- Check if task is now complete
+            local updatedTasks = getCurrentQuestTasks()
+            for _, updatedTask in ipairs(updatedTasks) do
+                if updatedTask.id == task.id and updatedTask.canClaim then
+                    claimQuestReward(task.id)
+                    break
+                end
+            end
         end
+        
+        task.wait(2) -- Main loop delay
     end
 end
 
--- Public Functions
-function AutoQuestSystem.StartQuest()
-    if not autoQuestEnabled then
-        autoQuestEnabled = true
-        autoQuestThread = task.spawn(runAutoQuest)
-    end
-end
-
-function AutoQuestSystem.StopQuest()
-    autoQuestEnabled = false
-    if autoQuestThread then
-        autoQuestThread = nil
-    end
-end
-
-function AutoQuestSystem.IsQuestRunning()
-    return autoQuestEnabled
-end
-
-function AutoQuestSystem.GetSettings()
-    return {
-        targetPlayer = selectedTargetPlayer,
-        eggTypes = selectedEggTypes,
-        eggMutations = selectedEggMutations,
-        petTypes = selectedPetTypes,
-        petMutations = selectedPetMutations,
-        autoClaim = autoClaimEnabled,
-        autoRefresh = autoRefreshEnabled
-    }
-end
-
-function AutoQuestSystem.SetSettings(settings)
-    if settings then
-        selectedTargetPlayer = settings.targetPlayer or "Random"
-        selectedEggTypes = settings.eggTypes or {}
-        selectedEggMutations = settings.eggMutations or {}
-        selectedPetTypes = settings.petTypes or {}
-        selectedPetMutations = settings.petMutations or {}
-        autoClaimEnabled = settings.autoClaim or false
-        autoRefreshEnabled = settings.autoRefresh or false
-    end
-end
-
-function AutoQuestSystem.SetPriorityOrder(priorityOrder)
-    if priorityOrder then
-        taskPriorityOrder = priorityOrder
-    end
-end
-
-function AutoQuestSystem.GetTaskDescription(taskId)
-    if TaskConfig[taskId] then
-        return TaskConfig[taskId].Desc
-    end
-    return taskId
-end
-
--- Initialize function for main script integration
+-- Public API
 function AutoQuestSystem.Init(dependencies)
-    -- Just return the AutoQuestSystem object - UI is handled in main script
-    return AutoQuestSystem
+    WindUI = dependencies.WindUI
+    Window = dependencies.Window
+    Config = dependencies.Config
+    waitForSettingsReady = dependencies.waitForSettingsReady
+    LocalPlayer = dependencies.LocalPlayer
+    ReplicatedStorage = dependencies.ReplicatedStorage
+    
+    return {
+        getCurrentQuestTasks = getCurrentQuestTasks,
+        getAllPlayers = getAllPlayers,
+        getAvailableEggTNames = getAvailableEggTNames,
+        getAvailablePetTNames = getAvailablePetTNames,
+        getAvailableEggMutations = getAvailableEggMutations,
+        getAvailablePetMutations = getAvailablePetMutations,
+        claimQuestReward = claimQuestReward,
+        runAutoQuest = runAutoQuest,
+        questState = questState
+    }
 end
 
 return AutoQuestSystem
