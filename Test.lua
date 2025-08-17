@@ -114,6 +114,26 @@ local function loadAllSettings()
             end
         end
     end
+    
+    -- Load auto place selections
+    local autoPlaceSuccess, autoPlaceData = pcall(function()
+        if isfile("Zebux_AutoPlaceSelections.json") then
+            local jsonData = readfile("Zebux_AutoPlaceSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if autoPlaceSuccess and autoPlaceData then
+        if autoPlaceData.eggTypes then
+            selectedEggTypes = autoPlaceData.eggTypes
+        end
+        if autoPlaceData.mutations then
+            selectedMutations = autoPlaceData.mutations
+        end
+    end
+    
+    -- Update toggle visual states to match loaded values
+    updateToggleStates()
 end
 
 -- Function to save all settings (WindUI config + custom selections)
@@ -142,6 +162,16 @@ local function saveAllSettings()
     for mutationId, _ in pairs(selectedMutationSet) do
         table.insert(eggSelections.mutations, mutationId)
     end
+    
+    -- Save auto place selections
+    local autoPlaceSelections = {
+        eggTypes = selectedEggTypes,
+        mutations = selectedMutations
+    }
+    
+    pcall(function()
+        writefile("Zebux_AutoPlaceSelections.json", game:GetService("HttpService"):JSONEncode(autoPlaceSelections))
+    end)
     
     pcall(function()
         writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
@@ -1002,6 +1032,28 @@ local function getEggContainer()
     return data and data:FindFirstChild("Egg") or nil
 end
 
+-- Function to read mutation from egg configuration
+local function getEggMutation(eggUID)
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then return nil end
+    
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return nil end
+    
+    local eggContainer = data:FindFirstChild("Egg")
+    if not eggContainer then return nil end
+    
+    local eggConfig = eggContainer:FindFirstChild(eggUID)
+    if not eggConfig then return nil end
+    
+    -- Read the M attribute (mutation)
+    local mutation = eggConfig:GetAttribute("M")
+    return mutation
+end
+
 local function listAvailableEggUIDs()
     local eg = getEggContainer()
     local uids = {}
@@ -1011,9 +1063,19 @@ local function listAvailableEggUIDs()
             -- Get the actual egg type from T attribute
             local eggType = child:GetAttribute("T")
             if eggType then
-                table.insert(uids, { uid = child.Name, type = eggType })
+                -- Get the mutation from M attribute
+                local mutation = getEggMutation(child.Name)
+                table.insert(uids, { 
+                    uid = child.Name, 
+                    type = eggType,
+                    mutation = mutation
+                })
             else
-                table.insert(uids, { uid = child.Name, type = child.Name })
+                table.insert(uids, { 
+                    uid = child.Name, 
+                    type = child.Name,
+                    mutation = nil
+                })
             end
         end
     end
@@ -1839,6 +1901,7 @@ local placingInProgress = false
 local availableEggs = {} -- Track available eggs to place
 local availableTiles = {} -- Track available tiles
 local selectedEggTypes = {} -- Selected egg types for placement
+local selectedMutations = {} -- Selected mutations for placement
 local tileMonitoringActive = false
 
 
@@ -1891,25 +1954,54 @@ local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     end
 })
 
+-- Mutation selection dropdown for auto place
+local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
+    Title = "🧬 Pick Mutations",
+    Desc = "Choose which mutations to place (leave empty for all mutations)",
+    Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selection)
+        selectedMutations = selection
+    end
+})
+
 
 local function updateAvailableEggs()
     local eggs = listAvailableEggUIDs()
     availableEggs = {}
     
-    if #selectedEggTypes == 0 then
-        -- If no types selected, use all eggs
-        availableEggs = eggs
-    else
-        -- Filter by selected types
-        local selectedSet = {}
-        for _, type in ipairs(selectedEggTypes) do
-            selectedSet[type] = true
+    -- Create sets for faster lookup
+    local selectedTypeSet = {}
+    for _, type in ipairs(selectedEggTypes) do
+        selectedTypeSet[type] = true
+    end
+    
+    local selectedMutationSet = {}
+    for _, mutation in ipairs(selectedMutations) do
+        selectedMutationSet[mutation] = true
+    end
+    
+    for _, eggInfo in ipairs(eggs) do
+        local shouldInclude = true
+        
+        -- Check egg type filter
+        if #selectedEggTypes > 0 then
+            if not selectedTypeSet[eggInfo.type] then
+                shouldInclude = false
+            end
         end
         
-        for _, eggInfo in ipairs(eggs) do
-            if selectedSet[eggInfo.type] then
-                table.insert(availableEggs, eggInfo)
+        -- Check mutation filter (only if egg type passed)
+        if shouldInclude and #selectedMutations > 0 then
+            if not eggInfo.mutation or not selectedMutationSet[eggInfo.mutation] then
+                shouldInclude = false
             end
+        end
+        
+        if shouldInclude then
+            table.insert(availableEggs, eggInfo)
         end
     end
     
@@ -3392,6 +3484,51 @@ Tabs.FeedTab:Button({
     end
 })
 
+-- Debug button for auto place system
+Tabs.PlaceTab:Button({
+    Title = "🔍 Debug Auto Place System",
+    Desc = "Check auto place system status and egg/mutation filtering",
+    Callback = function()
+        local eggs = listAvailableEggUIDs()
+        local message = string.format("🏠 Auto Place System Debug:\n")
+        message = message .. string.format("🔄 Auto Place Enabled: %s\n", tostring(autoPlaceEnabled))
+        message = message .. string.format("🧵 Auto Place Thread: %s\n", tostring(autoPlaceThread ~= nil))
+        message = message .. string.format("🥚 Total Available Eggs: %d\n", #eggs)
+        message = message .. string.format("📋 Selected Egg Types: %d\n", #selectedEggTypes)
+        message = message .. string.format("🧬 Selected Mutations: %d\n", #selectedMutations)
+        
+        -- Show selected egg types
+        if #selectedEggTypes > 0 then
+            message = message .. string.format("🥚 Egg Types: %s\n", table.concat(selectedEggTypes, ", "))
+        else
+            message = message .. string.format("🥚 Egg Types: All\n")
+        end
+        
+        -- Show selected mutations
+        if #selectedMutations > 0 then
+            message = message .. string.format("🧬 Mutations: %s\n", table.concat(selectedMutations, ", "))
+        else
+            message = message .. string.format("🧬 Mutations: All\n")
+        end
+        
+        -- Show filtered eggs
+        updateAvailableEggs()
+        message = message .. string.format("✅ Filtered Eggs: %d\n", #availableEggs)
+        
+        -- Show some example eggs with their mutations
+        local exampleCount = 0
+        for _, eggInfo in ipairs(eggs) do
+            if exampleCount < 5 then
+                local mutationText = eggInfo.mutation or "None"
+                message = message .. string.format("  %s (%s) -> %s\n", eggInfo.uid, eggInfo.type, mutationText)
+                exampleCount = exampleCount + 1
+            end
+        end
+        
+        WindUI:Notify({ Title = "🏠 Auto Place Debug", Content = message, Duration = 10 })
+    end
+})
+
 -- ============ Config System ============
 -- Create config manager
 local ConfigManager = Window.ConfigManager
@@ -3413,6 +3550,7 @@ local function registerConfigElements()
         if autoDeleteSpeedSlider then zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider) end
         if autoClaimDelaySlider then zooConfig:Register("autoClaimDelay", autoClaimDelaySlider) end
         if placeEggDropdown then zooConfig:Register("selectedPlaceEggs", placeEggDropdown) end
+        if placeMutationDropdown then zooConfig:Register("selectedPlaceMutations", placeMutationDropdown) end
         if priorityDropdown then zooConfig:Register("automationPriority", priorityDropdown) end
         
         -- Register fruit selection
@@ -3514,6 +3652,31 @@ Tabs.SaveTab:Button({
 })
 
 Tabs.SaveTab:Button({
+    Title = "🔍 Debug Toggle Loading",
+    Desc = "Check toggle loading status and force update",
+    Callback = function()
+        local message = "🔍 Toggle Loading Debug:\n"
+        message = message .. string.format("Config Manager: %s\n", tostring(zooConfig ~= nil))
+        
+        -- Check toggle variables
+        message = message .. string.format("Auto Buy: %s\n", tostring(autoBuyEnabled))
+        message = message .. string.format("Auto Place: %s\n", tostring(autoPlaceEnabled))
+        message = message .. string.format("Auto Hatch: %s\n", tostring(autoHatchEnabled))
+        message = message .. string.format("Auto Claim: %s\n", tostring(autoClaimEnabled))
+        message = message .. string.format("Auto Upgrade: %s\n", tostring(autoUpgradeEnabled))
+        message = message .. string.format("Auto Dino: %s\n", tostring(autoDinoEnabled))
+        message = message .. string.format("Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
+        message = message .. string.format("Auto Feed: %s\n", tostring(autoFeedEnabled))
+        
+        -- Force update toggle states
+        updateToggleStates()
+        message = message .. "\n✅ Toggle states updated!"
+        
+        WindUI:Notify({ Title = "🔍 Toggle Debug", Content = message, Duration = 8 })
+    end
+})
+
+Tabs.SaveTab:Button({
     Title = "🔄 Reset Settings",
     Desc = "Reset all settings to default",
     Callback = function()
@@ -3606,6 +3769,41 @@ Tabs.SaveTab:Button({
     end
 })
 
+-- Function to update toggle visual states after loading
+local function updateToggleStates()
+    -- Update toggle states to match loaded values
+    if autoBuyToggle then
+        autoBuyToggle:SetValue(autoBuyEnabled)
+    end
+    if autoHatchToggle then
+        autoHatchToggle:SetValue(autoHatchEnabled)
+    end
+    if autoClaimToggle then
+        autoClaimToggle:SetValue(autoClaimEnabled)
+    end
+    if autoPlaceToggle then
+        autoPlaceToggle:SetValue(autoPlaceEnabled)
+    end
+    if autoUnlockToggle then
+        autoUnlockToggle:SetValue(autoUnlockEnabled)
+    end
+    if autoDeleteToggle then
+        autoDeleteToggle:SetValue(autoDeleteEnabled)
+    end
+    if autoDinoToggle then
+        autoDinoToggle:SetValue(autoDinoEnabled)
+    end
+    if autoUpgradeToggle then
+        autoUpgradeToggle:SetValue(autoUpgradeEnabled)
+    end
+    if autoBuyFruitToggle then
+        autoBuyFruitToggle:SetValue(autoBuyFruitEnabled)
+    end
+    if autoFeedToggle then
+        autoFeedToggle:SetValue(autoFeedEnabled)
+    end
+end
+
 -- Auto-load settings after all UI elements are created
 task.spawn(function()
     task.wait(1) -- Wait for UI to fully load
@@ -3616,6 +3814,10 @@ task.spawn(function()
     end)
     
     if loadSuccess then
+        -- Update toggle visual states to match loaded values
+        task.wait(0.5) -- Small delay to ensure toggles are created
+        updateToggleStates()
+        
         WindUI:Notify({ 
             Title = "📂 Auto-Load", 
             Content = "Your saved settings have been loaded! 🎉", 
