@@ -1941,18 +1941,49 @@ local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
 
 -- Ensure dropdown selections are reflected in runtime variables after loading
 local function syncAutoPlaceFiltersFromUI()
-    if placeEggDropdown and placeEggDropdown.GetValue then
-        local ok, val = pcall(function() return placeEggDropdown:GetValue() end)
-        if ok and type(val) == "table" then
-            selectedEggTypes = val
+    local function coalesceSelection(element)
+        if not element then return {} end
+        -- Try common getter patterns
+        local candidates = {
+            function()
+                if element.GetValue then return element:GetValue() end
+            end,
+            function()
+                return element.Value
+            end,
+            function()
+                if element.Get then return element:Get() end
+            end,
+            function()
+                return element.Selected
+            end,
+            function()
+                if element.GetSelected then return element:GetSelected() end
+            end,
+        }
+        local raw
+        for _, getter in ipairs(candidates) do
+            local ok, val = pcall(getter)
+            if ok and val ~= nil then raw = val break end
         end
-    end
-    if placeMutationDropdown and placeMutationDropdown.GetValue then
-        local ok, val = pcall(function() return placeMutationDropdown:GetValue() end)
-        if ok and type(val) == "table" then
-            selectedMutations = val
+        if type(raw) ~= "table" then return {} end
+        -- Normalize to array of strings
+        local arr = {}
+        for i, v in ipairs(raw) do
+            table.insert(arr, v)
         end
+        if #arr > 0 then return arr end
+        for k, v in pairs(raw) do
+            if v == true then table.insert(arr, k) end
+        end
+        return arr
     end
+
+    local eggs = coalesceSelection(placeEggDropdown)
+    if #eggs > 0 then selectedEggTypes = eggs end
+
+    local muts = coalesceSelection(placeMutationDropdown)
+    if #muts > 0 then selectedMutations = muts end
 end
 
 
@@ -2515,6 +2546,16 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         autoPlaceEnabled = state
         
         waitForSettingsReady(0.2)
+        -- Re-sync filters at the moment auto place is toggled to on
+        if state then
+            syncAutoPlaceFiltersFromUI()
+            -- Prime available lists and try an immediate placement
+            pcall(function()
+                updateAvailableEggs()
+                updateAvailableTiles()
+                attemptPlacement()
+            end)
+        end
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
             -- Priority system removed
@@ -3504,6 +3545,7 @@ Tabs.SaveTab:Button({
     Callback = function()
         zebuxConfig:Load()
         loadCustomSelections()
+        syncAutoPlaceFiltersFromUI()
         WindUI:Notify({ 
             Title = "📂 Settings Loaded", 
             Content = "Your settings have been loaded! 🎉", 
@@ -3543,6 +3585,9 @@ Tabs.SaveTab:Button({
             loadCustomSelections()
         end)
         
+        -- Sync dropdowns into runtime filters after both loads
+        syncAutoPlaceFiltersFromUI()
+
         if customSuccess then
             WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
         else
@@ -3749,14 +3794,20 @@ task.spawn(function()
     -- Load custom UI selections
     loadCustomSelections()
     
+    -- First sync immediately in case UI is already populated
+    syncAutoPlaceFiltersFromUI()
+
+    -- Schedule a delayed sync to catch any late UI restoration
+    task.delay(0.5, function()
+        syncAutoPlaceFiltersFromUI()
+    end)
+
     WindUI:Notify({ 
         Title = "📂 Auto-Load Complete", 
         Content = "Your saved settings have been loaded! 🎉", 
         Duration = 3 
     })
     settingsLoaded = true
-    -- Sync dropdown values into runtime filters
-    syncAutoPlaceFiltersFromUI()
 end)
 
 -- ============ Auto Feed Tab ============
