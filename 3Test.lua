@@ -3532,6 +3532,61 @@ Tabs.PlaceTab:Button({
     end
 })
 
+-- Debug button to check pet feed time text
+Tabs.FeedTab:Button({
+    Title = "🔍 Check Pet Feed Time",
+    Desc = "Check the actual feed time text for Big Pets",
+    Callback = function()
+        local localPlayer = game:GetService("Players").LocalPlayer
+        if not localPlayer then
+            WindUI:Notify({ Title = "❌ Error", Content = "LocalPlayer not found", Duration = 3 })
+            return
+        end
+        
+        local petsFolder = workspace:FindFirstChild("Pets")
+        if not petsFolder then
+            WindUI:Notify({ Title = "❌ Error", Content = "Pets folder not found", Duration = 3 })
+            return
+        end
+        
+        local message = "🍽️ Pet Feed Time Check:\n"
+        local bigPetCount = 0
+        
+        for _, petModel in ipairs(petsFolder:GetChildren()) do
+            if petModel:IsA("Model") then
+                local rootPart = petModel:FindFirstChild("RootPart")
+                if rootPart then
+                    local petUserId = rootPart:GetAttribute("UserId")
+                    if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
+                        local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                        if bigPetGUI then
+                            bigPetCount = bigPetCount + 1
+                            local feedGUI = bigPetGUI:FindFirstChild("Feed")
+                            if feedGUI then
+                                local feedText = feedGUI:FindFirstChild("TXT")
+                                if feedText and feedText:IsA("TextLabel") then
+                                    local feedTime = feedText.Text
+                                    message = message .. string.format("Pet %s: '%s'\n", petModel.Name, tostring(feedTime))
+                                else
+                                    message = message .. string.format("Pet %s: No feed text\n", petModel.Name)
+                                end
+                            else
+                                message = message .. string.format("Pet %s: No feed GUI\n", petModel.Name)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if bigPetCount == 0 then
+            message = message .. "No Big Pets found"
+        end
+        
+        WindUI:Notify({ Title = "🍽️ Feed Time Check", Content = message, Duration = 8 })
+    end
+})
+
 -- ============ Config System ============
 -- Create config manager
 local ConfigManager = Window.ConfigManager
@@ -3699,10 +3754,18 @@ Tabs.SaveTab:Button({
         end)
         
         if customSuccess then
-            -- Update toggle visual states
+            -- Update toggle visual states with error handling
             task.wait(0.5)
-            updateToggleStates()
-            WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
+            local updateSuccess, updateErr = pcall(function()
+                updateToggleStates()
+            end)
+            
+            if updateSuccess then
+                WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
+            else
+                warn("Failed to update toggle states: " .. tostring(updateErr))
+                WindUI:Notify({ Title = "⚠️ Manual Load", Content = "Settings loaded but toggle update failed", Duration = 3 })
+            end
         else
             warn("Failed to load custom settings: " .. tostring(customErr))
             WindUI:Notify({ Title = "❌ Manual Load", Content = "Failed to load settings: " .. tostring(customErr), Duration = 5 })
@@ -3984,8 +4047,15 @@ end
 
 -- Bug report system removed per user request
 
-Window:OnClose(function()
-    print("UI closed.")
+-- Safe window close handler
+local ok, err = pcall(function()
+    Window:OnClose(function()
+        print("UI closed.")
+    end)
 end)
+
+if not ok then
+    warn("Failed to set window close handler: " .. tostring(err))
+end
 
 -- Function removed - using WindUI config system instead
