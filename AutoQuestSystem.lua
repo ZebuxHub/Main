@@ -142,11 +142,11 @@ local function getEggInventory()
     local success, err = pcall(function()
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if not playerGui then return end
-        
-        local data = playerGui:FindFirstChild("Data")
+    
+    local data = playerGui:FindFirstChild("Data")
         if not data then return end
-        
-        local eggContainer = data:FindFirstChild("Egg")
+    
+    local eggContainer = data:FindFirstChild("Egg")
         if not eggContainer then return end
         
         for _, eggConfig in ipairs(eggContainer:GetChildren()) do
@@ -175,11 +175,11 @@ local function getPetInventory()
     local success, err = pcall(function()
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if not playerGui then return end
-        
-        local data = playerGui:FindFirstChild("Data")
+    
+    local data = playerGui:FindFirstChild("Data")
         if not data then return end
-        
-        local petsContainer = data:FindFirstChild("Pets")
+    
+    local petsContainer = data:FindFirstChild("Pets")
         if not petsContainer then return end
         
         for _, petConfig in ipairs(petsContainer:GetChildren()) do
@@ -307,20 +307,20 @@ end
 
 local function claimTask(taskId)
     local success, err = pcall(function()
-        local args = {
-            {
-                event = "claimreward",
-                id = taskId
-            }
+    local args = {
+        {
+            event = "claimreward",
+            id = taskId
         }
+    }
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
     end)
     
     if success then
-        WindUI:Notify({
+        WindUI:Notify({ 
             Title = "🏆 Quest Complete",
             Content = "Claimed reward for " .. taskId .. "!",
-            Duration = 3
+            Duration = 3 
         })
     else
         warn("Failed to claim task " .. taskId .. ": " .. tostring(err))
@@ -481,9 +481,9 @@ local function restoreAutomationStates()
     end
     if autoHatchToggle and autoHatchToggle.SetValue and savedStates.autoHatch ~= nil then
         autoHatchToggle:SetValue(savedStates.autoHatch)
+        end
     end
-end
-
+    
 local function enableHatchingAutomation()
     -- Temporarily enable automation needed for hatching tasks
     if autoBuyToggle and autoBuyToggle.SetValue then autoBuyToggle:SetValue(true) end
@@ -495,7 +495,6 @@ local function updateQuestStatus()
     if not questStatusParagraph then return end
     
     local tasks = getCurrentTasks()
-    local statusText = "📝 Quest Status:\n"
     
     if #tasks == 0 then
         statusText = statusText .. "No active tasks found."
@@ -541,21 +540,21 @@ local function checkInventoryDialog(taskType, requiredTypes, requiredMutations, 
         -- For Lua 5.1, we'll use a simpler approach with a shared variable
         local userChoice = nil
         
-        Window:Dialog({
+                            Window:Dialog({
             Title = "⚠️ No Matching Items",
             Content = string.format("No %s items match your selected filters.\nDo you want to continue anyway?", taskType),
-            Icon = "alert-triangle",
-            Buttons = {
-                {
+                                Icon = "alert-triangle",
+                                Buttons = {
+                                    {
                     Title = "Cancel",
-                    Variant = "Secondary",
+                                        Variant = "Secondary",
                     Callback = function() 
                         userChoice = false 
                     end
-                },
-                {
+                                    },
+                                    {
                     Title = "Continue",
-                    Variant = "Primary", 
+                                        Variant = "Primary",
                     Callback = function() 
                         userChoice = true 
                     end
@@ -633,8 +632,18 @@ local function executeQuestTasks()
                     if #eggInventory == 0 then
                         task.wait(2)
                     else
-                        local excludeTypes = sendEggTypeDropdown and sendEggTypeDropdown:GetValue() or {}
-                        local excludeMutations = sendEggMutationDropdown and sendEggMutationDropdown:GetValue() or {}
+                        local excludeTypes = {}
+                        local excludeMutations = {}
+                        
+                        if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
+                            local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
+                            excludeTypes = success and result or {}
+                        end
+                        
+                        if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
+                            local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
+                            excludeMutations = success and result or {}
+                        end
                         
                         -- Check inventory dialog
                         local continueTask = checkInventoryDialog("egg", excludeTypes, excludeMutations, eggInventory)
@@ -649,7 +658,12 @@ local function executeQuestTasks()
                             end
                             
                             if eggToSend then
-                                local targetPlayerName = targetPlayerDropdown and targetPlayerDropdown:GetValue() or "Random Player"
+                                local targetPlayerName = "Random Player"
+                                if targetPlayerDropdown and targetPlayerDropdown.GetValue then
+                                    local success, result = pcall(function() return targetPlayerDropdown:GetValue() end)
+                                    targetPlayerName = success and result or "Random Player"
+                                end
+                                
                                 local targetPlayer = nil
                                 
                                 if targetPlayerName == "Random Player" then
@@ -680,8 +694,18 @@ local function executeQuestTasks()
                     if #petInventory == 0 then
                         task.wait(2)
                     else
-                        local excludeTypes = sellPetTypeDropdown and sellPetTypeDropdown:GetValue() or {}
-                        local excludeMutations = sellPetMutationDropdown and sellPetMutationDropdown:GetValue() or {}
+                        local excludeTypes = {}
+                        local excludeMutations = {}
+                        
+                        if sellPetTypeDropdown and sellPetTypeDropdown.GetValue then
+                            local success, result = pcall(function() return sellPetTypeDropdown:GetValue() end)
+                            excludeTypes = success and result or {}
+                        end
+                        
+                        if sellPetMutationDropdown and sellPetMutationDropdown.GetValue then
+                            local success, result = pcall(function() return sellPetMutationDropdown:GetValue() end)
+                            excludeMutations = success and result or {}
+                        end
                         
                         -- Check inventory dialog
                         local continueTask = checkInventoryDialog("pet", excludeTypes, excludeMutations, petInventory)
@@ -731,20 +755,20 @@ local function executeQuestTasks()
     restoreAutomationStates()
 end
 
--- Main quest execution function
-local function runAutoQuest()
-    while questEnabled do
-        local ok, err = pcall(executeQuestTasks)
-        if not ok then
-            warn("Auto Quest error: " .. tostring(err))
-            task.wait(5)
-        end
-    end
-end
-
 -- Auto claim function
 local function runAutoClaimReady()
-    while questEnabled and claimReadyToggle and claimReadyToggle:GetValue() do
+    while questEnabled and claimReadyToggle do
+        local claimEnabled = false
+        if claimReadyToggle.GetValue then
+            local success, result = pcall(function() return claimReadyToggle:GetValue() end)
+            claimEnabled = success and result or false
+        end
+        
+        if not claimEnabled then
+            task.wait(3)
+            continue
+        end
+        
         local tasks = getCurrentTasks()
         
         for _, task in ipairs(tasks) do
@@ -764,7 +788,18 @@ end
 
 -- Auto refresh function
 local function runAutoRefreshTasks()
-    while questEnabled and refreshTaskToggle and refreshTaskToggle:GetValue() do
+    while questEnabled and refreshTaskToggle do
+        local refreshEnabled = false
+        if refreshTaskToggle.GetValue then
+            local success, result = pcall(function() return refreshTaskToggle:GetValue() end)
+            refreshEnabled = success and result or false
+        end
+        
+        if not refreshEnabled then
+            task.wait(10)
+            continue
+        end
+        
         updateQuestStatus()
         
         -- Refresh dropdowns (use SetValues method for WindUI)
@@ -790,6 +825,33 @@ local function runAutoRefreshTasks()
         
         task.wait(10)
     end
+end
+
+-- Main quest execution function
+local function runAutoQuest()
+    -- Start the auto claim and refresh threads when quest starts
+    local claimThread = task.spawn(runAutoClaimReady)
+    local refreshThread = task.spawn(runAutoRefreshTasks)
+    
+    while questEnabled do
+        local ok, err = pcall(executeQuestTasks)
+        if not ok then
+            warn("Auto Quest error: " .. tostring(err))
+            task.wait(5)
+        end
+    end
+    
+    -- Clean up threads when quest stops
+    pcall(function() 
+        if claimThread then
+            task.cancel(claimThread)
+        end
+    end)
+    pcall(function() 
+        if refreshThread then
+            task.cancel(refreshThread)
+        end
+    end)
 end
 
 -- Initialize function
@@ -904,9 +966,8 @@ function AutoQuestSystem.Init(dependencies)
         Desc = "Automatically claim tasks when they reach 100%",
         Value = true,
         Callback = function(state)
-            if state and questEnabled then
-                task.spawn(runAutoClaimReady)
-            end
+            -- The runAutoClaimReady function will check the toggle state itself
+            -- No need to start/stop threads here since main quest loop handles it
         end
     })
     
@@ -916,9 +977,8 @@ function AutoQuestSystem.Init(dependencies)
         Desc = "Automatically refresh task status and dropdown lists",
         Value = true,
         Callback = function(state)
-            if state and questEnabled then
-                task.spawn(runAutoRefreshTasks)
-            end
+            -- The runAutoRefreshTasks function will check the toggle state itself
+            -- No need to start/stop threads here since main quest loop handles it
         end
     })
     
