@@ -131,9 +131,6 @@ local function loadAllSettings()
             selectedMutations = autoPlaceData.mutations
         end
     end
-    
-    -- Update toggle visual states to match loaded values
-    updateToggleStates()
 end
 
 -- Function to save all settings (WindUI config + custom selections)
@@ -3771,42 +3768,33 @@ Tabs.SaveTab:Button({
 
 -- Function to update toggle visual states after loading
 local function updateToggleStates()
-    -- Update toggle states to match loaded values
-    if autoBuyToggle then
-        autoBuyToggle:SetValue(autoBuyEnabled)
+    -- Update toggle states to match loaded values (with error handling)
+    local function safeSetToggle(toggle, value, name)
+        if toggle and toggle.SetValue then
+            local ok, err = pcall(function()
+                toggle:SetValue(value)
+            end)
+            if not ok then
+                warn("Failed to update " .. name .. " toggle: " .. tostring(err))
+            end
+        end
     end
-    if autoHatchToggle then
-        autoHatchToggle:SetValue(autoHatchEnabled)
-    end
-    if autoClaimToggle then
-        autoClaimToggle:SetValue(autoClaimEnabled)
-    end
-    if autoPlaceToggle then
-        autoPlaceToggle:SetValue(autoPlaceEnabled)
-    end
-    if autoUnlockToggle then
-        autoUnlockToggle:SetValue(autoUnlockEnabled)
-    end
-    if autoDeleteToggle then
-        autoDeleteToggle:SetValue(autoDeleteEnabled)
-    end
-    if autoDinoToggle then
-        autoDinoToggle:SetValue(autoDinoEnabled)
-    end
-    if autoUpgradeToggle then
-        autoUpgradeToggle:SetValue(autoUpgradeEnabled)
-    end
-    if autoBuyFruitToggle then
-        autoBuyFruitToggle:SetValue(autoBuyFruitEnabled)
-    end
-    if autoFeedToggle then
-        autoFeedToggle:SetValue(autoFeedEnabled)
-    end
+    
+    safeSetToggle(autoBuyToggle, autoBuyEnabled, "Auto Buy")
+    safeSetToggle(autoHatchToggle, autoHatchEnabled, "Auto Hatch")
+    safeSetToggle(autoClaimToggle, autoClaimEnabled, "Auto Claim")
+    safeSetToggle(autoPlaceToggle, autoPlaceEnabled, "Auto Place")
+    safeSetToggle(autoUnlockToggle, autoUnlockEnabled, "Auto Unlock")
+    safeSetToggle(autoDeleteToggle, autoDeleteEnabled, "Auto Delete")
+    safeSetToggle(autoDinoToggle, autoDinoEnabled, "Auto Dino")
+    safeSetToggle(autoUpgradeToggle, autoUpgradeEnabled, "Auto Upgrade")
+    safeSetToggle(autoBuyFruitToggle, autoBuyFruitEnabled, "Auto Buy Fruit")
+    safeSetToggle(autoFeedToggle, autoFeedEnabled, "Auto Feed")
 end
 
 -- Auto-load settings after all UI elements are created
 task.spawn(function()
-    task.wait(1) -- Wait for UI to fully load
+    task.wait(2) -- Wait longer for UI to fully load
     
     -- Load all settings (WindUI config + custom selections)
     local loadSuccess, loadErr = pcall(function()
@@ -3815,16 +3803,32 @@ task.spawn(function()
     
     if loadSuccess then
         -- Update toggle visual states to match loaded values
-        task.wait(0.5) -- Small delay to ensure toggles are created
-        updateToggleStates()
+        task.wait(1) -- Longer delay to ensure toggles are created
+        local updateSuccess, updateErr = pcall(function()
+            updateToggleStates()
+        end)
         
-        WindUI:Notify({ 
-            Title = "📂 Auto-Load", 
-            Content = "Your saved settings have been loaded! 🎉", 
-            Duration = 3 
-        })
+        if updateSuccess then
+            WindUI:Notify({ 
+                Title = "📂 Auto-Load", 
+                Content = "Your saved settings have been loaded! 🎉", 
+                Duration = 3 
+            })
+        else
+            warn("Failed to update toggle states: " .. tostring(updateErr))
+            WindUI:Notify({ 
+                Title = "📂 Auto-Load", 
+                Content = "Settings loaded but toggle update failed", 
+                Duration = 3 
+            })
+        end
     else
         warn("Failed to load settings: " .. tostring(loadErr))
+        WindUI:Notify({ 
+            Title = "⚠️ Load Error", 
+            Content = "Failed to load settings: " .. tostring(loadErr), 
+            Duration = 5 
+        })
     end
 end)
 
@@ -3877,12 +3881,26 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
                                     selectedFeedFruits = {}
                                     for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
                                 end
-    end
-end)
+                            end
+                        end)
                     end
                     return selectedFeedFruits
                 end
-                AutoFeedSystem.runAutoFeed(autoFeedEnabled, {}, function() end, getSelected)
+                
+                -- Wrap the auto feed call in error handling
+                local ok, err = pcall(function()
+                    AutoFeedSystem.runAutoFeed(autoFeedEnabled, {}, function() end, getSelected)
+                end)
+                
+                if not ok then
+                    warn("Auto Feed thread error: " .. tostring(err))
+                    WindUI:Notify({ 
+                        Title = "⚠️ Auto Feed Error", 
+                        Content = "Auto Feed stopped due to error: " .. tostring(err), 
+                        Duration = 5 
+                    })
+                end
+                
                 autoFeedThread = nil
             end)
             WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
