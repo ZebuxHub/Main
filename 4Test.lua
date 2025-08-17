@@ -3598,13 +3598,7 @@ local function registerConfigElements()
         -- Only register simple UI elements that don't cause serialization issues
         -- Complex selection tables (selectedTypeSet, selectedMutationSet, selectedFruits, selectedFeedFruits) 
         -- are handled by custom JSON save/load system
-        if autoBuyToggle then zooConfig:Register("autoBuyEnabled", autoBuyToggle) end
-        if autoPlaceToggle then zooConfig:Register("autoPlaceEnabled", autoPlaceToggle) end
-        if autoHatchToggle then zooConfig:Register("autoHatchEnabled", autoHatchToggle) end
-        if autoClaimToggle then zooConfig:Register("autoClaimEnabled", autoClaimToggle) end
-        if autoUpgradeToggle then zooConfig:Register("autoUpgradeEnabled", autoUpgradeToggle) end
-        if autoDinoToggle then zooConfig:Register("autoDinoEnabled", autoDinoToggle) end
-        if autoDeleteToggle then zooConfig:Register("autoDeleteEnabled", autoDeleteToggle) end
+        -- Toggle registrations are now done immediately after each toggle is created
         if autoDeleteSpeedSlider then zooConfig:Register("autoDeleteSpeed", autoDeleteSpeedSlider) end
         if autoClaimDelaySlider then zooConfig:Register("autoClaimDelay", autoClaimDelaySlider) end
         if placeEggDropdown then zooConfig:Register("selectedPlaceEggs", placeEggDropdown) end
@@ -3612,7 +3606,7 @@ local function registerConfigElements()
         if priorityDropdown then zooConfig:Register("automationPriority", priorityDropdown) end
         
         -- Register fruit selection
-        if autoBuyFruitToggle then zooConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle) end
+        -- autoBuyFruitToggle registration is now done immediately after toggle creation
     end
 end
 
@@ -3868,47 +3862,20 @@ Tabs.SaveTab:Button({
 
 -- Function to update toggle visual states after loading
 local function updateToggleStates()
-    -- Update toggle states to match loaded values (with error handling)
-    local function safeSetToggle(toggle, value, name)
-        if toggle and toggle.SetValue then
-            local ok, err = pcall(function()
-                toggle:SetValue(value)
-            end)
-            if not ok then
-                warn("Failed to update " .. name .. " toggle: " .. tostring(err))
-            end
-        end
-    end
+    -- WindUI should automatically handle loading toggle states
+    -- We just need to ensure the UI reflects the current state
+    print("🔄 Updating toggle visual states...")
     
-    safeSetToggle(autoBuyToggle, autoBuyEnabled, "Auto Buy")
-    safeSetToggle(autoHatchToggle, autoHatchEnabled, "Auto Hatch")
-    safeSetToggle(autoClaimToggle, autoClaimEnabled, "Auto Claim")
-    safeSetToggle(autoPlaceToggle, autoPlaceEnabled, "Auto Place")
-    safeSetToggle(autoUnlockToggle, autoUnlockEnabled, "Auto Unlock")
-    safeSetToggle(autoDeleteToggle, autoDeleteEnabled, "Auto Delete")
-    safeSetToggle(autoDinoToggle, autoDinoEnabled, "Auto Dino")
-    safeSetToggle(autoUpgradeToggle, autoUpgradeEnabled, "Auto Upgrade")
-    safeSetToggle(autoBuyFruitToggle, autoBuyFruitEnabled, "Auto Buy Fruit")
-    safeSetToggle(autoFeedToggle, autoFeedEnabled, "Auto Feed")
-    
-    -- Update dropdowns if they exist
-    if placeEggDropdown and selectedEggTypes then
-        local ok, err = pcall(function()
-            placeEggDropdown:SetValue(selectedEggTypes)
-        end)
-        if not ok then
-            warn("Failed to update place egg dropdown: " .. tostring(err))
-        end
-    end
-    
-    if placeMutationDropdown and selectedMutations then
-        local ok, err = pcall(function()
-            placeMutationDropdown:SetValue(selectedMutations)
-        end)
-        if not ok then
-            warn("Failed to update place mutation dropdown: " .. tostring(err))
-        end
-    end
+    -- Log current toggle states for debugging
+    print("Toggle States:")
+    print("  Auto Buy: " .. tostring(autoBuyEnabled))
+    print("  Auto Place: " .. tostring(autoPlaceEnabled))
+    print("  Auto Hatch: " .. tostring(autoHatchEnabled))
+    print("  Auto Claim: " .. tostring(autoClaimEnabled))
+    print("  Auto Upgrade: " .. tostring(autoUpgradeEnabled))
+    print("  Auto Dino: " .. tostring(autoDinoEnabled))
+    print("  Auto Buy Fruit: " .. tostring(autoBuyFruitEnabled))
+    print("  Auto Feed: " .. tostring(autoFeedEnabled))
 end
 
 -- Auto-load settings after all UI elements are created
