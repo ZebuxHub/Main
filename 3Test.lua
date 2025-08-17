@@ -3970,7 +3970,67 @@ local function createAutoQuestUI()
             if state then
                 -- Start auto quest logic here
                 WindUI:Notify({ Title = "📝 Auto Quest", Content = "Started auto questing! 🎉", Duration = 3 })
+                
+                -- Start the auto quest thread
+                if not autoQuestThread then
+                    autoQuestThread = task.spawn(function()
+                        while autoQuestEnabled do
+                            -- Check for quest tasks and handle them
+                            local taskData = Players.LocalPlayer.PlayerGui:FindFirstChild("Data"):FindFirstChild("DinoEventTaskData")
+                            if taskData then
+                                local tasksFolder = taskData:FindFirstChild("Tasks")
+                                if tasksFolder then
+                                    for i = 1, 3 do
+                                        local taskSlot = tasksFolder:FindFirstChild(tostring(i))
+                                        if taskSlot then
+                                            local taskId = taskSlot:GetAttribute("Id")
+                                            local progress = taskSlot:GetAttribute("Progress") or 0
+                                            local claimedCount = taskSlot:GetAttribute("ClaimedCount") or 0
+                                            
+                                            -- Handle HatchEgg and BuyMutateEgg tasks
+                                            if taskId == "Task_1" or taskId == "Task_7" then -- HatchEgg tasks
+                                                if progress < 5 and not autoHatchEnabled then
+                                                    -- Temporarily enable auto hatch for quest
+                                                    autoHatchEnabled = true
+                                                    if not autoHatchThread then
+                                                        autoHatchThread = task.spawn(function()
+                                                            runAutoHatch()
+                                                            autoHatchThread = nil
+                                                        end)
+                                                    end
+                                                elseif progress >= 5 and autoHatchEnabled then
+                                                    -- Disable auto hatch when quest is complete
+                                                    autoHatchEnabled = false
+                                                end
+                                            elseif taskId == "Task_5" then -- BuyMutateEgg task
+                                                if progress < 1 and not autoBuyEnabled then
+                                                    -- Temporarily enable auto buy for quest
+                                                    autoBuyEnabled = true
+                                                    if not autoBuyThread then
+                                                        autoBuyThread = task.spawn(function()
+                                                            runAutoBuy()
+                                                            autoBuyThread = nil
+                                                        end)
+                                                    end
+                                                elseif progress >= 1 and autoBuyEnabled then
+                                                    -- Disable auto buy when quest is complete
+                                                    autoBuyEnabled = false
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            task.wait(5) -- Check every 5 seconds
+                        end
+                    end)
+                end
             else
+                -- Stop auto quest
+                if autoQuestThread then
+                    autoQuestThread = nil
+                end
                 WindUI:Notify({ Title = "📝 Auto Quest", Content = "Stopped", Duration = 3 })
             end
         end
