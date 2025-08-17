@@ -1048,6 +1048,12 @@ local function getEggMutation(eggUID)
     
     -- Read the M attribute (mutation)
     local mutation = eggConfig:GetAttribute("M")
+    
+    -- Map "Dino" to "Jurassic" for consistency
+    if mutation == "Dino" then
+        mutation = "Jurassic"
+    end
+    
     return mutation
 end
 
@@ -3674,6 +3680,37 @@ Tabs.SaveTab:Button({
 })
 
 Tabs.SaveTab:Button({
+    Title = "🔄 Manual Load Settings",
+    Desc = "Manually load all settings (WindUI + Custom)",
+    Callback = function()
+        -- Load WindUI config first
+        if zooConfig then
+            local configSuccess, configErr = pcall(function()
+                zooConfig:Load()
+            end)
+            if not configSuccess then
+                warn("Failed to load WindUI config: " .. tostring(configErr))
+            end
+        end
+        
+        -- Then load custom settings
+        local customSuccess, customErr = pcall(function()
+            loadAllSettings()
+        end)
+        
+        if customSuccess then
+            -- Update toggle visual states
+            task.wait(0.5)
+            updateToggleStates()
+            WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
+        else
+            warn("Failed to load custom settings: " .. tostring(customErr))
+            WindUI:Notify({ Title = "❌ Manual Load", Content = "Failed to load settings: " .. tostring(customErr), Duration = 5 })
+        end
+    end
+})
+
+Tabs.SaveTab:Button({
     Title = "🔄 Reset Settings",
     Desc = "Reset all settings to default",
     Callback = function()
@@ -3790,20 +3827,50 @@ local function updateToggleStates()
     safeSetToggle(autoUpgradeToggle, autoUpgradeEnabled, "Auto Upgrade")
     safeSetToggle(autoBuyFruitToggle, autoBuyFruitEnabled, "Auto Buy Fruit")
     safeSetToggle(autoFeedToggle, autoFeedEnabled, "Auto Feed")
+    
+    -- Update dropdowns if they exist
+    if placeEggDropdown and selectedEggTypes then
+        local ok, err = pcall(function()
+            placeEggDropdown:SetValue(selectedEggTypes)
+        end)
+        if not ok then
+            warn("Failed to update place egg dropdown: " .. tostring(err))
+        end
+    end
+    
+    if placeMutationDropdown and selectedMutations then
+        local ok, err = pcall(function()
+            placeMutationDropdown:SetValue(selectedMutations)
+        end)
+        if not ok then
+            warn("Failed to update place mutation dropdown: " .. tostring(err))
+        end
+    end
 end
 
 -- Auto-load settings after all UI elements are created
 task.spawn(function()
-    task.wait(2) -- Wait longer for UI to fully load
+    task.wait(3) -- Wait longer for UI to fully load
     
-    -- Load all settings (WindUI config + custom selections)
-    local loadSuccess, loadErr = pcall(function()
+    -- First load WindUI config
+    local configSuccess, configErr = pcall(function()
+        if zooConfig then
+            zooConfig:Load()
+        end
+    end)
+    
+    if not configSuccess then
+        warn("Failed to load WindUI config: " .. tostring(configErr))
+    end
+    
+    -- Then load custom settings
+    local customSuccess, customErr = pcall(function()
         loadAllSettings()
     end)
     
-    if loadSuccess then
+    if customSuccess then
         -- Update toggle visual states to match loaded values
-        task.wait(1) -- Longer delay to ensure toggles are created
+        task.wait(1) -- Delay to ensure toggles are created
         local updateSuccess, updateErr = pcall(function()
             updateToggleStates()
         end)
@@ -3823,10 +3890,10 @@ task.spawn(function()
             })
         end
     else
-        warn("Failed to load settings: " .. tostring(loadErr))
+        warn("Failed to load custom settings: " .. tostring(customErr))
         WindUI:Notify({ 
             Title = "⚠️ Load Error", 
-            Content = "Failed to load settings: " .. tostring(loadErr), 
+            Content = "Failed to load custom settings: " .. tostring(customErr), 
             Duration = 5 
         })
     end
