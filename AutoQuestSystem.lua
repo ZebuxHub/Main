@@ -445,6 +445,13 @@ function AutoQuestSystem.SetPriorityOrder(priorityOrder)
     end
 end
 
+function AutoQuestSystem.GetTaskDescription(taskId)
+    if TaskConfig[taskId] then
+        return TaskConfig[taskId].Desc
+    end
+    return taskId
+end
+
 -- Initialize function for main script integration
 function AutoQuestSystem.Init(dependencies)
     -- Just return the AutoQuestSystem object - UI is handled in main script
