@@ -314,146 +314,144 @@ local function runAutoQuest()
     while questState.enabled do
         local currentTasks = getCurrentQuestTasks()
         
-        if #currentTasks == 0 then
-            task.wait(5)
-            continue
-        end
-        
-        -- Sort tasks by priority
-        table.sort(currentTasks, function(a, b)
-            local priorityOrder = {
-                BuyMutateEgg = 1,
-                HatchEgg = 2,
-                SendEgg = 3,
-                SellPet = 4,
-                OnlineTime = 5
-            }
-            return (priorityOrder[a.completeType] or 999) < (priorityOrder[b.completeType] or 999)
-        end)
-        
-        -- Execute tasks simultaneously
-        for _, task in ipairs(currentTasks) do
-            if not questState.enabled then break end
+        if #currentTasks > 0 then
+            -- Sort tasks by priority
+            table.sort(currentTasks, function(a, b)
+                local priorityOrder = {
+                    BuyMutateEgg = 1,
+                    HatchEgg = 2,
+                    SendEgg = 3,
+                    SellPet = 4,
+                    OnlineTime = 5
+                }
+                return (priorityOrder[a.completeType] or 999) < (priorityOrder[b.completeType] or 999)
+            end)
             
-            -- Check if task is already completed
-            if task.canClaim then
-                if questState.claimAllEnabled then
-                    claimQuestReward(task.id)
-                end
-                continue
-            end
-            
-            -- Execute task based on type
-            if task.completeType == "SendEgg" then
-                local availableEggs = getAvailableItemsForAction("SendEgg", questState.sendEggTNames, questState.sendEggMutations)
+            -- Execute tasks simultaneously
+            for _, task in ipairs(currentTasks) do
+                if not questState.enabled then break end
                 
-                if #availableEggs == 0 then
-                    -- Show dialog asking user to continue
-                    local shouldContinue = false
-                    Window:Dialog({
-                        Title = "⚠️ No Matching Eggs",
-                        Content = "No eggs match your selected filters. Continue with all eggs?",
-                        Icon = "alert-triangle",
-                        Buttons = {
-                            {
-                                Title = "❌ Cancel",
-                                Variant = "Secondary",
-                                Callback = function() shouldContinue = false end
-                            },
-                            {
-                                Title = "✅ Continue",
-                                Variant = "Primary",
-                                Callback = function() shouldContinue = true end
-                            }
-                        }
-                    })
-                    
-                    if not shouldContinue then
-                        continue
+                -- Check if task is already completed
+                if task.canClaim then
+                    if questState.claimAllEnabled then
+                        claimQuestReward(task.id)
+                    end
+                else
+                    -- Execute task based on type
+                    if task.completeType == "SendEgg" then
+                        local availableEggs = getAvailableItemsForAction("SendEgg", questState.sendEggTNames, questState.sendEggMutations)
+                        
+                        if #availableEggs == 0 then
+                            -- Show dialog asking user to continue
+                            local shouldContinue = false
+                            Window:Dialog({
+                                Title = "⚠️ No Matching Eggs",
+                                Content = "No eggs match your selected filters. Continue with all eggs?",
+                                Icon = "alert-triangle",
+                                Buttons = {
+                                    {
+                                        Title = "❌ Cancel",
+                                        Variant = "Secondary",
+                                        Callback = function() shouldContinue = false end
+                                    },
+                                    {
+                                        Title = "✅ Continue",
+                                        Variant = "Primary",
+                                        Callback = function() shouldContinue = true end
+                                    }
+                                }
+                            })
+                            
+                            if shouldContinue then
+                                -- Get all available eggs
+                                availableEggs = getAvailableItemsForAction("SendEgg", {}, {})
+                            end
+                        end
+                        
+                        if #availableEggs > 0 then
+                            local sentCount = 0
+                            for _, eggUID in ipairs(availableEggs) do
+                                if sentCount >= task.completeValue then break end
+                                if questState.sessionStats.sent >= 5 then break end -- Safety limit
+                                
+                                local success, message = sendEggToPlayer(eggUID, questState.targetPlayer)
+                                if success then
+                                    sentCount = sentCount + 1
+                                    task.wait(0.5) -- Rate limiting
+                                end
+                            end
+                        end
+                        
+                    elseif task.completeType == "SellPet" then
+                        local availablePets = getAvailableItemsForAction("SellPet", questState.sellPetTNames, questState.sellPetMutations)
+                        
+                        if #availablePets == 0 then
+                            -- Show dialog asking user to continue
+                            local shouldContinue = false
+                            Window:Dialog({
+                                Title = "⚠️ No Matching Pets",
+                                Content = "No pets match your selected filters. Continue with all pets?",
+                                Icon = "alert-triangle",
+                                Buttons = {
+                                    {
+                                        Title = "❌ Cancel",
+                                        Variant = "Secondary",
+                                        Callback = function() shouldContinue = false end
+                                    },
+                                    {
+                                        Title = "✅ Continue",
+                                        Variant = "Primary",
+                                        Callback = function() shouldContinue = true end
+                                    }
+                                }
+                            })
+                            
+                            if shouldContinue then
+                                -- Get all available pets
+                                availablePets = getAvailableItemsForAction("SellPet", {}, {})
+                            end
+                        end
+                        
+                        if #availablePets > 0 then
+                            local soldCount = 0
+                            for _, petUID in ipairs(availablePets) do
+                                if soldCount >= task.completeValue then break end
+                                if questState.sessionStats.sold >= 5 then break end -- Safety limit
+                                
+                                local success, message = sellPet(petUID)
+                                if success then
+                                    soldCount = soldCount + 1
+                                    task.wait(0.5) -- Rate limiting
+                                end
+                            end
+                        end
+                        
+                    elseif task.completeType == "OnlineTime" then
+                        -- Just wait and claim when ready
+                        while task.progress < task.completeValue do
+                            task.wait(1)
+                            local currentTasks = getCurrentQuestTasks()
+                            for _, currentTask in ipairs(currentTasks) do
+                                if currentTask.id == task.id then
+                                    task.progress = currentTask.progress
+                                    break
+                                end
+                            end
+                        end
                     end
                     
-                    -- Get all available eggs
-                    availableEggs = getAvailableItemsForAction("SendEgg", {}, {})
-                end
-                
-                local sentCount = 0
-                for _, eggUID in ipairs(availableEggs) do
-                    if sentCount >= task.completeValue then break end
-                    if questState.sessionStats.sent >= 5 then break end -- Safety limit
-                    
-                    local success, message = sendEggToPlayer(eggUID, questState.targetPlayer)
-                    if success then
-                        sentCount = sentCount + 1
-                        task.wait(0.5) -- Rate limiting
-                    end
-                end
-                
-            elseif task.completeType == "SellPet" then
-                local availablePets = getAvailableItemsForAction("SellPet", questState.sellPetTNames, questState.sellPetMutations)
-                
-                if #availablePets == 0 then
-                    -- Show dialog asking user to continue
-                    local shouldContinue = false
-                    Window:Dialog({
-                        Title = "⚠️ No Matching Pets",
-                        Content = "No pets match your selected filters. Continue with all pets?",
-                        Icon = "alert-triangle",
-                        Buttons = {
-                            {
-                                Title = "❌ Cancel",
-                                Variant = "Secondary",
-                                Callback = function() shouldContinue = false end
-                            },
-                            {
-                                Title = "✅ Continue",
-                                Variant = "Primary",
-                                Callback = function() shouldContinue = true end
-                            }
-                        }
-                    })
-                    
-                    if not shouldContinue then
-                        continue
-                    end
-                    
-                    -- Get all available pets
-                    availablePets = getAvailableItemsForAction("SellPet", {}, {})
-                end
-                
-                local soldCount = 0
-                for _, petUID in ipairs(availablePets) do
-                    if soldCount >= task.completeValue then break end
-                    if questState.sessionStats.sold >= 5 then break end -- Safety limit
-                    
-                    local success, message = sellPet(petUID)
-                    if success then
-                        soldCount = soldCount + 1
-                        task.wait(0.5) -- Rate limiting
-                    end
-                end
-                
-            elseif task.completeType == "OnlineTime" then
-                -- Just wait and claim when ready
-                while task.progress < task.completeValue do
-                    task.wait(1)
-                    local currentTasks = getCurrentQuestTasks()
-                    for _, currentTask in ipairs(currentTasks) do
-                        if currentTask.id == task.id then
-                            task.progress = currentTask.progress
+                    -- Check if task is now complete
+                    local updatedTasks = getCurrentQuestTasks()
+                    for _, updatedTask in ipairs(updatedTasks) do
+                        if updatedTask.id == task.id and updatedTask.canClaim then
+                            claimQuestReward(task.id)
                             break
                         end
                     end
                 end
             end
-            
-            -- Check if task is now complete
-            local updatedTasks = getCurrentQuestTasks()
-            for _, updatedTask in ipairs(updatedTasks) do
-                if updatedTask.id == task.id and updatedTask.canClaim then
-                    claimQuestReward(task.id)
-                    break
-                end
-            end
+        else
+            task.wait(5)
         end
         
         task.wait(2) -- Main loop delay
