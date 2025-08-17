@@ -3470,26 +3470,31 @@ end
 
 -- Register all UI elements with WindUI ConfigManager
 local function registerUIElements()
-    -- Register toggles
-    zebuxConfig:Register("autoBuyEnabled", autoBuyToggle)
-    zebuxConfig:Register("autoHatchEnabled", autoHatchToggle)
-    zebuxConfig:Register("autoClaimEnabled", autoClaimToggle)
-    zebuxConfig:Register("autoPlaceEnabled", autoPlaceToggle)
-    zebuxConfig:Register("autoUnlockEnabled", autoUnlockToggle)
-    zebuxConfig:Register("autoDeleteEnabled", autoDeleteToggle)
-    zebuxConfig:Register("autoDinoEnabled", autoDinoToggle)
-    zebuxConfig:Register("autoUpgradeEnabled", autoUpgradeToggle)
-    zebuxConfig:Register("autoBuyFruitEnabled", autoBuyFruitToggle)
-    zebuxConfig:Register("autoFeedEnabled", autoFeedToggle)
+    local function registerIfExists(key, element)
+        if element then
+            zebuxConfig:Register(key, element)
+        end
+    end
+    -- Register toggles (skip nil ones)
+    registerIfExists("autoBuyEnabled", autoBuyToggle)
+    registerIfExists("autoHatchEnabled", autoHatchToggle)
+    registerIfExists("autoClaimEnabled", autoClaimToggle)
+    registerIfExists("autoPlaceEnabled", autoPlaceToggle)
+    registerIfExists("autoUnlockEnabled", autoUnlockToggle)
+    registerIfExists("autoDeleteEnabled", autoDeleteToggle)
+    registerIfExists("autoDinoEnabled", autoDinoToggle)
+    registerIfExists("autoUpgradeEnabled", autoUpgradeToggle)
+    registerIfExists("autoBuyFruitEnabled", autoBuyFruitToggle)
+    registerIfExists("autoFeedEnabled", autoFeedToggle)
     
     -- Register dropdowns
-    zebuxConfig:Register("placeEggDropdown", placeEggDropdown)
-    zebuxConfig:Register("placeMutationDropdown", placeMutationDropdown)
+    registerIfExists("placeEggDropdown", placeEggDropdown)
+    registerIfExists("placeMutationDropdown", placeMutationDropdown)
     -- priorityDropdown removed
     
     -- Register sliders/inputs
-    zebuxConfig:Register("autoClaimDelaySlider", autoClaimDelaySlider)
-    zebuxConfig:Register("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
+    registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
+    registerIfExists("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
 end
 
 -- ============ Anti-AFK System ============
@@ -3804,9 +3809,9 @@ task.spawn(function()
 
     WindUI:Notify({ 
         Title = "📂 Auto-Load Complete", 
-        Content = "Your saved settings have been loaded! 🎉", 
-        Duration = 3 
-    })
+            Content = "Your saved settings have been loaded! 🎉", 
+            Duration = 3 
+        })
     settingsLoaded = true
 end)
 
@@ -3889,12 +3894,22 @@ pcall(function()
     end
 })
 
--- Late-register auto feed toggle (it is created after the initial registration call)
-pcall(function()
+-- Late-register Auto Feed toggle after it exists, then re-load to apply saved value
+task.spawn(function()
+    -- Wait until settings load sequence either completed or shortly timed in
+    local tries = 0
+    while not (zebuxConfig and autoFeedToggle) and tries < 50 do
+        tries += 1
+        task.wait(0.05)
+    end
     if zebuxConfig and autoFeedToggle then
-        zebuxConfig:Register("autoFeedEnabled", autoFeedToggle)
-        -- Reload once to apply saved state to this newly registered control
-        zebuxConfig:Load()
+        pcall(function()
+            zebuxConfig:Register("autoFeedEnabled", autoFeedToggle)
+            -- If settings already loaded, load again to apply saved value to this control
+            if settingsLoaded then
+                zebuxConfig:Load()
+            end
+        end)
     end
 end)
 
