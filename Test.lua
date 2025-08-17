@@ -1191,9 +1191,9 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     Desc = "Automatically collects money from your pets",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoClaimEnabled = state
+        updateSetting("toggles", "autoClaimEnabled", state)
+        
         if state and not autoClaimThread then
             autoClaimThread = task.spawn(function()
                 runAutoClaim()
@@ -1220,6 +1220,7 @@ local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Rounding = 0,
     Callback = function(value)
         autoClaimDelay = math.clamp((tonumber(value) or 100) / 1000, 0, 2)
+        updateSetting("sliders", "autoClaimDelay", value)
     end
 })
 
@@ -1471,9 +1472,9 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Desc = "Automatically hatches your eggs by walking to them",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoHatchEnabled = state
+        updateSetting("toggles", "autoHatchEnabled", state)
+        
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
             if autoPlaceEnabled and automationPriority == "Place" then
@@ -1543,6 +1544,7 @@ local priorityDropdown = Tabs.HatchTab:Dropdown({
         else
             automationPriority = "Place"
         end
+        updateSetting("dropdowns", "automationPriority", selection)
         WindUI:Notify({ 
             Title = "🎯 Priority Set", 
             Content = "Priority set to: " .. selection, 
@@ -2548,9 +2550,9 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically places your pets on empty farm tiles!",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoPlaceEnabled = state
+        updateSetting("toggles", "autoPlaceEnabled", state)
+        
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
             if autoHatchEnabled and automationPriority == "Hatch" then
@@ -2693,9 +2695,9 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically unlock tiles when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoUnlockEnabled = state
+        updateSetting("toggles", "autoUnlockEnabled", state)
+        
         if state and not autoUnlockThread then
             autoUnlockThread = task.spawn(function()
                 runAutoUnlock()
@@ -2780,6 +2782,7 @@ local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
     Value = "100",
     Callback = function(value)
         deleteSpeedThreshold = tonumber(value) or 100
+        updateSetting("inputs", "deleteSpeedThreshold", value)
     end
 })
 
@@ -2875,9 +2878,9 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Desc = "Automatically delete slow pets (only your pets)",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoDeleteEnabled = state
+        updateSetting("toggles", "autoDeleteEnabled", state)
+        
         if state and not autoDeleteThread then
             autoDeleteThread = task.spawn(function()
                 runAutoDelete()
@@ -3005,9 +3008,9 @@ local autoDinoToggle = Tabs.PackTab:Toggle({
     Desc = "Automatically claims dino packs when ready (checks claim count)",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoDinoEnabled = state
+        updateSetting("toggles", "autoDinoEnabled", state)
+        
         if state and not autoDinoThread then
             autoDinoThread = task.spawn(function()
                 runAutoDino()
@@ -3101,9 +3104,9 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     Desc = "Automatically upgrades conveyor when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoUpgradeEnabled = state
+        updateSetting("toggles", "autoUpgradeEnabled", state)
+        
         if state and not autoUpgradeThread then
             autoUpgradeThread = task.spawn(function()
                 while autoUpgradeEnabled do
@@ -3213,6 +3216,7 @@ Tabs.FruitTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFruits = selectedItems
+                    updateCustomUISelection("fruitSelections", selectedItems)
                 end,
                 function(isVisible)
                     fruitSelectionVisible = isVisible
@@ -3238,8 +3242,8 @@ local function getPlayerNetWorth()
     
     -- First try to get from Attributes (as you mentioned)
     local attrValue = player:GetAttribute("NetWorth")
-    if type(attrValue) == "number" then 
-        return attrValue 
+    if type(attrValue) == "number" then
+        return attrValue
     end
     
     -- Fallback to leaderstats
@@ -3323,9 +3327,9 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Desc = "Automatically buy selected fruits when you have enough money",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoBuyFruitEnabled = state
+        updateSetting("toggles", "autoBuyFruitEnabled", state)
+        
         if state and not autoBuyFruitThread then
             autoBuyFruitThread = task.spawn(function()
                 while autoBuyFruitEnabled do
@@ -3425,36 +3429,7 @@ Tabs.FruitTab:Button({
     end
 })
 
--- Debug button for toggle loading
-Tabs.SaveTab:Button({
-    Title = "🔍 Debug Toggle Loading",
-    Desc = "Check if toggles are loading correctly",
-    Callback = function()
-        local message = string.format("🔧 Toggle Loading Debug:\n")
-        message = message .. string.format("⚙️ Config Manager: %s\n", tostring(zooConfig ~= nil))
-        message = message .. string.format("🥚 Auto Buy Toggle: %s\n", tostring(autoBuyToggle ~= nil))
-        message = message .. string.format("🏠 Auto Place Toggle: %s\n", tostring(autoPlaceToggle ~= nil))
-        message = message .. string.format("⚡ Auto Hatch Toggle: %s\n", tostring(autoHatchToggle ~= nil))
-        message = message .. string.format("💰 Auto Claim Toggle: %s\n", tostring(autoClaimToggle ~= nil))
-        message = message .. string.format("🛒 Auto Upgrade Toggle: %s\n", tostring(autoUpgradeToggle ~= nil))
-        message = message .. string.format("🦕 Auto Dino Toggle: %s\n", tostring(autoDinoToggle ~= nil))
-        message = message .. string.format("🍎 Auto Buy Fruit Toggle: %s\n", tostring(autoBuyFruitToggle ~= nil))
-        message = message .. string.format("🍽️ Auto Feed Toggle: %s\n", tostring(autoFeedToggle ~= nil))
-        
-        -- Check toggle states
-        message = message .. string.format("\n📊 Toggle States:\n")
-        message = message .. string.format("🥚 Auto Buy: %s\n", tostring(autoBuyEnabled))
-        message = message .. string.format("🏠 Auto Place: %s\n", tostring(autoPlaceEnabled))
-        message = message .. string.format("⚡ Auto Hatch: %s\n", tostring(autoHatchEnabled))
-        message = message .. string.format("💰 Auto Claim: %s\n", tostring(autoClaimEnabled))
-        message = message .. string.format("🛒 Auto Upgrade: %s\n", tostring(autoUpgradeEnabled))
-        message = message .. string.format("🦕 Auto Dino: %s\n", tostring(autoDinoEnabled))
-        message = message .. string.format("🍎 Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
-        message = message .. string.format("🍽️ Auto Feed: %s\n", tostring(autoFeedEnabled))
-        
-        WindUI:Notify({ Title = "🔧 Toggle Loading Debug", Content = message, Duration = 8 })
-    end
-})
+
 
 -- Debug button for auto feed system
 Tabs.FeedTab:Button({
@@ -3638,6 +3613,8 @@ local function autoSaveSettings()
         local jsonData = game:GetService("HttpService"):JSONEncode(AllSettings)
         writefile(SETTINGS_FILE, jsonData)
         
+
+        
         -- Show brief save indicator
         WindUI:Notify({
             Title = "💾 Auto-Saved",
@@ -3727,15 +3704,6 @@ local function loadAllSettings()
     return err -- err contains the return value from the pcall
 end
 
--- Function to update settings when UI changes
-local function updateSetting(category, key, value)
-    if not AllSettings[category] then
-        AllSettings[category] = {}
-    end
-    AllSettings[category][key] = value
-    autoSaveSettings()
-end
-
 -- Function to update custom UI selections
 local function updateCustomUISelection(uiType, selections)
     if not AllSettings.customUI then
@@ -3765,6 +3733,15 @@ local function updateCustomUISelection(uiType, selections)
         end
     end
     
+    autoSaveSettings()
+end
+
+-- Function to update settings when UI changes
+local function updateSetting(category, key, value)
+    if not AllSettings[category] then
+        AllSettings[category] = {}
+    end
+    AllSettings[category][key] = value
     autoSaveSettings()
 end
 
@@ -4184,6 +4161,7 @@ Tabs.FeedTab:Button({
                 function(selectedItems)
                     -- Handle selection changes
                     selectedFeedFruits = selectedItems
+                    updateCustomUISelection("feedFruitSelections", selectedItems)
                 end,
                 function(isVisible)
                     feedFruitSelectionVisible = isVisible
@@ -4204,9 +4182,9 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
     Value = false,
     Callback = function(state)
-        -- Load settings before starting
-        loadAllSettings()
         autoFeedEnabled = state
+        updateSetting("toggles", "autoFeedEnabled", state)
+        
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
                 -- Ensure selections are loaded before starting
@@ -4253,6 +4231,37 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
 if zooConfig then
     zooConfig:Register("autoFeedEnabled", autoFeedToggle)
 end
+
+-- Debug button for toggle loading (moved here after all toggles are defined)
+Tabs.SaveTab:Button({
+    Title = "🔍 Debug Toggle Loading",
+    Desc = "Check if toggles are loading correctly",
+    Callback = function()
+        local message = string.format("🔧 Toggle Loading Debug:\n")
+        message = message .. string.format("⚙️ Config Manager: %s\n", tostring(zooConfig ~= nil))
+        message = message .. string.format("🥚 Auto Buy Toggle: %s\n", tostring(autoBuyToggle ~= nil))
+        message = message .. string.format("🏠 Auto Place Toggle: %s\n", tostring(autoPlaceToggle ~= nil))
+        message = message .. string.format("⚡ Auto Hatch Toggle: %s\n", tostring(autoHatchToggle ~= nil))
+        message = message .. string.format("💰 Auto Claim Toggle: %s\n", tostring(autoClaimToggle ~= nil))
+        message = message .. string.format("🛒 Auto Upgrade Toggle: %s\n", tostring(autoUpgradeToggle ~= nil))
+        message = message .. string.format("🦕 Auto Dino Toggle: %s\n", tostring(autoDinoToggle ~= nil))
+        message = message .. string.format("🍎 Auto Buy Fruit Toggle: %s\n", tostring(autoBuyFruitToggle ~= nil))
+        message = message .. string.format("🍽️ Auto Feed Toggle: %s\n", tostring(autoFeedToggle ~= nil))
+        
+        -- Check toggle states
+        message = message .. string.format("\n📊 Toggle States:\n")
+        message = message .. string.format("🥚 Auto Buy: %s\n", tostring(autoBuyEnabled))
+        message = message .. string.format("🏠 Auto Place: %s\n", tostring(autoPlaceEnabled))
+        message = message .. string.format("⚡ Auto Hatch: %s\n", tostring(autoHatchEnabled))
+        message = message .. string.format("💰 Auto Claim: %s\n", tostring(autoClaimEnabled))
+        message = message .. string.format("🛒 Auto Upgrade: %s\n", tostring(autoUpgradeEnabled))
+        message = message .. string.format("🦕 Auto Dino: %s\n", tostring(autoDinoEnabled))
+        message = message .. string.format("🍎 Auto Buy Fruit: %s\n", tostring(autoBuyFruitEnabled))
+        message = message .. string.format("🍽️ Auto Feed: %s\n", tostring(autoFeedEnabled))
+        
+        WindUI:Notify({ Title = "🔧 Toggle Loading Debug", Content = message, Duration = 8 })
+    end
+})
 
 -- Bug report system removed per user request
 
