@@ -18,6 +18,15 @@ local selectedMutationSet = {}
 local selectedFruits = {}
 local selectedFeedFruits = {}
 local updateCustomUISelection
+local settingsLoaded = false
+local function waitForSettingsReady(extraDelay)
+    while not settingsLoaded do
+        task.wait(0.1)
+    end
+    if extraDelay and extraDelay > 0 then
+        task.wait(extraDelay)
+    end
+end
 local autoFeedToggle
 
 -- Window
@@ -1195,6 +1204,7 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
     Callback = function(state)
         autoClaimEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoClaimThread then
             autoClaimThread = task.spawn(function()
                 runAutoClaim()
@@ -1466,6 +1476,7 @@ local autoHatchToggle = Tabs.HatchTab:Toggle({
     Callback = function(state)
         autoHatchEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoHatchThread then
             -- Check if Auto Place is running and we have lower priority
             -- Priority system removed
@@ -1840,6 +1851,7 @@ local autoBuyToggle = Tabs.AutoTab:Toggle({
     Callback = function(state)
         autoBuyEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoBuyThread then
             autoBuyThread = task.spawn(function()
                 runAutoBuy()
@@ -1926,6 +1938,22 @@ local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
         selectedMutations = selection
     end
 })
+
+-- Ensure dropdown selections are reflected in runtime variables after loading
+local function syncAutoPlaceFiltersFromUI()
+    if placeEggDropdown and placeEggDropdown.GetValue then
+        local ok, val = pcall(function() return placeEggDropdown:GetValue() end)
+        if ok and type(val) == "table" then
+            selectedEggTypes = val
+        end
+    end
+    if placeMutationDropdown and placeMutationDropdown.GetValue then
+        local ok, val = pcall(function() return placeMutationDropdown:GetValue() end)
+        if ok and type(val) == "table" then
+            selectedMutations = val
+        end
+    end
+end
 
 
 local function updateAvailableEggs()
@@ -2486,6 +2514,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoPlaceEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoPlaceThread then
             -- Check if Auto Hatch is running and we have lower priority
             -- Priority system removed
@@ -2624,6 +2653,7 @@ local autoUnlockToggle = Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoUnlockEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoUnlockThread then
             autoUnlockThread = task.spawn(function()
                 runAutoUnlock()
@@ -2776,6 +2806,7 @@ local autoDeleteToggle = Tabs.PlaceTab:Toggle({
     Callback = function(state)
         autoDeleteEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoDeleteThread then
             autoDeleteThread = task.spawn(function()
                 runAutoDelete()
@@ -2902,6 +2933,7 @@ local autoDinoToggle = Tabs.PackTab:Toggle({
     Callback = function(state)
         autoDinoEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoDinoThread then
             autoDinoThread = task.spawn(function()
                 runAutoDino()
@@ -2998,6 +3030,7 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
     Callback = function(state)
         autoUpgradeEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoUpgradeThread then
             autoUpgradeThread = task.spawn(function()
                 -- Ensure conveyor config is loaded
@@ -3228,6 +3261,7 @@ local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
     Callback = function(state)
         autoBuyFruitEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoBuyFruitThread then
             autoBuyFruitThread = task.spawn(function()
                 while autoBuyFruitEnabled do
@@ -3717,9 +3751,12 @@ task.spawn(function()
     
     WindUI:Notify({ 
         Title = "📂 Auto-Load Complete", 
-            Content = "Your saved settings have been loaded! 🎉", 
-            Duration = 3 
-        })
+        Content = "Your saved settings have been loaded! 🎉", 
+        Duration = 3 
+    })
+    settingsLoaded = true
+    -- Sync dropdown values into runtime filters
+    syncAutoPlaceFiltersFromUI()
 end)
 
 -- ============ Auto Feed Tab ============
@@ -3758,6 +3795,7 @@ local autoFeedToggle = Tabs.FeedTab:Toggle({
     Callback = function(state)
         autoFeedEnabled = state
         
+        waitForSettingsReady(0.2)
         if state and not autoFeedThread then
             autoFeedThread = task.spawn(function()
                 -- Ensure selections are loaded before starting
