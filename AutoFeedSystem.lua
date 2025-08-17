@@ -170,7 +170,8 @@ function AutoFeedSystem.isPetEating(petData)
         return true -- Assume eating if no valid text
     end
     
-    -- Check if the pet is ready to eat (not currently eating)
+    -- Check if the pet is currently eating (not ready to eat)
+    -- Return true if eating, false if ready to eat
     return feedTime ~= "00:00" and feedTime ~= "???" and feedTime ~= ""
 end
 
@@ -235,7 +236,10 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
             for _, petData in ipairs(bigPets) do
                 if not autoFeedEnabled then break end
                 
-                if not AutoFeedSystem.isPetEating(petData) then
+                local isEating = AutoFeedSystem.isPetEating(petData)
+                print("🍎 Auto Feed Debug - Pet " .. petData.name .. " eating status: " .. tostring(isEating))
+                
+                if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
                     
                     -- Get current selected fruits from main script
@@ -404,12 +408,14 @@ function AutoFeedSystem.debugAutoFeed()
                     if bigPetGUI then
                         bigPets = bigPets + 1
                         
-                        -- Check if pet is ready to eat
+                        -- Check feed status
                         local feedGUI = bigPetGUI:FindFirstChild("Feed")
                         if feedGUI then
                             local feedText = feedGUI:FindFirstChild("TXT")
                             if feedText and feedText:IsA("TextLabel") then
                                 local feedTime = feedText.Text
+                                print("🍎 Auto Feed Debug - Pet " .. petModel.Name .. " feed time: '" .. tostring(feedTime) .. "'")
+                                
                                 if feedTime == "00:00" or feedTime == "???" or feedTime == "" then
                                     availablePets = availablePets + 1
                                     print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " is ready to eat")
