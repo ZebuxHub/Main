@@ -31,7 +31,6 @@ end
 local autoFeedToggle
 
 -- Forward declarations
-local runAutoRejoin
 
 -- Window
 local Window = WindUI:CreateWindow({
@@ -868,140 +867,8 @@ local function isTileUnlocked(islandName, tilePosition)
     return true -- Tile is unlocked
 end
 
--- Debug function removed per user request
-local function debugTileLockRelationship()
-    local islandName = getAssignedIslandName()
-    if not islandName then
-        -- Debug notify removed
-        return
-    end
-    
-    local art = workspace:FindFirstChild("Art")
-    if not art then
-        -- Debug notify removed
-        return
-    end
-    
-    local island = art:FindFirstChild(islandName)
-    if not island then
-        -- Debug notify removed
-        return
-    end
-    
-    -- Get all farm split tiles
-    local farmSplits = {}
-    local function scanForFarmParts(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
-                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                    table.insert(farmSplits, {
-                        name = child.Name,
-                        position = child.Position,
-                        cframe = child.CFrame,
-                        size = child.Size,
-                        locked = false,
-                        lockModel = nil,
-                        lockInfo = nil
-                    })
-                end
-            end
-            scanForFarmParts(child)
-        end
-    end
-    scanForFarmParts(island)
-    
-    -- Get all locks
-    local locks = {}
-    local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
-    if locksFolder then
-        for _, lockModel in ipairs(locksFolder:GetChildren()) do
-            if lockModel:IsA("Model") then
-                local farmPart = lockModel:FindFirstChild("Farm")
-                if farmPart and farmPart:IsA("BasePart") then
-                    table.insert(locks, {
-                        modelName = lockModel.Name,
-                        position = farmPart.Position,
-                        cframe = farmPart.CFrame,
-                        size = farmPart.Size,
-                        transparency = farmPart.Transparency,
-                        isLocked = farmPart.Transparency == 0
-                    })
-                end
-            end
-        end
-    end
-    
-    -- Match farm splits with locks using area overlap
-    for _, farmSplit in ipairs(farmSplits) do
-        for _, lock in ipairs(locks) do
-            if lock.isLocked then
-                -- Check if farm part is within the lock area
-                local farmPartPos = farmSplit.position
-                local lockCenter = lock.position
-                local lockSize = lock.size
-                
-                -- Calculate the bounds of the lock area
-                local lockHalfSize = lockSize / 2
-                local lockMinX = lockCenter.X - lockHalfSize.X
-                local lockMaxX = lockCenter.X + lockHalfSize.X
-                local lockMinZ = lockCenter.Z - lockHalfSize.Z
-                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
-                
-                -- Check if farm part is within the lock bounds
-                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
-                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
-                    farmSplit.locked = true
-                    farmSplit.lockModel = lock.modelName
-                    farmSplit.lockInfo = string.format("Lock: %s (Size: %s)", lock.modelName, tostring(lock.size))
-                    break
-                end
-            end
-        end
-    end
-    
-    -- Create debug message
-    local message = string.format("🏝️ Island: %s\n", islandName)
-    message = message .. string.format("📊 Total Farm Splits: %d\n", #farmSplits)
-    message = message .. string.format("🔒 Total Locks: %d\n\n", #locks)
-    
-    -- Show lock information first
-    message = message .. "🔒 LOCK INFORMATION:\n"
-    for i, lock in ipairs(locks) do
-        if lock.isLocked then
-            message = message .. string.format("  %s: Pos(%s) Size(%s) Transp(%s)\n", 
-                lock.modelName, 
-                string.format("%.1f,%.1f,%.1f", lock.position.X, lock.position.Y, lock.position.Z),
-                tostring(lock.size),
-                tostring(lock.transparency))
-        end
-        if i >= 5 then break end
-    end
-    
-    message = message .. "\n📋 FARM SPLIT STATUS:\n"
-    local unlockedCount = 0
-    local lockedCount = 0
-    
-    for i, farmSplit in ipairs(farmSplits) do
-        if farmSplit.locked then
-            lockedCount = lockedCount + 1
-            message = message .. string.format("🔒 %s: LOCKED\n  %s\n", 
-                farmSplit.name, farmSplit.lockInfo or "Unknown")
-        else
-            unlockedCount = unlockedCount + 1
-            message = message .. string.format("✅ %s: UNLOCKED\n", farmSplit.name)
-        end
-        
-        -- Limit message length
-        if i >= 8 then
-            message = message .. "... (showing first 8)\n"
-            break
-        end
-    end
-    
-    message = message .. string.format("\n📈 Summary: %d unlocked, %d locked", unlockedCount, lockedCount)
-    
-    -- Debug notify removed
-end
+
+
 
 local function getPetUID()
     if not LocalPlayer then return nil end
@@ -1716,21 +1583,17 @@ local autoBuyThread = nil
 local autoFeedEnabled = false
 local autoFeedThread = nil
 
--- Auto Rejoin System
-local autoRejoinEnabled = false
-local autoRejoinThread = nil
-local rejoinDelay = 300 -- 5 minutes default (300 seconds)
-local lastJoinTime = 0
 
 
 
--- Feed status tracking removed per user request
 
 
 
--- Status tracking removed per user request
 
--- Status section removed per user request
+
+
+
+
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
     if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
@@ -1828,7 +1691,7 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        print("Auto Buy: Attempting to buy " .. uid .. " (price: " .. tostring(price) .. ")")
+
         
         -- Retry mechanism - try up to 3 times with delays
         local maxRetries = 3
@@ -1840,14 +1703,14 @@ local function buyEggInstantly(eggInstance)
             
             -- Check if egg still exists and is still valid
             if not eggInstance or not eggInstance.Parent then
-                print("Auto Buy: Egg " .. uid .. " disappeared, giving up")
+
                 break
             end
             
             -- Check if we still want to buy it (price might have changed)
             local stillOk, stillUid, stillPrice = shouldBuyEggInstance(eggInstance, getPlayerNetWorth())
             if not stillOk then
-                print("Auto Buy: Egg " .. uid .. " no longer valid, giving up")
+
                 break
             end
             
@@ -1858,16 +1721,16 @@ local function buyEggInstantly(eggInstance)
             end)
             
             if buyResult then
-                print("Auto Buy: Successfully bought " .. uid .. " on attempt " .. retryCount)
+
                 buySuccess = true
             else
-                print("Auto Buy: Failed to buy " .. uid .. " on attempt " .. retryCount .. ", retrying...")
+
                 wait(0.5) -- Wait 0.5 seconds before retry
             end
         end
         
         if not buySuccess then
-            print("Auto Buy: Failed to buy " .. uid .. " after " .. maxRetries .. " attempts")
+    
         end
     end
     
@@ -1983,7 +1846,7 @@ local selectedMutations = {} -- Selected mutations for placement
 local tileMonitoringActive = false
 
 
--- Place status tracking removed per user request
+
 
 -- Function to get egg options
 local function getEggOptions()
@@ -2686,7 +2549,7 @@ local autoPlaceToggle = Tabs.PlaceTab:Toggle({
 local autoUnlockEnabled = false
 local autoUnlockThread = nil
 
--- Unlock status tracking removed per user request
+
 
 -- Function to get all locked tiles
 local function getLockedTiles()
@@ -2848,7 +2711,7 @@ local autoDeleteEnabled = false
 local autoDeleteThread = nil
 local deleteSpeedThreshold = 100 -- Default speed threshold
 
--- Delete status tracking removed per user request
+
 
 local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
     Title = "Speed Threshold",
@@ -3613,8 +3476,7 @@ local function registerUIElements()
     -- Register sliders/inputs
     registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
     registerIfExists("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
-    registerIfExists("autoRejoinEnabled", autoRejoinToggle)
-    registerIfExists("rejoinDelaySlider", rejoinDelaySlider)
+
 end
 
 -- ============ Anti-AFK System ============
@@ -3691,66 +3553,7 @@ Tabs.SaveTab:Button({
     end
 })
 
--- Auto Rejoin Toggle
-autoRejoinToggle = Tabs.SaveTab:Toggle({
-    Title = "🔄 Auto Rejoin",
-    Desc = "Automatically rejoin the server after specified time",
-    Value = false,
-    Callback = function(state)
-        autoRejoinEnabled = state
-        
-        waitForSettingsReady(0.2)
-        if state and not autoRejoinThread then
-            -- Ensure rejoinDelay is properly set (default to 5 minutes if not set)
-            if not rejoinDelay or rejoinDelay <= 0 then
-                rejoinDelay = 300 -- 5 minutes default
-            end
-            
-            print("Auto Rejoin: Starting with delay of " .. math.floor(rejoinDelay/60) .. " minutes (" .. rejoinDelay .. " seconds)")
-            
-            lastJoinTime = os.clock() -- Set initial join time
-            autoRejoinThread = task.spawn(function()
-                runAutoRejoin()
-                autoRejoinThread = nil
-            end)
-            WindUI:Notify({ 
-                Title = "🔄 Auto Rejoin", 
-                Content = "Auto rejoin enabled! Will rejoin every " .. math.floor(rejoinDelay/60) .. " minutes", 
-                Duration = 3 
-            })
-        elseif (not state) and autoRejoinThread then
-            WindUI:Notify({ 
-                Title = "🔄 Auto Rejoin", 
-                Content = "Auto rejoin disabled", 
-                Duration = 3 
-            })
-        end
-    end
-})
 
--- Rejoin Delay Slider
-rejoinDelaySlider = Tabs.SaveTab:Slider({
-    Title = "⏰ Rejoin Delay",
-    Desc = "How often to rejoin the server (in minutes)",
-    Value = {
-        Min = 1,
-        Max = 60,
-        Default = 5,
-    },
-    Callback = function(value)
-        if value and type(value) == "number" then
-            rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
-            print("Auto Rejoin: Delay updated to " .. value .. " minutes (" .. rejoinDelay .. " seconds)")
-            if autoRejoinEnabled then
-                WindUI:Notify({ 
-                    Title = "⏰ Rejoin Delay", 
-                    Content = "Rejoin delay set to " .. math.floor(value) .. " minutes", 
-                    Duration = 2 
-                })
-            end
-        end
-    end
-})
 
  
 
@@ -4131,12 +3934,12 @@ end)
 
 
 
--- Bug report system removed per user request
+
 
 -- Safe window close handler
 local ok, err = pcall(function()
 Window:OnClose(function()
-    print("UI closed.")
+
 end)
 end)
 
