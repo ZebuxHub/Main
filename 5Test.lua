@@ -4155,33 +4155,61 @@ local function runAutoRejoin()
             local placeId = game.PlaceId
             local jobId = game.JobId
             
-            -- Attempt to rejoin using kick method
-            local success, err = pcall(function()
-                Players.LocalPlayer:Kick("\nRejoining for you my love..")
-                wait()
-                TeleportService:Teleport(placeId, Players.LocalPlayer)
-            end)
+            -- Check if server is empty (only 1 player)
+            local playerCount = #Players:GetPlayers()
+            print("Auto Rejoin: Server has " .. playerCount .. " players")
             
-            if success then
-                print("Auto Rejoin: Rejoining server...")
-                lastJoinTime = currentTime
-                WindUI:Notify({ 
-                    Title = "🔄 Auto Rejoin", 
-                    Content = "Rejoining server...", 
-                    Duration = 3 
-                })
+            if playerCount <= 1 then
+                -- Server is empty, kick and rejoin
+                print("Auto Rejoin: Server is empty, kicking and rejoining...")
+                local success, err = pcall(function()
+                    Players.LocalPlayer:Kick("\nRejoining...")
+                    wait()
+                    TeleportService:Teleport(placeId, Players.LocalPlayer)
+                end)
+                
+                if success then
+                    print("Auto Rejoin: Kicked and rejoining...")
+                    lastJoinTime = currentTime
+                    WindUI:Notify({ 
+                        Title = "🔄 Auto Rejoin", 
+                        Content = "Server empty, rejoining...", 
+                        Duration = 3 
+                    })
+                else
+                    warn("Auto Rejoin: Failed to kick and rejoin - " .. tostring(err))
+                    wait(10) -- Wait longer if failed
+                end
             else
-                warn("Auto Rejoin: Failed to rejoin - " .. tostring(err))
-                -- Try alternative method
-                local altSuccess, altErr = pcall(function()
+                -- Server has other players, try to rejoin same instance
+                print("Auto Rejoin: Server has other players, rejoining same instance...")
+                local success, err = pcall(function()
                     TeleportService:TeleportToPlaceInstance(placeId, jobId, Players.LocalPlayer)
                 end)
-                if altSuccess then
-                    print("Auto Rejoin: Rejoined using alternative method")
+                
+                if success then
+                    print("Auto Rejoin: Rejoined same server instance")
                     lastJoinTime = currentTime
+                    WindUI:Notify({ 
+                        Title = "🔄 Auto Rejoin", 
+                        Content = "Rejoining same server...", 
+                        Duration = 3 
+                    })
                 else
-                    warn("Auto Rejoin: Alternative method also failed - " .. tostring(altErr))
-                    wait(10) -- Wait longer if failed
+                    warn("Auto Rejoin: Failed to rejoin same instance - " .. tostring(err))
+                    -- Fallback: kick and rejoin
+                    local fallbackSuccess, fallbackErr = pcall(function()
+                        Players.LocalPlayer:Kick("\nRejoining...")
+                        wait()
+                        TeleportService:Teleport(placeId, Players.LocalPlayer)
+                    end)
+                    if fallbackSuccess then
+                        print("Auto Rejoin: Used fallback method (kick and rejoin)")
+                        lastJoinTime = currentTime
+                    else
+                        warn("Auto Rejoin: Fallback method also failed - " .. tostring(fallbackErr))
+                        wait(10) -- Wait longer if failed
+                    end
                 end
             end
         else
