@@ -30,6 +30,9 @@ local function waitForSettingsReady(extraDelay)
 end
 local autoFeedToggle
 
+-- Forward declarations
+local runAutoRejoin
+
 -- Window
 local Window = WindUI:CreateWindow({
     Title = "Build A Zoo",
