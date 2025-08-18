@@ -1719,6 +1719,8 @@ local autoRejoinThread = nil
 local rejoinDelay = 300 -- 5 minutes default (300 seconds)
 local lastJoinTime = 0
 
+
+
 -- Feed status tracking removed per user request
 
 
