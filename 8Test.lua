@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
@@ -1662,6 +1663,14 @@ local autoBuyThread = nil
 local autoFeedEnabled = false
 local autoFeedThread = nil
 
+-- Auto Rejoin System
+local autoRejoinEnabled = false
+local autoRejoinThread = nil
+local rejoinDelay = 300 -- 5 minutes default
+local lastJoinTime = 0
+local autoRejoinToggle = nil
+local rejoinDelaySlider = nil
+
 -- Feed status tracking removed per user request
 
 
@@ -1682,23 +1691,29 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
-    if not selectedTypeSet[eggType] then return false, nil, nil end
+        if not selectedTypeSet[eggType] then 
+            print("Auto Buy: Skipping " .. eggType .. " - not in selected types")
+            return false, nil, nil 
+        end
     end
     
-    -- Now check mutation if mutations are selected
+    -- Now check mutation if mutations are selected - ENHANCED FILTERING
     if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutation(eggInstance.Name)
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
+            print("Auto Buy: Skipping " .. eggType .. " - no mutation (mutations required)")
             return false, nil, nil
         end
         
-        -- Check if egg has a selected mutation
-                           -- getEggMutation handles "Dino" -> "Jurassic" conversion
-                   if not selectedMutationSet[eggMutation] then
-                       return false, nil, nil
-                   end
+        -- Check if egg has a selected mutation - STRICT CHECKING
+        if not selectedMutationSet[eggMutation] then
+            print("Auto Buy: Skipping " .. eggType .. " - mutation " .. eggMutation .. " not selected")
+            return false, nil, nil
+        end
+        
+        print("Auto Buy: Found matching egg - " .. eggType .. " with " .. eggMutation .. " mutation")
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -3508,6 +3523,8 @@ local function registerUIElements()
     -- Register sliders/inputs
     registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
     registerIfExists("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
+    registerIfExists("autoRejoinEnabled", autoRejoinToggle)
+    registerIfExists("rejoinDelaySlider", rejoinDelaySlider)
 end
 
 -- ============ Anti-AFK System ============
@@ -3580,6 +3597,56 @@ Tabs.SaveTab:Button({
             disableAntiAFK()
         else
             setupAntiAFK()
+        end
+    end
+})
+
+-- Auto Rejoin Toggle
+autoRejoinToggle = Tabs.SaveTab:Toggle({
+    Title = "🔄 Auto Rejoin",
+    Desc = "Automatically rejoin the server after specified time",
+    Value = false,
+    Callback = function(state)
+        autoRejoinEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoRejoinThread then
+            lastJoinTime = os.clock() -- Set initial join time
+            autoRejoinThread = task.spawn(function()
+                runAutoRejoin()
+                autoRejoinThread = nil
+            end)
+            WindUI:Notify({ 
+                Title = "🔄 Auto Rejoin", 
+                Content = "Auto rejoin enabled! Will rejoin every " .. math.floor(rejoinDelay/60) .. " minutes", 
+                Duration = 3 
+            })
+        elseif (not state) and autoRejoinThread then
+            WindUI:Notify({ 
+                Title = "🔄 Auto Rejoin", 
+                Content = "Auto rejoin disabled", 
+                Duration = 3 
+            })
+        end
+    end
+})
+
+-- Rejoin Delay Slider
+rejoinDelaySlider = Tabs.SaveTab:Slider({
+    Title = "⏰ Rejoin Delay",
+    Desc = "How often to rejoin the server (in minutes)",
+    Default = 5,
+    Min = 1,
+    Max = 60,
+    Rounding = 0,
+    Callback = function(value)
+        rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
+        if autoRejoinEnabled then
+            WindUI:Notify({ 
+                Title = "⏰ Rejoin Delay", 
+                Content = "Rejoin delay set to " .. math.floor(value) .. " minutes", 
+                Duration = 2 
+            })
         end
     end
 })
@@ -3861,6 +3928,43 @@ task.spawn(function()
         })
     settingsLoaded = true
 end)
+
+-- ============ Auto Rejoin System ============
+local function runAutoRejoin()
+    while autoRejoinEnabled do
+        local currentTime = os.clock()
+        
+        -- Check if enough time has passed since last join
+        if currentTime - lastJoinTime >= rejoinDelay then
+            print("Auto Rejoin: Time to rejoin server")
+            
+            -- Get current place ID
+            local placeId = game.PlaceId
+            
+            -- Attempt to rejoin
+            local success, err = pcall(function()
+                TeleportService:TeleportToPlaceInstance(placeId, game.JobId)
+            end)
+            
+            if success then
+                print("Auto Rejoin: Rejoining server...")
+                lastJoinTime = currentTime
+                WindUI:Notify({ 
+                    Title = "🔄 Auto Rejoin", 
+                    Content = "Rejoining server in 5 seconds...", 
+                    Duration = 5 
+                })
+                wait(5) -- Wait before next check
+            else
+                warn("Auto Rejoin: Failed to rejoin - " .. tostring(err))
+                wait(10) -- Wait longer if failed
+            end
+        else
+            -- Wait before next check
+            wait(30) -- Check every 30 seconds
+        end
+    end
+end
 
 -- ============ Auto Feed Tab ============
 -- Feed status section removed per user request
