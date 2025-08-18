@@ -1614,15 +1614,38 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutationFromGUI(eggInstance.Name)
         
+        -- Debug: Show what mutations are selected and what the egg has
+        local selectedMutations = {}
+        for mutation, _ in pairs(selectedMutationSet) do
+            table.insert(selectedMutations, mutation)
+        end
+        
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
+            WindUI:Notify({ 
+                Title = "🥚 Auto Buy Skipped", 
+                Content = "Egg has no mutation, but mutations are selected: " .. table.concat(selectedMutations, ", "), 
+                Duration = 2 
+            })
             return false, nil, nil
         end
         
         -- Check if egg has a selected mutation
         if not selectedMutationSet[eggMutation] then
+            WindUI:Notify({ 
+                Title = "🥚 Auto Buy Skipped", 
+                Content = "Egg mutation '" .. eggMutation .. "' not in selected: " .. table.concat(selectedMutations, ", "), 
+                Duration = 2 
+            })
             return false, nil, nil
         end
+        
+        -- Debug: Show successful match
+        WindUI:Notify({ 
+            Title = "🥚 Auto Buy Match", 
+            Content = "Found matching mutation: " .. eggMutation, 
+            Duration = 2 
+        })
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -1691,16 +1714,16 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        -- Notify user about the match
+        -- Debug: Show what we're trying to buy
         local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
         local eggMutation = getEggMutationFromGUI(eggInstance.Name)
-        local matchInfo = "Egg: " .. tostring(eggType)
+        local buyInfo = "Egg: " .. tostring(eggType)
         if eggMutation then
-            matchInfo = matchInfo .. " | Mutation: " .. eggMutation
+            buyInfo = buyInfo .. " | Mutation: " .. eggMutation
         end
         WindUI:Notify({ 
-            Title = "🥚 Auto Buy Match", 
-            Content = "Found matching egg: " .. matchInfo, 
+            Title = "🥚 Auto Buy Attempt", 
+            Content = "Attempting to buy: " .. buyInfo, 
             Duration = 2 
         })
         
@@ -1746,23 +1769,6 @@ local function buyEggInstantly(eggInstance)
     end
     
     buyingInProgress = false
-    
-    -- Debug: Show why egg was skipped (only if mutations are selected and egg was not bought)
-    if not ok and selectedMutationSet and next(selectedMutationSet) then
-        local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
-        local eggMutation = getEggMutationFromGUI(eggInstance.Name)
-        local skipReason = "Egg: " .. tostring(eggType)
-        if eggMutation then
-            skipReason = skipReason .. " | Found mutation: " .. eggMutation .. " (not selected)"
-        else
-            skipReason = skipReason .. " | No mutation found"
-        end
-        WindUI:Notify({ 
-            Title = "🥚 Auto Buy Skipped", 
-            Content = skipReason, 
-            Duration = 1 
-        })
-    end
 end
 
 local function setupBeltMonitoring(belt)
