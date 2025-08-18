@@ -9,7 +9,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local TeleportService = game:GetService("TeleportService")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
@@ -1071,38 +1070,20 @@ end
 
 -- Function to read mutation from GUI text on conveyor belt (for Auto Buy)
 local function getEggMutationFromGUI(eggUID)
-    print("Auto Buy: Looking for mutation in GUI for egg " .. eggUID)
-    
     local islandName = getAssignedIslandName()
-    if not islandName then
-        print("Auto Buy: No island name found")
-        return nil
-    end
-    print("Auto Buy: Island name = " .. islandName)
+    if not islandName then return nil end
     
     local art = workspace:FindFirstChild("Art")
-    if not art then
-        print("Auto Buy: Art folder not found")
-        return nil
-    end
+    if not art then return nil end
     
     local island = art:FindFirstChild(islandName)
-    if not island then
-        print("Auto Buy: Island " .. islandName .. " not found")
-        return nil
-    end
+    if not island then return nil end
     
     local env = island:FindFirstChild("ENV")
-    if not env then
-        print("Auto Buy: ENV folder not found")
-        return nil
-    end
+    if not env then return nil end
     
     local conveyor = env:FindFirstChild("Conveyor")
-    if not conveyor then
-        print("Auto Buy: Conveyor folder not found")
-        return nil
-    end
+    if not conveyor then return nil end
     
     -- Check all conveyor belts
     for i = 1, 9 do
@@ -1112,95 +1093,28 @@ local function getEggMutationFromGUI(eggUID)
             if belt then
                 local eggModel = belt:FindFirstChild(eggUID)
                 if eggModel and eggModel:IsA("Model") then
-                    print("Auto Buy: Found egg model on Conveyor" .. i)
-                    
                     local rootPart = eggModel:FindFirstChild("RootPart")
-                    if not rootPart then
-                        print("Auto Buy: No RootPart found")
-                        return nil
-                    end
-                    
-                    local eggGUI = rootPart:FindFirstChild("GUI")
-                    if not eggGUI then
-                        print("Auto Buy: No GUI folder found")
-                        return nil
-                    end
-                    
-                    -- Search for mutation text in multiple possible locations
-                    local mutationText = nil
-                    
-                    -- Method 1: Try the original path
-                    local eggGUIFolder = eggGUI:FindFirstChild("EggGUI")
-                    if eggGUIFolder then
-                        local mutateText = eggGUIFolder:FindFirstChild("Mutate")
-                        if mutateText and mutateText:IsA("TextLabel") then
-                            mutationText = mutateText.Text
-                            print("Auto Buy: Found mutation via EggGUI/Mutate = '" .. tostring(mutationText) .. "'")
-                        end
-                    end
-                    
-                    -- Method 2: Search for any TextLabel with "Mutate" in the name
-                    if not mutationText or mutationText == "" then
-                        for _, child in ipairs(eggGUI:GetDescendants()) do
-                            if child:IsA("TextLabel") and string.find(child.Name:lower(), "mutate") then
-                                local text = child.Text
-                                if text and text ~= "" then
-                                    mutationText = text
-                                    print("Auto Buy: Found mutation via descendant search = '" .. tostring(mutationText) .. "'")
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Method 3: Search for any TextLabel with mutation names
-                    if not mutationText or mutationText == "" then
-                        local mutationNames = {"Golden", "Diamond", "Electric", "Fire", "Jurassic", "Dino"}
-                        for _, child in ipairs(eggGUI:GetDescendants()) do
-                            if child:IsA("TextLabel") then
-                                local text = child.Text
-                                if text and text ~= "" then
-                                    for _, mutationName in ipairs(mutationNames) do
-                                        if string.find(text:lower(), mutationName:lower()) then
-                                            mutationText = text
-                                            print("Auto Buy: Found mutation via text search = '" .. tostring(mutationText) .. "'")
-                                            break
-                                        end
+                    if rootPart then
+                        local eggGUI = rootPart:FindFirstChild("GUI/EggGUI")
+                        if eggGUI then
+                            local mutateText = eggGUI:FindFirstChild("Mutate")
+                            if mutateText and mutateText:IsA("TextLabel") then
+                                local mutationText = mutateText.Text
+                                if mutationText and mutationText ~= "" then
+                                    -- Map "Dino" to "Jurassic" for consistency
+                                    if string.lower(mutationText) == "dino" or "Dino"then
+                                        return "Jurassic"
                                     end
-                                    if mutationText then break end
+                                    return mutationText
                                 end
                             end
                         end
-                    end
-                    
-                    -- Method 4: List all TextLabels for debugging
-                    if not mutationText or mutationText == "" then
-                        print("Auto Buy: No mutation found, listing all TextLabels in GUI:")
-                        for _, child in ipairs(eggGUI:GetDescendants()) do
-                            if child:IsA("TextLabel") then
-                                print("Auto Buy: TextLabel '" .. child.Name .. "' = '" .. tostring(child.Text) .. "'")
-                            end
-                        end
-                    end
-                    
-                    if mutationText and mutationText ~= "" then
-                        -- Map "Dino" to "Jurassic" for consistency
-                        if string.lower(mutationText) == "dino" then
-                            print("Auto Buy: Converting 'Dino' to 'Jurassic'")
-                            return "Jurassic"
-                        end
-                        print("Auto Buy: Returning mutation = " .. mutationText)
-                        return mutationText
-                    else
-                        print("Auto Buy: No mutation text found in any location")
-                        return nil
                     end
                 end
             end
         end
     end
     
-    print("Auto Buy: Egg " .. eggUID .. " not found on any conveyor belt")
     return nil
 end
 
@@ -1798,14 +1712,6 @@ local autoBuyThread = nil
 local autoFeedEnabled = false
 local autoFeedThread = nil
 
--- Auto Rejoin System
-local autoRejoinEnabled = false
-local autoRejoinThread = nil
-local rejoinDelay = 300 -- 5 minutes default
-local lastJoinTime = 0
-local autoRejoinToggle = nil
-local rejoinDelaySlider = nil
-
 -- Feed status tracking removed per user request
 
 
@@ -1815,59 +1721,33 @@ local rejoinDelaySlider = nil
 -- Status section removed per user request
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
-    if not eggInstance or not eggInstance:IsA("Model") then 
-        print("Auto Buy: Invalid egg instance")
-        return false, nil, nil 
-    end
-    
-    print("Auto Buy: Checking egg " .. eggInstance.Name)
+    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
     
     -- Read Type first - check if this is the egg type we want
     local eggType = eggInstance:GetAttribute("Type")
         or eggInstance:GetAttribute("EggType")
         or eggInstance:GetAttribute("Name")
-    if not eggType then 
-        print("Auto Buy: No egg type found for " .. eggInstance.Name)
-        return false, nil, nil 
-    end
+    if not eggType then return false, nil, nil end
     eggType = tostring(eggType)
-    print("Auto Buy: Egg type = " .. eggType)
     
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
-        print("Auto Buy: Checking against selected types: " .. table.concat(selectedTypeSet, ", "))
-        if not selectedTypeSet[eggType] then 
-            print("Auto Buy: Skipping " .. eggType .. " - not in selected types")
-            return false, nil, nil 
-        end
-        print("Auto Buy: Egg type " .. eggType .. " is selected")
-    else
-        print("Auto Buy: No egg types selected, accepting all types")
+    if not selectedTypeSet[eggType] then return false, nil, nil end
     end
     
-    -- Now check mutation if mutations are selected - ENHANCED FILTERING
+    -- Now check mutation if mutations are selected
     if selectedMutationSet and next(selectedMutationSet) then
-        print("Auto Buy: Checking mutations for " .. eggInstance.Name)
-        print("Auto Buy: Selected mutations: " .. table.concat(selectedMutationSet, ", "))
-        
         local eggMutation = getEggMutationFromGUI(eggInstance.Name)
-        print("Auto Buy: Found mutation = " .. tostring(eggMutation))
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
-            print("Auto Buy: Skipping " .. eggType .. " - no mutation (mutations required)")
             return false, nil, nil
         end
         
-        -- Check if egg has a selected mutation - STRICT CHECKING
+        -- Check if egg has a selected mutation
         if not selectedMutationSet[eggMutation] then
-            print("Auto Buy: Skipping " .. eggType .. " - mutation " .. eggMutation .. " not selected")
             return false, nil, nil
         end
-        
-        print("Auto Buy: Found matching egg - " .. eggType .. " with " .. eggMutation .. " mutation")
-    else
-        print("Auto Buy: No mutations selected, accepting all mutations")
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -1876,25 +1756,15 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         -- Convert price string to number (remove commas and convert to number)
         local priceStr = EggData[eggType].Price:gsub(",", "")
         price = tonumber(priceStr)
-        print("Auto Buy: Price from EggData = " .. tostring(price))
     end
     
     if not price then
         price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
-        print("Auto Buy: Price from attribute/fallback = " .. tostring(price))
     end
     
-    if type(price) ~= "number" then 
-        print("Auto Buy: Invalid price = " .. tostring(price))
-        return false, nil, nil 
-    end
+    if type(price) ~= "number" then return false, nil, nil end
+    if playerMoney < price then return false, nil, nil end
     
-    if playerMoney < price then 
-        print("Auto Buy: Not enough money. Need " .. price .. ", have " .. playerMoney)
-        return false, nil, nil 
-    end
-    
-    print("Auto Buy: APPROVED TO BUY - " .. eggType .. " for " .. price .. " (have " .. playerMoney .. ")")
     return true, eggInstance.Name, price
 end
 
@@ -1946,47 +1816,8 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        print("Auto Buy: Attempting to buy " .. uid .. " (price: " .. tostring(price) .. ")")
-        
-        -- Retry mechanism - try up to 5 times with delays
-        local maxRetries = 5
-        local retryCount = 0
-        local buySuccess = false
-        
-        while retryCount < maxRetries and not buySuccess do
-            retryCount = retryCount + 1
-            
-            -- Check if egg still exists and is still valid
-            if not eggInstance or not eggInstance.Parent then
-                print("Auto Buy: Egg " .. uid .. " disappeared, giving up")
-                break
-            end
-            
-            -- Check if we still want to buy it (price might have changed)
-            local stillOk, stillUid, stillPrice = shouldBuyEggInstance(eggInstance, getPlayerNetWorth())
-            if not stillOk then
-                print("Auto Buy: Egg " .. uid .. " no longer valid, giving up")
-                break
-            end
-            
-            -- Try to buy
-            local buyResult = pcall(function()
         buyEggByUID(uid)
         focusEggByUID(uid)
-            end)
-            
-            if buyResult then
-                print("Auto Buy: Successfully bought " .. uid .. " on attempt " .. retryCount)
-                buySuccess = true
-            else
-                print("Auto Buy: Failed to buy " .. uid .. " on attempt " .. retryCount .. ", retrying...")
-                wait(0.5) -- Wait 0.5 seconds before retry
-            end
-        end
-        
-        if not buySuccess then
-            print("Auto Buy: Failed to buy " .. uid .. " after " .. maxRetries .. " attempts")
-        end
     end
     
     buyingInProgress = false
@@ -3726,8 +3557,6 @@ local function registerUIElements()
     -- Register sliders/inputs
     registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
     registerIfExists("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
-    registerIfExists("autoRejoinEnabled", autoRejoinToggle)
-    registerIfExists("rejoinDelaySlider", rejoinDelaySlider)
 end
 
 -- ============ Anti-AFK System ============
@@ -3800,56 +3629,6 @@ Tabs.SaveTab:Button({
             disableAntiAFK()
         else
             setupAntiAFK()
-        end
-    end
-})
-
--- Auto Rejoin Toggle
-autoRejoinToggle = Tabs.SaveTab:Toggle({
-    Title = "🔄 Auto Rejoin",
-    Desc = "Automatically rejoin the server after specified time",
-    Value = false,
-    Callback = function(state)
-        autoRejoinEnabled = state
-        
-        waitForSettingsReady(0.2)
-        if state and not autoRejoinThread then
-            lastJoinTime = os.clock() -- Set initial join time
-            autoRejoinThread = task.spawn(function()
-                runAutoRejoin()
-                autoRejoinThread = nil
-            end)
-            WindUI:Notify({ 
-                Title = "🔄 Auto Rejoin", 
-                Content = "Auto rejoin enabled! Will rejoin every " .. math.floor(rejoinDelay/60) .. " minutes", 
-                Duration = 3 
-            })
-        elseif (not state) and autoRejoinThread then
-            WindUI:Notify({ 
-                Title = "🔄 Auto Rejoin", 
-                Content = "Auto rejoin disabled", 
-                Duration = 3 
-            })
-        end
-    end
-})
-
--- Rejoin Delay Slider
-rejoinDelaySlider = Tabs.SaveTab:Slider({
-    Title = "⏰ Rejoin Delay",
-    Desc = "How often to rejoin the server (in minutes)",
-    Default = 5,
-    Min = 1,
-    Max = 60,
-    Rounding = 0,
-    Callback = function(value)
-        rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
-        if autoRejoinEnabled then
-            WindUI:Notify({ 
-                Title = "⏰ Rejoin Delay", 
-                Content = "Rejoin delay set to " .. math.floor(value) .. " minutes", 
-                Duration = 2 
-            })
         end
     end
 })
@@ -4132,43 +3911,6 @@ task.spawn(function()
     settingsLoaded = true
 end)
 
--- ============ Auto Rejoin System ============
-local function runAutoRejoin()
-    while autoRejoinEnabled do
-        local currentTime = os.clock()
-        
-        -- Check if enough time has passed since last join
-        if currentTime - lastJoinTime >= rejoinDelay then
-            print("Auto Rejoin: Time to rejoin server")
-            
-            -- Get current place ID
-            local placeId = game.PlaceId
-            
-            -- Attempt to rejoin
-            local success, err = pcall(function()
-                TeleportService:TeleportToPlaceInstance(placeId, game.JobId)
-            end)
-            
-            if success then
-                print("Auto Rejoin: Rejoining server...")
-                lastJoinTime = currentTime
-                WindUI:Notify({ 
-                    Title = "🔄 Auto Rejoin", 
-                    Content = "Rejoining server in 5 seconds...", 
-                    Duration = 5 
-                })
-                wait(5) -- Wait before next check
-            else
-                warn("Auto Rejoin: Failed to rejoin - " .. tostring(err))
-                wait(10) -- Wait longer if failed
-            end
-        else
-            -- Wait before next check
-            wait(30) -- Check every 30 seconds
-        end
-    end
-end
-
 -- ============ Auto Feed Tab ============
 -- Feed status section removed per user request
 
@@ -4219,8 +3961,8 @@ pcall(function()
                                     selectedFeedFruits = {}
                                     for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
                                 end
-    end
-end)
+                            end
+                        end)
                     end
                     return selectedFeedFruits
                 end
