@@ -3701,6 +3701,8 @@ autoRejoinToggle = Tabs.SaveTab:Toggle({
                 rejoinDelay = 300 -- 5 minutes default
             end
             
+            print("Auto Rejoin: Starting with delay of " .. math.floor(rejoinDelay/60) .. " minutes (" .. rejoinDelay .. " seconds)")
+            
             lastJoinTime = os.clock() -- Set initial join time
             autoRejoinThread = task.spawn(function()
                 runAutoRejoin()
@@ -3733,6 +3735,7 @@ rejoinDelaySlider = Tabs.SaveTab:Slider({
     Callback = function(value)
         if value and type(value) == "number" then
             rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
+            print("Auto Rejoin: Delay set to " .. value .. " minutes (" .. rejoinDelay .. " seconds)")
             if autoRejoinEnabled then
                 WindUI:Notify({ 
                     Title = "⏰ Rejoin Delay", 
@@ -3743,6 +3746,9 @@ rejoinDelaySlider = Tabs.SaveTab:Slider({
         end
     end
 })
+
+-- Initialize rejoinDelay with slider default value
+rejoinDelay = 5 * 60 -- 5 minutes default (300 seconds)
 
  
 
@@ -4145,12 +4151,15 @@ local function runAutoRejoin()
         if currentTime - lastJoinTime >= rejoinDelay then
             print("Auto Rejoin: Time to rejoin server (delay: " .. rejoinDelay .. " seconds)")
             
-            -- Get current place ID
+            -- Get current place ID and job ID
             local placeId = game.PlaceId
+            local jobId = game.JobId
             
-            -- Attempt to rejoin
+            -- Attempt to rejoin using kick method
             local success, err = pcall(function()
-                TeleportService:TeleportToPlaceInstance(placeId, game.JobId)
+                Players.LocalPlayer:Kick("\nRejoining for you my love..")
+                wait()
+                TeleportService:Teleport(placeId, Players.LocalPlayer)
             end)
             
             if success then
@@ -4158,13 +4167,22 @@ local function runAutoRejoin()
                 lastJoinTime = currentTime
                 WindUI:Notify({ 
                     Title = "🔄 Auto Rejoin", 
-                    Content = "Rejoining server in 5 seconds...", 
-                    Duration = 5 
+                    Content = "Rejoining server...", 
+                    Duration = 3 
                 })
-                wait(5) -- Wait before next check
             else
                 warn("Auto Rejoin: Failed to rejoin - " .. tostring(err))
-                wait(10) -- Wait longer if failed
+                -- Try alternative method
+                local altSuccess, altErr = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(placeId, jobId, Players.LocalPlayer)
+                end)
+                if altSuccess then
+                    print("Auto Rejoin: Rejoined using alternative method")
+                    lastJoinTime = currentTime
+                else
+                    warn("Auto Rejoin: Alternative method also failed - " .. tostring(altErr))
+                    wait(10) -- Wait longer if failed
+                end
             end
         else
             -- Calculate remaining time
