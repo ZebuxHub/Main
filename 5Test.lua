@@ -973,7 +973,7 @@ local function getEggMutationFromGUI(eggUID)
                                 local mutationText = mutateText.Text
                                 if mutationText and mutationText ~= "" then
                                     -- Map "Dino" to "Jurassic" for consistency
-                                    if string.lower(mutationText) == "dino" or "Dino"then
+                                    if string.lower(mutationText) == "dino" then
                                         return "Jurassic"
                                     end
                                     return mutationText
@@ -1691,7 +1691,18 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-
+        -- Notify user about the match
+        local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
+        local eggMutation = getEggMutationFromGUI(eggInstance.Name)
+        local matchInfo = "Egg: " .. tostring(eggType)
+        if eggMutation then
+            matchInfo = matchInfo .. " | Mutation: " .. eggMutation
+        end
+        WindUI:Notify({ 
+            Title = "🥚 Auto Buy Match", 
+            Content = "Found matching egg: " .. matchInfo, 
+            Duration = 2 
+        })
         
         -- Retry mechanism - try up to 3 times with delays
         local maxRetries = 3
@@ -1735,6 +1746,23 @@ local function buyEggInstantly(eggInstance)
     end
     
     buyingInProgress = false
+    
+    -- Debug: Show why egg was skipped (only if mutations are selected and egg was not bought)
+    if not ok and selectedMutationSet and next(selectedMutationSet) then
+        local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
+        local eggMutation = getEggMutationFromGUI(eggInstance.Name)
+        local skipReason = "Egg: " .. tostring(eggType)
+        if eggMutation then
+            skipReason = skipReason .. " | Found mutation: " .. eggMutation .. " (not selected)"
+        else
+            skipReason = skipReason .. " | No mutation found"
+        end
+        WindUI:Notify({ 
+            Title = "🥚 Auto Buy Skipped", 
+            Content = skipReason, 
+            Duration = 1 
+        })
+    end
 end
 
 local function setupBeltMonitoring(belt)
