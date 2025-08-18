@@ -1614,38 +1614,15 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     if selectedMutationSet and next(selectedMutationSet) then
         local eggMutation = getEggMutationFromGUI(eggInstance.Name)
         
-        -- Debug: Show what mutations are selected and what the egg has
-        local selectedMutations = {}
-        for mutation, _ in pairs(selectedMutationSet) do
-            table.insert(selectedMutations, mutation)
-        end
-        
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
-            WindUI:Notify({ 
-                Title = "🥚 Auto Buy Skipped", 
-                Content = "Egg has no mutation, but mutations are selected: " .. table.concat(selectedMutations, ", "), 
-                Duration = 2 
-            })
             return false, nil, nil
         end
         
         -- Check if egg has a selected mutation
         if not selectedMutationSet[eggMutation] then
-            WindUI:Notify({ 
-                Title = "🥚 Auto Buy Skipped", 
-                Content = "Egg mutation '" .. eggMutation .. "' not in selected: " .. table.concat(selectedMutations, ", "), 
-                Duration = 2 
-            })
             return false, nil, nil
         end
-        
-        -- Debug: Show successful match
-        WindUI:Notify({ 
-            Title = "🥚 Auto Buy Match", 
-            Content = "Found matching mutation: " .. eggMutation, 
-            Duration = 2 
-        })
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -1714,19 +1691,6 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        -- Debug: Show what we're trying to buy
-        local eggType = eggInstance:GetAttribute("Type") or eggInstance:GetAttribute("EggType") or eggInstance:GetAttribute("Name")
-        local eggMutation = getEggMutationFromGUI(eggInstance.Name)
-        local buyInfo = "Egg: " .. tostring(eggType)
-        if eggMutation then
-            buyInfo = buyInfo .. " | Mutation: " .. eggMutation
-        end
-        WindUI:Notify({ 
-            Title = "🥚 Auto Buy Attempt", 
-            Content = "Attempting to buy: " .. buyInfo, 
-            Duration = 2 
-        })
-        
         -- Retry mechanism - try up to 3 times with delays
         local maxRetries = 3
         local retryCount = 0
