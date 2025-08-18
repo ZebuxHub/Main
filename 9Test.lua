@@ -1041,7 +1041,7 @@ local function getEggContainer()
     return data and data:FindFirstChild("Egg") or nil
 end
 
--- Function to read mutation from egg configuration
+-- Function to read mutation from egg configuration (for Auto Place)
 local function getEggMutation(eggUID)
     local localPlayer = Players.LocalPlayer
     if not localPlayer then return nil end
@@ -1067,6 +1067,59 @@ local function getEggMutation(eggUID)
     end
     
     return mutation
+end
+
+-- Function to read mutation from GUI text on conveyor belt (for Auto Buy)
+local function getEggMutationFromGUI(eggUID)
+    local islandName = getAssignedIslandName()
+    if islandName then
+        local art = workspace:FindFirstChild("Art")
+        if art then
+            local island = art:FindFirstChild(islandName)
+            if island then
+                local env = island:FindFirstChild("ENV")
+                if env then
+                    local conveyor = env:FindFirstChild("Conveyor")
+                    if conveyor then
+                        -- Check all conveyor belts
+                        for i = 1, 9 do
+                            local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+                            if conveyorBelt then
+                                local belt = conveyorBelt:FindFirstChild("Belt")
+                                if belt then
+                                    local eggModel = belt:FindFirstChild(eggUID)
+                                    if eggModel and eggModel:IsA("Model") then
+                                        local rootPart = eggModel:FindFirstChild("RootPart")
+                                        if rootPart then
+                                            local eggGUI = rootPart:FindFirstChild("GUI")
+                                            if eggGUI then
+                                                local eggGUIFolder = eggGUI:FindFirstChild("EggGUI")
+                                                if eggGUIFolder then
+                                                    local mutateText = eggGUIFolder:FindFirstChild("Mutate")
+                                                    if mutateText and mutateText:IsA("TextLabel") then
+                                                        local mutationText = mutateText.Text
+                                                        if mutationText and mutationText ~= "" then
+                                                            -- Map "Dino" to "Jurassic" for consistency
+                                                            if string.lower(mutationText) == "dino" then
+                                                                return "Jurassic"
+                                                            end
+                                                            return mutationText
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
 end
 
 local function listAvailableEggUIDs()
@@ -1699,7 +1752,7 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
     
     -- Now check mutation if mutations are selected - ENHANCED FILTERING
     if selectedMutationSet and next(selectedMutationSet) then
-        local eggMutation = getEggMutation(eggInstance.Name)
+        local eggMutation = getEggMutationFromGUI(eggInstance.Name)
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
@@ -1782,8 +1835,47 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
+        print("Auto Buy: Attempting to buy " .. uid .. " (price: " .. tostring(price) .. ")")
+        
+        -- Retry mechanism - try up to 5 times with delays
+        local maxRetries = 5
+        local retryCount = 0
+        local buySuccess = false
+        
+        while retryCount < maxRetries and not buySuccess do
+            retryCount = retryCount + 1
+            
+            -- Check if egg still exists and is still valid
+            if not eggInstance or not eggInstance.Parent then
+                print("Auto Buy: Egg " .. uid .. " disappeared, giving up")
+                break
+            end
+            
+            -- Check if we still want to buy it (price might have changed)
+            local stillOk, stillUid, stillPrice = shouldBuyEggInstance(eggInstance, getPlayerNetWorth())
+            if not stillOk then
+                print("Auto Buy: Egg " .. uid .. " no longer valid, giving up")
+                break
+            end
+            
+            -- Try to buy
+            local buyResult = pcall(function()
         buyEggByUID(uid)
         focusEggByUID(uid)
+            end)
+            
+            if buyResult then
+                print("Auto Buy: Successfully bought " .. uid .. " on attempt " .. retryCount)
+                buySuccess = true
+            else
+                print("Auto Buy: Failed to buy " .. uid .. " on attempt " .. retryCount .. ", retrying...")
+                wait(0.5) -- Wait 0.5 seconds before retry
+            end
+        end
+        
+        if not buySuccess then
+            print("Auto Buy: Failed to buy " .. uid .. " after " .. maxRetries .. " attempts")
+        end
     end
     
     buyingInProgress = false
@@ -4016,8 +4108,8 @@ pcall(function()
                                     selectedFeedFruits = {}
                                     for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
                                 end
-                            end
-                        end)
+    end
+end)
                     end
                     return selectedFeedFruits
                 end
