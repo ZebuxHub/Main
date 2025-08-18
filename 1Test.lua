@@ -1126,25 +1126,62 @@ local function getEggMutationFromGUI(eggUID)
                         return nil
                     end
                     
+                    -- Search for mutation text in multiple possible locations
+                    local mutationText = nil
+                    
+                    -- Method 1: Try the original path
                     local eggGUIFolder = eggGUI:FindFirstChild("EggGUI")
-                    if not eggGUIFolder then
-                        print("Auto Buy: No EggGUI folder found")
-                        return nil
+                    if eggGUIFolder then
+                        local mutateText = eggGUIFolder:FindFirstChild("Mutate")
+                        if mutateText and mutateText:IsA("TextLabel") then
+                            mutationText = mutateText.Text
+                            print("Auto Buy: Found mutation via EggGUI/Mutate = '" .. tostring(mutationText) .. "'")
+                        end
                     end
                     
-                    local mutateText = eggGUIFolder:FindFirstChild("Mutate")
-                    if not mutateText then
-                        print("Auto Buy: No Mutate text label found")
-                        return nil
+                    -- Method 2: Search for any TextLabel with "Mutate" in the name
+                    if not mutationText or mutationText == "" then
+                        for _, child in ipairs(eggGUI:GetDescendants()) do
+                            if child:IsA("TextLabel") and string.find(child.Name:lower(), "mutate") then
+                                local text = child.Text
+                                if text and text ~= "" then
+                                    mutationText = text
+                                    print("Auto Buy: Found mutation via descendant search = '" .. tostring(mutationText) .. "'")
+                                    break
+                                end
+                            end
+                        end
                     end
                     
-                    if not mutateText:IsA("TextLabel") then
-                        print("Auto Buy: Mutate is not a TextLabel")
-                        return nil
+                    -- Method 3: Search for any TextLabel with mutation names
+                    if not mutationText or mutationText == "" then
+                        local mutationNames = {"Golden", "Diamond", "Electric", "Fire", "Jurassic", "Dino"}
+                        for _, child in ipairs(eggGUI:GetDescendants()) do
+                            if child:IsA("TextLabel") then
+                                local text = child.Text
+                                if text and text ~= "" then
+                                    for _, mutationName in ipairs(mutationNames) do
+                                        if string.find(text:lower(), mutationName:lower()) then
+                                            mutationText = text
+                                            print("Auto Buy: Found mutation via text search = '" .. tostring(mutationText) .. "'")
+                                            break
+                                        end
+                                    end
+                                    if mutationText then break end
+                                end
+                            end
+                        end
                     end
                     
-                    local mutationText = mutateText.Text
-                    print("Auto Buy: Mutation text = '" .. tostring(mutationText) .. "'")
+                    -- Method 4: List all TextLabels for debugging
+                    if not mutationText or mutationText == "" then
+                        print("Auto Buy: No mutation found, listing all TextLabels in GUI:")
+                        for _, child in ipairs(eggGUI:GetDescendants()) do
+                            if child:IsA("TextLabel") then
+                                print("Auto Buy: TextLabel '" .. child.Name .. "' = '" .. tostring(child.Text) .. "'")
+                            end
+                        end
+                    end
                     
                     if mutationText and mutationText ~= "" then
                         -- Map "Dino" to "Jurassic" for consistency
@@ -1155,7 +1192,7 @@ local function getEggMutationFromGUI(eggUID)
                         print("Auto Buy: Returning mutation = " .. mutationText)
                         return mutationText
                     else
-                        print("Auto Buy: Mutation text is empty")
+                        print("Auto Buy: No mutation text found in any location")
                         return nil
                     end
                 end
