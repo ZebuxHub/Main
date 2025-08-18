@@ -1071,54 +1071,99 @@ end
 
 -- Function to read mutation from GUI text on conveyor belt (for Auto Buy)
 local function getEggMutationFromGUI(eggUID)
+    print("Auto Buy: Looking for mutation in GUI for egg " .. eggUID)
+    
     local islandName = getAssignedIslandName()
-    if islandName then
-        local art = workspace:FindFirstChild("Art")
-        if art then
-            local island = art:FindFirstChild(islandName)
-            if island then
-                local env = island:FindFirstChild("ENV")
-                if env then
-                    local conveyor = env:FindFirstChild("Conveyor")
-                    if conveyor then
-                        -- Check all conveyor belts
-                        for i = 1, 9 do
-                            local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
-                            if conveyorBelt then
-                                local belt = conveyorBelt:FindFirstChild("Belt")
-                                if belt then
-                                    local eggModel = belt:FindFirstChild(eggUID)
-                                    if eggModel and eggModel:IsA("Model") then
-                                        local rootPart = eggModel:FindFirstChild("RootPart")
-                                        if rootPart then
-                                            local eggGUI = rootPart:FindFirstChild("GUI")
-                                            if eggGUI then
-                                                local eggGUIFolder = eggGUI:FindFirstChild("EggGUI")
-                                                if eggGUIFolder then
-                                                    local mutateText = eggGUIFolder:FindFirstChild("Mutate")
-                                                    if mutateText and mutateText:IsA("TextLabel") then
-                                                        local mutationText = mutateText.Text
-                                                        if mutationText and mutationText ~= "" then
-                                                            -- Map "Dino" to "Jurassic" for consistency
-                                                            if string.lower(mutationText) == "dino" then
-                                                                return "Jurassic"
-                                                            end
-                                                            return mutationText
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
+    if not islandName then
+        print("Auto Buy: No island name found")
+        return nil
+    end
+    print("Auto Buy: Island name = " .. islandName)
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then
+        print("Auto Buy: Art folder not found")
+        return nil
+    end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then
+        print("Auto Buy: Island " .. islandName .. " not found")
+        return nil
+    end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then
+        print("Auto Buy: ENV folder not found")
+        return nil
+    end
+    
+    local conveyor = env:FindFirstChild("Conveyor")
+    if not conveyor then
+        print("Auto Buy: Conveyor folder not found")
+        return nil
+    end
+    
+    -- Check all conveyor belts
+    for i = 1, 9 do
+        local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+        if conveyorBelt then
+            local belt = conveyorBelt:FindFirstChild("Belt")
+            if belt then
+                local eggModel = belt:FindFirstChild(eggUID)
+                if eggModel and eggModel:IsA("Model") then
+                    print("Auto Buy: Found egg model on Conveyor" .. i)
+                    
+                    local rootPart = eggModel:FindFirstChild("RootPart")
+                    if not rootPart then
+                        print("Auto Buy: No RootPart found")
+                        return nil
+                    end
+                    
+                    local eggGUI = rootPart:FindFirstChild("GUI")
+                    if not eggGUI then
+                        print("Auto Buy: No GUI folder found")
+                        return nil
+                    end
+                    
+                    local eggGUIFolder = eggGUI:FindFirstChild("EggGUI")
+                    if not eggGUIFolder then
+                        print("Auto Buy: No EggGUI folder found")
+                        return nil
+                    end
+                    
+                    local mutateText = eggGUIFolder:FindFirstChild("Mutate")
+                    if not mutateText then
+                        print("Auto Buy: No Mutate text label found")
+                        return nil
+                    end
+                    
+                    if not mutateText:IsA("TextLabel") then
+                        print("Auto Buy: Mutate is not a TextLabel")
+                        return nil
+                    end
+                    
+                    local mutationText = mutateText.Text
+                    print("Auto Buy: Mutation text = '" .. tostring(mutationText) .. "'")
+                    
+                    if mutationText and mutationText ~= "" then
+                        -- Map "Dino" to "Jurassic" for consistency
+                        if string.lower(mutationText) == "dino" then
+                            print("Auto Buy: Converting 'Dino' to 'Jurassic'")
+                            return "Jurassic"
                         end
+                        print("Auto Buy: Returning mutation = " .. mutationText)
+                        return mutationText
+                    else
+                        print("Auto Buy: Mutation text is empty")
+                        return nil
                     end
                 end
             end
         end
     end
     
+    print("Auto Buy: Egg " .. eggUID .. " not found on any conveyor belt")
     return nil
 end
 
@@ -1733,26 +1778,43 @@ local rejoinDelaySlider = nil
 -- Status section removed per user request
 
 local function shouldBuyEggInstance(eggInstance, playerMoney)
-    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil end
+    if not eggInstance or not eggInstance:IsA("Model") then 
+        print("Auto Buy: Invalid egg instance")
+        return false, nil, nil 
+    end
+    
+    print("Auto Buy: Checking egg " .. eggInstance.Name)
     
     -- Read Type first - check if this is the egg type we want
     local eggType = eggInstance:GetAttribute("Type")
         or eggInstance:GetAttribute("EggType")
         or eggInstance:GetAttribute("Name")
-    if not eggType then return false, nil, nil end
+    if not eggType then 
+        print("Auto Buy: No egg type found for " .. eggInstance.Name)
+        return false, nil, nil 
+    end
     eggType = tostring(eggType)
+    print("Auto Buy: Egg type = " .. eggType)
     
     -- If eggs are selected, check if this is the type we want
     if selectedTypeSet and next(selectedTypeSet) then
+        print("Auto Buy: Checking against selected types: " .. table.concat(selectedTypeSet, ", "))
         if not selectedTypeSet[eggType] then 
             print("Auto Buy: Skipping " .. eggType .. " - not in selected types")
             return false, nil, nil 
         end
+        print("Auto Buy: Egg type " .. eggType .. " is selected")
+    else
+        print("Auto Buy: No egg types selected, accepting all types")
     end
     
     -- Now check mutation if mutations are selected - ENHANCED FILTERING
     if selectedMutationSet and next(selectedMutationSet) then
+        print("Auto Buy: Checking mutations for " .. eggInstance.Name)
+        print("Auto Buy: Selected mutations: " .. table.concat(selectedMutationSet, ", "))
+        
         local eggMutation = getEggMutationFromGUI(eggInstance.Name)
+        print("Auto Buy: Found mutation = " .. tostring(eggMutation))
         
         if not eggMutation then
             -- If mutations are selected but egg has no mutation, skip this egg
@@ -1767,6 +1829,8 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         end
         
         print("Auto Buy: Found matching egg - " .. eggType .. " with " .. eggMutation .. " mutation")
+    else
+        print("Auto Buy: No mutations selected, accepting all mutations")
     end
 
     -- Get price from hardcoded data or instance attribute
@@ -1775,15 +1839,25 @@ local function shouldBuyEggInstance(eggInstance, playerMoney)
         -- Convert price string to number (remove commas and convert to number)
         local priceStr = EggData[eggType].Price:gsub(",", "")
         price = tonumber(priceStr)
+        print("Auto Buy: Price from EggData = " .. tostring(price))
     end
     
     if not price then
         price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+        print("Auto Buy: Price from attribute/fallback = " .. tostring(price))
     end
     
-    if type(price) ~= "number" then return false, nil, nil end
-    if playerMoney < price then return false, nil, nil end
+    if type(price) ~= "number" then 
+        print("Auto Buy: Invalid price = " .. tostring(price))
+        return false, nil, nil 
+    end
     
+    if playerMoney < price then 
+        print("Auto Buy: Not enough money. Need " .. price .. ", have " .. playerMoney)
+        return false, nil, nil 
+    end
+    
+    print("Auto Buy: APPROVED TO BUY - " .. eggType .. " for " .. price .. " (have " .. playerMoney .. ")")
     return true, eggInstance.Name, price
 end
 
