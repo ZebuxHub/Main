@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
 local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
@@ -1712,6 +1713,12 @@ local autoBuyThread = nil
 local autoFeedEnabled = false
 local autoFeedThread = nil
 
+-- Auto Rejoin System
+local autoRejoinEnabled = false
+local autoRejoinThread = nil
+local rejoinDelay = 300 -- 5 minutes default
+local lastJoinTime = 0
+
 -- Feed status tracking removed per user request
 
 
@@ -1816,8 +1823,47 @@ local function buyEggInstantly(eggInstance)
     local ok, uid, price = shouldBuyEggInstance(eggInstance, netWorth)
     
     if ok then
-        buyEggByUID(uid)
-        focusEggByUID(uid)
+        print("Auto Buy: Attempting to buy " .. uid .. " (price: " .. tostring(price) .. ")")
+        
+        -- Retry mechanism - try up to 3 times with delays
+        local maxRetries = 3
+        local retryCount = 0
+        local buySuccess = false
+        
+        while retryCount < maxRetries and not buySuccess do
+            retryCount = retryCount + 1
+            
+            -- Check if egg still exists and is still valid
+            if not eggInstance or not eggInstance.Parent then
+                print("Auto Buy: Egg " .. uid .. " disappeared, giving up")
+                break
+            end
+            
+            -- Check if we still want to buy it (price might have changed)
+            local stillOk, stillUid, stillPrice = shouldBuyEggInstance(eggInstance, getPlayerNetWorth())
+            if not stillOk then
+                print("Auto Buy: Egg " .. uid .. " no longer valid, giving up")
+                break
+            end
+            
+            -- Try to buy
+            local buyResult = pcall(function()
+                buyEggByUID(uid)
+                focusEggByUID(uid)
+            end)
+            
+            if buyResult then
+                print("Auto Buy: Successfully bought " .. uid .. " on attempt " .. retryCount)
+                buySuccess = true
+            else
+                print("Auto Buy: Failed to buy " .. uid .. " on attempt " .. retryCount .. ", retrying...")
+                wait(0.5) -- Wait 0.5 seconds before retry
+            end
+        end
+        
+        if not buySuccess then
+            print("Auto Buy: Failed to buy " .. uid .. " after " .. maxRetries .. " attempts")
+        end
     end
     
     buyingInProgress = false
@@ -1858,7 +1904,12 @@ local function setupBeltMonitoring(belt)
     end)
     
     -- Store thread for cleanup
-    beltConnections[#beltConnections + 1] = { disconnect = function() checkThread = nil end }
+    beltConnections[#beltConnections + 1] = { disconnect = function() 
+        if checkThread then
+            task.cancel(checkThread)
+            checkThread = nil 
+        end
+    end }
 end
 
 local function runAutoBuy()
@@ -3557,6 +3608,8 @@ local function registerUIElements()
     -- Register sliders/inputs
     registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
     registerIfExists("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
+    registerIfExists("autoRejoinEnabled", autoRejoinToggle)
+    registerIfExists("rejoinDelaySlider", rejoinDelaySlider)
 end
 
 -- ============ Anti-AFK System ============
@@ -3629,6 +3682,56 @@ Tabs.SaveTab:Button({
             disableAntiAFK()
         else
             setupAntiAFK()
+        end
+    end
+})
+
+-- Auto Rejoin Toggle
+autoRejoinToggle = Tabs.SaveTab:Toggle({
+    Title = "🔄 Auto Rejoin",
+    Desc = "Automatically rejoin the server after specified time",
+    Value = false,
+    Callback = function(state)
+        autoRejoinEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoRejoinThread then
+            lastJoinTime = os.clock() -- Set initial join time
+            autoRejoinThread = task.spawn(function()
+                runAutoRejoin()
+                autoRejoinThread = nil
+            end)
+            WindUI:Notify({ 
+                Title = "🔄 Auto Rejoin", 
+                Content = "Auto rejoin enabled! Will rejoin every " .. math.floor(rejoinDelay/60) .. " minutes", 
+                Duration = 3 
+            })
+        elseif (not state) and autoRejoinThread then
+            WindUI:Notify({ 
+                Title = "🔄 Auto Rejoin", 
+                Content = "Auto rejoin disabled", 
+                Duration = 3 
+            })
+        end
+    end
+})
+
+-- Rejoin Delay Slider
+rejoinDelaySlider = Tabs.SaveTab:Slider({
+    Title = "⏰ Rejoin Delay",
+    Desc = "How often to rejoin the server (in minutes)",
+    Default = 5,
+    Min = 1,
+    Max = 60,
+    Rounding = 0,
+    Callback = function(value)
+        rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
+        if autoRejoinEnabled then
+            WindUI:Notify({ 
+                Title = "⏰ Rejoin Delay", 
+                Content = "Rejoin delay set to " .. math.floor(value) .. " minutes", 
+                Duration = 2 
+            })
         end
     end
 })
@@ -4023,6 +4126,43 @@ end)
 
 if not ok then
     warn("Failed to set window close handler: " .. tostring(err))
+end
+
+-- ============ Auto Rejoin System ============
+local function runAutoRejoin()
+    while autoRejoinEnabled do
+        local currentTime = os.clock()
+        
+        -- Check if enough time has passed since last join
+        if currentTime - lastJoinTime >= rejoinDelay then
+            print("Auto Rejoin: Time to rejoin server")
+            
+            -- Get current place ID
+            local placeId = game.PlaceId
+            
+            -- Attempt to rejoin
+            local success, err = pcall(function()
+                TeleportService:TeleportToPlaceInstance(placeId, game.JobId)
+            end)
+            
+            if success then
+                print("Auto Rejoin: Rejoining server...")
+                lastJoinTime = currentTime
+                WindUI:Notify({ 
+                    Title = "🔄 Auto Rejoin", 
+                    Content = "Rejoining server in 5 seconds...", 
+                    Duration = 5 
+                })
+                wait(5) -- Wait before next check
+            else
+                warn("Auto Rejoin: Failed to rejoin - " .. tostring(err))
+                wait(10) -- Wait longer if failed
+            end
+        else
+            -- Wait before next check
+            wait(30) -- Check every 30 seconds
+        end
+    end
 end
 
 -- Function removed - using WindUI config system instead
