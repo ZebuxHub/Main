@@ -3696,6 +3696,11 @@ autoRejoinToggle = Tabs.SaveTab:Toggle({
         
         waitForSettingsReady(0.2)
         if state and not autoRejoinThread then
+            -- Ensure rejoinDelay is properly set (default to 5 minutes if not set)
+            if not rejoinDelay or rejoinDelay <= 0 then
+                rejoinDelay = 300 -- 5 minutes default
+            end
+            
             lastJoinTime = os.clock() -- Set initial join time
             autoRejoinThread = task.spawn(function()
                 runAutoRejoin()
@@ -3720,18 +3725,21 @@ autoRejoinToggle = Tabs.SaveTab:Toggle({
 rejoinDelaySlider = Tabs.SaveTab:Slider({
     Title = "⏰ Rejoin Delay",
     Desc = "How often to rejoin the server (in minutes)",
-    Default = 5,
-    Min = 1,
-    Max = 60,
-    Rounding = 0,
+    Value = {
+        Min = 1,
+        Max = 60,
+        Default = 5,
+    },
     Callback = function(value)
-        rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
-        if autoRejoinEnabled then
-            WindUI:Notify({ 
-                Title = "⏰ Rejoin Delay", 
-                Content = "Rejoin delay set to " .. math.floor(value) .. " minutes", 
-                Duration = 2 
-            })
+        if value and type(value) == "number" then
+            rejoinDelay = math.floor(value) * 60 -- Convert minutes to seconds
+            if autoRejoinEnabled then
+                WindUI:Notify({ 
+                    Title = "⏰ Rejoin Delay", 
+                    Content = "Rejoin delay set to " .. math.floor(value) .. " minutes", 
+                    Duration = 2 
+                })
+            end
         end
     end
 })
@@ -4135,7 +4143,7 @@ local function runAutoRejoin()
         
         -- Check if enough time has passed since last join
         if currentTime - lastJoinTime >= rejoinDelay then
-            print("Auto Rejoin: Time to rejoin server")
+            print("Auto Rejoin: Time to rejoin server (delay: " .. rejoinDelay .. " seconds)")
             
             -- Get current place ID
             local placeId = game.PlaceId
@@ -4159,8 +4167,13 @@ local function runAutoRejoin()
                 wait(10) -- Wait longer if failed
             end
         else
-            -- Wait before next check
-            wait(30) -- Check every 30 seconds
+            -- Calculate remaining time
+            local remainingTime = rejoinDelay - (currentTime - lastJoinTime)
+            print("Auto Rejoin: Waiting " .. math.floor(remainingTime) .. " more seconds")
+            
+            -- Wait before next check (check every 30 seconds or remaining time, whichever is shorter)
+            local waitTime = math.min(30, remainingTime)
+            wait(waitTime)
         end
     end
 end
