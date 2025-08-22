@@ -561,6 +561,14 @@ local function createPageTabs(parent)
         if searchBox then
             searchBox.PlaceholderText = "Search eggs..."
         end
+        -- Adjust padding for eggs page
+        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+        if scrollFrame then
+            local padding = scrollFrame:FindFirstChild("UIPadding")
+            if padding then
+                padding.PaddingBottom = UDim2.new(0, 32)
+            end
+        end
         EggSelection.RefreshContent()
     end)
     
@@ -574,6 +582,14 @@ local function createPageTabs(parent)
         local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
         if searchBox then
             searchBox.PlaceholderText = "Search mutations..."
+        end
+        -- Adjust padding for mutations page
+        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+        if scrollFrame then
+            local padding = scrollFrame:FindFirstChild("UIPadding")
+            if padding then
+                padding.PaddingBottom = UDim2.new(0, 8)
+            end
         end
         EggSelection.RefreshContent()
     end)
@@ -809,6 +825,16 @@ function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
     
     -- Wait a frame to ensure UI is created
     task.wait()
+    
+    -- Set initial padding for eggs page
+    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+    if scrollFrame then
+        local padding = scrollFrame:FindFirstChild("UIPadding")
+        if padding then
+            padding.PaddingBottom = UDim2.new(0, 32)
+        end
+    end
+    
     EggSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
