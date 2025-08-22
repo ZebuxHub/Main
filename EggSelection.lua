@@ -50,9 +50,9 @@ local EggData = {
     },
     HyperEgg = {
         Name = "Hyper Egg",
-        Price = "3,000,000",
+        Price = "2,500,000",
         Icon = "rbxassetid://104958288296273",
-        Rarity = 5
+        Rarity = 4
     },
     VoidEgg = {
         Name = "Void Egg",
@@ -70,6 +70,12 @@ local EggData = {
         Name = "Demon Egg",
         Price = "400,000,000",
         Icon = "rbxassetid://126412407639969",
+        Rarity = 5
+    },
+    CornEgg = {
+        Name = "Corn Egg",
+        Price = "1,000,000,000",
+        Icon = "rbxassetid://94739512852461",
         Rarity = 5
     },
     BoneDragonEgg = {
