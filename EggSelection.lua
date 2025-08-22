@@ -1,8 +1,8 @@
--- EggSelection.lua - macOS Style Dark Theme UI for Egg Selection
+-- FruitSelection.lua - macOS Style Dark Theme UI for Fruit Selection
 -- Author: Zebux
--- Version: 2.0
+-- Version: 1.0
 
-local EggSelection = {}
+local FruitSelection = {}
 
 -- Services
 local Players = game:GetService("Players")
@@ -10,137 +10,105 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- Hardcoded data with actual Roblox asset IDs
-local EggData = {
-    BasicEgg = {
-        Name = "Basic Egg",
-        Price = "100",
-        Icon = "rbxassetid://129248801621928",
-        Rarity = 1
+-- Hardcoded Fruit Data with emojis
+local FruitData = {
+    Strawberry = {
+        Name = "Strawberry",
+        Price = "5,000",
+        Icon = "🍓",
+        Rarity = 1,
+        FeedValue = 600
     },
-    RareEgg = {
-        Name = "Rare Egg", 
-        Price = "500",
-        Icon = "rbxassetid://71012831091414",
-        Rarity = 2
+    Blueberry = {
+        Name = "Blueberry",
+        Price = "20,000",
+        Icon = "🫐",
+        Rarity = 1,
+        FeedValue = 1250
     },
-    SuperRareEgg = {
-        Name = "Super Rare Egg",
-        Price = "2,500", 
-        Icon = "rbxassetid://93845452154351",
-        Rarity = 2
+    Watermelon = {
+        Name = "Watermelon",
+        Price = "80,000",
+        Icon = "🍉",
+        Rarity = 2,
+        FeedValue = 3200
     },
-    EpicEgg = {
-        Name = "Epic Egg",
-        Price = "15,000",
-        Icon = "rbxassetid://116395645531721", 
-        Rarity = 2
+    Apple = {
+        Name = "Apple",
+        Price = "400,000",
+        Icon = "🍎",
+        Rarity = 2,
+        FeedValue = 8000
     },
-    LegendEgg = {
-        Name = "Legend Egg",
-        Price = "100,000",
-        Icon = "rbxassetid://90834918351014",
-        Rarity = 3
+    Orange = {
+        Name = "Orange",
+        Price = "1,200,000",
+        Icon = "🍊",
+        Rarity = 3,
+        FeedValue = 20000
     },
-    PrismaticEgg = {
-        Name = "Prismatic Egg", 
-        Price = "1,000,000",
-        Icon = "rbxassetid://79960683434582",
-        Rarity = 4
+    Corn = {
+        Name = "Corn",
+        Price = "3,500,000",
+        Icon = "🌽",
+        Rarity = 3,
+        FeedValue = 50000
     },
-    HyperEgg = {
-        Name = "Hyper Egg",
-        Price = "2,500,000",
-        Icon = "rbxassetid://104958288296273",
-        Rarity = 4
+    Banana = {
+        Name = "Banana",
+        Price = "12,000,000",
+        Icon = "🍌",
+        Rarity = 4,
+        FeedValue = 120000
     },
-    VoidEgg = {
-        Name = "Void Egg",
-        Price = "24,000,000", 
-        Icon = "rbxassetid://122396162708984",
-        Rarity = 5
+    Grape = {
+        Name = "Grape",
+        Price = "50,000,000",
+        Icon = "🍇",
+        Rarity = 4,
+        FeedValue = 300000
     },
-    BowserEgg = {
-        Name = "Bowser Egg",
-        Price = "130,000,000",
-        Icon = "rbxassetid://71500536051510",
-        Rarity = 5
+    Pear = {
+        Name = "Pear",
+        Price = "200,000,000",
+        Icon = "🍐",
+        Rarity = 5,
+        FeedValue = 800000
     },
-    DemonEgg = {
-        Name = "Demon Egg",
-        Price = "400,000,000",
-        Icon = "rbxassetid://126412407639969",
-        Rarity = 5
+    Pineapple = {
+        Name = "Pineapple",
+        Price = "600,000,000",
+        Icon = "🍍",
+        Rarity = 5,
+        FeedValue = 1500000
     },
-    CornEgg = {
-        Name = "Corn Egg",
-        Price = "1,000,000,000",
-        Icon = "rbxassetid://94739512852461",
-        Rarity = 5
-    },
-    BoneDragonEgg = {
-        Name = "Bone Dragon Egg",
+    GoldMango = {
+        Name = "Gold Mango",
         Price = "2,000,000,000",
-        Icon = "rbxassetid://83209913424562",
-        Rarity = 5
+        Icon = "🥭",
+        Rarity = 6,
+        FeedValue = 4000000
     },
-    UltraEgg = {
-        Name = "Ultra Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://83909590718799",
-        Rarity = 6
+    BloodstoneCycad = {
+        Name = "Bloodstone Cycad",
+        Price = "8,000,000,000",
+        Icon = "🌿",
+        Rarity = 6,
+        FeedValue = 5000000
     },
-    DinoEgg = {
-        Name = "Dino Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://80783528632315",
-        Rarity = 6
-    },
-    FlyEgg = {
-        Name = "Fly Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://109240587278187",
-        Rarity = 6
-    },
-    UnicornEgg = {
-        Name = "Unicorn Egg",
+    ColossalPinecone = {
+        Name = "Colossal Pinecone",
         Price = "40,000,000,000",
-        Icon = "rbxassetid://123427249205445",
-        Rarity = 6
+        Icon = "🌲",
+        Rarity = 6,
+        FeedValue = 8000000
     },
-    AncientEgg = {
-        Name = "Ancient Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://113910587565739",
-        Rarity = 6
-    }
-}
-
-local MutationData = {
-    Golden = {
-        Name = "Golden",
-        Icon = "✨",
-        Rarity = 10
-    },
-    Diamond = {
-        Name = "Diamond", 
-        Icon = "💎",
-        Rarity = 20
-    },
-    Electirc = {
-        Name = "Electric",
+    VoltGinkgo = {
+        Name = "Volt Ginkgo",
+        Price = "80,000,000,000",
         Icon = "⚡",
-        Rarity = 50
-    },
-    Fire = {
-        Name = "Fire",
-        Icon = "🔥",
-        Rarity = 100
-    },
-    Jurassic = {
-        Name = "Jurassic",
-        Icon = "🦕",
-        Rarity = 100
+        Rarity = 6,
+        FeedValue = 20000000
     }
 }
 
@@ -156,14 +124,13 @@ local startPos = nil
 local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
-local currentPage = "eggs" -- "eggs" or "mutations"
 local searchText = ""
 
 -- Callback functions
 local onSelectionChanged = nil
 local onToggleChanged = nil
 
--- macOS Dark Theme Colors - Improved for better readability
+-- macOS Dark Theme Colors
 local colors = {
     background = Color3.fromRGB(18, 18, 20), -- Darker background for better contrast
     surface = Color3.fromRGB(32, 32, 34), -- Lighter surface for cards
@@ -175,8 +142,6 @@ local colors = {
     border = Color3.fromRGB(50, 50, 52), -- Slightly darker border
     selected = Color3.fromRGB(0, 122, 255), -- Bright blue for selected
     hover = Color3.fromRGB(45, 45, 47), -- Lighter hover state
-    pageActive = Color3.fromRGB(0, 122, 255), -- Bright blue for active tab
-    pageInactive = Color3.fromRGB(60, 60, 62), -- Darker gray for inactive tab
     close = Color3.fromRGB(255, 69, 58), -- Red close button
     minimize = Color3.fromRGB(255, 159, 10), -- Yellow minimize
     maximize = Color3.fromRGB(48, 209, 88) -- Green maximize
@@ -201,11 +166,7 @@ local function formatNumber(num)
 end
 
 local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 69, 58) -- Fire red
-    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222) -- Electric purple
-    elseif rarity >= 20 then return Color3.fromRGB(88, 86, 214) -- Diamond blue
-    elseif rarity >= 10 then return Color3.fromRGB(255, 159, 10) -- Golden yellow
-    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85) -- Ultra pink
+    if rarity >= 6 then return Color3.fromRGB(255, 45, 85) -- Ultra pink
     elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58) -- Legendary red
     elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222) -- Epic purple
     elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214) -- Rare blue
@@ -224,25 +185,18 @@ local function parsePrice(priceStr)
     return tonumber(cleanPrice) or 0
 end
 
--- Sort data by price (low to high) - only for eggs
-local function sortDataByPrice(data, isEggs)
+-- Sort data by price (low to high)
+local function sortDataByPrice(data)
     local sortedData = {}
     for id, item in pairs(data) do
         table.insert(sortedData, {id = id, data = item})
     end
     
-    if isEggs then
-        table.sort(sortedData, function(a, b)
-            local priceA = parsePrice(a.data.Price)
-            local priceB = parsePrice(b.data.Price)
-            return priceA < priceB
-        end)
-    else
-        -- For mutations, sort by name
-        table.sort(sortedData, function(a, b)
-            return a.data.Name < b.data.Name
-        end)
-    end
+    table.sort(sortedData, function(a, b)
+        local priceA = parsePrice(a.data.Price)
+        local priceB = parsePrice(b.data.Price)
+        return priceA < priceB
+    end)
     
     return sortedData
 end
@@ -339,24 +293,16 @@ local function createItemCard(itemId, itemData, parent)
     stroke.Thickness = 1
     stroke.Parent = card
     
-    -- Create Icon (ImageLabel for eggs, TextLabel for mutations)
-    local icon
-    if currentPage == "eggs" then
-        icon = Instance.new("ImageLabel")
-        icon.Image = itemData.Icon
-        icon.ScaleType = Enum.ScaleType.Fit
-    else
-        icon = Instance.new("TextLabel")
-        icon.Text = itemData.Icon
-        icon.TextSize = 32
-        icon.Font = Enum.Font.GothamBold
-        icon.TextColor3 = getRarityColor(itemData.Rarity)
-    end
-    
+    -- Create Icon (TextLabel for emoji)
+    local icon = Instance.new("TextLabel")
     icon.Name = "Icon"
     icon.Size = UDim2.new(0, 50, 0, 50)
     icon.Position = UDim2.new(0.5, -25, 0.2, 0)
     icon.BackgroundTransparency = 1
+    icon.Text = itemData.Icon
+    icon.TextSize = 32
+    icon.Font = Enum.Font.GothamBold
+    icon.TextColor3 = getRarityColor(itemData.Rarity)
     icon.Parent = card
     
     local name = Instance.new("TextLabel")
@@ -377,11 +323,7 @@ local function createItemCard(itemId, itemData, parent)
     price.Size = UDim2.new(1, -16, 0, 16)
     price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
-    if currentPage == "eggs" then
-        price.Text = "$" .. itemData.Price
-    else
-        price.Text = "Mutation"
-    end
+    price.Text = "$" .. itemData.Price
     price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
@@ -476,7 +418,7 @@ local function createSearchBar(parent)
     searchBox.Position = UDim2.new(0, 36, 0.1, 0)
     searchBox.BackgroundTransparency = 1
     searchBox.Text = ""
-    searchBox.PlaceholderText = "Search eggs..."
+    searchBox.PlaceholderText = "Search fruits..."
     searchBox.TextSize = 14
     searchBox.Font = Enum.Font.Gotham
     searchBox.TextColor3 = colors.text
@@ -484,127 +426,25 @@ local function createSearchBar(parent)
     searchBox.ClearTextOnFocus = false
     searchBox.Parent = searchContainer
     
-    -- Set placeholder text color using a different approach
-    searchBox.Focused:Connect(function()
-        if searchBox.Text == "" then
-            searchBox.Text = ""
-        end
-    end)
-    
-    searchBox.FocusLost:Connect(function()
-        if searchBox.Text == "" then
-            searchBox.Text = ""
-        end
-    end)
-    
     -- Search functionality
     searchBox.Changed:Connect(function(prop)
         if prop == "Text" then
             searchText = searchBox.Text
-            EggSelection.RefreshContent()
+            FruitSelection.RefreshContent()
         end
     end)
     
     return searchContainer
 end
 
--- Create Page Tabs (macOS style)
-local function createPageTabs(parent)
-    local tabContainer = Instance.new("Frame")
-    tabContainer.Name = "PageTabs"
-    tabContainer.Size = UDim2.new(1, -32, 0, 40)
-    tabContainer.Position = UDim2.new(0, 16, 0, 100)
-    tabContainer.BackgroundTransparency = 1
-    tabContainer.Parent = parent
-    
-    local eggsTab = Instance.new("TextButton")
-    eggsTab.Name = "EggsTab"
-    eggsTab.Size = UDim2.new(0.5, -4, 1, 0)
-    eggsTab.Position = UDim2.new(0, 0, 0, 0)
-    eggsTab.BackgroundColor3 = colors.pageActive
-    eggsTab.BorderSizePixel = 0
-    eggsTab.Text = "🥚 Eggs"
-    eggsTab.TextSize = 14
-    eggsTab.Font = Enum.Font.GothamSemibold
-    eggsTab.TextColor3 = colors.text
-    eggsTab.Parent = tabContainer
-    
-    local eggsCorner = Instance.new("UICorner")
-    eggsCorner.CornerRadius = UDim.new(0, 6)
-    eggsCorner.Parent = eggsTab
-    
-    local mutationsTab = Instance.new("TextButton")
-    mutationsTab.Name = "MutationsTab"
-    mutationsTab.Size = UDim2.new(0.5, -4, 1, 0)
-    mutationsTab.Position = UDim2.new(0.5, 4, 0, 0)
-    mutationsTab.BackgroundColor3 = colors.pageInactive
-    mutationsTab.BorderSizePixel = 0
-    mutationsTab.Text = "✨ Mutations"
-    mutationsTab.TextSize = 14
-    mutationsTab.Font = Enum.Font.GothamSemibold
-    mutationsTab.TextColor3 = colors.text
-    mutationsTab.Parent = tabContainer
-    
-    local mutationsCorner = Instance.new("UICorner")
-    mutationsCorner.CornerRadius = UDim.new(0, 6)
-    mutationsCorner.Parent = mutationsTab
-    
-    -- Tab click events
-    eggsTab.MouseButton1Click:Connect(function()
-        currentPage = "eggs"
-        eggsTab.BackgroundColor3 = colors.pageActive
-        eggsTab.TextColor3 = colors.text
-        mutationsTab.BackgroundColor3 = colors.pageInactive
-        mutationsTab.TextColor3 = colors.text
-        -- Update search placeholder
-        local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
-        if searchBox then
-            searchBox.PlaceholderText = "Search eggs..."
-        end
-        -- Adjust padding for eggs page
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-        if scrollFrame then
-            local padding = scrollFrame:FindFirstChild("UIPadding")
-            if padding then
-                padding.PaddingBottom = UDim2.new(0, 50)
-            end
-        end
-        EggSelection.RefreshContent()
-    end)
-    
-    mutationsTab.MouseButton1Click:Connect(function()
-        currentPage = "mutations"
-        mutationsTab.BackgroundColor3 = colors.pageActive
-        mutationsTab.TextColor3 = colors.text
-        eggsTab.BackgroundColor3 = colors.pageInactive
-        eggsTab.TextColor3 = colors.text
-        -- Update search placeholder
-        local searchBox = ScreenGui.MainFrame.SearchContainer.SearchBox
-        if searchBox then
-            searchBox.PlaceholderText = "Search mutations..."
-        end
-        -- Adjust padding for mutations page
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-        if scrollFrame then
-            local padding = scrollFrame:FindFirstChild("UIPadding")
-            if padding then
-                padding.PaddingBottom = UDim2.new(0, 8)
-            end
-        end
-        EggSelection.RefreshContent()
-    end)
-    
-    return tabContainer
-end
-
 -- Create UI
-function EggSelection.CreateUI()
+function FruitSelection.CreateUI()
     if ScreenGui then
         ScreenGui:Destroy()
     end
     
     ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "EggSelectionUI"
+    ScreenGui.Name = "FruitSelectionUI"
     ScreenGui.Parent = PlayerGui
     
     MainFrame = Instance.new("Frame")
@@ -636,15 +476,12 @@ function EggSelection.CreateUI()
     title.Size = UDim2.new(1, -140, 0, 20)
     title.Position = UDim2.new(0, 100, 0, 12)
     title.BackgroundTransparency = 1
-    title.Text = "Egg Selection"
+    title.Text = "Fruit Selection"
     title.TextSize = 14
     title.Font = Enum.Font.GothamSemibold
     title.TextColor3 = colors.text
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = MainFrame
-    
-    -- Page Tabs
-    local pageTabs = createPageTabs(MainFrame)
     
     -- Search Bar
     local searchBar = createSearchBar(MainFrame)
@@ -652,8 +489,8 @@ function EggSelection.CreateUI()
     -- Content Area
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, -32, 1, -160)
-    content.Position = UDim2.new(0, 16, 0, 160)
+    content.Size = UDim2.new(1, -32, 1, -120)
+    content.Position = UDim2.new(0, 16, 0, 120)
     content.BackgroundTransparency = 1
     content.Parent = MainFrame
     
@@ -693,13 +530,11 @@ function EggSelection.CreateUI()
         if isMinimized then
             MainFrame.Size = originalSize
             content.Visible = true
-            pageTabs.Visible = true
             searchBar.Visible = true
             isMinimized = false
         else
             MainFrame.Size = minimizedSize
             content.Visible = false
-            pageTabs.Visible = false
             searchBar.Visible = false
             isMinimized = true
         end
@@ -750,8 +585,8 @@ function EggSelection.CreateUI()
     return ScreenGui
 end
 
--- Refresh Content based on current page
-function EggSelection.RefreshContent()
+-- Refresh Content
+function FruitSelection.RefreshContent()
     if not ScreenGui then return end
     
     local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
@@ -764,26 +599,11 @@ function EggSelection.RefreshContent()
         end
     end
     
-    -- Get data based on current page
-    local data = (currentPage == "eggs") and EggData or MutationData
-    
     -- Filter by search
-    local filteredData = filterDataBySearch(data, searchText)
+    local filteredData = filterDataBySearch(FruitData, searchText)
     
-    -- Sort by price (low to high) for eggs, by name for mutations
-    local sortedData = sortDataByPrice(filteredData, currentPage == "eggs")
-    
-    -- Adjust bottom padding based on page content
-    local padding = scrollFrame:FindFirstChild("UIPadding")
-    if padding then
-        if currentPage == "eggs" then
-            -- More padding for eggs page (17 eggs)
-            padding.PaddingBottom = UDim.new(0, 32)
-        else
-            -- Less padding for mutations page (5 mutations)
-            padding.PaddingBottom = UDim.new(0, 8)
-        end
-    end
+    -- Sort by price (low to high)
+    local sortedData = sortDataByPrice(filteredData)
     
     -- Add content
     for i, item in ipairs(sortedData) do
@@ -802,103 +622,58 @@ function EggSelection.RefreshContent()
 end
 
 -- Public Functions
-function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
+function FruitSelection.Show(callback, toggleCallback, savedFruits)
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
     
     -- Apply saved selections if provided
-    if savedEggs then
-        for eggId, _ in pairs(savedEggs) do
-            selectedItems[eggId] = true
-        end
-    end
-    
-    if savedMutations then
-        for mutationId, _ in pairs(savedMutations) do
-            selectedItems[mutationId] = true
+    if savedFruits then
+        for fruitId, _ in pairs(savedFruits) do
+            selectedItems[fruitId] = true
         end
     end
     
     if not ScreenGui then
-        EggSelection.CreateUI()
+        FruitSelection.CreateUI()
     end
     
     -- Wait a frame to ensure UI is created
     task.wait()
-    EggSelection.RefreshContent()
-    
-    -- Set padding after content is loaded with a small delay
-    task.wait(0.1)
-    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-    if scrollFrame then
-        local padding = scrollFrame:FindFirstChild("UIPadding")
-        if padding then
-            padding.PaddingBottom = UDim2.new(0, 50)
-        end
-    end
-    
+    FruitSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
 end
 
-function EggSelection.Hide()
+function FruitSelection.Hide()
     if ScreenGui then
         ScreenGui.Enabled = false
     end
 end
 
-function EggSelection.GetSelectedItems()
+function FruitSelection.GetSelectedItems()
     return selectedItems
 end
 
-function EggSelection.SetSelectedItems(items)
-    selectedItems = items or {}
-    
-    if ScreenGui then
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-        for _, child in pairs(scrollFrame:GetChildren()) do
-            if child:IsA("TextButton") then
-                local checkmark = child:FindFirstChild("Checkmark")
-                if checkmark then
-                    if selectedItems[child.Name] then
-                        checkmark.Visible = true
-                        child.BackgroundColor3 = colors.selected
-                    else
-                        checkmark.Visible = false
-                        child.BackgroundColor3 = colors.surface
-                    end
-                end
-            end
-        end
-    end
-end
-
-function EggSelection.IsVisible()
+function FruitSelection.IsVisible()
     return ScreenGui and ScreenGui.Enabled
 end
 
-function EggSelection.GetCurrentSelections()
+function FruitSelection.GetCurrentSelections()
     return selectedItems
 end
 
-function EggSelection.UpdateSelections(eggs, mutations)
+function FruitSelection.UpdateSelections(fruits)
     selectedItems = {}
     
-    if eggs then
-        for eggId, _ in pairs(eggs) do
-            selectedItems[eggId] = true
-        end
-    end
-    
-    if mutations then
-        for mutationId, _ in pairs(mutations) do
-            selectedItems[mutationId] = true
+    if fruits then
+        for fruitId, _ in pairs(fruits) do
+            selectedItems[fruitId] = true
         end
     end
     
     if ScreenGui then
-        EggSelection.RefreshContent()
+        FruitSelection.RefreshContent()
     end
 end
 
-return EggSelection
+return FruitSelection
