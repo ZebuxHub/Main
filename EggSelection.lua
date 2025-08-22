@@ -566,7 +566,7 @@ local function createPageTabs(parent)
         if scrollFrame then
             local padding = scrollFrame:FindFirstChild("UIPadding")
             if padding then
-                padding.PaddingBottom = UDim2.new(0, 32)
+                padding.PaddingBottom = UDim2.new(0, 50)
             end
         end
         EggSelection.RefreshContent()
@@ -825,17 +825,18 @@ function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
     
     -- Wait a frame to ensure UI is created
     task.wait()
+    EggSelection.RefreshContent()
     
-    -- Set initial padding for eggs page
+    -- Set padding after content is loaded with a small delay
+    task.wait(0.1)
     local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
     if scrollFrame then
         local padding = scrollFrame:FindFirstChild("UIPadding")
         if padding then
-            padding.PaddingBottom = UDim2.new(0, 32)
+            padding.PaddingBottom = UDim2.new(0, 50)
         end
     end
     
-    EggSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
 end
