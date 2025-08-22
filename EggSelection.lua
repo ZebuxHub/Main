@@ -757,6 +757,18 @@ function EggSelection.RefreshContent()
     -- Sort by price (low to high) for eggs, by name for mutations
     local sortedData = sortDataByPrice(filteredData, currentPage == "eggs")
     
+    -- Adjust bottom padding based on page content
+    local padding = scrollFrame:FindFirstChild("UIPadding")
+    if padding then
+        if currentPage == "eggs" then
+            -- More padding for eggs page (17 eggs)
+            padding.PaddingBottom = UDim.new(0, 32)
+        else
+            -- Less padding for mutations page (5 mutations)
+            padding.PaddingBottom = UDim.new(0, 8)
+        end
+    end
+    
     -- Add content
     for i, item in ipairs(sortedData) do
         local card = createItemCard(item.id, item.data, scrollFrame)
