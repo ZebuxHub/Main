@@ -657,7 +657,10 @@ function EggSelection.CreateUI()
      
      -- Add UIPadding to ensure proper scrolling
      local padding = Instance.new("UIPadding")
-     padding.PaddingBottom = UDim.new(0, 8)
+     padding.PaddingBottom = UDim.new(0, 20)
+     padding.PaddingTop = UDim.new(0, 8)
+     padding.PaddingLeft = UDim.new(0, 4)
+     padding.PaddingRight = UDim.new(0, 4)
      padding.Parent = scrollFrame
     
     -- Window Control Events
