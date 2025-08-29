@@ -700,7 +700,70 @@ local function getWaterFarmParts(islandNumber)
     end
     
     scanForWaterFarmParts(island)
-    return waterFarmParts
+    
+    -- Filter out locked water farm tiles by checking the Locks folder
+    local unlockedWaterFarmParts = {}
+    local env = island:FindFirstChild("ENV")
+    local locksFolder = env and env:FindFirstChild("Locks")
+    
+    if locksFolder then
+        -- Create a map of locked areas using position checking
+        local lockedAreas = {}
+        for _, lockModel in ipairs(locksFolder:GetChildren()) do
+            if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
+                local farmPart = lockModel:FindFirstChild("Farm")
+                if farmPart and farmPart:IsA("BasePart") then
+                    -- Check if this lock is active (transparency = 0 means locked)
+                    if farmPart.Transparency == 0 then
+                        -- Store the lock's position and size for area checking
+                        table.insert(lockedAreas, {
+                            position = farmPart.Position,
+                            size = farmPart.Size
+                        })
+                    end
+                end
+            end
+        end
+        
+        -- Check each water farm part against locked areas
+        for _, waterFarmPart in ipairs(waterFarmParts) do
+            local isLocked = false
+            
+            for _, lockArea in ipairs(lockedAreas) do
+                -- Check if water farm part is within the lock area
+                local waterFarmPos = waterFarmPart.Position
+                local lockCenter = lockArea.position
+                local lockSize = lockArea.size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if water farm part is within the lock bounds
+                if waterFarmPos.X >= lockMinX and waterFarmPos.X <= lockMaxX and
+                   waterFarmPos.Z >= lockMinZ and waterFarmPos.Z <= lockMaxZ then
+                    isLocked = true
+                    print("🔒 Water farm tile at " .. tostring(waterFarmPos) .. " is locked, skipping")
+                    break
+                end
+            end
+            
+            if not isLocked then
+                table.insert(unlockedWaterFarmParts, waterFarmPart)
+                print("🌊 Found unlocked water farm tile at " .. tostring(waterFarmPart.Position))
+            end
+        end
+    else
+        -- If no locks folder found, assume all water farm tiles are unlocked
+        unlockedWaterFarmParts = waterFarmParts
+        print("🌊 No locks folder found, using all " .. #waterFarmParts .. " water farm tiles")
+    end
+    
+    print("🌊 Total water farm tiles found: " .. #waterFarmParts .. ", unlocked: " .. #unlockedWaterFarmParts)
+    return unlockedWaterFarmParts
 end
 
 local function getFarmParts(islandNumber)
