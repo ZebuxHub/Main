@@ -1055,21 +1055,39 @@ end
 
 -- Function to unlock tiles in quest system
 local function unlockTileForQuest(lockInfo)
-    if not lockInfo then return false end
+    if not lockInfo then 
+        warn("❌ AutoQuest unlockTile: No lock info provided")
+        return false 
+    end
+    
+    if not lockInfo.farmPart then
+        warn("❌ AutoQuest unlockTile: No farm part in lock info for " .. (lockInfo.modelName or "unknown"))
+        return false
+    end
     
     local args = {
         "Unlock",
         lockInfo.farmPart
     }
     
-    local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    local success, errorMsg = pcall(function()
+        local remote = ReplicatedStorage:WaitForChild("Remote", 5)
+        if not remote then
+            error("Remote folder not found")
+        end
+        
+        local characterRE = remote:WaitForChild("CharacterRE", 5)
+        if not characterRE then
+            error("CharacterRE not found")
+        end
+        
+        characterRE:FireServer(unpack(args))
     end)
     
     if success then
-        print("🔓 Auto Quest: Unlocked tile " .. lockInfo.modelName .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+        print("🔓 Auto Quest: Unlocked tile " .. (lockInfo.modelName or "unknown") .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
     else
-        warn("❌ Auto Quest: Failed to unlock tile " .. lockInfo.modelName)
+        warn("❌ Auto Quest: Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
     end
     
     return success
