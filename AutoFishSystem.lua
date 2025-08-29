@@ -24,10 +24,8 @@ local FishingConfig = {
     FishingPosition = Vector3.new(0, 0, 0),
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
-    AutoWaterDetection = false,
-    SearchRadius = 100,
-    PositionSetting = false,
-    MouseTracking = false,
+    FishingRange = 5, -- Fish within 5 studs of player
+    PlayerAnchored = false, -- Track if player is anchored
     -- Position placement history
     PlacedPositions = {},
     CurrentPositionIndex = 1,
@@ -291,7 +289,43 @@ local function getMouseWorldPosition()
     end
 end
 
--- Position History Management Functions
+-- Player Anchoring System
+local function anchorPlayer()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.Anchored = true
+        FishingConfig.PlayerAnchored = true
+        print("📍 Player anchored for fishing")
+    end
+end
+
+local function unanchorPlayer()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.Anchored = false
+        FishingConfig.PlayerAnchored = false
+        print("🔓 Player unanchored")
+    end
+end
+
+-- Auto Position System
+local function getRandomFishingPosition()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return Vector3.new(0, 0, 0)
+    end
+    
+    local playerPosition = LocalPlayer.Character.HumanoidRootPart.Position
+    
+    -- Generate random position within 5 studs of player
+    local randomX = playerPosition.X + (math.random(-50, 50) / 10) -- -5 to 5 studs
+    local randomZ = playerPosition.Z + (math.random(-50, 50) / 10) -- -5 to 5 studs
+    local randomY = playerPosition.Y -- Keep same Y level
+    
+    return Vector3.new(randomX, randomY, randomZ)
+end
+
+local function updateFishingPosition()
+    FishingConfig.FishingPosition = getRandomFishingPosition()
+    print("🎣 Fishing position updated to:", FishingConfig.FishingPosition)
+end
 local function savePositionToHistory(position, method)
     local timestamp = os.time()
     local positionData = {
@@ -629,6 +663,12 @@ local FishingSystem = {
 }
 
 local function startFishing()
+    -- Update fishing position to random spot around player
+    updateFishingPosition()
+    
+    -- Anchor player to prevent jumping and spinning
+    anchorPlayer()
+    
     -- First fire Focus + FishRob
     local args = {
         "Focus",
@@ -641,10 +681,11 @@ local function startFishing()
     
     if not success then
         warn("Failed to focus fishing: " .. tostring(err))
+        unanchorPlayer() -- Unanchor if failed
         return false
     end
     
-    -- Increased wait time for better accuracy
+    -- Wait time for better accuracy
     task.wait(1)
     
     -- Debug print to verify position is being used
@@ -664,6 +705,7 @@ local function startFishing()
     
     if not throwSuccess then
         warn("Failed to throw fishing line: " .. tostring(throwErr))
+        unanchorPlayer() -- Unanchor if failed
         return false
     end
     
@@ -682,6 +724,9 @@ local function pullFish()
     local success, err = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
     end)
+    
+    -- Unanchor player after fishing attempt
+    unanchorPlayer()
     
     if not success then
         warn("Failed to pull fish: " .. tostring(err))
@@ -772,7 +817,7 @@ function FishingSystem.Start()
     
     WindUI:Notify({ 
         Title = "🎣 Auto Fish", 
-        Content = "Started fishing! 🎉", 
+        Content = "Started fishing around player! Player will be anchored during fishing. 🎉", 
         Duration = 3 
     })
 end
@@ -783,8 +828,8 @@ function FishingSystem.Stop()
     FishingSystem.Active = false
     FishingConfig.AutoFishEnabled = false
     
-    -- Stop water detection movement
-    WaterDetection.MovingToWater = false
+    -- Make sure to unanchor player when stopping
+    unanchorPlayer()
     
     if FishingSystem.Thread then
         task.cancel(FishingSystem.Thread)
@@ -795,7 +840,7 @@ function FishingSystem.Stop()
     local sessionMinutes = math.floor(sessionTime / 60)
     WindUI:Notify({ 
         Title = "🎣 Auto Fish", 
-        Content = string.format("🛑 Stopped! Session: %dm | Fish: %d", sessionMinutes, FishingConfig.Stats.FishCaught), 
+        Content = string.format("🛑 Stopped! Session: %dm | Fish: %d | Player unanchored", sessionMinutes, FishingConfig.Stats.FishCaught), 
         Duration = 3 
     })
 end
@@ -879,143 +924,20 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Pin position tracking system info
+    -- Simple fishing info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
-        Title = "📍 Pin Hologram Position System",
-        Desc = "Click 'Place Hologram Pin' then left-click anywhere in the world to place pin",
-        Image = "map-pin",
+        Title = "🎣 Auto Fishing System",
+        Desc = "Automatically fishes around player within 5 studs. Player will be anchored during fishing to prevent movement.",
+        Image = "anchor",
         ImageSize = 18,
     })
     
-    -- Current position display
-    currentPosLabel = Tabs.FishTab:Paragraph({
-        Title = "📍 Current Fishing Position",
-        Desc = string.format("X: %.1f, Y: %.1f, Z: %.1f", 
-            FishingConfig.FishingPosition.X, 
-            FishingConfig.FishingPosition.Y, 
-            FishingConfig.FishingPosition.Z),
-        Image = "map-pin",
+    -- Fishing range display
+    Tabs.FishTab:Paragraph({
+        Title = "🎯 Fishing Range",
+        Desc = string.format("Fishing within %d studs around player position", FishingConfig.FishingRange),
+        Image = "target",
         ImageSize = 18,
-    })
-    
-    -- Update the display immediately after creation
-    updateCurrentPositionDisplay()
-    
-    -- Place pin hologram button
-    Tabs.FishTab:Button({
-        Title = "📍 Place Hologram Pin",
-        Desc = "Click once to activate placement mode, then left-click anywhere in the world to place pin",
-        Callback = function()
-            if FlagSystem.Active then
-                -- If already active, stop placement
-                stopFlagPlacement()
-                WindUI:Notify({ 
-                    Title = "❌ Pin Placement Cancelled", 
-                    Content = "Pin placement mode cancelled. Click button again to reactivate.", 
-                    Duration = 2 
-                })
-            else
-                -- Start new placement
-                startFlagPlacement()
-                WindUI:Notify({ 
-                    Title = "📍 Pin Placement Active", 
-                    Content = "Now left-click anywhere in the world to place the pin!", 
-                    Duration = 4 
-                })
-            end
-        end
-    })
-    
-    -- Remove pin hologram button
-    Tabs.FishTab:Button({
-        Title = "🗑️ Remove Pin",
-        Desc = "Remove the hologram pin from the world",
-        Callback = function()
-            removeFishingFlag()
-            WindUI:Notify({ 
-                Title = "🗑️ Pin Removed", 
-                Content = "Hologram pin has been removed from the world", 
-                Duration = 2 
-            })
-        end
-    })
-    
-    Tabs.FishTab:Section({ Title = "📍 Position History", Icon = "map-pin" })
-    
-    -- Position history display
-    local positionHistoryLabel = Tabs.FishTab:Paragraph({
-        Title = "📚 Placed Positions",
-        Desc = getPositionHistoryText(),
-        Image = "map-pin",
-        ImageSize = 18,
-    })
-    
-    -- Position navigation controls
-    Tabs.FishTab:Button({
-        Title = "⬅️ Previous Position",
-        Desc = "Go to previous placed position",
-        Callback = function()
-            if #FishingConfig.PlacedPositions > 0 then
-                local newIndex = FishingConfig.CurrentPositionIndex - 1
-                if newIndex < 1 then
-                    newIndex = #FishingConfig.PlacedPositions
-                end
-                
-                if usePositionFromHistory(newIndex) then
-                    WindUI:Notify({ 
-                        Title = "⬅️ Previous Position", 
-                        Content = string.format("Using position %d/%d", newIndex, #FishingConfig.PlacedPositions), 
-                        Duration = 2 
-                    })
-                end
-            else
-                WindUI:Notify({ 
-                    Title = "⚠️ No Positions", 
-                    Content = "No positions have been placed yet", 
-                    Duration = 2 
-                })
-            end
-        end
-    })
-    
-    Tabs.FishTab:Button({
-        Title = "➡️ Next Position",
-        Desc = "Go to next placed position",
-        Callback = function()
-            if #FishingConfig.PlacedPositions > 0 then
-                local newIndex = FishingConfig.CurrentPositionIndex + 1
-                if newIndex > #FishingConfig.PlacedPositions then
-                    newIndex = 1
-                end
-                
-                if usePositionFromHistory(newIndex) then
-                    WindUI:Notify({ 
-                        Title = "➡️ Next Position", 
-                        Content = string.format("Using position %d/%d", newIndex, #FishingConfig.PlacedPositions), 
-                        Duration = 2 
-                    })
-                end
-            else
-                WindUI:Notify({ 
-                    Title = "⚠️ No Positions", 
-                    Content = "No positions have been placed yet", 
-                    Duration = 2 
-                })
-            end
-        end
-    })
-    
-    Tabs.FishTab:Button({
-        Title = "🗑️ Clear Position History",
-        Desc = "Clear all saved position history",
-        Callback = function()
-            clearPositionHistory()
-            WindUI:Notify({ 
-                Title = "🗑️ History Cleared", 
-                Content = "All position history has been cleared", 
-                Duration = 2 
-            })
-        end
     })
     
     Tabs.FishTab:Section({ Title = "🤖 Auto Fishing", Icon = "play" })
@@ -1119,16 +1041,10 @@ function AutoFishSystem.Init(dependencies)
         print("⚠️ Auto Fish: Config system not available, settings won't be saved")
     end
     
-    -- Start stats and position history update loop
+    -- Start stats update loop
     task.spawn(function()
         while true do
             updateStats()
-            
-            -- Update position history display
-            if positionHistoryLabel then
-                positionHistoryLabel:SetDesc(getPositionHistoryText())
-            end
-            
             task.wait(2)
         end
     end)
@@ -1139,11 +1055,9 @@ end
 -- Cleanup function
 function AutoFishSystem.Cleanup()
     FishingSystem.Stop()
-    stopMouseTracking()
-    removeFishingFlag()
     
-    -- Clear position history
-    clearPositionHistory()
+    -- Make sure player is unanchored
+    unanchorPlayer()
     
     print("🧿 Auto Fish System cleaned up successfully!")
 end
