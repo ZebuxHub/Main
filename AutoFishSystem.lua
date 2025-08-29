@@ -500,21 +500,30 @@ local function enableFlagDragging()
                 -- Final pin position
                 local finalPosition = raycastResult.Position
                 
-                -- Update pin hologram position
+                -- Update pin hologram to final position and stop following mouse
                 if FlagSystem.PinHologram then
                     FlagSystem.PinHologram.Position = finalPosition + Vector3.new(0, 1.5, 0)
                 end
                 
                 -- Save fishing position
-                FishingConfig.FishingPosition = raycastResult.Position
+                FishingConfig.FishingPosition = finalPosition
                 
                 -- Save to position history
-                savePositionToHistory(raycastResult.Position, "Pin Placement")
+                savePositionToHistory(finalPosition, "Pin Placement")
                 
+                -- Update displays immediately
                 updateCurrentPositionDisplay()
                 
-                -- Stop flag placement
+                -- Stop flag placement mode - this will disconnect all mouse tracking
                 stopFlagPlacement()
+                
+                -- Confirmation notification
+                WindUI:Notify({ 
+                    Title = "📍 Pin Placed Successfully", 
+                    Content = string.format("Pin locked at: %.1f, %.1f, %.1f", 
+                        finalPosition.X, finalPosition.Y, finalPosition.Z), 
+                    Duration = 3 
+                })
             end
         end
     end)
@@ -524,9 +533,10 @@ local function enableFlagDragging()
     
     -- User input for canceling (ESC key)
     FlagSystem.UserInputConnection = UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.Escape then
-            -- Cancel flag placement
+        if input.KeyCode == Enum.KeyCode.Escape and FlagSystem.Active then
+            -- Cancel flag placement and remove the pin
             removeFishingFlag()
+            stopFlagPlacement()
             WindUI:Notify({ 
                 Title = "❌ Pin Placement Cancelled", 
                 Content = "Pin placement was cancelled", 
@@ -555,7 +565,7 @@ end
 local function stopFlagPlacement()
     FlagSystem.Active = false
     
-    -- Disconnect all connections
+    -- Disconnect all mouse tracking connections
     if FlagSystem.DragConnection then
         FlagSystem.DragConnection:Disconnect()
         FlagSystem.DragConnection = nil
@@ -574,19 +584,13 @@ local function stopFlagPlacement()
     -- Update displays
     updateCurrentPositionDisplay()
     
+    -- Update UI guidance text
     if MouseTracker.PositionLabel then
         MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' to set position with simple visual marker")
     end
     
     -- Debug print
-    print("🎣 Flag position confirmed:", FishingConfig.FishingPosition)
-    
-    WindUI:Notify({ 
-        Title = "📍 Pin Position Confirmed", 
-        Content = string.format("Hologram pin placed at: %.1f, %.1f, %.1f", 
-            FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
-        Duration = 3 
-    })
+    print("📍 Pin placement stopped. Position locked at:", FishingConfig.FishingPosition)
 end
 
 local function removeFishingFlag()
