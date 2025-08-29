@@ -1121,6 +1121,28 @@ local function getEmptyFarmTiles(eggType)
         return emptyTiles
     end
     
+    -- Get locked areas to avoid them
+    local lockedAreas = {}
+    local env = playerIsland:FindFirstChild("ENV")
+    local locksFolder = env and env:FindFirstChild("Locks")
+    
+    if locksFolder then
+        for _, lockModel in ipairs(locksFolder:GetChildren()) do
+            if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
+                local farmPart = lockModel:FindFirstChild("Farm")
+                if farmPart and farmPart:IsA("BasePart") then
+                    -- Check if this lock is active (transparency = 0 means locked)
+                    if farmPart.Transparency == 0 then
+                        table.insert(lockedAreas, {
+                            position = farmPart.Position,
+                            size = farmPart.Size
+                        })
+                    end
+                end
+            end
+        end
+    end
+    
     -- Determine which type of tiles to check based on egg type
     local isOcean = eggType and isOceanEgg(eggType)
     
@@ -1139,23 +1161,55 @@ local function getEmptyFarmTiles(eggType)
             end
             
             if isCorrectTileType then
-                local hasEgg = false
+                -- Check if this tile is in a locked area
+                local isInLockedArea = false
+                local tilePrimaryPart = tile.PrimaryPart or tile:FindFirstChildOfClass("BasePart")
                 
-                -- Check if tile has any eggs
-                for _, child in pairs(tile:GetChildren()) do
-                    if child:IsA("Model") and child.Name ~= tileName then
-                        hasEgg = true
-                        break
+                if tilePrimaryPart then
+                    local tilePos = tilePrimaryPart.Position
+                    
+                    for _, lockArea in ipairs(lockedAreas) do
+                        local lockCenter = lockArea.position
+                        local lockSize = lockArea.size
+                        
+                        -- Calculate the bounds of the lock area
+                        local lockHalfSize = lockSize / 2
+                        local lockMinX = lockCenter.X - lockHalfSize.X
+                        local lockMaxX = lockCenter.X + lockHalfSize.X
+                        local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                        local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                        
+                        -- Check if tile is within the lock bounds
+                        if tilePos.X >= lockMinX and tilePos.X <= lockMaxX and
+                           tilePos.Z >= lockMinZ and tilePos.Z <= lockMaxZ then
+                            isInLockedArea = true
+                            print("🔒 AutoQuest: Skipping locked " .. tileName .. " at " .. tostring(tilePos))
+                            break
+                        end
                     end
                 end
                 
-                if not hasEgg then
-                    table.insert(emptyTiles, tile)
+                if not isInLockedArea then
+                    local hasEgg = false
+                    
+                    -- Check if tile has any eggs
+                    for _, child in pairs(tile:GetChildren()) do
+                        if child:IsA("Model") and child.Name ~= tileName then
+                            hasEgg = true
+                            break
+                        end
+                    end
+                    
+                    if not hasEgg then
+                        table.insert(emptyTiles, tile)
+                        print("✅ AutoQuest: Found empty " .. tileName .. " tile")
+                    end
                 end
             end
         end
     end
-                    
+    
+    print("🎮 AutoQuest: Found " .. #emptyTiles .. " empty tiles for " .. (eggType or "unknown") .. " egg type")
     return emptyTiles
 end
 
