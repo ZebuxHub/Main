@@ -8,6 +8,8 @@ local AutoFishSystem = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local PathfindingService = game:GetService("PathfindingService")
 
 -- Module variables
 local WindUI = nil
@@ -20,6 +22,8 @@ local FishingConfig = {
     FishingPosition = Vector3.new(-470.3221740722656, 11, 351.36126708984375),
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
+    AutoWaterDetection = true,
+    SearchRadius = 100,
     Stats = {
         FishCaught = 0,
         SessionStartTime = os.time(),
@@ -62,6 +66,186 @@ local function loadFishingBaitConfig()
         print("⚠️ Failed to load fishing bait config, using fallback baits")
     end
 end
+
+-- Water Detection System
+local WaterDetection = {
+    WaterNames = {"Water", "Lake", "Pond", "River", "Stream", "Ocean", "Sea"},
+    CurrentTarget = nil,
+    MovingToWater = false
+}
+
+local function isWaterPart(part)
+    if not part then return false end
+    
+    local name = part.Name:lower()
+    for _, waterName in ipairs(WaterDetection.WaterNames) do
+        if name:find(waterName:lower()) then
+            return true
+        end
+    end
+    
+    -- Check material for water-like materials
+    if part.Material == Enum.Material.Water then
+        return true
+    end
+    
+    -- Check transparency and color for water-like appearance
+    if part.Transparency > 0.3 and part.BrickColor.Name == "Bright blue" then
+        return true
+    end
+    
+    return false
+end
+
+local function findNearestWater()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+    
+    local playerPosition = LocalPlayer.Character.HumanoidRootPart.Position
+    local nearestWater = nil
+    local shortestDistance = FishingConfig.SearchRadius
+    
+    -- Search for water parts in workspace
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and isWaterPart(obj) then
+            local distance = (obj.Position - playerPosition).Magnitude
+            if distance < shortestDistance then
+                nearestWater = obj
+                shortestDistance = distance
+            end
+        end
+    end
+    
+    return nearestWater, shortestDistance
+end
+
+local function moveToWater(waterPart)
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") then
+        return false
+    end
+    
+    local humanoid = LocalPlayer.Character.Humanoid
+    local humanoidRootPart = LocalPlayer.Character.HumanoidRootPart
+    
+    if not waterPart then
+        return false
+    end
+    
+    WaterDetection.MovingToWater = true
+    WaterDetection.CurrentTarget = waterPart
+    
+    -- Calculate position near the water (slightly offset to avoid going into water)
+    local targetPosition = waterPart.Position + Vector3.new(0, waterPart.Size.Y/2 + 3, 0)
+    
+    -- Use pathfinding for smart movement
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2,
+        AgentHeight = 5,
+        AgentCanJump = true,
+        AgentMaxSlope = 45
+    })
+    
+    local success, errorMessage = pcall(function()
+        path:ComputeAsync(humanoidRootPart.Position, targetPosition)
+    end)
+    
+    if success and path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        
+        for i, waypoint in ipairs(waypoints) do
+            if not WaterDetection.MovingToWater then break end
+            
+            humanoid:MoveTo(waypoint.Position)
+            
+            -- Wait for the character to reach the waypoint
+            local connection
+            local reached = false
+            
+            connection = humanoid.MoveToFinished:Connect(function(reachedWaypoint)
+                reached = true
+                connection:Disconnect()
+            end)
+            
+            -- Timeout after 10 seconds per waypoint
+            local timeout = 0
+            while not reached and WaterDetection.MovingToWater and timeout < 100 do
+                task.wait(0.1)
+                timeout = timeout + 1
+            end
+            
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        
+        -- Update fishing position to current location
+        if WaterDetection.MovingToWater then
+            FishingConfig.FishingPosition = humanoidRootPart.Position
+            WindUI:Notify({ 
+                Title = "🌊 Water Found", 
+                Content = string.format("Moved to water! Distance: %.1fm", (targetPosition - humanoidRootPart.Position).Magnitude), 
+                Duration = 3 
+            })
+        end
+    else
+        -- Fallback: direct movement
+        humanoid:MoveTo(targetPosition)
+        
+        local connection
+        local reached = false
+        
+        connection = humanoid.MoveToFinished:Connect(function(reachedTarget)
+            reached = true
+            FishingConfig.FishingPosition = humanoidRootPart.Position
+            connection:Disconnect()
+            WindUI:Notify({ 
+                Title = "🌊 Water Found", 
+                Content = "Moved to water location!", 
+                Duration = 3 
+            })
+        end)
+        
+        -- Timeout after 15 seconds
+        task.delay(15, function()
+            if connection then
+                connection:Disconnect()
+            end
+        end)
+    end
+    
+    WaterDetection.MovingToWater = false
+    return true
+end
+
+local function autoDetectAndMoveToWater()
+    if not FishingConfig.AutoWaterDetection then
+        return true -- Skip if auto detection is disabled
+    end
+    
+    WindUI:Notify({ 
+        Title = "🔍 Water Detection", 
+        Content = "Searching for nearby water...", 
+        Duration = 2 
+    })
+    
+    local waterPart, distance = findNearestWater()
+    
+    if waterPart then
+        WindUI:Notify({ 
+            Title = "🌊 Water Found", 
+            Content = string.format("Found water %.1fm away. Moving...", distance), 
+            Duration = 3 
+        })
+        return moveToWater(waterPart)
+    else
+        WindUI:Notify({ 
+            Title = "❌ No Water Found", 
+            Content = string.format("No water found within %dm. Using current position.", FishingConfig.SearchRadius), 
+            Duration = 4 
+        })
+        return false
+    end
 
 -- Fishing System
 local FishingSystem = {
@@ -156,6 +340,12 @@ local function waitForFishPull()
 end
 
 local function runAutoFish()
+    -- Auto detect and move to water at the start if enabled
+    if FishingConfig.AutoWaterDetection then
+        autoDetectAndMoveToWater()
+        task.wait(2) -- Wait for movement to complete
+    end
+    
     while FishingConfig.AutoFishEnabled do
         local castStartTime = tick()
         local success = startFishing()
@@ -221,6 +411,9 @@ function FishingSystem.Stop()
     FishingSystem.Active = false
     FishingConfig.AutoFishEnabled = false
     
+    -- Stop water detection movement
+    WaterDetection.MovingToWater = false
+    
     if FishingSystem.Thread then
         task.cancel(FishingSystem.Thread)
         FishingSystem.Thread = nil
@@ -268,6 +461,34 @@ function AutoFishSystem.Init(dependencies)
     
     -- Create Auto Fish Tab UI
     Tabs.FishTab:Section({ Title = "🎣 Fishing Settings", Icon = "settings" })
+    
+    -- Auto Water Detection Toggle
+    Tabs.FishTab:Toggle({
+        Title = "🌊 Auto Water Detection",
+        Desc = "Automatically find and move to nearby water before fishing",
+        Value = FishingConfig.AutoWaterDetection,
+        Callback = function(state)
+            FishingConfig.AutoWaterDetection = state
+            WindUI:Notify({ 
+                Title = "🌊 Water Detection", 
+                Content = state and "Auto water detection enabled!" or "Auto water detection disabled!", 
+                Duration = 2 
+            })
+        end
+    })
+    
+    -- Water Search Radius Slider
+    Tabs.FishTab:Slider({
+        Title = "🔍 Search Radius",
+        Desc = "Maximum distance to search for water (meters)",
+        Default = FishingConfig.SearchRadius,
+        Min = 50,
+        Max = 500,
+        Rounding = 0,
+        Callback = function(value)
+            FishingConfig.SearchRadius = value
+        end
+    })
     
     -- Bait selection dropdown
     task.wait(1) -- Wait for config to load
@@ -388,6 +609,23 @@ function AutoFishSystem.Init(dependencies)
     })
     
     Tabs.FishTab:Section({ Title = "🎮 Manual Controls", Icon = "settings" })
+    
+    -- Manual water detection button
+    Tabs.FishTab:Button({
+        Title = "🌊 Find Water",
+        Desc = "Manually search for and move to nearby water",
+        Callback = function()
+            task.spawn(function()
+                if autoDetectAndMoveToWater() then
+                    WindUI:Notify({ 
+                        Title = "🌊 Manual Water Detection", 
+                        Content = "Successfully found and moved to water!", 
+                        Duration = 3 
+                    })
+                end
+            end)
+        end
+    })
     
     -- Manual controls
     Tabs.FishTab:Button({
