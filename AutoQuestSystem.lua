@@ -1215,7 +1215,7 @@ end
 
 -- Smart fallback egg selection with priority locking
 
--- Helper function to get best egg for placement (smart fallback system)
+-- Enhanced egg selection with smart water farm logic
 local function getBestEggForPlacement()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
@@ -1254,6 +1254,60 @@ local function getBestEggForPlacement()
         currentPlacementTarget = nil
         placementTargetTime = math.huge
         return nil
+    end
+    
+    -- Check available space for smart egg selection
+    local playerIslandName = LocalPlayer:GetAttribute("AssignedIslandName")
+    if playerIslandName then
+        local oceanEggs = {}
+        local regularEggs = {}
+        
+        -- Separate eggs by type
+        for _, egg in ipairs(availableEggs) do
+            if isOceanEgg(egg.type) then
+                table.insert(oceanEggs, egg)
+            else
+                table.insert(regularEggs, egg)
+            end
+        end
+        
+        -- Check if we have space for ocean eggs
+        local oceanEmptyTiles = getEmptyFarmTiles(oceanEggs[1] and oceanEggs[1].type or nil)
+        local regularEmptyTiles = getEmptyFarmTiles(regularEggs[1] and regularEggs[1].type or nil)
+        
+        print("🌊 AutoQuest: Ocean eggs available: " .. #oceanEggs .. ", water farm tiles: " .. #oceanEmptyTiles)
+        print("🏞️ AutoQuest: Regular eggs available: " .. #regularEggs .. ", regular farm tiles: " .. #regularEmptyTiles)
+        
+        -- Smart prioritization: use eggs only if we have space for them
+        local viableEggs = {}
+        
+        if #oceanEmptyTiles > 0 then
+            -- Water farms available, add ocean eggs
+            for _, egg in ipairs(oceanEggs) do
+                table.insert(viableEggs, egg)
+            end
+            print("✅ AutoQuest: Including ocean eggs (water farm space available)")
+        else
+            print("🚫 AutoQuest: Skipping ocean eggs (no water farm space)")
+        end
+        
+        if #regularEmptyTiles > 0 then
+            -- Regular farms available, add regular eggs
+            for _, egg in ipairs(regularEggs) do
+                table.insert(viableEggs, egg)
+            end
+            print("✅ AutoQuest: Including regular eggs (regular farm space available)")
+        else
+            print("🚫 AutoQuest: Skipping regular eggs (no regular farm space)")
+        end
+        
+        if #viableEggs == 0 then
+            print("⚠️ AutoQuest: No viable eggs (no farm space available)")
+            return nil
+        end
+        
+        -- Use viable eggs for selection
+        availableEggs = viableEggs
     end
     
     -- Sort eggs by hatch time (fastest first)
