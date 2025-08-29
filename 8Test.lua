@@ -612,7 +612,7 @@ local function unlockTile(lockInfo)
     end)
     
     if success then
-        print("🔓 Unlocked tile: " .. (lockInfo.modelName or "unknown") .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+        -- Silent success
     else
         warn("❌ Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
     end
@@ -640,8 +640,6 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
         end
     end
     
-    print("🔍 Available " .. (isOceanEggType and "water farm" or "regular farm") .. " tiles: " .. availableCount)
-    
     -- If we have less than 3 available tiles, try to unlock more
     if availableCount < 3 then
         local lockedTiles = getLockedTiles(islandNumber)
@@ -649,12 +647,6 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
         if #lockedTiles > 0 then
             -- For ocean eggs, we need to be more careful about which tiles to unlock
             -- because water farms and regular farms are in different locked areas
-            if isOceanEggType then
-                print("🌊 Ocean egg needs water farms, but all water farms are locked")
-                print("💡 Unlocking cheapest locked area to potentially access water farms...")
-            else
-                print("🏞️ Regular egg needs farm tiles, unlocking cheapest locked areas...")
-            end
             
             -- Sort by cost (cheapest first)
             table.sort(lockedTiles, function(a, b)
@@ -666,28 +658,17 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
             for _, lockInfo in ipairs(lockedTiles) do
                 if unlockedCount >= 2 then break end -- Don't unlock too many at once
                 
-                print("🔓 Attempting to unlock: " .. lockInfo.modelName .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
-                
                 if unlockTile(lockInfo) then
                     unlockedCount = unlockedCount + 1
                     task.wait(0.5) -- Wait between unlocks
-                else
-                    print("❌ Failed to unlock " .. lockInfo.modelName)
                 end
             end
             
             if unlockedCount > 0 then
-                print("🔓 Auto unlocked " .. unlockedCount .. " tiles for placement")
                 task.wait(1) -- Wait for server to process unlocks
                 return true
-            else
-                print("❌ No tiles could be unlocked")
             end
-        else
-            print("ℹ️ No locked tiles found to unlock")
         end
-    else
-        print("✅ Sufficient tiles available (" .. availableCount .. ")")
     end
     
     return false
@@ -787,23 +768,19 @@ local function getWaterFarmParts(islandNumber)
                 if waterFarmPos.X >= lockMinX and waterFarmPos.X <= lockMaxX and
                    waterFarmPos.Z >= lockMinZ and waterFarmPos.Z <= lockMaxZ then
                     isLocked = true
-                    print("🔒 Water farm tile at " .. tostring(waterFarmPos) .. " is locked, skipping")
                     break
                 end
             end
             
             if not isLocked then
                 table.insert(unlockedWaterFarmParts, waterFarmPart)
-                print("🌊 Found unlocked water farm tile at " .. tostring(waterFarmPart.Position))
             end
         end
     else
         -- If no locks folder found, assume all water farm tiles are unlocked
         unlockedWaterFarmParts = waterFarmParts
-        print("🌊 No locks folder found, using all " .. #waterFarmParts .. " water farm tiles")
     end
     
-    print("🌊 Total water farm tiles found: " .. #waterFarmParts .. ", unlocked: " .. #unlockedWaterFarmParts)
     return unlockedWaterFarmParts
 end
 
@@ -2384,9 +2361,6 @@ local function updateAvailableEggs()
         end
     end
     
-    print("🏞️ Available regular farm tiles: " .. availableRegularTiles)
-    print("🌊 Available water farm tiles: " .. availableWaterTiles)
-    
     -- Smart egg prioritization
     local prioritizedEggs = {}
     local oceanEggs = {}
@@ -2407,9 +2381,6 @@ local function updateAvailableEggs()
         for _, egg in ipairs(oceanEggs) do
             table.insert(prioritizedEggs, egg)
         end
-        print("🌊 Added " .. #oceanEggs .. " ocean eggs (water farms available)")
-    else
-        print("🚫 Skipping " .. #oceanEggs .. " ocean eggs (no water farm space)")
     end
     
     if availableRegularTiles > 0 then
@@ -2417,13 +2388,9 @@ local function updateAvailableEggs()
         for _, egg in ipairs(regularEggs) do
             table.insert(prioritizedEggs, egg)
         end
-        print("🏞️ Added " .. #regularEggs .. " regular eggs (regular farms available)")
-    else
-        print("🚫 Skipping " .. #regularEggs .. " regular eggs (no regular farm space)")
     end
     
     availableEggs = prioritizedEggs
-    print("✅ Total prioritized eggs ready for placement: " .. #availableEggs)
     
     -- Status update removed
 end
@@ -2437,10 +2404,8 @@ local function scanAllTilesAndModels(eggType)
     local farmParts
     if eggType and isOceanEgg(eggType) then
         farmParts = getWaterFarmParts(islandNumber)
-        print("🌊 Scanning water farm tiles for ocean egg: " .. eggType .. " (found " .. #farmParts .. " water tiles)")
     else
         farmParts = getFarmParts(islandNumber)
-        print("🏞️ Scanning regular farm tiles for land egg: " .. (eggType or "unknown") .. " (found " .. #farmParts .. " regular tiles)")
     end
     
     local tileMap = {}
@@ -2767,12 +2732,38 @@ local function attemptPlacement()
     local firstEgg = availableEggs[1]
     if not firstEgg then return end
     
+    -- Check if this is an ocean egg and if we have water farms available
+    if isOceanEgg(firstEgg.type) then
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        local waterFarmParts = getWaterFarmParts(islandNumber)
+        
+        -- Count available water farm tiles
+        local availableWaterTiles = 0
+        for _, part in ipairs(waterFarmParts) do
+            if not isFarmTileOccupied(part, 6) then
+                availableWaterTiles = availableWaterTiles + 1
+            end
+        end
+        
+        -- If no water farm tiles available, skip this ocean egg
+        if availableWaterTiles == 0 then
+            -- Remove this ocean egg from available eggs and try next egg
+            table.remove(availableEggs, 1)
+            
+            -- Try again with remaining eggs
+            if #availableEggs > 0 then
+                attemptPlacement()
+            end
+            return
+        end
+    end
+    
     -- Update available tiles based on the egg type
     updateAvailableTiles(firstEgg.type)
     
     if #availableTiles == 0 then 
         local farmType = isOceanEgg(firstEgg.type) and "water farm" or "regular farm"
-        print("🔍 No available " .. farmType .. " tiles for " .. firstEgg.type .. ", checking for locked tiles...")
         
         -- Try to auto unlock tiles if needed (with error handling)
         local islandName = getAssignedIslandName()
@@ -2790,8 +2781,6 @@ local function attemptPlacement()
                 if #availableTiles == 0 then
                     warn("Auto Place: Still no available " .. farmType .. " tiles after unlocking")
                     return
-                else
-                    print("✅ Found " .. #availableTiles .. " available tiles after unlocking")
                 end
             elseif not unlockSuccess then
                 warn("Auto Place: Error during unlock attempt: " .. tostring(unlockError))
