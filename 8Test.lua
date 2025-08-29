@@ -582,21 +582,39 @@ end
 
 -- Function to unlock a specific tile
 local function unlockTile(lockInfo)
-    if not lockInfo then return false end
+    if not lockInfo then 
+        warn("❌ unlockTile: No lock info provided")
+        return false 
+    end
+    
+    if not lockInfo.farmPart then
+        warn("❌ unlockTile: No farm part in lock info for " .. (lockInfo.modelName or "unknown"))
+        return false
+    end
     
     local args = {
         "Unlock",
         lockInfo.farmPart
     }
     
-    local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    local success, errorMsg = pcall(function()
+        local remote = ReplicatedStorage:WaitForChild("Remote", 5)
+        if not remote then
+            error("Remote folder not found")
+        end
+        
+        local characterRE = remote:WaitForChild("CharacterRE", 5)
+        if not characterRE then
+            error("CharacterRE not found")
+        end
+        
+        characterRE:FireServer(unpack(args))
     end)
     
     if success then
-        print("🔓 Unlocked tile: " .. lockInfo.modelName .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+        print("🔓 Unlocked tile: " .. (lockInfo.modelName or "unknown") .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
     else
-        warn("❌ Failed to unlock tile: " .. lockInfo.modelName)
+        warn("❌ Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
     end
     
     return success
@@ -606,7 +624,9 @@ end
 local function autoUnlockTilesIfNeeded(islandNumber, eggType)
     -- Check if we have available tiles first
     local farmParts
-    if eggType and isOceanEgg(eggType) then
+    local isOceanEggType = eggType and isOceanEgg(eggType)
+    
+    if isOceanEggType then
         farmParts = getWaterFarmParts(islandNumber)
     else
         farmParts = getFarmParts(islandNumber)
@@ -620,11 +640,22 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
         end
     end
     
+    print("🔍 Available " .. (isOceanEggType and "water farm" or "regular farm") .. " tiles: " .. availableCount)
+    
     -- If we have less than 3 available tiles, try to unlock more
     if availableCount < 3 then
         local lockedTiles = getLockedTiles(islandNumber)
         
         if #lockedTiles > 0 then
+            -- For ocean eggs, we need to be more careful about which tiles to unlock
+            -- because water farms and regular farms are in different locked areas
+            if isOceanEggType then
+                print("🌊 Ocean egg needs water farms, but all water farms are locked")
+                print("💡 Unlocking cheapest locked area to potentially access water farms...")
+            else
+                print("🏞️ Regular egg needs farm tiles, unlocking cheapest locked areas...")
+            end
+            
             -- Sort by cost (cheapest first)
             table.sort(lockedTiles, function(a, b)
                 return (a.cost or 0) < (b.cost or 0)
@@ -635,9 +666,13 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
             for _, lockInfo in ipairs(lockedTiles) do
                 if unlockedCount >= 2 then break end -- Don't unlock too many at once
                 
+                print("🔓 Attempting to unlock: " .. lockInfo.modelName .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+                
                 if unlockTile(lockInfo) then
                     unlockedCount = unlockedCount + 1
                     task.wait(0.5) -- Wait between unlocks
+                else
+                    print("❌ Failed to unlock " .. lockInfo.modelName)
                 end
             end
             
@@ -645,8 +680,14 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
                 print("🔓 Auto unlocked " .. unlockedCount .. " tiles for placement")
                 task.wait(1) -- Wait for server to process unlocks
                 return true
+            else
+                print("❌ No tiles could be unlocked")
             end
+        else
+            print("ℹ️ No locked tiles found to unlock")
         end
+    else
+        print("✅ Sufficient tiles available (" .. availableCount .. ")")
     end
     
     return false
@@ -2733,23 +2774,35 @@ local function attemptPlacement()
         local farmType = isOceanEgg(firstEgg.type) and "water farm" or "regular farm"
         print("🔍 No available " .. farmType .. " tiles for " .. firstEgg.type .. ", checking for locked tiles...")
         
-        -- Try to auto unlock tiles if needed
+        -- Try to auto unlock tiles if needed (with error handling)
         local islandName = getAssignedIslandName()
         local islandNumber = getIslandNumberFromName(islandName)
         
-        if autoUnlockTilesIfNeeded(islandNumber, firstEgg.type) then
-            -- Tiles were unlocked, update available tiles again
-            updateAvailableTiles(firstEgg.type)
+        if islandName and islandNumber then
+            local unlockSuccess, unlockError = pcall(function()
+                return autoUnlockTilesIfNeeded(islandNumber, firstEgg.type)
+            end)
             
-            if #availableTiles == 0 then
-                warn("Auto Place: Still no available " .. farmType .. " tiles after unlocking")
+            if unlockSuccess and unlockError then
+                -- Tiles were unlocked, update available tiles again
+                updateAvailableTiles(firstEgg.type)
+                
+                if #availableTiles == 0 then
+                    warn("Auto Place: Still no available " .. farmType .. " tiles after unlocking")
+                    return
+                else
+                    print("✅ Found " .. #availableTiles .. " available tiles after unlocking")
+                end
+            elseif not unlockSuccess then
+                warn("Auto Place: Error during unlock attempt: " .. tostring(unlockError))
                 return
             else
-                print("✅ Found " .. #availableTiles .. " available tiles after unlocking")
+                warn("Auto Place stopped: No available " .. farmType .. " tiles for " .. firstEgg.type)
+                return
             end
         else
-            warn("Auto Place stopped: No available " .. farmType .. " tiles for " .. firstEgg.type)
-            return 
+            warn("Auto Place: Could not determine island for unlocking")
+            return
         end
     end
     
