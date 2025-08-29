@@ -263,6 +263,8 @@ local MouseTracker = {
 -- Flag System for Position Setting
 local FlagSystem = {
     FlagPart = nil,
+    FlagMainPart = nil,
+    FlagPole = nil,
     DragConnection = nil,
     ClickConnection = nil,
     Active = false,
@@ -307,55 +309,151 @@ local function createFishingFlag()
         FlagSystem.FlagPart = nil
     end
     
-    -- Create flag part
+    -- Create main flag container
+    local flagContainer = Instance.new("Model")
+    flagContainer.Name = "FishingFlagModel"
+    flagContainer.Parent = workspace
+    
+    -- Create flag pole (bottom part)
+    local pole = Instance.new("Part")
+    pole.Name = "FlagPole"
+    pole.Size = Vector3.new(0.3, 5, 0.3)
+    pole.Material = Enum.Material.WoodPlanks
+    pole.Color = Color3.new(0.4, 0.2, 0.1)
+    pole.CanCollide = false
+    pole.Anchored = true
+    pole.Shape = Enum.PartType.Cylinder
+    pole.Position = FishingConfig.FishingPosition
+    pole.Parent = flagContainer
+    
+    -- Add metal cap to pole
+    local poleCap = Instance.new("Part")
+    poleCap.Name = "PoleCap"
+    poleCap.Size = Vector3.new(0.4, 0.2, 0.4)
+    poleCap.Material = Enum.Material.Metal
+    poleCap.Color = Color3.new(0.7, 0.7, 0.7)
+    poleCap.CanCollide = false
+    poleCap.Anchored = true
+    poleCap.Shape = Enum.PartType.Ball
+    poleCap.Position = pole.Position + Vector3.new(0, 2.6, 0)
+    poleCap.Parent = flagContainer
+    
+    -- Create flag part with gradient effect
     local flag = Instance.new("Part")
     flag.Name = "FishingFlag"
-    flag.Size = Vector3.new(1, 3, 0.1)
-    flag.Material = Enum.Material.ForceField
-    flag.BrickColor = BrickColor.new("Bright blue")
+    flag.Size = Vector3.new(2, 1.5, 0.1)
+    flag.Material = Enum.Material.Neon
+    flag.Color = Color3.new(0, 0.8, 1)
     flag.CanCollide = false
     flag.Anchored = true
     flag.TopSurface = Enum.SurfaceType.Smooth
     flag.BottomSurface = Enum.SurfaceType.Smooth
-    flag.Position = FishingConfig.FishingPosition
-    flag.Parent = workspace
+    flag.Position = pole.Position + Vector3.new(1, 1.5, 0)
+    flag.Parent = flagContainer
     
-    -- Add flag pole
-    local pole = Instance.new("Part")
-    pole.Name = "FlagPole"
-    pole.Size = Vector3.new(0.2, 4, 0.2)
-    pole.Material = Enum.Material.Wood
-    pole.BrickColor = BrickColor.new("Brown")
-    pole.CanCollide = false
-    pole.Anchored = true
-    pole.Position = flag.Position - Vector3.new(0, 0.5, 0)
-    pole.Parent = flag
+    -- Add flag design with SurfaceGui
+    local surfaceGui = Instance.new("SurfaceGui")
+    surfaceGui.Face = Enum.NormalId.Front
+    surfaceGui.Parent = flag
     
-    -- Add text label
+    -- Background gradient frame
+    local gradientFrame = Instance.new("Frame")
+    gradientFrame.Size = UDim2.new(1, 0, 1, 0)
+    gradientFrame.BackgroundTransparency = 0.3
+    gradientFrame.BorderSizePixel = 0
+    gradientFrame.Parent = surfaceGui
+    
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.new(0, 0.5, 1)),
+        ColorSequenceKeypoint.new(1, Color3.new(0, 1, 1))
+    })
+    gradient.Rotation = 45
+    gradient.Parent = gradientFrame
+    
+    -- Flag icon
+    local flagIcon = Instance.new("TextLabel")
+    flagIcon.Size = UDim2.new(0.4, 0, 0.6, 0)
+    flagIcon.Position = UDim2.new(0.1, 0, 0.2, 0)
+    flagIcon.BackgroundTransparency = 1
+    flagIcon.Text = "🎣"
+    flagIcon.TextColor3 = Color3.new(1, 1, 1)
+    flagIcon.TextScaled = true
+    flagIcon.Font = Enum.Font.SourceSansBold
+    flagIcon.Parent = gradientFrame
+    
+    -- Flag text
+    local flagText = Instance.new("TextLabel")
+    flagText.Size = UDim2.new(0.5, 0, 0.3, 0)
+    flagText.Position = UDim2.new(0.45, 0, 0.35, 0)
+    flagText.BackgroundTransparency = 1
+    flagText.Text = "FISH HERE"
+    flagText.TextColor3 = Color3.new(1, 1, 1)
+    flagText.TextScaled = true
+    flagText.Font = Enum.Font.SourceSansBold
+    flagText.Parent = gradientFrame
+    
+    -- Add glowing effect
+    local pointLight = Instance.new("PointLight")
+    pointLight.Color = Color3.new(0, 0.8, 1)
+    pointLight.Brightness = 2
+    pointLight.Range = 10
+    pointLight.Parent = flag
+    
+    -- Create floating text label above flag
     local billboardGui = Instance.new("BillboardGui")
-    billboardGui.Size = UDim2.new(0, 100, 0, 50)
-    billboardGui.StudsOffset = Vector3.new(0, 2, 0)
-    billboardGui.Parent = flag
+    billboardGui.Size = UDim2.new(0, 200, 0, 60)
+    billboardGui.StudsOffset = Vector3.new(0, 3, 0)
+    billboardGui.AlwaysOnTop = true
+    billboardGui.Parent = flagContainer
+    
+    -- Background for text
+    local textBackground = Instance.new("Frame")
+    textBackground.Size = UDim2.new(1, 0, 1, 0)
+    textBackground.BackgroundColor3 = Color3.new(0, 0, 0)
+    textBackground.BackgroundTransparency = 0.5
+    textBackground.BorderSizePixel = 0
+    textBackground.Parent = billboardGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = textBackground
     
     local textLabel = Instance.new("TextLabel")
     textLabel.Size = UDim2.new(1, 0, 1, 0)
     textLabel.BackgroundTransparency = 1
-    textLabel.Text = "🎣 Fishing Position"
-    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.Text = "🎣 Fishing Position 🎣"
+    textLabel.TextColor3 = Color3.new(0, 1, 1)
     textLabel.TextScaled = true
     textLabel.Font = Enum.Font.SourceSansBold
-    textLabel.Parent = billboardGui
+    textLabel.TextStrokeTransparency = 0
+    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    textLabel.Parent = textBackground
     
     -- Add selection box for visual feedback
     local selectionBox = Instance.new("SelectionBox")
     selectionBox.Color3 = Color3.new(0, 1, 1)
-    selectionBox.LineThickness = 0.2
-    selectionBox.Transparency = 0.5
-    selectionBox.Adornee = flag
-    selectionBox.Parent = flag
+    selectionBox.LineThickness = 0.3
+    selectionBox.Transparency = 0.3
+    selectionBox.Adornee = flagContainer
+    selectionBox.Parent = flagContainer
     
-    FlagSystem.FlagPart = flag
-    return flag
+    -- Add waving animation
+    task.spawn(function()
+        local time = 0
+        while flagContainer.Parent do
+            time = time + 0.1
+            if flag.Parent then
+                flag.Rotation = Vector3.new(0, 0, math.sin(time) * 5)
+            end
+            task.wait(0.1)
+        end
+    end)
+    
+    FlagSystem.FlagPart = flagContainer
+    FlagSystem.FlagMainPart = flag
+    FlagSystem.FlagPole = pole
+    return flagContainer
 end
 
 local function enableFlagDragging()
@@ -377,8 +475,22 @@ local function enableFlagDragging()
             
             if raycastResult then
                 -- Update flag position in real-time as mouse moves
-                flag.Position = raycastResult.Position + Vector3.new(0, 1.5, 0)
-                flag.FlagPole.Position = flag.Position - Vector3.new(0, 0.5, 0)
+                local newPosition = raycastResult.Position
+                
+                -- Update pole position (main anchor)
+                if FlagSystem.FlagPole then
+                    FlagSystem.FlagPole.Position = newPosition
+                end
+                
+                -- Update flag position relative to pole
+                if FlagSystem.FlagMainPart then
+                    FlagSystem.FlagMainPart.Position = newPosition + Vector3.new(1, 1.5, 0)
+                end
+                
+                -- Update entire flag container position
+                if flag and flag:IsA("Model") then
+                    flag:SetPrimaryPartCFrame(CFrame.new(newPosition))
+                end
                 
                 -- Update display but don't save position yet
                 if MouseTracker.PositionLabel then
@@ -403,8 +515,22 @@ local function enableFlagDragging()
             
             if raycastResult then
                 -- Final flag position
-                flag.Position = raycastResult.Position + Vector3.new(0, 1.5, 0)
-                flag.FlagPole.Position = flag.Position - Vector3.new(0, 0.5, 0)
+                local finalPosition = raycastResult.Position
+                
+                -- Update pole position (main anchor)
+                if FlagSystem.FlagPole then
+                    FlagSystem.FlagPole.Position = finalPosition
+                end
+                
+                -- Update flag position relative to pole
+                if FlagSystem.FlagMainPart then
+                    FlagSystem.FlagMainPart.Position = finalPosition + Vector3.new(1, 1.5, 0)
+                end
+                
+                -- Update entire flag container position
+                if flag and flag:IsA("Model") then
+                    flag:SetPrimaryPartCFrame(CFrame.new(finalPosition))
+                end
                 
                 -- Save fishing position
                 FishingConfig.FishingPosition = raycastResult.Position
@@ -425,8 +551,8 @@ local function enableFlagDragging()
             -- Cancel flag placement
             removeFishingFlag()
             WindUI:Notify({ 
-                Title = "❌ Flag Placement Cancelled", 
-                Content = "Flag placement was cancelled", 
+                Title = "❌ Beautiful Flag Placement Cancelled", 
+                Content = "Beautiful flag placement was cancelled", 
                 Duration = 2 
             })
         end
@@ -443,8 +569,8 @@ local function startFlagPlacement()
     enableFlagDragging()
     
     WindUI:Notify({ 
-        Title = "🚩 Flag Placement Active", 
-        Content = "Move mouse to preview position, then CLICK to place flag! Press ESC to cancel.", 
+        Title = "🚩 Beautiful Flag Placement Active", 
+        Content = "Move mouse to preview the glowing flag position, then CLICK to place! Press ESC to cancel.", 
         Duration = 5 
     })
 end
@@ -472,15 +598,15 @@ local function stopFlagPlacement()
     updateCurrentPositionDisplay()
     
     if MouseTracker.PositionLabel then
-        MouseTracker.PositionLabel:SetDesc("Click 'Place Fishing Flag' to set position with visual flag")
+        MouseTracker.PositionLabel:SetDesc("Click 'Place Beautiful Fishing Flag' to set position with glowing animated flag")
     end
     
     -- Debug print
     print("🎣 Flag position confirmed:", FishingConfig.FishingPosition)
     
     WindUI:Notify({ 
-        Title = "🚩 Position Confirmed", 
-        Content = string.format("Fishing position set to: %.1f, %.1f, %.1f", 
+        Title = "🚩 Beautiful Position Confirmed", 
+        Content = string.format("Beautiful fishing flag placed at: %.1f, %.1f, %.1f", 
             FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
         Duration = 3 
     })
@@ -755,10 +881,10 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Mouse position tracking system - now shows flag system info
+    -- Mouse position tracking system - now shows beautiful flag system info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
-        Title = "🚩 Flag Position System",
-        Desc = "Click 'Place Fishing Flag' to set position with visual flag",
+        Title = "🚩 Beautiful Flag Position System",
+        Desc = "Click 'Place Beautiful Fishing Flag' to set position with glowing animated flag",
         Image = "flag",
         ImageSize = 18,
     })
@@ -777,10 +903,10 @@ function AutoFishSystem.Init(dependencies)
     -- Update the display immediately after creation
     updateCurrentPositionDisplay()
     
-    -- Place fishing flag button
+    -- Place beautiful fishing flag button
     Tabs.FishTab:Button({
-        Title = "🚩 Place Fishing Flag",
-        Desc = "Click to activate flag placement, then move mouse and click anywhere to set fishing position",
+        Title = "🚩 Place Beautiful Fishing Flag",
+        Desc = "Click to activate beautiful flag placement with glowing effects, then move mouse and click anywhere to set fishing position",
         Callback = function()
             if not FlagSystem.Active then
                 startFlagPlacement()
@@ -790,15 +916,15 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Remove flag button
+    -- Remove beautiful flag button
     Tabs.FishTab:Button({
-        Title = "🗑️ Remove Flag",
-        Desc = "Remove the fishing flag from the world",
+        Title = "🗑️ Remove Beautiful Flag",
+        Desc = "Remove the beautiful glowing fishing flag from the world",
         Callback = function()
             removeFishingFlag()
             WindUI:Notify({ 
-                Title = "🗑️ Flag Removed", 
-                Content = "Fishing flag has been removed from the world", 
+                Title = "🗑️ Beautiful Flag Removed", 
+                Content = "Beautiful fishing flag has been removed from the world", 
                 Duration = 2 
             })
         end
