@@ -1015,6 +1015,66 @@ local function runAutoClaimReady()
     end
 end
 
+-- Auto tile unlock system for quest system
+local function getLockedTilesForQuest(playerIslandName)
+    local islandsFolder = workspace:FindFirstChild("Islands")
+    if not islandsFolder then return {} end
+    
+    local playerIsland = islandsFolder:FindFirstChild(playerIslandName)
+    if not playerIsland then return {} end
+    
+    local env = playerIsland:FindFirstChild("ENV")
+    if not env then return {} end
+    
+    local locksFolder = env:FindFirstChild("Locks")
+    if not locksFolder then return {} end
+    
+    local lockedTiles = {}
+    
+    -- Scan for locks that start with 'F' (like F20, F30, etc.)
+    for _, lockModel in ipairs(locksFolder:GetChildren()) do
+        if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
+            local farmPart = lockModel:FindFirstChild("Farm")
+            if farmPart and farmPart:IsA("BasePart") then
+                -- Check if this lock is active (transparency = 0 means locked)
+                if farmPart.Transparency == 0 then
+                    local lockCost = farmPart:GetAttribute("LockCost")
+                    table.insert(lockedTiles, {
+                        modelName = lockModel.Name,
+                        farmPart = farmPart,
+                        cost = lockCost or 0,
+                        model = lockModel
+                    })
+                end
+            end
+        end
+    end
+    
+    return lockedTiles
+end
+
+-- Function to unlock tiles in quest system
+local function unlockTileForQuest(lockInfo)
+    if not lockInfo then return false end
+    
+    local args = {
+        "Unlock",
+        lockInfo.farmPart
+    }
+    
+    local success = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    
+    if success then
+        print("🔓 Auto Quest: Unlocked tile " .. lockInfo.modelName .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+    else
+        warn("❌ Auto Quest: Failed to unlock tile " .. lockInfo.modelName)
+    end
+    
+    return success
+end
+
 -- Ocean egg categories for water farm placement
 local OCEAN_EGGS = {
     ["SeaweedEgg"] = true,
@@ -1580,6 +1640,27 @@ local function runAutoPlacementSystem()
                             end
                         end
                     else
+                        -- No empty tiles, try to unlock more tiles first
+                        print("🔍 Auto Placement: No empty tiles, checking for locked tiles...")
+                        
+                        local playerIslandName = LocalPlayer:GetAttribute("AssignedIslandName")
+                        if playerIslandName then
+                            local lockedTiles = getLockedTilesForQuest(playerIslandName)
+                            
+                            if #lockedTiles > 0 then
+                                -- Sort by cost (cheapest first)
+                                table.sort(lockedTiles, function(a, b)
+                                    return (a.cost or 0) < (b.cost or 0)
+                                end)
+                                
+                                -- Try to unlock the cheapest tile
+                                if unlockTileForQuest(lockedTiles[1]) then
+                                    print("🔓 Auto Placement: Unlocked tile, retrying placement...")
+                                    wait(2) -- Wait for unlock to process
+                                    continue -- Retry the placement loop
+                                end
+                            end
+                        end
                         -- No empty tiles, try auto-deletion if enabled
                         if autoDeleteMinSpeed > 0 then
                             local deletedCount, deleteMessage = autoDeleteSlowPets(autoDeleteMinSpeed)
