@@ -28,11 +28,6 @@ local FishingConfig = {
     SearchRadius = 100,
     PositionSetting = false,
     MouseTracking = false,
-    -- Memory system for user interactions
-    ClickMemory = {},
-    TabMemory = {},
-    LastClickPosition = nil,
-    LastTabPosition = nil,
     -- Position placement history
     PlacedPositions = {},
     CurrentPositionIndex = 1,
@@ -275,10 +270,7 @@ local FlagSystem = {
     DragConnection = nil,
     ClickConnection = nil,
     Active = false,
-    UserInputConnection = nil,
-    -- Memory system connections
-    ClickMemoryConnection = nil,
-    TabMemoryConnection = nil
+    UserInputConnection = nil
 }
 
 local function getMouseWorldPosition()
@@ -297,109 +289,6 @@ local function getMouseWorldPosition()
         -- Fallback to a position in front of the camera
         return unitRay.Origin + unitRay.Direction * 100
     end
-end
-
--- Memory System Functions
-local function saveClickMemory(position, timestamp)
-    table.insert(FishingConfig.ClickMemory, {
-        Position = position,
-        Timestamp = timestamp or os.time(),
-        Type = "Click"
-    })
-    
-    -- Keep only last 50 clicks to prevent memory overflow
-    if #FishingConfig.ClickMemory > 50 then
-        table.remove(FishingConfig.ClickMemory, 1)
-    end
-    
-    FishingConfig.LastClickPosition = position
-    print("💾 Click Memory Saved:", position)
-end
-
-local function saveTabMemory(position, timestamp)
-    table.insert(FishingConfig.TabMemory, {
-        Position = position,
-        Timestamp = timestamp or os.time(),
-        Type = "Tab"
-    })
-    
-    -- Keep only last 50 tabs to prevent memory overflow
-    if #FishingConfig.TabMemory > 50 then
-        table.remove(FishingConfig.TabMemory, 1)
-    end
-    
-    FishingConfig.LastTabPosition = position
-    print("💾 Tab Memory Saved:", position)
-end
-
-local function startMemoryTracking()
-    local mouse = LocalPlayer:GetMouse()
-    
-    -- Track left clicks
-    if not FlagSystem.ClickMemoryConnection then
-        FlagSystem.ClickMemoryConnection = mouse.Button1Down:Connect(function()
-            local worldPos = getMouseWorldPosition()
-            if worldPos then
-                saveClickMemory(worldPos)
-                
-                -- Visual feedback for click memory
-                WindUI:Notify({ 
-                    Title = "💾 Click Remembered", 
-                    Content = string.format("Position saved: %.1f, %.1f, %.1f", worldPos.X, worldPos.Y, worldPos.Z), 
-                    Duration = 1 
-                })
-            end
-        end)
-    end
-    
-    -- Track Tab key presses
-    if not FlagSystem.TabMemoryConnection then
-        FlagSystem.TabMemoryConnection = UserInputService.InputBegan:Connect(function(input)
-            if input.KeyCode == Enum.KeyCode.Tab then
-                local worldPos = getMouseWorldPosition()
-                if worldPos then
-                    saveTabMemory(worldPos)
-                    
-                    -- Visual feedback for tab memory
-                    WindUI:Notify({ 
-                        Title = "💾 Tab Remembered", 
-                        Content = string.format("Tab position saved: %.1f, %.1f, %.1f", worldPos.X, worldPos.Y, worldPos.Z), 
-                        Duration = 1 
-                    })
-                end
-            end
-        end)
-    end
-    
-    print("💾 Memory tracking started!")
-end
-
-local function stopMemoryTracking()
-    if FlagSystem.ClickMemoryConnection then
-        FlagSystem.ClickMemoryConnection:Disconnect()
-        FlagSystem.ClickMemoryConnection = nil
-    end
-    
-    if FlagSystem.TabMemoryConnection then
-        FlagSystem.TabMemoryConnection:Disconnect()
-        FlagSystem.TabMemoryConnection = nil
-    end
-    
-    print("💾 Memory tracking stopped.")
-end
-
-local function getMemoryStats()
-    local clickCount = #FishingConfig.ClickMemory
-    local tabCount = #FishingConfig.TabMemory
-    local totalInteractions = clickCount + tabCount
-    
-    return {
-        ClickCount = clickCount,
-        TabCount = tabCount,
-        TotalInteractions = totalInteractions,
-        LastClick = FishingConfig.LastClickPosition,
-        LastTab = FishingConfig.LastTabPosition
-    }
 end
 
 -- Position History Management Functions
@@ -586,11 +475,6 @@ local function enableFlagDragging()
                     FlagSystem.PinHologram.Position = newPosition + Vector3.new(0, 1.5, 0)
                 end
                 
-                -- Update entire pin container position
-                if flag and flag:IsA("Model") then
-                    flag:SetPrimaryPartCFrame(CFrame.new(newPosition))
-                end
-                
                 -- Update display but don't save position yet
                 if MouseTracker.PositionLabel then
                     MouseTracker.PositionLabel:SetDesc(string.format("Flag Position: %.1f, %.1f, %.1f\nClick anywhere to place flag!", 
@@ -619,11 +503,6 @@ local function enableFlagDragging()
                 -- Update pin hologram position
                 if FlagSystem.PinHologram then
                     FlagSystem.PinHologram.Position = finalPosition + Vector3.new(0, 1.5, 0)
-                end
-                
-                -- Update entire pin container position
-                if flag and flag:IsA("Model") then
-                    flag:SetPrimaryPartCFrame(CFrame.new(finalPosition))
                 end
                 
                 -- Save fishing position
@@ -979,7 +858,7 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Mouse position tracking system - now shows pin hologram system info
+    -- Pin position tracking system info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
         Title = "📍 Pin Hologram Position System",
         Desc = "Click 'Place Hologram Pin' to set position with simple visual marker",
@@ -1006,10 +885,17 @@ function AutoFishSystem.Init(dependencies)
         Title = "📍 Place Hologram Pin",
         Desc = "Click to activate pin placement, then move mouse and click anywhere to set fishing position",
         Callback = function()
-            if not FlagSystem.Active then
-                startFlagPlacement()
-            else
+            if FlagSystem.Active then
+                -- If already active, stop placement
                 stopFlagPlacement()
+                WindUI:Notify({ 
+                    Title = "❌ Pin Placement Cancelled", 
+                    Content = "Pin placement was cancelled", 
+                    Duration = 2 
+                })
+            else
+                -- Start new placement
+                startFlagPlacement()
             end
         end
     })
@@ -1023,112 +909,6 @@ function AutoFishSystem.Init(dependencies)
             WindUI:Notify({ 
                 Title = "🗑️ Pin Removed", 
                 Content = "Hologram pin has been removed from the world", 
-                Duration = 2 
-            })
-        end
-    })
-    
-    Tabs.FishTab:Section({ Title = "💾 Memory System", Icon = "brain" })
-    
-    -- Memory tracking toggle
-    local memoryToggle = Tabs.FishTab:Toggle({
-        Title = "💾 Memory Tracking",
-        Desc = "Remember where you click and tab on the screen",
-        Value = false,
-        Callback = function(state)
-            if state then
-                startMemoryTracking()
-                WindUI:Notify({ 
-                    Title = "💾 Memory Active", 
-                    Content = "Now tracking your clicks and tab presses!", 
-                    Duration = 3 
-                })
-            else
-                stopMemoryTracking()
-                WindUI:Notify({ 
-                    Title = "💾 Memory Stopped", 
-                    Content = "Memory tracking has been disabled", 
-                    Duration = 2 
-                })
-            end
-        end
-    })
-    
-    -- Memory statistics display
-    local memoryStatsLabel = Tabs.FishTab:Paragraph({
-        Title = "📊 Memory Statistics",
-        Desc = "💆 Clicks: 0 | ⌨️ Tabs: 0 | 📊 Total: 0",
-        Image = "activity",
-        ImageSize = 18,
-    })
-    
-    -- Last interaction display
-    local lastInteractionLabel = Tabs.FishTab:Paragraph({
-        Title = "🔄 Last Interaction",
-        Desc = "No interactions recorded yet",
-        Image = "clock",
-        ImageSize = 18,
-    })
-    
-    -- Memory controls
-    Tabs.FishTab:Button({
-        Title = "🔄 Use Last Click Position",
-        Desc = "Set fishing position to your last remembered click",
-        Callback = function()
-            if FishingConfig.LastClickPosition then
-                FishingConfig.FishingPosition = FishingConfig.LastClickPosition
-                savePositionToHistory(FishingConfig.LastClickPosition, "Last Click")
-                updateCurrentPositionDisplay()
-                WindUI:Notify({ 
-                    Title = "🔄 Position Updated", 
-                    Content = "Fishing position set to last click location!", 
-                    Duration = 3 
-                })
-            else
-                WindUI:Notify({ 
-                    Title = "⚠️ No Click Memory", 
-                    Content = "No click position has been recorded yet", 
-                    Duration = 2 
-                })
-            end
-        end
-    })
-    
-    Tabs.FishTab:Button({
-        Title = "⌨️ Use Last Tab Position",
-        Desc = "Set fishing position to your last remembered tab",
-        Callback = function()
-            if FishingConfig.LastTabPosition then
-                FishingConfig.FishingPosition = FishingConfig.LastTabPosition
-                savePositionToHistory(FishingConfig.LastTabPosition, "Last Tab")
-                updateCurrentPositionDisplay()
-                WindUI:Notify({ 
-                    Title = "⌨️ Position Updated", 
-                    Content = "Fishing position set to last tab location!", 
-                    Duration = 3 
-                })
-            else
-                WindUI:Notify({ 
-                    Title = "⚠️ No Tab Memory", 
-                    Content = "No tab position has been recorded yet", 
-                    Duration = 2 
-                })
-            end
-        end
-    })
-    
-    Tabs.FishTab:Button({
-        Title = "🗑️ Clear Memory",
-        Desc = "Clear all remembered click and tab positions",
-        Callback = function()
-            FishingConfig.ClickMemory = {}
-            FishingConfig.TabMemory = {}
-            FishingConfig.LastClickPosition = nil
-            FishingConfig.LastTabPosition = nil
-            
-            WindUI:Notify({ 
-                Title = "🗑️ Memory Cleared", 
-                Content = "All click and tab memories have been cleared", 
                 Duration = 2 
             })
         end
@@ -1313,36 +1093,10 @@ function AutoFishSystem.Init(dependencies)
         print("⚠️ Auto Fish: Config system not available, settings won't be saved")
     end
     
-    -- Start stats and memory update loop
+    -- Start stats and position history update loop
     task.spawn(function()
         while true do
             updateStats()
-            
-            -- Update memory statistics
-            if memoryStatsLabel then
-                local stats = getMemoryStats()
-                memoryStatsLabel:SetDesc(string.format("💆 Clicks: %d | ⌨️ Tabs: %d | 📊 Total: %d", 
-                    stats.ClickCount, stats.TabCount, stats.TotalInteractions))
-            end
-            
-            -- Update last interaction display
-            if lastInteractionLabel then
-                local desc = "No interactions recorded yet"
-                if FishingConfig.LastClickPosition or FishingConfig.LastTabPosition then
-                    local lastClick = FishingConfig.LastClickPosition
-                    local lastTab = FishingConfig.LastTabPosition
-                    
-                    if lastClick and lastTab then
-                        desc = string.format("Last Click: %.1f,%.1f,%.1f | Last Tab: %.1f,%.1f,%.1f", 
-                            lastClick.X, lastClick.Y, lastClick.Z, lastTab.X, lastTab.Y, lastTab.Z)
-                    elseif lastClick then
-                        desc = string.format("Last Click: %.1f, %.1f, %.1f", lastClick.X, lastClick.Y, lastClick.Z)
-                    elseif lastTab then
-                        desc = string.format("Last Tab: %.1f, %.1f, %.1f", lastTab.X, lastTab.Y, lastTab.Z)
-                    end
-                end
-                lastInteractionLabel:SetDesc(desc)
-            end
             
             -- Update position history display
             if positionHistoryLabel then
@@ -1360,14 +1114,7 @@ end
 function AutoFishSystem.Cleanup()
     FishingSystem.Stop()
     stopMouseTracking()
-    stopMemoryTracking()
     removeFishingFlag()
-    
-    -- Clear memory data
-    FishingConfig.ClickMemory = {}
-    FishingConfig.TabMemory = {}
-    FishingConfig.LastClickPosition = nil
-    FishingConfig.LastTabPosition = nil
     
     -- Clear position history
     clearPositionHistory()
