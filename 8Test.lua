@@ -2294,7 +2294,9 @@ local function updateAvailableEggs()
         selectedMutationSet[mutation] = true
         end
         
-        for _, eggInfo in ipairs(eggs) do
+    -- First pass: collect all eggs that match filters
+    local filteredEggs = {}
+    for _, eggInfo in ipairs(eggs) do
         local shouldInclude = true
         
         -- Check egg type filter
@@ -2312,9 +2314,75 @@ local function updateAvailableEggs()
     end
     
         if shouldInclude then
-            table.insert(availableEggs, eggInfo)
+            table.insert(filteredEggs, eggInfo)
         end
     end
+    
+    -- Smart sorting: prioritize eggs based on available farm space
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    
+    -- Check available space for different farm types
+    local regularFarmParts = getFarmParts(islandNumber)
+    local waterFarmParts = getWaterFarmParts(islandNumber)
+    
+    local availableRegularTiles = 0
+    local availableWaterTiles = 0
+    
+    -- Count available regular farm tiles
+    for _, part in ipairs(regularFarmParts) do
+        if not isFarmTileOccupied(part, 6) then
+            availableRegularTiles = availableRegularTiles + 1
+        end
+    end
+    
+    -- Count available water farm tiles
+    for _, part in ipairs(waterFarmParts) do
+        if not isFarmTileOccupied(part, 6) then
+            availableWaterTiles = availableWaterTiles + 1
+        end
+    end
+    
+    print("🏞️ Available regular farm tiles: " .. availableRegularTiles)
+    print("🌊 Available water farm tiles: " .. availableWaterTiles)
+    
+    -- Smart egg prioritization
+    local prioritizedEggs = {}
+    local oceanEggs = {}
+    local regularEggs = {}
+    
+    -- Separate eggs by type
+    for _, eggInfo in ipairs(filteredEggs) do
+        if isOceanEgg(eggInfo.type) then
+            table.insert(oceanEggs, eggInfo)
+        else
+            table.insert(regularEggs, eggInfo)
+        end
+    end
+    
+    -- Add eggs based on available space
+    if availableWaterTiles > 0 then
+        -- Water farms available, add ocean eggs first
+        for _, egg in ipairs(oceanEggs) do
+            table.insert(prioritizedEggs, egg)
+        end
+        print("🌊 Added " .. #oceanEggs .. " ocean eggs (water farms available)")
+    else
+        print("🚫 Skipping " .. #oceanEggs .. " ocean eggs (no water farm space)")
+    end
+    
+    if availableRegularTiles > 0 then
+        -- Regular farms available, add regular eggs
+        for _, egg in ipairs(regularEggs) do
+            table.insert(prioritizedEggs, egg)
+        end
+        print("🏞️ Added " .. #regularEggs .. " regular eggs (regular farms available)")
+    else
+        print("🚫 Skipping " .. #regularEggs .. " regular eggs (no regular farm space)")
+    end
+    
+    availableEggs = prioritizedEggs
+    print("✅ Total prioritized eggs ready for placement: " .. #availableEggs)
     
     -- Status update removed
 end
