@@ -1085,7 +1085,7 @@ local function unlockTileForQuest(lockInfo)
     end)
     
     if success then
-        print("🔓 Auto Quest: Unlocked tile " .. (lockInfo.modelName or "unknown") .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+        -- Silent success
     else
         warn("❌ Auto Quest: Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
     end
@@ -1201,7 +1201,6 @@ local function getEmptyFarmTiles(eggType)
                         if tilePos.X >= lockMinX and tilePos.X <= lockMaxX and
                            tilePos.Z >= lockMinZ and tilePos.Z <= lockMaxZ then
                             isInLockedArea = true
-                            print("🔒 AutoQuest: Skipping locked " .. tileName .. " at " .. tostring(tilePos))
                             break
                         end
                     end
@@ -1220,14 +1219,12 @@ local function getEmptyFarmTiles(eggType)
                     
                     if not hasEgg then
                         table.insert(emptyTiles, tile)
-                        print("✅ AutoQuest: Found empty " .. tileName .. " tile")
                     end
                 end
             end
         end
     end
     
-    print("🎮 AutoQuest: Found " .. #emptyTiles .. " empty tiles for " .. (eggType or "unknown") .. " egg type")
     return emptyTiles
 end
 
@@ -1293,9 +1290,6 @@ local function getBestEggForPlacement()
         local oceanEmptyTiles = getEmptyFarmTiles(oceanEggs[1] and oceanEggs[1].type or nil)
         local regularEmptyTiles = getEmptyFarmTiles(regularEggs[1] and regularEggs[1].type or nil)
         
-        print("🌊 AutoQuest: Ocean eggs available: " .. #oceanEggs .. ", water farm tiles: " .. #oceanEmptyTiles)
-        print("🏞️ AutoQuest: Regular eggs available: " .. #regularEggs .. ", regular farm tiles: " .. #regularEmptyTiles)
-        
         -- Smart prioritization: use eggs only if we have space for them
         local viableEggs = {}
         
@@ -1304,9 +1298,6 @@ local function getBestEggForPlacement()
             for _, egg in ipairs(oceanEggs) do
                 table.insert(viableEggs, egg)
             end
-            print("✅ AutoQuest: Including ocean eggs (water farm space available)")
-        else
-            print("🚫 AutoQuest: Skipping ocean eggs (no water farm space)")
         end
         
         if #regularEmptyTiles > 0 then
@@ -1314,13 +1305,9 @@ local function getBestEggForPlacement()
             for _, egg in ipairs(regularEggs) do
                 table.insert(viableEggs, egg)
             end
-            print("✅ AutoQuest: Including regular eggs (regular farm space available)")
-        else
-            print("🚫 AutoQuest: Skipping regular eggs (no regular farm space)")
         end
         
         if #viableEggs == 0 then
-            print("⚠️ AutoQuest: No viable eggs (no farm space available)")
             return nil
         end
         
@@ -1726,6 +1713,40 @@ local function runAutoPlacementSystem()
             else
                 -- PRIORITY 2: Check for empty tiles to place new eggs
                 local bestEgg = getBestEggForPlacement()
+                
+                -- If we have an ocean egg but no water farm space, skip it
+                if bestEgg and isOceanEgg(bestEgg.type) then
+                    local emptyWaterTiles = getEmptyFarmTiles(bestEgg.type)
+                    if #emptyWaterTiles == 0 then
+                        -- Skip this ocean egg, it has no water farm space
+                        bestEgg = nil
+                        
+                        -- Try to get a regular egg instead
+                        local Players = game:GetService("Players")
+                        local LocalPlayer = Players.LocalPlayer
+                        local eggFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+                        
+                        if eggFolder then
+                            for _, eggData in pairs(eggFolder:GetChildren()) do
+                                if eggData:IsA("Configuration") then
+                                    local eggType = eggData:GetAttribute("T")
+                                    if eggType and not isOceanEgg(eggType) then
+                                        local hatchTime = EggHatchTimes[eggType] or math.huge
+                                        bestEgg = {
+                                            uid = eggData.Name,
+                                            type = eggType,
+                                            mutation = eggData:GetAttribute("M"),
+                                            value = eggData:GetAttribute("NetWorth") or 0,
+                                            hatchTime = hatchTime
+                                        }
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
                 local emptyTiles = getEmptyFarmTiles(bestEgg and bestEgg.type or nil)
                 
                 if #emptyTiles > 0 then
@@ -1767,7 +1788,6 @@ local function runAutoPlacementSystem()
                         end
                     else
                         -- No empty tiles, try to unlock more tiles first
-                        print("🔍 Auto Placement: No empty tiles, checking for locked tiles...")
                         
                         local playerIslandName = LocalPlayer:GetAttribute("AssignedIslandName")
                         if playerIslandName then
@@ -1781,7 +1801,6 @@ local function runAutoPlacementSystem()
                                 
                                 -- Try to unlock the cheapest tile
                                 if unlockTileForQuest(lockedTiles[1]) then
-                                    print("🔓 Auto Placement: Unlocked tile, retrying placement...")
                                     wait(2) -- Wait for unlock to process
                                     continue -- Retry the placement loop
                                 end
