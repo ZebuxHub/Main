@@ -55,6 +55,7 @@ Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
 Tabs.PackTab = Tabs.MainSection:Tab({ Title = "🎁 | Get Packs"})
 Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
 Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
+Tabs.FishTab = Tabs.MainSection:Tab({ Title = "🎣 | Auto Fish"})
 -- Bug tab removed per user request
 Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
@@ -1520,6 +1521,25 @@ local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/
 local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
 local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FeedFruitSelection.lua"))()
 local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSystem.lua"))()
+-- Load Auto Fish System
+local AutoFishSystem = nil
+task.spawn(function()
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFishSystem.lua"))()
+    end)
+    if success and result then
+        AutoFishSystem = result
+        if AutoFishSystem and AutoFishSystem.Init then
+            AutoFishSystem.Init({
+                WindUI = WindUI,
+                Tabs = Tabs,
+                Config = zebuxConfig
+            })
+        end
+    else
+        warn("Failed to load Auto Fish System: " .. tostring(result))
+    end
+end)
 -- FruitStoreSystem functions are now implemented locally in the auto buy fruit section
 local AutoQuestSystem = nil
 
@@ -3922,6 +3942,25 @@ task.spawn(function()
     if zebuxConfig and autoFeedToggle then
         pcall(function()
             zebuxConfig:Register("autoFeedEnabled", autoFeedToggle)
+            -- If settings already loaded, load again to apply saved value to this control
+            if settingsLoaded then
+                zebuxConfig:Load()
+            end
+        end)
+    end
+end)
+
+-- Late-register Auto Fish toggle after it exists, then re-load to apply saved value
+task.spawn(function()
+    -- Wait until settings load sequence either completed or shortly timed in
+    local tries = 0
+    while not (zebuxConfig and autoFishToggle) and tries < 50 do
+        tries += 1
+        task.wait(0.05)
+    end
+    if zebuxConfig and autoFishToggle then
+        pcall(function()
+            zebuxConfig:Register("autoFishEnabled", autoFishToggle)
             -- If settings already loaded, load again to apply saved value to this control
             if settingsLoaded then
                 zebuxConfig:Load()
