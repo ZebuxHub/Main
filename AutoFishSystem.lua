@@ -268,11 +268,7 @@ local MouseTracker = {
 -- Flag System for Position Setting
 local FlagSystem = {
     FlagPart = nil,
-    FlagMainPart = nil,
-    FlagPole = nil,
-    LeftWing = nil,
-    RightWing = nil,
-    AnimeEffects = {},
+    PinHologram = nil,
     DragConnection = nil,
     ClickConnection = nil,
     Active = false,
@@ -423,238 +419,75 @@ local function createFishingFlag()
         FlagSystem.FlagPart = nil
     end
     
-    -- Create main flag container
-    local flagContainer = Instance.new("Model")
-    flagContainer.Name = "AnimeFishingFlagModel"
-    flagContainer.Parent = workspace
+    -- Create main pin container
+    local pinContainer = Instance.new("Model")
+    pinContainer.Name = "HologramPinModel"
+    pinContainer.Parent = workspace
     
-    -- Create flag pole (bottom part)
-    local pole = Instance.new("Part")
-    pole.Name = "FlagPole"
-    pole.Size = Vector3.new(0.3, 6, 0.3)
-    pole.Material = Enum.Material.DiamondPlate
-    pole.Color = Color3.new(0.8, 0.8, 0.9)
-    pole.CanCollide = false
-    pole.Anchored = true
-    pole.Shape = Enum.PartType.Cylinder
-    pole.Position = FishingConfig.FishingPosition
-    pole.Parent = flagContainer
+    -- Create hologram pin
+    local pin = Instance.new("Part")
+    pin.Name = "HologramPin"
+    pin.Size = Vector3.new(1, 3, 1)
+    pin.Material = Enum.Material.ForceField
+    pin.Color = Color3.new(0, 1, 1)
+    pin.Transparency = 0.3
+    pin.CanCollide = false
+    pin.Anchored = true
+    pin.Shape = Enum.PartType.Cylinder
+    pin.Position = FishingConfig.FishingPosition + Vector3.new(0, 1.5, 0)
+    pin.Rotation = Vector3.new(0, 0, 90) -- Rotate to make it stand upright
+    pin.Parent = pinContainer
     
-    -- Add anime-style crystal cap to pole
-    local poleCap = Instance.new("Part")
-    poleCap.Name = "CrystalCap"
-    poleCap.Size = Vector3.new(0.8, 0.8, 0.8)
-    poleCap.Material = Enum.Material.ForceField
-    poleCap.Color = Color3.new(0, 1, 1)
-    poleCap.CanCollide = false
-    poleCap.Anchored = true
-    poleCap.Shape = Enum.PartType.Ball
-    poleCap.Position = pole.Position + Vector3.new(0, 3.2, 0)
-    poleCap.Parent = flagContainer
+    -- Add subtle glow
+    local pinLight = Instance.new("PointLight")
+    pinLight.Color = Color3.new(0, 1, 1)
+    pinLight.Brightness = 2
+    pinLight.Range = 15
+    pinLight.Parent = pin
     
-    -- Add intense glow to crystal cap
-    local crystalLight = Instance.new("PointLight")
-    crystalLight.Color = Color3.new(0, 1, 1)
-    crystalLight.Brightness = 5
-    crystalLight.Range = 25
-    crystalLight.Parent = poleCap
-    
-    -- Create main anime flag with enhanced design
-    local flag = Instance.new("Part")
-    flag.Name = "AnimeFlag"
-    flag.Size = Vector3.new(3, 2, 0.1)
-    flag.Material = Enum.Material.ForceField
-    flag.Color = Color3.new(0.2, 0.8, 1)
-    flag.CanCollide = false
-    flag.Anchored = true
-    flag.TopSurface = Enum.SurfaceType.Smooth
-    flag.BottomSurface = Enum.SurfaceType.Smooth
-    flag.Position = pole.Position + Vector3.new(1.5, 2, 0)
-    flag.Parent = flagContainer
-    
-    -- Create LEFT WING
-    local leftWing = Instance.new("Part")
-    leftWing.Name = "LeftWing"
-    leftWing.Size = Vector3.new(1.5, 3, 0.2)
-    leftWing.Material = Enum.Material.ForceField
-    leftWing.Color = Color3.new(1, 1, 1)
-    leftWing.Transparency = 0.3
-    leftWing.CanCollide = false
-    leftWing.Anchored = true
-    leftWing.Position = flag.Position + Vector3.new(-1.8, 0.5, 0.5)
-    leftWing.Rotation = Vector3.new(0, 0, -20)
-    leftWing.Parent = flagContainer
-    
-    -- Create RIGHT WING
-    local rightWing = Instance.new("Part")
-    rightWing.Name = "RightWing"
-    rightWing.Size = Vector3.new(1.5, 3, 0.2)
-    rightWing.Material = Enum.Material.ForceField
-    rightWing.Color = Color3.new(1, 1, 1)
-    rightWing.Transparency = 0.3
-    rightWing.CanCollide = false
-    rightWing.Anchored = true
-    rightWing.Position = flag.Position + Vector3.new(-1.8, 0.5, -0.5)
-    rightWing.Rotation = Vector3.new(0, 0, 20)
-    rightWing.Parent = flagContainer
-    
-    -- Add wing glows
-    local leftWingLight = Instance.new("PointLight")
-    leftWingLight.Color = Color3.new(1, 1, 1)
-    leftWingLight.Brightness = 3
-    leftWingLight.Range = 15
-    leftWingLight.Parent = leftWing
-    
-    local rightWingLight = Instance.new("PointLight")
-    rightWingLight.Color = Color3.new(1, 1, 1)
-    rightWingLight.Brightness = 3
-    rightWingLight.Range = 15
-    rightWingLight.Parent = rightWing
-    
-    -- Add flag design with anime-style SurfaceGui
-    local surfaceGui = Instance.new("SurfaceGui")
-    surfaceGui.Face = Enum.NormalId.Front
-    surfaceGui.Parent = flag
-    
-    -- Anime-style background with multiple gradients
-    local gradientFrame = Instance.new("Frame")
-    gradientFrame.Size = UDim2.new(1, 0, 1, 0)
-    gradientFrame.BackgroundTransparency = 0.2
-    gradientFrame.BorderSizePixel = 0
-    gradientFrame.Parent = surfaceGui
-    
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.new(0.2, 0.4, 1)),
-        ColorSequenceKeypoint.new(0.5, Color3.new(0, 1, 1)),
-        ColorSequenceKeypoint.new(1, Color3.new(0.8, 0.9, 1))
-    })
-    gradient.Rotation = 135
-    gradient.Parent = gradientFrame
-    
-    -- Anime-style flag icon with multiple emojis
-    local flagIcon = Instance.new("TextLabel")
-    flagIcon.Size = UDim2.new(0.6, 0, 0.8, 0)
-    flagIcon.Position = UDim2.new(0.05, 0, 0.1, 0)
-    flagIcon.BackgroundTransparency = 1
-    flagIcon.Text = "🎣✨🌟"
-    flagIcon.TextColor3 = Color3.new(1, 1, 0)
-    flagIcon.TextScaled = true
-    flagIcon.Font = Enum.Font.SourceSansBold
-    flagIcon.TextStrokeTransparency = 0
-    flagIcon.TextStrokeColor3 = Color3.new(0, 0, 0)
-    flagIcon.Parent = gradientFrame
-    
-    -- Anime-style flag text
-    local flagText = Instance.new("TextLabel")
-    flagText.Size = UDim2.new(0.35, 0, 0.4, 0)
-    flagText.Position = UDim2.new(0.6, 0, 0.3, 0)
-    flagText.BackgroundTransparency = 1
-    flagText.Text = "LEGENDARY\nFISHING\nSPOT"
-    flagText.TextColor3 = Color3.new(1, 1, 1)
-    flagText.TextScaled = true
-    flagText.Font = Enum.Font.SourceSansBold
-    flagText.TextStrokeTransparency = 0
-    flagText.TextStrokeColor3 = Color3.new(0, 0, 1)
-    flagText.Parent = gradientFrame
-    
-    -- Add main flag glow
-    local flagLight = Instance.new("PointLight")
-    flagLight.Color = Color3.new(0, 1, 1)
-    flagLight.Brightness = 4
-    flagLight.Range = 20
-    flagLight.Parent = flag
-    
-    -- Create floating anime-style text label
+    -- Create floating text label
     local billboardGui = Instance.new("BillboardGui")
-    billboardGui.Size = UDim2.new(0, 300, 0, 80)
-    billboardGui.StudsOffset = Vector3.new(0, 4, 0)
+    billboardGui.Size = UDim2.new(0, 150, 0, 50)
+    billboardGui.StudsOffset = Vector3.new(0, 2.5, 0)
     billboardGui.AlwaysOnTop = true
-    billboardGui.Parent = flagContainer
+    billboardGui.Parent = pinContainer
     
-    -- Anime-style background for text
+    -- Simple text background
     local textBackground = Instance.new("Frame")
     textBackground.Size = UDim2.new(1, 0, 1, 0)
     textBackground.BackgroundColor3 = Color3.new(0, 0, 0)
-    textBackground.BackgroundTransparency = 0.3
-    textBackground.BorderSizePixel = 3
-    textBackground.BorderColor3 = Color3.new(0, 1, 1)
+    textBackground.BackgroundTransparency = 0.6
+    textBackground.BorderSizePixel = 0
     textBackground.Parent = billboardGui
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 15)
+    corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = textBackground
-    
-    local textGradient = Instance.new("UIGradient")
-    textGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.new(0.1, 0.1, 0.3)),
-        ColorSequenceKeypoint.new(1, Color3.new(0, 0.2, 0.4))
-    })
-    textGradient.Parent = textBackground
     
     local textLabel = Instance.new("TextLabel")
     textLabel.Size = UDim2.new(1, 0, 1, 0)
     textLabel.BackgroundTransparency = 1
-    textLabel.Text = "⚡ ANIME FISHING ZONE ⚡"
+    textLabel.Text = "🎣 Fishing Spot"
     textLabel.TextColor3 = Color3.new(0, 1, 1)
     textLabel.TextScaled = true
     textLabel.Font = Enum.Font.SourceSansBold
     textLabel.TextStrokeTransparency = 0
-    textLabel.TextStrokeColor3 = Color3.new(1, 1, 0)
+    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
     textLabel.Parent = textBackground
     
-    -- Add selection box with anime effects
+    -- Add simple selection box
     local selectionBox = Instance.new("SelectionBox")
     selectionBox.Color3 = Color3.new(0, 1, 1)
-    selectionBox.LineThickness = 0.5
-    selectionBox.Transparency = 0.2
-    selectionBox.Adornee = flagContainer
-    selectionBox.Parent = flagContainer
+    selectionBox.LineThickness = 0.2
+    selectionBox.Transparency = 0.4
+    selectionBox.Adornee = pinContainer
+    selectionBox.Parent = pinContainer
     
     -- Store references
-    FlagSystem.FlagPart = flagContainer
-    FlagSystem.FlagMainPart = flag
-    FlagSystem.FlagPole = pole
-    FlagSystem.LeftWing = leftWing
-    FlagSystem.RightWing = rightWing
-    FlagSystem.AnimeEffects = {crystalLight, flagLight, leftWingLight, rightWingLight}
+    FlagSystem.FlagPart = pinContainer
+    FlagSystem.PinHologram = pin
     
-    -- Start anime-style animations
-    task.spawn(function()
-        local time = 0
-        while flagContainer.Parent do
-            time = time + 0.05
-            
-            -- Flag waving animation
-            if flag.Parent then
-                flag.Rotation = Vector3.new(0, 0, math.sin(time * 2) * 8)
-            end
-            
-            -- Wing flapping animation
-            if leftWing.Parent and rightWing.Parent then
-                local flapAngle = math.sin(time * 3) * 15
-                leftWing.Rotation = Vector3.new(0, 0, -20 + flapAngle)
-                rightWing.Rotation = Vector3.new(0, 0, 20 - flapAngle)
-            end
-            
-            -- Pulsing glow effects
-            local glowIntensity = 3 + math.sin(time * 4) * 2
-            for _, light in pairs(FlagSystem.AnimeEffects) do
-                if light.Parent then
-                    light.Brightness = glowIntensity
-                end
-            end
-            
-            -- Crystal cap rotation
-            if poleCap.Parent then
-                poleCap.Rotation = Vector3.new(0, time * 50, 0)
-            end
-            
-            task.wait(0.05)
-        end
-    end)
-    
-    return flagContainer
+    return pinContainer
 end
 
 local function enableFlagDragging()
@@ -675,29 +508,15 @@ local function enableFlagDragging()
             local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
             
             if raycastResult then
-                -- Update flag position in real-time as mouse moves
+                -- Update pin position in real-time as mouse moves
                 local newPosition = raycastResult.Position
                 
-                -- Update pole position (main anchor)
-                if FlagSystem.FlagPole then
-                    FlagSystem.FlagPole.Position = newPosition
+                -- Update pin hologram position
+                if FlagSystem.PinHologram then
+                    FlagSystem.PinHologram.Position = newPosition + Vector3.new(0, 1.5, 0)
                 end
                 
-                -- Update flag position relative to pole
-                if FlagSystem.FlagMainPart then
-                    FlagSystem.FlagMainPart.Position = newPosition + Vector3.new(1.5, 2, 0)
-                end
-                
-                -- Update wing positions relative to flag
-                if FlagSystem.LeftWing then
-                    FlagSystem.LeftWing.Position = newPosition + Vector3.new(-0.3, 2.5, 0.5)
-                end
-                
-                if FlagSystem.RightWing then
-                    FlagSystem.RightWing.Position = newPosition + Vector3.new(-0.3, 2.5, -0.5)
-                end
-                
-                -- Update entire flag container position
+                -- Update entire pin container position
                 if flag and flag:IsA("Model") then
                     flag:SetPrimaryPartCFrame(CFrame.new(newPosition))
                 end
@@ -724,29 +543,15 @@ local function enableFlagDragging()
             local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
             
             if raycastResult then
-                -- Final flag position
+                -- Final pin position
                 local finalPosition = raycastResult.Position
                 
-                -- Update pole position (main anchor)
-                if FlagSystem.FlagPole then
-                    FlagSystem.FlagPole.Position = finalPosition
+                -- Update pin hologram position
+                if FlagSystem.PinHologram then
+                    FlagSystem.PinHologram.Position = finalPosition + Vector3.new(0, 1.5, 0)
                 end
                 
-                -- Update flag position relative to pole
-                if FlagSystem.FlagMainPart then
-                    FlagSystem.FlagMainPart.Position = finalPosition + Vector3.new(1.5, 2, 0)
-                end
-                
-                -- Update wing positions relative to flag
-                if FlagSystem.LeftWing then
-                    FlagSystem.LeftWing.Position = finalPosition + Vector3.new(-0.3, 2.5, 0.5)
-                end
-                
-                if FlagSystem.RightWing then
-                    FlagSystem.RightWing.Position = finalPosition + Vector3.new(-0.3, 2.5, -0.5)
-                end
-                
-                -- Update entire flag container position
+                -- Update entire pin container position
                 if flag and flag:IsA("Model") then
                     flag:SetPrimaryPartCFrame(CFrame.new(finalPosition))
                 end
@@ -770,8 +575,8 @@ local function enableFlagDragging()
             -- Cancel flag placement
             removeFishingFlag()
             WindUI:Notify({ 
-                Title = "❌ Anime Flag Placement Cancelled", 
-                Content = "Anime flag placement was cancelled", 
+                Title = "❌ Pin Placement Cancelled", 
+                Content = "Pin placement was cancelled", 
                 Duration = 2 
             })
         end
@@ -788,8 +593,8 @@ local function startFlagPlacement()
     enableFlagDragging()
     
     WindUI:Notify({ 
-        Title = "⚡ Anime Flag Placement Active", 
-        Content = "Move mouse to preview the anime flag with wings, then CLICK to place! Press ESC to cancel.", 
+        Title = "📍 Pin Placement Active", 
+        Content = "Move mouse to preview the hologram pin position, then CLICK to place! Press ESC to cancel.", 
         Duration = 5 
     })
 end
@@ -817,15 +622,15 @@ local function stopFlagPlacement()
     updateCurrentPositionDisplay()
     
     if MouseTracker.PositionLabel then
-        MouseTracker.PositionLabel:SetDesc("Click 'Place Anime Fishing Flag' to set position with winged animated flag")
+        MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' to set position with simple visual marker")
     end
     
     -- Debug print
     print("🎣 Flag position confirmed:", FishingConfig.FishingPosition)
     
     WindUI:Notify({ 
-        Title = "⚡ Anime Position Confirmed", 
-        Content = string.format("Anime fishing flag with wings placed at: %.1f, %.1f, %.1f", 
+        Title = "📍 Pin Position Confirmed", 
+        Content = string.format("Hologram pin placed at: %.1f, %.1f, %.1f", 
             FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
         Duration = 3 
     })
@@ -1100,11 +905,11 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Mouse position tracking system - now shows anime flag system info
+    -- Mouse position tracking system - now shows pin hologram system info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
-        Title = "⚡ Anime Flag Position System",
-        Desc = "Click 'Place Anime Fishing Flag' to set position with winged animated flag",
-        Image = "flag",
+        Title = "📍 Pin Hologram Position System",
+        Desc = "Click 'Place Hologram Pin' to set position with simple visual marker",
+        Image = "map-pin",
         ImageSize = 18,
     })
     
@@ -1122,10 +927,10 @@ function AutoFishSystem.Init(dependencies)
     -- Update the display immediately after creation
     updateCurrentPositionDisplay()
     
-    -- Place anime fishing flag button
+    -- Place pin hologram button
     Tabs.FishTab:Button({
-        Title = "⚡ Place Anime Fishing Flag",
-        Desc = "Click to activate anime flag placement with wings and glowing effects, then move mouse and click anywhere to set fishing position",
+        Title = "📍 Place Hologram Pin",
+        Desc = "Click to activate pin placement, then move mouse and click anywhere to set fishing position",
         Callback = function()
             if not FlagSystem.Active then
                 startFlagPlacement()
@@ -1135,15 +940,15 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Remove anime flag button
+    -- Remove pin hologram button
     Tabs.FishTab:Button({
-        Title = "🗑️ Remove Anime Flag",
-        Desc = "Remove the anime flag with wings and glowing effects from the world",
+        Title = "🗑️ Remove Pin",
+        Desc = "Remove the hologram pin from the world",
         Callback = function()
             removeFishingFlag()
             WindUI:Notify({ 
-                Title = "🗑️ Anime Flag Removed", 
-                Content = "Anime fishing flag with wings has been removed from the world", 
+                Title = "🗑️ Pin Removed", 
+                Content = "Hologram pin has been removed from the world", 
                 Duration = 2 
             })
         end
