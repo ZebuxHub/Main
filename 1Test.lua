@@ -2331,6 +2331,16 @@ local function updateAvailableEggs()
     local eggs = listAvailableEggUIDs()
     availableEggs = {}
     
+    print("🥚 Total eggs found:", #eggs)
+    if #eggs > 0 then
+        local eggTypesList = {}
+        for i, egg in ipairs(eggs) do
+            table.insert(eggTypesList, egg.type)
+            if i >= 5 then break end -- Show first 5
+        end
+        print("🥚 Raw egg types:", table.concat(eggTypesList, ", "))
+    end
+    
     -- Create sets for faster lookup
     local selectedTypeSet = {}
         for _, type in ipairs(selectedEggTypes) do
@@ -2341,6 +2351,11 @@ local function updateAvailableEggs()
     for _, mutation in ipairs(selectedMutations) do
         selectedMutationSet[mutation] = true
         end
+        
+    print("🥚 Filters - Egg types:", #selectedEggTypes, "Mutations:", #selectedMutations)
+    if #selectedEggTypes > 0 then
+        print("🥚 Selected egg types:", table.concat(selectedEggTypes, ", "))
+    end
         
     -- First pass: collect all eggs that match filters
     local filteredEggs = {}
@@ -2421,6 +2436,18 @@ local function updateAvailableEggs()
     end
     
     availableEggs = prioritizedEggs
+    
+    -- Debug information
+    print("🥚 Egg Update - Regular tiles:", availableRegularTiles, "Water tiles:", availableWaterTiles)
+    print("🥚 Found eggs - Ocean:", #oceanEggs, "Regular:", #regularEggs, "Total prioritized:", #prioritizedEggs)
+    if #prioritizedEggs > 0 then
+        local eggTypes = {}
+        for i, egg in ipairs(prioritizedEggs) do
+            table.insert(eggTypes, egg.type)
+            if i >= 3 then break end -- Show first 3
+        end
+        print("🥚 First 3 eggs:", table.concat(eggTypes, ", "))
+    end
     
     -- Status update removed
 end
@@ -2759,36 +2786,56 @@ local function attemptPlacement()
         return 
     end
     
-    -- Get the first available egg to determine farm type needed
-    local firstEgg = availableEggs[1]
-    if not firstEgg then return end
+    -- Try to find a placeable egg (skip ocean eggs if no water farms available)
+    local eggToPlace = nil
+    local eggIndex = nil
     
-    -- Check if this is an ocean egg and if we have water farms available
-    if isOceanEgg(firstEgg.type) then
-        local islandName = getAssignedIslandName()
-        local islandNumber = getIslandNumberFromName(islandName)
-        local waterFarmParts = getWaterFarmParts(islandNumber)
+    for i, egg in ipairs(availableEggs) do
+        local canPlace = true
         
-        -- Count available water farm tiles
-        local availableWaterTiles = 0
-        for _, part in ipairs(waterFarmParts) do
-            if not isFarmTileOccupied(part, 6) then
-                availableWaterTiles = availableWaterTiles + 1
+        -- Check if this is an ocean egg and if we have water farms available
+        if isOceanEgg(egg.type) then
+            local islandName = getAssignedIslandName()
+            local islandNumber = getIslandNumberFromName(islandName)
+            local waterFarmParts = getWaterFarmParts(islandNumber)
+            
+            -- Count available water farm tiles
+            local availableWaterTiles = 0
+            for _, part in ipairs(waterFarmParts) do
+                if not isFarmTileOccupied(part, 6) then
+                    availableWaterTiles = availableWaterTiles + 1
+                end
+            end
+            
+            -- If no water farm tiles available, skip this ocean egg
+            if availableWaterTiles == 0 then
+                canPlace = false
             end
         end
         
-        -- If no water farm tiles available, skip this ocean egg
-        if availableWaterTiles == 0 then
-            -- Remove this ocean egg from available eggs and try next egg
-            table.remove(availableEggs, 1)
-            
-            -- Try again with remaining eggs
-            if #availableEggs > 0 then
-                attemptPlacement()
-            end
-            return
+        if canPlace then
+            eggToPlace = egg
+            eggIndex = i
+            break
         end
     end
+    
+    -- If no eggs can be placed (all are ocean eggs with no water farms), give up
+    if not eggToPlace then
+        warn("Auto Place stopped: No placeable eggs (ocean eggs need water farms)")
+        return
+    end
+    
+    -- Move the selected egg to the front of the list for processing
+    if eggIndex > 1 then
+        table.remove(availableEggs, eggIndex)
+        table.insert(availableEggs, 1, eggToPlace)
+    end
+    
+    -- Get the egg to place (now guaranteed to be placeable)
+    local firstEgg = availableEggs[1]
+    
+    print("🥚 Attempting to place egg:", firstEgg.type, "(Ocean:", isOceanEgg(firstEgg.type), ")")
     
     -- Update available tiles based on the egg type
     updateAvailableTiles(firstEgg.type)
