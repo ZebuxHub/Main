@@ -540,6 +540,57 @@ local function getIslandNumberFromName(islandName)
     return nil
 end
 
+-- Ocean egg categories for water farm placement
+local OCEAN_EGGS = {
+    ["SeaweedEgg"] = true,
+    ["ClownfishEgg"] = true,
+    ["LionfishEgg"] = true,
+    ["SharkEgg"] = true,
+    ["AnglerfishEgg"] = true,
+    ["OctopusEgg"] = true,
+    ["SeaDragonEgg"] = true
+}
+
+-- Check if an egg type requires water farm placement
+local function isOceanEgg(eggType)
+    return OCEAN_EGGS[eggType] == true
+end
+
+local function getWaterFarmParts(islandNumber)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then 
+        -- Try alternative naming patterns
+        for _, child in ipairs(art:GetChildren()) do
+            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
+                island = child
+                break
+            end
+        end
+        if not island then return {} end
+    end
+    
+    local waterFarmParts = {}
+    local function scanForWaterFarmParts(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("BasePart") and child.Name == "WaterFarm_split_0_0_0" then
+                -- Additional validation: check if part is valid for placement
+                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                    table.insert(waterFarmParts, child)
+                end
+            end
+            scanForWaterFarmParts(child)
+        end
+    end
+    
+    scanForWaterFarmParts(island)
+    return waterFarmParts
+end
+
 local function getFarmParts(islandNumber)
     if not islandNumber then return {} end
     local art = workspace:FindFirstChild("Art")
@@ -1529,12 +1580,40 @@ task.spawn(function()
     end)
     if success and result then
         AutoFishSystem = result
+        
+        -- Wait for zebuxConfig to be available
+        local maxWaitTime = 30 -- Wait up to 30 seconds
+        local waitTime = 0
+        while not zebuxConfig and waitTime < maxWaitTime do
+            task.wait(0.5)
+            waitTime = waitTime + 0.5
+        end
+        
         if AutoFishSystem and AutoFishSystem.Init then
-            AutoFishSystem.Init({
-                WindUI = WindUI,
-                Tabs = Tabs,
-                Config = zebuxConfig
-            })
+            local initSuccess, initErr = pcall(function()
+                AutoFishSystem.Init({
+                    WindUI = WindUI,
+                    Tabs = Tabs,
+                    Config = zebuxConfig or nil -- Use nil if zebuxConfig is still not available
+                })
+            end)
+            
+            if initSuccess then
+                print("🎣 Auto Fish System loaded successfully!")
+            else
+                warn("Failed to initialize Auto Fish System: " .. tostring(initErr))
+                -- Try initializing without config as fallback
+                local fallbackSuccess = pcall(function()
+                    AutoFishSystem.Init({
+                        WindUI = WindUI,
+                        Tabs = Tabs,
+                        Config = nil
+                    })
+                end)
+                if fallbackSuccess then
+                    print("🎣 Auto Fish System loaded with fallback (no config)!")
+                end
+            end
         end
     else
         warn("Failed to load Auto Fish System: " .. tostring(result))
@@ -1901,16 +1980,28 @@ local function getEggOptions()
     return eggOptions
 end
 
--- Egg selection dropdown
+-- Egg selection dropdown (updated with ocean eggs)
 local placeEggDropdown = Tabs.PlaceTab:Dropdown({
     Title = "🥚 Pick Pet Types",
-    Desc = "Choose which pets to place",
-    Values = {"BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg"},
+    Desc = "Choose which pets to place (🌊 = ocean eggs, need water farm)",
+    Values = {
+        "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
+        "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
+        "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg",
+        "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
+        "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
+    },
     Value = {},
     Multi = true,
     AllowNone = true,
     Callback = function(selection)
-        selectedEggTypes = selection
+        -- Clean ocean emoji prefixes from selection
+        local cleanedSelection = {}
+        for _, item in ipairs(selection) do
+            local cleanName = item:gsub("🌊 ", "") -- Remove ocean emoji prefix
+            table.insert(cleanedSelection, cleanName)
+        end
+        selectedEggTypes = cleanedSelection
     end
 })
 
@@ -2015,11 +2106,20 @@ local function updateAvailableEggs()
     -- Status update removed
 end
 
--- Comprehensive tile scanning system
-local function scanAllTilesAndModels()
+-- Enhanced tile scanning system for both regular and water farms
+local function scanAllTilesAndModels(eggType)
     local islandName = getAssignedIslandName()
     local islandNumber = getIslandNumberFromName(islandName)
-    local farmParts = getFarmParts(islandNumber)
+    
+    -- Get appropriate farm parts based on egg type
+    local farmParts
+    if eggType and isOceanEgg(eggType) then
+        farmParts = getWaterFarmParts(islandNumber)
+        print("🌊 Scanning water farm tiles for ocean egg: " .. eggType .. " (found " .. #farmParts .. " water tiles)")
+    else
+        farmParts = getFarmParts(islandNumber)
+        print("🏞️ Scanning regular farm tiles for land egg: " .. (eggType or "unknown") .. " (found " .. #farmParts .. " regular tiles)")
+    end
     
     local tileMap = {}
     local totalTiles = #farmParts
@@ -2116,8 +2216,8 @@ local function scanAllTilesAndModels()
     return tileMap, totalTiles, occupiedTiles, lockedTiles
 end
 
-local function updateAvailableTiles()
-    local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels()
+local function updateAvailableTiles(eggType)
+    local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels(eggType)
     
     availableTiles = {}
     
@@ -2341,8 +2441,16 @@ local function attemptPlacement()
         return 
     end
     
+    -- Get the first available egg to determine farm type needed
+    local firstEgg = availableEggs[1]
+    if not firstEgg then return end
+    
+    -- Update available tiles based on the egg type
+    updateAvailableTiles(firstEgg.type)
+    
     if #availableTiles == 0 then 
-        warn("Auto Place stopped: No available tiles")
+        local farmType = isOceanEgg(firstEgg.type) and "water farm" or "regular farm"
+        warn("Auto Place stopped: No available " .. farmType .. " tiles for " .. firstEgg.type)
         return 
     end
     
@@ -2458,7 +2566,10 @@ local function setupPlacementMonitoring()
         local function onBlockChanged()
             if not autoPlaceEnabled then return end
             task.wait(0.2)
-            updateAvailableTiles()
+            -- Update tiles based on first available egg type
+            local firstEgg = availableEggs[1]
+            local eggType = firstEgg and firstEgg.type or nil
+            updateAvailableTiles(eggType)
             attemptPlacement()
         end
         
@@ -2472,7 +2583,10 @@ local function setupPlacementMonitoring()
         local function onPetChanged()
             if not autoPlaceEnabled then return end
             task.wait(0.2)
-            updateAvailableTiles()
+            -- Update tiles based on first available egg type
+            local firstEgg = availableEggs[1]
+            local eggType = firstEgg and firstEgg.type or nil
+            updateAvailableTiles(eggType)
             attemptPlacement()
         end
         
@@ -2484,7 +2598,10 @@ local function setupPlacementMonitoring()
     local updateThread = task.spawn(function()
         while autoPlaceEnabled do
             updateAvailableEggs()
-            updateAvailableTiles()
+            -- Update tiles based on first available egg type
+            local firstEgg = availableEggs[1]
+            local eggType = firstEgg and firstEgg.type or nil
+            updateAvailableTiles(eggType)
             attemptPlacement()
             task.wait(1.5) -- Update every 1.5 seconds for better responsiveness
         end
