@@ -613,9 +613,9 @@ local function buyMutatedEgg()
                     end
                 end
             end
-        end
     end
-    
+end
+
     return false, "No mutated eggs found on conveyor"
 end
 
@@ -806,9 +806,9 @@ local function executeQuestTasks()
                             -- PRIORITY 3: No eggs available, auto placement system will handle buying
                             print("Auto Quest HatchEgg: No eggs available, auto placement will handle")
                             wait(0.5) -- Brief pause before checking other tasks
+                            end
                         end
-                    end
-                    
+                        
                 elseif task.CompleteType == "SendEgg" then
                     local eggInventory = getEggInventory()
                     if #eggInventory == 0 then
@@ -856,10 +856,10 @@ local function executeQuestTasks()
                                                             end
                                                         end
                                                         if foundEgg then break end
-                                                    end
-                                                end
-                                            end
-                                            
+                                end
+                            end
+                        end
+                        
                                             if not foundEgg then
                                                 print("Auto Quest SendEgg: No affordable eggs found on conveyor")
                                             end
@@ -1015,8 +1015,24 @@ local function runAutoClaimReady()
     end
 end
 
--- Helper function to check for empty farm tiles
-local function getEmptyFarmTiles()
+-- Ocean egg categories for water farm placement
+local OCEAN_EGGS = {
+    ["SeaweedEgg"] = true,
+    ["ClownfishEgg"] = true,
+    ["LionfishEgg"] = true,
+    ["SharkEgg"] = true,
+    ["AnglerfishEgg"] = true,
+    ["OctopusEgg"] = true,
+    ["SeaDragonEgg"] = true
+}
+
+-- Check if an egg type requires water farm placement
+local function isOceanEgg(eggType)
+    return OCEAN_EGGS[eggType] == true
+end
+
+-- Helper function to check for empty farm tiles (enhanced for ocean eggs)
+local function getEmptyFarmTiles(eggType)
     local emptyTiles = {}
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
@@ -1045,24 +1061,40 @@ local function getEmptyFarmTiles()
         return emptyTiles
     end
     
+    -- Determine which type of tiles to check based on egg type
+    local isOcean = eggType and isOceanEgg(eggType)
+    
     -- Check each tile for occupancy
     for _, tile in pairs(tilesFolder:GetChildren()) do
-        if tile:IsA("Model") and tile.Name == "Tile" then
-            local hasEgg = false
+        if tile:IsA("Model") then
+            local tileName = tile.Name
+            local isCorrectTileType = false
             
-            -- Check if tile has any eggs
-            for _, child in pairs(tile:GetChildren()) do
-                if child:IsA("Model") and child.Name ~= "Tile" then
-                    hasEgg = true
-                                    break
-                                end
-                            end
+            if isOcean then
+                -- For ocean eggs, look for WaterFarm tiles
+                isCorrectTileType = (tileName == "WaterFarm_split_0_0_0")
+            else
+                -- For regular eggs, look for regular Tile
+                isCorrectTileType = (tileName == "Tile")
+            end
             
-            if not hasEgg then
-                table.insert(emptyTiles, tile)
-                            end
-                        end
+            if isCorrectTileType then
+                local hasEgg = false
+                
+                -- Check if tile has any eggs
+                for _, child in pairs(tile:GetChildren()) do
+                    if child:IsA("Model") and child.Name ~= tileName then
+                        hasEgg = true
+                        break
                     end
+                end
+                
+                if not hasEgg then
+                    table.insert(emptyTiles, tile)
+                end
+            end
+        end
+    end
                     
     return emptyTiles
 end
@@ -1507,7 +1539,8 @@ local function runAutoPlacementSystem()
                 wait(2) -- Wait after hatching before continuing
             else
                 -- PRIORITY 2: Check for empty tiles to place new eggs
-                local emptyTiles = getEmptyFarmTiles()
+                local bestEgg = getBestEggForPlacement()
+                local emptyTiles = getEmptyFarmTiles(bestEgg and bestEgg.type or nil)
                 
                 if #emptyTiles > 0 then
                     -- We have empty tiles, check for eggs to place
@@ -1957,8 +1990,8 @@ function AutoQuestSystem.Init(dependencies)
             pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
         end
     end)
-    
-    return AutoQuestSystem
+
+return AutoQuestSystem
 end
 
 return AutoQuestSystem
