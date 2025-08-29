@@ -21,7 +21,7 @@ local Config = nil
 -- Configuration
 local FishingConfig = {
     SelectedBait = "FishingBait1",
-    FishingPosition = Vector3.new(0, 0, 0),
+    FishingPosition = Vector3.new(-470.3221740722656, 11, 351.36126708984375),
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
     AutoWaterDetection = false,
@@ -260,6 +260,14 @@ local MouseTracker = {
     PositionLabel = nil
 }
 
+-- Flag System for Position Setting
+local FlagSystem = {
+    FlagPart = nil,
+    DragConnection = nil,
+    Active = false,
+    UserInputConnection = nil
+}
+
 local function getMouseWorldPosition()
     local mouse = LocalPlayer:GetMouse()
     local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
@@ -279,76 +287,176 @@ local function getMouseWorldPosition()
 end
 
 local function startMouseTracking()
-    if MouseTracker.Connection then
-        MouseTracker.Connection:Disconnect()
-    end
-    
-    FishingConfig.MouseTracking = true
-    FishingConfig.PositionSetting = true
-    
-    -- Create position display
-    local mouse = LocalPlayer:GetMouse()
-    
-    MouseTracker.Connection = mouse.Move:Connect(function()
-        if FishingConfig.PositionSetting and FishingConfig.MouseTracking then
-            local worldPos = getMouseWorldPosition()
-            if MouseTracker.PositionLabel then
-                MouseTracker.PositionLabel:SetDesc(string.format("Mouse Position: %.1f, %.1f, %.1f\nClick to set fishing position!", 
-                    worldPos.X, worldPos.Y, worldPos.Z))
-            end
-        end
-    end)
-    
-    MouseTracker.ClickConnection = mouse.Button1Down:Connect(function()
-        if FishingConfig.PositionSetting and FishingConfig.MouseTracking then
-            local worldPos = getMouseWorldPosition()
-            
-            -- Save the position to FishingConfig
-            FishingConfig.FishingPosition = Vector3.new(worldPos.X, worldPos.Y, worldPos.Z)
-            
-            -- Update current position display
-            updateCurrentPositionDisplay()
-            
-            -- Debug print to confirm position is saved
-            print("🎣 Position saved:", FishingConfig.FishingPosition)
-            
-            WindUI:Notify({ 
-                Title = "📍 Position Set", 
-                Content = string.format("Fishing position set to: %.1f, %.1f, %.1f", 
-                    FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
-                Duration = 3 
-            })
-            
-            -- Stop tracking
-            stopMouseTracking()
-        end
-    end)
-    
+    -- Function kept for compatibility but flag system is preferred
     WindUI:Notify({ 
-        Title = "🖱️ Mouse Tracking", 
-        Content = "Move mouse and click to set fishing position!", 
+        Title = "🚩 Use Flag System", 
+        Content = "Use 'Place Fishing Flag' for better visual positioning!", 
         Duration = 3 
     })
 end
 
 local function stopMouseTracking()
-    FishingConfig.MouseTracking = false
-    FishingConfig.PositionSetting = false
-    
-    if MouseTracker.Connection then
-        MouseTracker.Connection:Disconnect()
-        MouseTracker.Connection = nil
+    -- Function kept for compatibility
+end
+
+local function createFishingFlag()
+    -- Remove existing flag if any
+    if FlagSystem.FlagPart then
+        FlagSystem.FlagPart:Destroy()
+        FlagSystem.FlagPart = nil
     end
     
-    if MouseTracker.ClickConnection then
-        MouseTracker.ClickConnection:Disconnect()
-        MouseTracker.ClickConnection = nil
+    -- Create flag part
+    local flag = Instance.new("Part")
+    flag.Name = "FishingFlag"
+    flag.Size = Vector3.new(1, 3, 0.1)
+    flag.Material = Enum.Material.ForceField
+    flag.BrickColor = BrickColor.new("Bright blue")
+    flag.CanCollide = false
+    flag.Anchored = true
+    flag.TopSurface = Enum.SurfaceType.Smooth
+    flag.BottomSurface = Enum.SurfaceType.Smooth
+    flag.Position = FishingConfig.FishingPosition
+    flag.Parent = workspace
+    
+    -- Add flag pole
+    local pole = Instance.new("Part")
+    pole.Name = "FlagPole"
+    pole.Size = Vector3.new(0.2, 4, 0.2)
+    pole.Material = Enum.Material.Wood
+    pole.BrickColor = BrickColor.new("Brown")
+    pole.CanCollide = false
+    pole.Anchored = true
+    pole.Position = flag.Position - Vector3.new(0, 0.5, 0)
+    pole.Parent = flag
+    
+    -- Add text label
+    local billboardGui = Instance.new("BillboardGui")
+    billboardGui.Size = UDim2.new(0, 100, 0, 50)
+    billboardGui.StudsOffset = Vector3.new(0, 2, 0)
+    billboardGui.Parent = flag
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = "🎣 Fishing Position"
+    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.TextScaled = true
+    textLabel.Font = Enum.Font.SourceSansBold
+    textLabel.Parent = billboardGui
+    
+    -- Add selection box for visual feedback
+    local selectionBox = Instance.new("SelectionBox")
+    selectionBox.Color3 = Color3.new(0, 1, 1)
+    selectionBox.LineThickness = 0.2
+    selectionBox.Transparency = 0.5
+    selectionBox.Adornee = flag
+    selectionBox.Parent = flag
+    
+    FlagSystem.FlagPart = flag
+    return flag
+end
+
+local function enableFlagDragging()
+    if not FlagSystem.FlagPart then return end
+    
+    local mouse = LocalPlayer:GetMouse()
+    local flag = FlagSystem.FlagPart
+    
+    -- Mouse drag connection
+    FlagSystem.DragConnection = mouse.Move:Connect(function()
+        if FlagSystem.Active then
+            local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
+            
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, flag}
+            
+            local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+            
+            if raycastResult then
+                flag.Position = raycastResult.Position + Vector3.new(0, 1.5, 0)
+                flag.FlagPole.Position = flag.Position - Vector3.new(0, 0.5, 0)
+                
+                -- Update fishing position in real-time
+                FishingConfig.FishingPosition = raycastResult.Position
+                updateCurrentPositionDisplay()
+                
+                -- Update mouse tracker label if visible
+                if MouseTracker.PositionLabel then
+                    MouseTracker.PositionLabel:SetDesc(string.format("Flag Position: %.1f, %.1f, %.1f\nPress ENTER or SPACE to confirm!", 
+                        raycastResult.Position.X, raycastResult.Position.Y, raycastResult.Position.Z))
+                end
+            end
+        end
+    end)
+    
+    -- User input for stopping drag
+    FlagSystem.UserInputConnection = UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.Space then
+            stopFlagPlacement()
+        end
+    end)
+end
+
+local function startFlagPlacement()
+    FlagSystem.Active = true
+    
+    -- Create flag at current fishing position
+    local flag = createFishingFlag()
+    
+    -- Enable dragging
+    enableFlagDragging()
+    
+    WindUI:Notify({ 
+        Title = "🚩 Flag Placement", 
+        Content = "Move mouse to drag flag! Press ENTER or SPACE to confirm position.", 
+        Duration = 5 
+    })
+end
+
+local function stopFlagPlacement()
+    FlagSystem.Active = false
+    
+    -- Disconnect drag connections
+    if FlagSystem.DragConnection then
+        FlagSystem.DragConnection:Disconnect()
+        FlagSystem.DragConnection = nil
     end
+    
+    if FlagSystem.UserInputConnection then
+        FlagSystem.UserInputConnection:Disconnect()
+        FlagSystem.UserInputConnection = nil
+    end
+    
+    -- Update displays
+    updateCurrentPositionDisplay()
     
     if MouseTracker.PositionLabel then
-        MouseTracker.PositionLabel:SetDesc("Click 'Set Position by Click' to start tracking")
+        MouseTracker.PositionLabel:SetDesc("Click 'Place Fishing Flag' to set position with visual flag")
     end
+    
+    -- Debug print
+    print("🎣 Flag position confirmed:", FishingConfig.FishingPosition)
+    
+    WindUI:Notify({ 
+        Title = "🚩 Position Confirmed", 
+        Content = string.format("Fishing position set to: %.1f, %.1f, %.1f", 
+            FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
+        Duration = 3 
+    })
 end
+
+local function removeFishingFlag()
+    if FlagSystem.FlagPart then
+        FlagSystem.FlagPart:Destroy()
+        FlagSystem.FlagPart = nil
+    end
+    
+    -- Stop any active dragging
+    if FlagSystem.Active then
+        stopFlagPlacement()
+    end
 
 -- Fishing System
 local FishingSystem = {
@@ -607,11 +715,11 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Mouse position tracking system replaces manual position inputs
+    -- Mouse position tracking system - now shows flag system info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
-        Title = "📍 Position Tracking",
-        Desc = "Click 'Set Position by Click' to start tracking",
-        Image = "crosshair",
+        Title = "🚩 Flag Position System",
+        Desc = "Click 'Place Fishing Flag' to set position with visual flag",
+        Image = "flag",
         ImageSize = 18,
     })
     
@@ -629,49 +737,30 @@ function AutoFishSystem.Init(dependencies)
     -- Update the display immediately after creation
     updateCurrentPositionDisplay()
     
-    -- Set position by click button
+    -- Place fishing flag button
     Tabs.FishTab:Button({
-        Title = "📍 Set Position by Click",
-        Desc = "Click to enable mouse tracking, then click anywhere in the world to set fishing position",
+        Title = "🚩 Place Fishing Flag",
+        Desc = "Create a visual flag that you can drag around to set fishing position",
         Callback = function()
-            if not FishingConfig.PositionSetting then
-                FishingConfig.PositionSetting = true
-                startMouseTracking()
+            if not FlagSystem.Active then
+                startFlagPlacement()
             else
-                stopMouseTracking()
+                stopFlagPlacement()
             end
         end
     })
     
-    -- Set current position button (kept for convenience)
+    -- Remove flag button
     Tabs.FishTab:Button({
-        Title = "📍 Set Current Position",
-        Desc = "Set fishing position to your current character location (same as clicking where you stand)",
+        Title = "🗑️ Remove Flag",
+        Desc = "Remove the fishing flag from the world",
         Callback = function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                FishingConfig.FishingPosition = LocalPlayer.Character.HumanoidRootPart.Position
-                
-                -- Update current position display
-                updateCurrentPositionDisplay()
-                
-                -- Debug print to confirm position is saved
-                print("🎣 Position saved:", FishingConfig.FishingPosition)
-                
-                WindUI:Notify({ 
-                    Title = "📍 Position Set", 
-                    Content = string.format("Position: %.2f, %.2f, %.2f", 
-                        FishingConfig.FishingPosition.X, 
-                        FishingConfig.FishingPosition.Y, 
-                        FishingConfig.FishingPosition.Z), 
-                    Duration = 3 
-                })
-            else
-                WindUI:Notify({ 
-                    Title = "❌ Error", 
-                    Content = "Character not found", 
-                    Duration = 3 
-                })
-            end
+            removeFishingFlag()
+            WindUI:Notify({ 
+                Title = "🗑️ Flag Removed", 
+                Content = "Fishing flag has been removed from the world", 
+                Duration = 2 
+            })
         end
     })
     
@@ -791,6 +880,7 @@ end
 function AutoFishSystem.Cleanup()
     FishingSystem.Stop()
     stopMouseTracking()
+    removeFishingFlag()
 end
 
 return AutoFishSystem
