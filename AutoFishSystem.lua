@@ -33,6 +33,9 @@ local FishingConfig = {
     TabMemory = {},
     LastClickPosition = nil,
     LastTabPosition = nil,
+    -- Position placement history
+    PlacedPositions = {},
+    CurrentPositionIndex = 1,
     Stats = {
         FishCaught = 0,
         SessionStartTime = os.time(),
@@ -399,6 +402,73 @@ local function getMemoryStats()
     }
 end
 
+-- Position History Management Functions
+local function savePositionToHistory(position, method)
+    local timestamp = os.time()
+    local positionData = {
+        Position = position,
+        Timestamp = timestamp,
+        Method = method or "Pin Placement",
+        Index = #FishingConfig.PlacedPositions + 1
+    }
+    
+    table.insert(FishingConfig.PlacedPositions, positionData)
+    
+    -- Keep only last 20 positions to prevent memory overflow
+    if #FishingConfig.PlacedPositions > 20 then
+        table.remove(FishingConfig.PlacedPositions, 1)
+        -- Update indices
+        for i, pos in ipairs(FishingConfig.PlacedPositions) do
+            pos.Index = i
+        end
+    end
+    
+    FishingConfig.CurrentPositionIndex = #FishingConfig.PlacedPositions
+    print("📍 Position saved to history:", position, "Method:", method)
+end
+
+local function getPositionHistoryText()
+    if #FishingConfig.PlacedPositions == 0 then
+        return "No positions placed yet. Use 'Place Hologram Pin' to mark fishing spots!"
+    end
+    
+    local current = FishingConfig.PlacedPositions[FishingConfig.CurrentPositionIndex]
+    if not current then
+        FishingConfig.CurrentPositionIndex = #FishingConfig.PlacedPositions
+        current = FishingConfig.PlacedPositions[FishingConfig.CurrentPositionIndex]
+    end
+    
+    if current then
+        local timeAgo = os.time() - current.Timestamp
+        local timeText = timeAgo < 60 and string.format("%ds ago", timeAgo) or 
+                        timeAgo < 3600 and string.format("%dm ago", math.floor(timeAgo/60)) or 
+                        string.format("%dh ago", math.floor(timeAgo/3600))
+        
+        return string.format("📍 Position %d/%d: %.1f, %.1f, %.1f\n🕒 Placed %s via %s", 
+            FishingConfig.CurrentPositionIndex, #FishingConfig.PlacedPositions,
+            current.Position.X, current.Position.Y, current.Position.Z,
+            timeText, current.Method)
+    end
+    
+    return "Position history error"
+end
+
+local function usePositionFromHistory(index)
+    if index and FishingConfig.PlacedPositions[index] then
+        local position = FishingConfig.PlacedPositions[index].Position
+        FishingConfig.FishingPosition = position
+        FishingConfig.CurrentPositionIndex = index
+        updateCurrentPositionDisplay()
+        return true
+    end
+    return false
+end
+
+local function clearPositionHistory()
+    FishingConfig.PlacedPositions = {}
+    FishingConfig.CurrentPositionIndex = 1
+end
+
 local function startMouseTracking()
     -- Function kept for compatibility but flag system is preferred
     WindUI:Notify({ 
@@ -558,6 +628,10 @@ local function enableFlagDragging()
                 
                 -- Save fishing position
                 FishingConfig.FishingPosition = raycastResult.Position
+                
+                -- Save to position history
+                savePositionToHistory(raycastResult.Position, "Pin Placement")
+                
                 updateCurrentPositionDisplay()
                 
                 -- Stop flag placement
@@ -1003,6 +1077,7 @@ function AutoFishSystem.Init(dependencies)
         Callback = function()
             if FishingConfig.LastClickPosition then
                 FishingConfig.FishingPosition = FishingConfig.LastClickPosition
+                savePositionToHistory(FishingConfig.LastClickPosition, "Last Click")
                 updateCurrentPositionDisplay()
                 WindUI:Notify({ 
                     Title = "🔄 Position Updated", 
@@ -1025,6 +1100,7 @@ function AutoFishSystem.Init(dependencies)
         Callback = function()
             if FishingConfig.LastTabPosition then
                 FishingConfig.FishingPosition = FishingConfig.LastTabPosition
+                savePositionToHistory(FishingConfig.LastTabPosition, "Last Tab")
                 updateCurrentPositionDisplay()
                 WindUI:Notify({ 
                     Title = "⌨️ Position Updated", 
@@ -1053,6 +1129,84 @@ function AutoFishSystem.Init(dependencies)
             WindUI:Notify({ 
                 Title = "🗑️ Memory Cleared", 
                 Content = "All click and tab memories have been cleared", 
+                Duration = 2 
+            })
+        end
+    })
+    
+    Tabs.FishTab:Section({ Title = "📍 Position History", Icon = "map-pin" })
+    
+    -- Position history display
+    local positionHistoryLabel = Tabs.FishTab:Paragraph({
+        Title = "📚 Placed Positions",
+        Desc = getPositionHistoryText(),
+        Image = "map-pin",
+        ImageSize = 18,
+    })
+    
+    -- Position navigation controls
+    Tabs.FishTab:Button({
+        Title = "⬅️ Previous Position",
+        Desc = "Go to previous placed position",
+        Callback = function()
+            if #FishingConfig.PlacedPositions > 0 then
+                local newIndex = FishingConfig.CurrentPositionIndex - 1
+                if newIndex < 1 then
+                    newIndex = #FishingConfig.PlacedPositions
+                end
+                
+                if usePositionFromHistory(newIndex) then
+                    WindUI:Notify({ 
+                        Title = "⬅️ Previous Position", 
+                        Content = string.format("Using position %d/%d", newIndex, #FishingConfig.PlacedPositions), 
+                        Duration = 2 
+                    })
+                end
+            else
+                WindUI:Notify({ 
+                    Title = "⚠️ No Positions", 
+                    Content = "No positions have been placed yet", 
+                    Duration = 2 
+                })
+            end
+        end
+    })
+    
+    Tabs.FishTab:Button({
+        Title = "➡️ Next Position",
+        Desc = "Go to next placed position",
+        Callback = function()
+            if #FishingConfig.PlacedPositions > 0 then
+                local newIndex = FishingConfig.CurrentPositionIndex + 1
+                if newIndex > #FishingConfig.PlacedPositions then
+                    newIndex = 1
+                end
+                
+                if usePositionFromHistory(newIndex) then
+                    WindUI:Notify({ 
+                        Title = "➡️ Next Position", 
+                        Content = string.format("Using position %d/%d", newIndex, #FishingConfig.PlacedPositions), 
+                        Duration = 2 
+                    })
+                end
+            else
+                WindUI:Notify({ 
+                    Title = "⚠️ No Positions", 
+                    Content = "No positions have been placed yet", 
+                    Duration = 2 
+                })
+            end
+        end
+    })
+    
+    Tabs.FishTab:Button({
+        Title = "🗑️ Clear Position History",
+        Desc = "Clear all saved position history",
+        Callback = function()
+            clearPositionHistory()
+            WindUI:Notify({ 
+                Title = "🗑️ History Cleared", 
+                Content = "All position history has been cleared", 
                 Duration = 2 
             })
         end
@@ -1190,6 +1344,11 @@ function AutoFishSystem.Init(dependencies)
                 lastInteractionLabel:SetDesc(desc)
             end
             
+            -- Update position history display
+            if positionHistoryLabel then
+                positionHistoryLabel:SetDesc(getPositionHistoryText())
+            end
+            
             task.wait(2)
         end
     end)
@@ -1209,6 +1368,9 @@ function AutoFishSystem.Cleanup()
     FishingConfig.TabMemory = {}
     FishingConfig.LastClickPosition = nil
     FishingConfig.LastTabPosition = nil
+    
+    -- Clear position history
+    clearPositionHistory()
     
     print("🧿 Auto Fish System cleaned up successfully!")
 end
