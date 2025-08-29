@@ -264,6 +264,7 @@ local MouseTracker = {
 local FlagSystem = {
     FlagPart = nil,
     DragConnection = nil,
+    ClickConnection = nil,
     Active = false,
     UserInputConnection = nil
 }
@@ -363,7 +364,7 @@ local function enableFlagDragging()
     local mouse = LocalPlayer:GetMouse()
     local flag = FlagSystem.FlagPart
     
-    -- Mouse drag connection
+    -- Mouse move connection for real-time preview
     FlagSystem.DragConnection = mouse.Move:Connect(function()
         if FlagSystem.Active then
             local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
@@ -375,26 +376,59 @@ local function enableFlagDragging()
             local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
             
             if raycastResult then
+                -- Update flag position in real-time as mouse moves
                 flag.Position = raycastResult.Position + Vector3.new(0, 1.5, 0)
                 flag.FlagPole.Position = flag.Position - Vector3.new(0, 0.5, 0)
                 
-                -- Update fishing position in real-time
-                FishingConfig.FishingPosition = raycastResult.Position
-                updateCurrentPositionDisplay()
-                
-                -- Update mouse tracker label if visible
+                -- Update display but don't save position yet
                 if MouseTracker.PositionLabel then
-                    MouseTracker.PositionLabel:SetDesc(string.format("Flag Position: %.1f, %.1f, %.1f\nPress ENTER or SPACE to confirm!", 
+                    MouseTracker.PositionLabel:SetDesc(string.format("Flag Position: %.1f, %.1f, %.1f\nClick anywhere to place flag!", 
                         raycastResult.Position.X, raycastResult.Position.Y, raycastResult.Position.Z))
                 end
             end
         end
     end)
     
-    -- User input for stopping drag
+    -- Mouse click connection to confirm position
+    local clickConnection
+    clickConnection = mouse.Button1Down:Connect(function()
+        if FlagSystem.Active then
+            local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
+            
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, flag}
+            
+            local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+            
+            if raycastResult then
+                -- Final flag position
+                flag.Position = raycastResult.Position + Vector3.new(0, 1.5, 0)
+                flag.FlagPole.Position = flag.Position - Vector3.new(0, 0.5, 0)
+                
+                -- Save fishing position
+                FishingConfig.FishingPosition = raycastResult.Position
+                updateCurrentPositionDisplay()
+                
+                -- Stop flag placement
+                stopFlagPlacement()
+            end
+        end
+    end)
+    
+    -- Store click connection for cleanup
+    FlagSystem.ClickConnection = clickConnection
+    
+    -- User input for canceling (ESC key)
     FlagSystem.UserInputConnection = UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.Space then
-            stopFlagPlacement()
+        if input.KeyCode == Enum.KeyCode.Escape then
+            -- Cancel flag placement
+            removeFishingFlag()
+            WindUI:Notify({ 
+                Title = "❌ Flag Placement Cancelled", 
+                Content = "Flag placement was cancelled", 
+                Duration = 2 
+            })
         end
     end)
 end
@@ -409,8 +443,8 @@ local function startFlagPlacement()
     enableFlagDragging()
     
     WindUI:Notify({ 
-        Title = "🚩 Flag Placement", 
-        Content = "Move mouse to drag flag! Press ENTER or SPACE to confirm position.", 
+        Title = "🚩 Flag Placement Active", 
+        Content = "Move mouse to preview position, then CLICK to place flag! Press ESC to cancel.", 
         Duration = 5 
     })
 end
@@ -418,10 +452,15 @@ end
 local function stopFlagPlacement()
     FlagSystem.Active = false
     
-    -- Disconnect drag connections
+    -- Disconnect all connections
     if FlagSystem.DragConnection then
         FlagSystem.DragConnection:Disconnect()
         FlagSystem.DragConnection = nil
+    end
+    
+    if FlagSystem.ClickConnection then
+        FlagSystem.ClickConnection:Disconnect()
+        FlagSystem.ClickConnection = nil
     end
     
     if FlagSystem.UserInputConnection then
@@ -741,7 +780,7 @@ function AutoFishSystem.Init(dependencies)
     -- Place fishing flag button
     Tabs.FishTab:Button({
         Title = "🚩 Place Fishing Flag",
-        Desc = "Create a visual flag that you can drag around to set fishing position",
+        Desc = "Click to activate flag placement, then move mouse and click anywhere to set fishing position",
         Callback = function()
             if not FlagSystem.Active then
                 startFlagPlacement()
