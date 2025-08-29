@@ -2420,12 +2420,14 @@ local function updateAvailableEggs()
         end
     end
     
-    -- Add eggs based on available space
+    -- Add eggs based on available space - FIXED: Only add eggs if space is available
     if availableWaterTiles > 0 then
         -- Water farms available, add ocean eggs first
         for _, egg in ipairs(oceanEggs) do
             table.insert(prioritizedEggs, egg)
         end
+    else
+        print("🥚 Skipping ocean eggs - no water farm tiles available")
     end
     
     if availableRegularTiles > 0 then
@@ -2433,6 +2435,14 @@ local function updateAvailableEggs()
         for _, egg in ipairs(regularEggs) do
             table.insert(prioritizedEggs, egg)
         end
+    else
+        print("🥚 Skipping regular eggs - no regular farm tiles available")
+    end
+    
+    -- If no prioritized eggs but we have filtered eggs, add all filtered eggs as fallback
+    if #prioritizedEggs == 0 and #filteredEggs > 0 then
+        print("🥚 No space detected, using all filtered eggs as fallback")
+        prioritizedEggs = filteredEggs
     end
     
     availableEggs = prioritizedEggs
@@ -2790,8 +2800,11 @@ local function attemptPlacement()
     local eggToPlace = nil
     local eggIndex = nil
     
+    print("🥚 Checking", #availableEggs, "eggs for placement...")
+    
     for i, egg in ipairs(availableEggs) do
         local canPlace = true
+        print("🥚 Checking egg", i, ":", egg.type, "(Ocean:", isOceanEgg(egg.type), ")")
         
         -- Check if this is an ocean egg and if we have water farms available
         if isOceanEgg(egg.type) then
@@ -2807,15 +2820,21 @@ local function attemptPlacement()
                 end
             end
             
+            print("🥚 Ocean egg", egg.type, "- Water tiles available:", availableWaterTiles)
+            
             -- If no water farm tiles available, skip this ocean egg
             if availableWaterTiles == 0 then
                 canPlace = false
+                print("🥚 Skipping ocean egg", egg.type, "- no water farms")
             end
+        else
+            print("🥚 Normal egg", egg.type, "- should be placeable")
         end
         
         if canPlace then
             eggToPlace = egg
             eggIndex = i
+            print("🥚 Selected egg for placement:", egg.type)
             break
         end
     end
