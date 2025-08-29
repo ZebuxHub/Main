@@ -21,7 +21,7 @@ local Config = nil
 -- Configuration
 local FishingConfig = {
     SelectedBait = "FishingBait1",
-    FishingPosition = Vector3.new(-470.3221740722656, 11, 351.36126708984375),
+    FishingPosition = Vector3.new(0, 0, 0),
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
     AutoWaterDetection = false,
@@ -307,12 +307,7 @@ local function startMouseTracking()
             FishingConfig.FishingPosition = Vector3.new(worldPos.X, worldPos.Y, worldPos.Z)
             
             -- Update current position display
-            if currentPosLabel then
-                currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
-                    FishingConfig.FishingPosition.X, 
-                    FishingConfig.FishingPosition.Y, 
-                    FishingConfig.FishingPosition.Z))
-            end
+            updateCurrentPositionDisplay()
             
             -- Debug print to confirm position is saved
             print("🎣 Position saved:", FishingConfig.FishingPosition)
@@ -539,6 +534,16 @@ local autoFishToggle = nil
 local statsLabel = nil
 local currentPosLabel = nil
 
+-- Function to update the current position display
+local function updateCurrentPositionDisplay()
+    if currentPosLabel then
+        currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
+            FishingConfig.FishingPosition.X, 
+            FishingConfig.FishingPosition.Y, 
+            FishingConfig.FishingPosition.Z))
+    end
+end
+
 local function updateStats()
     if not statsLabel then return end
     
@@ -621,10 +626,13 @@ function AutoFishSystem.Init(dependencies)
         ImageSize = 18,
     })
     
+    -- Update the display immediately after creation
+    updateCurrentPositionDisplay()
+    
     -- Set position by click button
     Tabs.FishTab:Button({
         Title = "📍 Set Position by Click",
-        Desc = "Click to enable mouse tracking, then click anywhere to set fishing position",
+        Desc = "Click to enable mouse tracking, then click anywhere in the world to set fishing position",
         Callback = function()
             if not FishingConfig.PositionSetting then
                 FishingConfig.PositionSetting = true
@@ -638,18 +646,16 @@ function AutoFishSystem.Init(dependencies)
     -- Set current position button (kept for convenience)
     Tabs.FishTab:Button({
         Title = "📍 Set Current Position",
-        Desc = "Set fishing position to your current character position",
+        Desc = "Set fishing position to your current character location (same as clicking where you stand)",
         Callback = function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 FishingConfig.FishingPosition = LocalPlayer.Character.HumanoidRootPart.Position
                 
                 -- Update current position display
-                if currentPosLabel then
-                    currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
-                        FishingConfig.FishingPosition.X, 
-                        FishingConfig.FishingPosition.Y, 
-                        FishingConfig.FishingPosition.Z))
-                end
+                updateCurrentPositionDisplay()
+                
+                -- Debug print to confirm position is saved
+                print("🎣 Position saved:", FishingConfig.FishingPosition)
                 
                 WindUI:Notify({ 
                     Title = "📍 Position Set", 
