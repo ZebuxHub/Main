@@ -620,6 +620,22 @@ local function unlockTile(lockInfo)
     return success
 end
 
+-- Ocean egg categories for water farm placement
+local OCEAN_EGGS = {
+    ["SeaweedEgg"] = true,
+    ["ClownfishEgg"] = true,
+    ["LionfishEgg"] = true,
+    ["SharkEgg"] = true,
+    ["AnglerfishEgg"] = true,
+    ["OctopusEgg"] = true,
+    ["SeaDragonEgg"] = true
+}
+
+-- Check if an egg type requires water farm placement
+local function isOceanEgg(eggType)
+    return OCEAN_EGGS[eggType] == true
+end
+
 -- Function to auto unlock tiles when needed
 local function autoUnlockTilesIfNeeded(islandNumber, eggType)
     -- Check if we have available tiles first
@@ -672,22 +688,6 @@ local function autoUnlockTilesIfNeeded(islandNumber, eggType)
     end
     
     return false
-end
-
--- Ocean egg categories for water farm placement
-local OCEAN_EGGS = {
-    ["SeaweedEgg"] = true,
-    ["ClownfishEgg"] = true,
-    ["LionfishEgg"] = true,
-    ["SharkEgg"] = true,
-    ["AnglerfishEgg"] = true,
-    ["OctopusEgg"] = true,
-    ["SeaDragonEgg"] = true
-}
-
--- Check if an egg type requires water farm placement
-local function isOceanEgg(eggType)
-    return OCEAN_EGGS[eggType] == true
 end
 
 local function getWaterFarmParts(islandNumber)
