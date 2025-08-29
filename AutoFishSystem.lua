@@ -10,6 +10,8 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
 
 -- Module variables
 local WindUI = nil
@@ -21,9 +23,11 @@ local FishingConfig = {
     SelectedBait = "FishingBait1",
     FishingPosition = Vector3.new(-470.3221740722656, 11, 351.36126708984375),
     AutoFishEnabled = false,
-    DelayBetweenCasts = 2,
+    DelayBetweenCasts = 0.5,
     AutoWaterDetection = true,
     SearchRadius = 100,
+    PositionSetting = false,
+    MouseTracking = false,
     Stats = {
         FishCaught = 0,
         SessionStartTime = os.time(),
@@ -246,6 +250,96 @@ local function autoDetectAndMoveToWater()
         })
         return false
     end
+end
+
+-- Mouse Position Tracking System
+local MouseTracker = {
+    Connection = nil,
+    GuiConnection = nil,
+    ClickConnection = nil,
+    PositionLabel = nil
+}
+
+local function getMouseWorldPosition()
+    local mouse = LocalPlayer:GetMouse()
+    local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    
+    local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+    
+    if raycastResult then
+        return raycastResult.Position
+    else
+        -- Fallback to a position in front of the camera
+        return unitRay.Origin + unitRay.Direction * 100
+    end
+end
+
+local function startMouseTracking()
+    if MouseTracker.Connection then
+        MouseTracker.Connection:Disconnect()
+    end
+    
+    FishingConfig.MouseTracking = true
+    
+    -- Create position display
+    local mouse = LocalPlayer:GetMouse()
+    
+    MouseTracker.Connection = mouse.Move:Connect(function()
+        if FishingConfig.PositionSetting and FishingConfig.MouseTracking then
+            local worldPos = getMouseWorldPosition()
+            if MouseTracker.PositionLabel then
+                MouseTracker.PositionLabel:SetDesc(string.format("Mouse Position: %.1f, %.1f, %.1f\nClick to set fishing position!", 
+                    worldPos.X, worldPos.Y, worldPos.Z))
+            end
+        end
+    end)
+    
+    MouseTracker.ClickConnection = mouse.Button1Down:Connect(function()
+        if FishingConfig.PositionSetting and FishingConfig.MouseTracking then
+            local worldPos = getMouseWorldPosition()
+            FishingConfig.FishingPosition = worldPos
+            
+            WindUI:Notify({ 
+                Title = "📍 Position Set", 
+                Content = string.format("Fishing position set to: %.1f, %.1f, %.1f", 
+                    worldPos.X, worldPos.Y, worldPos.Z), 
+                Duration = 3 
+            })
+            
+            -- Stop tracking
+            stopMouseTracking()
+        end
+    end)
+    
+    WindUI:Notify({ 
+        Title = "🖱️ Mouse Tracking", 
+        Content = "Move mouse and click to set fishing position!", 
+        Duration = 3 
+    })
+end
+
+local function stopMouseTracking()
+    FishingConfig.MouseTracking = false
+    FishingConfig.PositionSetting = false
+    
+    if MouseTracker.Connection then
+        MouseTracker.Connection:Disconnect()
+        MouseTracker.Connection = nil
+    end
+    
+    if MouseTracker.ClickConnection then
+        MouseTracker.ClickConnection:Disconnect()
+        MouseTracker.ClickConnection = nil
+    end
+    
+    if MouseTracker.PositionLabel then
+        MouseTracker.PositionLabel:SetDesc("Click 'Set Position by Click' to start tracking")
+    end
+end
 
 -- Fishing System
 local FishingSystem = {
@@ -269,8 +363,8 @@ local function startFishing()
         return false
     end
     
-    -- Wait a moment then throw the line with selected bait
-    task.wait(0.5)
+    -- Reduced wait time for faster operation
+    task.wait(0.2)
     
     local throwArgs = {
         "Throw",
@@ -324,16 +418,16 @@ local function waitForFishPull()
         return false
     end
     
-    local timeout = 30 -- 30 second timeout
+    local timeout = 20 -- Reduced timeout for faster operation
     local startTime = tick()
     
-    -- Wait for AnimFish attribute to be "Pull"
+    -- Wait for AnimFish attribute to be "Pull" with faster checking
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
         local animFish = zif:GetAttribute("AnimFish")
         if animFish == "Pull" then
             return true
         end
-        task.wait(0.1)
+        task.wait(0.05) -- Faster checking interval
     end
     
     return false
@@ -343,7 +437,7 @@ local function runAutoFish()
     -- Auto detect and move to water at the start if enabled
     if FishingConfig.AutoWaterDetection then
         autoDetectAndMoveToWater()
-        task.wait(2) -- Wait for movement to complete
+        task.wait(1) -- Reduced wait time
     end
     
     while FishingConfig.AutoFishEnabled do
@@ -358,27 +452,27 @@ local function runAutoFish()
                     WindUI:Notify({ 
                         Title = "🎣 Auto Fish", 
                         Content = string.format("🐟 Caught a fish! (%.1fs)", castTime), 
-                        Duration = 2 
+                        Duration = 1 
                     })
                 else
                     WindUI:Notify({ 
                         Title = "🎣 Auto Fish", 
                         Content = "❌ Failed to pull fish", 
-                        Duration = 2 
+                        Duration = 1 
                     })
                 end
             else
                 WindUI:Notify({ 
                     Title = "🎣 Auto Fish", 
                     Content = "⏰ Fish pull timeout", 
-                    Duration = 2 
+                    Duration = 1 
                 })
             end
         else
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish", 
                 Content = "❌ Failed to start fishing", 
-                Duration = 2 
+                Duration = 1 
             })
         end
         
@@ -507,44 +601,29 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Position inputs
-    Tabs.FishTab:Input({
-        Title = "🌍 Fishing Position X",
-        Desc = "X coordinate for fishing position",
-        Default = tostring(math.floor(FishingConfig.FishingPosition.X * 100) / 100),
-        Numeric = true,
-        Finished = true,
-        Callback = function(value)
-            local x = tonumber(value) or FishingConfig.FishingPosition.X
-            FishingConfig.FishingPosition = Vector3.new(x, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z)
+    -- Mouse position tracking system replaces manual position inputs
+    MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
+        Title = "📍 Position Tracking",
+        Desc = "Click 'Set Position by Click' to start tracking",
+        Image = "crosshair",
+        ImageSize = 18,
+    })
+    
+    -- Set position by click button
+    Tabs.FishTab:Button({
+        Title = "📍 Set Position by Click",
+        Desc = "Click to enable mouse tracking, then click anywhere to set fishing position",
+        Callback = function()
+            if not FishingConfig.PositionSetting then
+                FishingConfig.PositionSetting = true
+                startMouseTracking()
+            else
+                stopMouseTracking()
+            end
         end
     })
     
-    Tabs.FishTab:Input({
-        Title = "🌍 Fishing Position Y",
-        Desc = "Y coordinate for fishing position",
-        Default = tostring(math.floor(FishingConfig.FishingPosition.Y * 100) / 100),
-        Numeric = true,
-        Finished = true,
-        Callback = function(value)
-            local y = tonumber(value) or FishingConfig.FishingPosition.Y
-            FishingConfig.FishingPosition = Vector3.new(FishingConfig.FishingPosition.X, y, FishingConfig.FishingPosition.Z)
-        end
-    })
-    
-    Tabs.FishTab:Input({
-        Title = "🌍 Fishing Position Z",
-        Desc = "Z coordinate for fishing position",
-        Default = tostring(math.floor(FishingConfig.FishingPosition.Z * 100) / 100),
-        Numeric = true,
-        Finished = true,
-        Callback = function(value)
-            local z = tonumber(value) or FishingConfig.FishingPosition.Z
-            FishingConfig.FishingPosition = Vector3.new(FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, z)
-        end
-    })
-    
-    -- Set current position button
+    -- Set current position button (kept for convenience)
     Tabs.FishTab:Button({
         Title = "📍 Set Current Position",
         Desc = "Set fishing position to your current character position",
@@ -588,11 +667,11 @@ function AutoFishSystem.Init(dependencies)
     -- Cast delay slider
     Tabs.FishTab:Slider({
         Title = "⏰ Cast Delay",
-        Desc = "Delay between fishing casts (seconds)",
+        Desc = "Delay between fishing casts (seconds) - Lower = Faster",
         Default = FishingConfig.DelayBetweenCasts,
-        Min = 1,
-        Max = 10,
-        Rounding = 0,
+        Min = 0.1,
+        Max = 5,
+        Rounding = 1,
         Callback = function(value)
             FishingConfig.DelayBetweenCasts = value
         end
@@ -699,6 +778,7 @@ end
 -- Cleanup function
 function AutoFishSystem.Cleanup()
     FishingSystem.Stop()
+    stopMouseTracking()
 end
 
 return AutoFishSystem
