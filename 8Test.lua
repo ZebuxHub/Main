@@ -1025,43 +1025,6 @@ local function isFarmTileOccupied(farmPart, minDistance)
 end
 
 local function findAvailableFarmPart(farmParts, minDistance)
-    minDistance = minDistance or 6
-    local center = getTileCenterPosition(farmPart)
-    if not center then return true end
-    
-    -- Calculate surface position (same as placement logic)
-    local surfacePosition = Vector3.new(
-        center.X,
-        center.Y + 12, -- Eggs float 12 studs above tile surface
-        center.Z
-    )
-    
-    -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
-    local models = getPetModelsOverlappingTile(farmPart)
-    if #models > 0 then
-    for _, model in ipairs(models) do
-        local pivotPos = model:GetPivot().Position
-            -- Check distance to surface position instead of center
-            if (pivotPos - surfacePosition).Magnitude <= minDistance then
-            return true
-        end
-    end
-    end
-    
-    -- Check for fully hatched pets in workspace.Pets
-    local playerPets = getPlayerPetsInWorkspace()
-    for _, petInfo in ipairs(playerPets) do
-        local petPos = petInfo.position
-        -- Check distance to surface position instead of center
-        if (petPos - surfacePosition).Magnitude <= minDistance then
-            return true
-        end
-    end
-    
-    return false
-end
-
-local function findAvailableFarmPart(farmParts, minDistance)
     if not farmParts or #farmParts == 0 then return nil end
     
     -- First, collect all available parts
@@ -3028,11 +2991,11 @@ local autoUnlockThread = nil
 
 
 
--- Function to get all locked tiles
-local function getLockedTiles()
+-- Helper function to get locked tiles for current island (used by runAutoUnlock)
+local function getLockedTilesForCurrentIsland()
     local lockedTiles = {}
-    local islandName = getAssignedIslandName()
     
+    local islandName = getAssignedIslandName()
     if not islandName then return lockedTiles end
     
     local art = workspace:FindFirstChild("Art")
@@ -3048,7 +3011,7 @@ local function getLockedTiles()
     if not locksFolder then return lockedTiles end
     
     for _, lockModel in ipairs(locksFolder:GetChildren()) do
-        if lockModel:IsA("Model") then
+        if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
             local farmPart = lockModel:FindFirstChild("Farm")
             if farmPart and farmPart:IsA("BasePart") then
                 -- Check if this lock is active (transparency = 0 means locked)
@@ -3057,7 +3020,8 @@ local function getLockedTiles()
                     table.insert(lockedTiles, {
                         modelName = lockModel.Name,
                         farmPart = farmPart,
-                        cost = lockCost
+                        cost = lockCost or 0,
+                        model = lockModel
                     })
                 end
             end
@@ -3086,7 +3050,7 @@ end
 local function runAutoUnlock()
     while autoUnlockEnabled do
         local ok, err = pcall(function()
-            local lockedTiles = getLockedTiles()
+            local lockedTiles = getLockedTilesForCurrentIsland() -- Call without parameters for current island
             
             if #lockedTiles == 0 then
                 task.wait(2)
@@ -3159,7 +3123,7 @@ Tabs.PlaceTab:Button({
     Title = "🔓 Unlock All Affordable Now",
     Desc = "Unlock all tiles you can afford right now",
     Callback = function()
-        local lockedTiles = getLockedTiles()
+        local lockedTiles = getLockedTilesForCurrentIsland() -- Call without parameters for current island
         local netWorth = getPlayerNetWorth()
         local unlockedCount = 0
         
