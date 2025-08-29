@@ -540,6 +540,118 @@ local function getIslandNumberFromName(islandName)
     return nil
 end
 
+-- Auto tile unlock system
+local function getLockedTiles(islandNumber)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then return {} end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return {} end
+    
+    local locksFolder = env:FindFirstChild("Locks")
+    if not locksFolder then return {} end
+    
+    local lockedTiles = {}
+    
+    -- Scan for locks that start with 'F' (like F20, F30, etc.)
+    for _, lockModel in ipairs(locksFolder:GetChildren()) do
+        if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
+            local farmPart = lockModel:FindFirstChild("Farm")
+            if farmPart and farmPart:IsA("BasePart") then
+                -- Check if this lock is active (transparency = 0 means locked)
+                if farmPart.Transparency == 0 then
+                    local lockCost = farmPart:GetAttribute("LockCost")
+                    table.insert(lockedTiles, {
+                        modelName = lockModel.Name,
+                        farmPart = farmPart,
+                        cost = lockCost or 0,
+                        model = lockModel
+                    })
+                end
+            end
+        end
+    end
+    
+    return lockedTiles
+end
+
+-- Function to unlock a specific tile
+local function unlockTile(lockInfo)
+    if not lockInfo then return false end
+    
+    local args = {
+        "Unlock",
+        lockInfo.farmPart
+    }
+    
+    local success = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    
+    if success then
+        print("🔓 Unlocked tile: " .. lockInfo.modelName .. " (Cost: " .. (lockInfo.cost or 0) .. ")")
+    else
+        warn("❌ Failed to unlock tile: " .. lockInfo.modelName)
+    end
+    
+    return success
+end
+
+-- Function to auto unlock tiles when needed
+local function autoUnlockTilesIfNeeded(islandNumber, eggType)
+    -- Check if we have available tiles first
+    local farmParts
+    if eggType and isOceanEgg(eggType) then
+        farmParts = getWaterFarmParts(islandNumber)
+    else
+        farmParts = getFarmParts(islandNumber)
+    end
+    
+    -- Count available (unlocked and unoccupied) tiles
+    local availableCount = 0
+    for _, part in ipairs(farmParts) do
+        if not isFarmTileOccupied(part, 6) then
+            availableCount = availableCount + 1
+        end
+    end
+    
+    -- If we have less than 3 available tiles, try to unlock more
+    if availableCount < 3 then
+        local lockedTiles = getLockedTiles(islandNumber)
+        
+        if #lockedTiles > 0 then
+            -- Sort by cost (cheapest first)
+            table.sort(lockedTiles, function(a, b)
+                return (a.cost or 0) < (b.cost or 0)
+            end)
+            
+            -- Try to unlock the cheapest tiles
+            local unlockedCount = 0
+            for _, lockInfo in ipairs(lockedTiles) do
+                if unlockedCount >= 2 then break end -- Don't unlock too many at once
+                
+                if unlockTile(lockInfo) then
+                    unlockedCount = unlockedCount + 1
+                    task.wait(0.5) -- Wait between unlocks
+                end
+            end
+            
+            if unlockedCount > 0 then
+                print("🔓 Auto unlocked " .. unlockedCount .. " tiles for placement")
+                task.wait(1) -- Wait for server to process unlocks
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
 -- Ocean egg categories for water farm placement
 local OCEAN_EGGS = {
     ["SeaweedEgg"] = true,
@@ -793,7 +905,45 @@ local function getPlayerPetsInWorkspace()
     return petsInWorkspace
 end
 
+-- Check if a farm tile is occupied by pets or eggs
 local function isFarmTileOccupied(farmPart, minDistance)
+    minDistance = minDistance or 6
+    local center = getTileCenterPosition(farmPart)
+    if not center then return true end
+    
+    -- Calculate surface position (same as placement logic)
+    local surfacePosition = Vector3.new(
+        center.X,
+        center.Y + 12, -- Eggs float 12 studs above tile surface
+        center.Z
+    )
+    
+    -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
+    local models = getPetModelsOverlappingTile(farmPart)
+    if #models > 0 then
+        for _, model in ipairs(models) do
+            local pivotPos = model:GetPivot().Position
+            -- Check distance to surface position instead of center
+            if (pivotPos - surfacePosition).Magnitude <= minDistance then
+                return true
+            end
+        end
+    end
+    
+    -- Check for fully hatched pets in workspace.Pets
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        -- Check distance to surface position instead of center
+        if (petPos - surfacePosition).Magnitude <= minDistance then
+            return true
+        end
+    end
+    
+    return false
+end
+
+local function findAvailableFarmPart(farmParts, minDistance)
     minDistance = minDistance or 6
     local center = getTileCenterPosition(farmPart)
     if not center then return true end
@@ -2450,8 +2600,26 @@ local function attemptPlacement()
     
     if #availableTiles == 0 then 
         local farmType = isOceanEgg(firstEgg.type) and "water farm" or "regular farm"
-        warn("Auto Place stopped: No available " .. farmType .. " tiles for " .. firstEgg.type)
-        return 
+        print("🔍 No available " .. farmType .. " tiles for " .. firstEgg.type .. ", checking for locked tiles...")
+        
+        -- Try to auto unlock tiles if needed
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        
+        if autoUnlockTilesIfNeeded(islandNumber, firstEgg.type) then
+            -- Tiles were unlocked, update available tiles again
+            updateAvailableTiles(firstEgg.type)
+            
+            if #availableTiles == 0 then
+                warn("Auto Place: Still no available " .. farmType .. " tiles after unlocking")
+                return
+            else
+                print("✅ Found " .. #availableTiles .. " available tiles after unlocking")
+            end
+        else
+            warn("Auto Place stopped: No available " .. farmType .. " tiles for " .. firstEgg.type)
+            return 
+        end
     end
     
     -- Place eggs on available tiles (limit to prevent lag)
