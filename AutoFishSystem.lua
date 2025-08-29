@@ -477,8 +477,8 @@ local function enableFlagDragging()
                 
                 -- Update display but don't save position yet
                 if MouseTracker.PositionLabel then
-                    MouseTracker.PositionLabel:SetDesc(string.format("Pin Position: %.1f, %.1f, %.1f\nClick anywhere to place pin!", 
-                        raycastResult.Position.X, raycastResult.Position.Y, raycastResult.Position.Z))
+                    MouseTracker.PositionLabel:SetDesc("Pin Position: %.1f, %.1f, %.1f\nLeft-click anywhere to place pin here!", 
+                        raycastResult.Position.X, raycastResult.Position.Y, raycastResult.Position.Z)
                 end
             end
         end
@@ -488,9 +488,6 @@ local function enableFlagDragging()
     local clickConnection
     clickConnection = mouse.Button1Down:Connect(function()
         if FlagSystem.Active then
-            -- Immediately stop active tracking to prevent further mouse following
-            FlagSystem.Active = false
-            
             local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
             
             local raycastParams = RaycastParams.new()
@@ -522,15 +519,15 @@ local function enableFlagDragging()
                     end
                 end)
                 
-                -- Stop flag placement mode - this will disconnect all mouse tracking
+                -- Stop flag placement mode completely - ready for next placement
                 stopFlagPlacement()
                 
                 -- Confirmation notification
                 WindUI:Notify({ 
                     Title = "📍 Pin Placed Successfully", 
-                    Content = string.format("Pin locked at: %.1f, %.1f, %.1f", 
+                    Content = string.format("Pin locked at: %.1f, %.1f, %.1f\nClick 'Place Hologram Pin' again to place another pin", 
                         finalPosition.X, finalPosition.Y, finalPosition.Z), 
-                    Duration = 3 
+                    Duration = 4 
                 })
             end
         end
@@ -563,11 +560,7 @@ local function startFlagPlacement()
     -- Enable dragging
     enableFlagDragging()
     
-    WindUI:Notify({ 
-        Title = "📍 Pin Placement Active", 
-        Content = "Move mouse to preview the hologram pin position, then CLICK to place! Press ESC to cancel.", 
-        Duration = 5 
-    })
+    -- Note: Notification is now handled in the button callback for better clarity
 end
 
 local function stopFlagPlacement()
@@ -609,7 +602,7 @@ local function stopFlagPlacement()
     -- Update UI guidance text
     pcall(function()
         if MouseTracker.PositionLabel then
-            MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' to set position with simple visual marker")
+            MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' then left-click anywhere in the world to place pin")
         end
     end)
     
@@ -889,7 +882,7 @@ function AutoFishSystem.Init(dependencies)
     -- Pin position tracking system info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
         Title = "📍 Pin Hologram Position System",
-        Desc = "Click 'Place Hologram Pin' to set position with simple visual marker",
+        Desc = "Click 'Place Hologram Pin' then left-click anywhere in the world to place pin",
         Image = "map-pin",
         ImageSize = 18,
     })
@@ -911,19 +904,24 @@ function AutoFishSystem.Init(dependencies)
     -- Place pin hologram button
     Tabs.FishTab:Button({
         Title = "📍 Place Hologram Pin",
-        Desc = "Click to activate pin placement, then move mouse and click anywhere to set fishing position",
+        Desc = "Click once to activate placement mode, then left-click anywhere in the world to place pin",
         Callback = function()
             if FlagSystem.Active then
                 -- If already active, stop placement
                 stopFlagPlacement()
                 WindUI:Notify({ 
                     Title = "❌ Pin Placement Cancelled", 
-                    Content = "Pin placement was cancelled", 
+                    Content = "Pin placement mode cancelled. Click button again to reactivate.", 
                     Duration = 2 
                 })
             else
                 -- Start new placement
                 startFlagPlacement()
+                WindUI:Notify({ 
+                    Title = "📍 Pin Placement Active", 
+                    Content = "Now left-click anywhere in the world to place the pin!", 
+                    Duration = 4 
+                })
             end
         end
     })
