@@ -23,8 +23,8 @@ local FishingConfig = {
     SelectedBait = "FishingBait1",
     FishingPosition = Vector3.new(-470.3221740722656, 11, 351.36126708984375),
     AutoFishEnabled = false,
-    DelayBetweenCasts = 0.5,
-    AutoWaterDetection = true,
+    DelayBetweenCasts = 2,
+    AutoWaterDetection = false,
     SearchRadius = 100,
     PositionSetting = false,
     MouseTracking = false,
@@ -284,6 +284,7 @@ local function startMouseTracking()
     end
     
     FishingConfig.MouseTracking = true
+    FishingConfig.PositionSetting = true
     
     -- Create position display
     local mouse = LocalPlayer:GetMouse()
@@ -301,12 +302,25 @@ local function startMouseTracking()
     MouseTracker.ClickConnection = mouse.Button1Down:Connect(function()
         if FishingConfig.PositionSetting and FishingConfig.MouseTracking then
             local worldPos = getMouseWorldPosition()
-            FishingConfig.FishingPosition = worldPos
+            
+            -- Save the position to FishingConfig
+            FishingConfig.FishingPosition = Vector3.new(worldPos.X, worldPos.Y, worldPos.Z)
+            
+            -- Update current position display
+            if currentPosLabel then
+                currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
+                    FishingConfig.FishingPosition.X, 
+                    FishingConfig.FishingPosition.Y, 
+                    FishingConfig.FishingPosition.Z))
+            end
+            
+            -- Debug print to confirm position is saved
+            print("🎣 Position saved:", FishingConfig.FishingPosition)
             
             WindUI:Notify({ 
                 Title = "📍 Position Set", 
                 Content = string.format("Fishing position set to: %.1f, %.1f, %.1f", 
-                    worldPos.X, worldPos.Y, worldPos.Z), 
+                    FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
                 Duration = 3 
             })
             
@@ -363,8 +377,11 @@ local function startFishing()
         return false
     end
     
-    -- Reduced wait time for faster operation
-    task.wait(0.2)
+    -- Increased wait time for better accuracy
+    task.wait(1)
+    
+    -- Debug print to verify position is being used
+    print("🎣 Using fishing position:", FishingConfig.FishingPosition)
     
     local throwArgs = {
         "Throw",
@@ -418,28 +435,22 @@ local function waitForFishPull()
         return false
     end
     
-    local timeout = 20 -- Reduced timeout for faster operation
+    local timeout = 30 -- Increased timeout for better accuracy
     local startTime = tick()
     
-    -- Wait for AnimFish attribute to be "Pull" with faster checking
+    -- Wait for AnimFish attribute to be "Pull" with slower checking for accuracy
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
         local animFish = zif:GetAttribute("AnimFish")
         if animFish == "Pull" then
             return true
         end
-        task.wait(0.05) -- Faster checking interval
+        task.wait(0.2) -- Slower checking interval for better accuracy
     end
     
     return false
 end
 
 local function runAutoFish()
-    -- Auto detect and move to water at the start if enabled
-    if FishingConfig.AutoWaterDetection then
-        autoDetectAndMoveToWater()
-        task.wait(1) -- Reduced wait time
-    end
-    
     while FishingConfig.AutoFishEnabled do
         local castStartTime = tick()
         local success = startFishing()
@@ -452,27 +463,27 @@ local function runAutoFish()
                     WindUI:Notify({ 
                         Title = "🎣 Auto Fish", 
                         Content = string.format("🐟 Caught a fish! (%.1fs)", castTime), 
-                        Duration = 1 
+                        Duration = 2 
                     })
                 else
                     WindUI:Notify({ 
                         Title = "🎣 Auto Fish", 
                         Content = "❌ Failed to pull fish", 
-                        Duration = 1 
+                        Duration = 2 
                     })
                 end
             else
                 WindUI:Notify({ 
                     Title = "🎣 Auto Fish", 
                     Content = "⏰ Fish pull timeout", 
-                    Duration = 1 
+                    Duration = 2 
                 })
             end
         else
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish", 
                 Content = "❌ Failed to start fishing", 
-                Duration = 1 
+                Duration = 2 
             })
         end
         
@@ -526,6 +537,7 @@ end
 local baitDropdown = nil
 local autoFishToggle = nil
 local statsLabel = nil
+local currentPosLabel = nil
 
 local function updateStats()
     if not statsLabel then return end
@@ -573,34 +585,6 @@ function AutoFishSystem.Init(dependencies)
     -- Create Auto Fish Tab UI
     Tabs.FishTab:Section({ Title = "🎣 Fishing Settings", Icon = "settings" })
     
-    -- Auto Water Detection Toggle
-    Tabs.FishTab:Toggle({
-        Title = "🌊 Auto Water Detection",
-        Desc = "Automatically find and move to nearby water before fishing",
-        Value = FishingConfig.AutoWaterDetection,
-        Callback = function(state)
-            FishingConfig.AutoWaterDetection = state
-            WindUI:Notify({ 
-                Title = "🌊 Water Detection", 
-                Content = state and "Auto water detection enabled!" or "Auto water detection disabled!", 
-                Duration = 2 
-            })
-        end
-    })
-    
-    -- Water Search Radius Slider
-    Tabs.FishTab:Slider({
-        Title = "🔍 Search Radius",
-        Desc = "Maximum distance to search for water (meters)",
-        Default = FishingConfig.SearchRadius,
-        Min = 50,
-        Max = 500,
-        Rounding = 0,
-        Callback = function(value)
-            FishingConfig.SearchRadius = value
-        end
-    })
-    
     -- Bait selection dropdown
     task.wait(1) -- Wait for config to load
     baitDropdown = Tabs.FishTab:Dropdown({
@@ -626,6 +610,17 @@ function AutoFishSystem.Init(dependencies)
         ImageSize = 18,
     })
     
+    -- Current position display
+    currentPosLabel = Tabs.FishTab:Paragraph({
+        Title = "📍 Current Fishing Position",
+        Desc = string.format("X: %.1f, Y: %.1f, Z: %.1f", 
+            FishingConfig.FishingPosition.X, 
+            FishingConfig.FishingPosition.Y, 
+            FishingConfig.FishingPosition.Z),
+        Image = "map-pin",
+        ImageSize = 18,
+    })
+    
     -- Set position by click button
     Tabs.FishTab:Button({
         Title = "📍 Set Position by Click",
@@ -647,6 +642,15 @@ function AutoFishSystem.Init(dependencies)
         Callback = function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 FishingConfig.FishingPosition = LocalPlayer.Character.HumanoidRootPart.Position
+                
+                -- Update current position display
+                if currentPosLabel then
+                    currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
+                        FishingConfig.FishingPosition.X, 
+                        FishingConfig.FishingPosition.Y, 
+                        FishingConfig.FishingPosition.Z))
+                end
+                
                 WindUI:Notify({ 
                     Title = "📍 Position Set", 
                     Content = string.format("Position: %.2f, %.2f, %.2f", 
@@ -684,10 +688,10 @@ function AutoFishSystem.Init(dependencies)
     -- Cast delay slider
     Tabs.FishTab:Slider({
         Title = "⏰ Cast Delay",
-        Desc = "Delay between fishing casts (seconds) - Lower = Faster",
+        Desc = "Delay between fishing casts (seconds) - Higher = More Accurate",
         Default = FishingConfig.DelayBetweenCasts,
-        Min = 0.1,
-        Max = 5,
+        Min = 1,
+        Max = 10,
         Rounding = 1,
         Callback = function(value)
             FishingConfig.DelayBetweenCasts = value
@@ -705,23 +709,6 @@ function AutoFishSystem.Init(dependencies)
     })
     
     Tabs.FishTab:Section({ Title = "🎮 Manual Controls", Icon = "settings" })
-    
-    -- Manual water detection button
-    Tabs.FishTab:Button({
-        Title = "🌊 Find Water",
-        Desc = "Manually search for and move to nearby water",
-        Callback = function()
-            task.spawn(function()
-                if autoDetectAndMoveToWater() then
-                    WindUI:Notify({ 
-                        Title = "🌊 Manual Water Detection", 
-                        Content = "Successfully found and moved to water!", 
-                        Duration = 3 
-                    })
-                end
-            end)
-        end
-    })
     
     -- Manual controls
     Tabs.FishTab:Button({
