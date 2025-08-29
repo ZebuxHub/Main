@@ -361,8 +361,8 @@ end
 local function startMouseTracking()
     -- Function kept for compatibility but flag system is preferred
     WindUI:Notify({ 
-        Title = "🚩 Use Flag System", 
-        Content = "Use 'Place Fishing Flag' for better visual positioning!", 
+        Title = "🚩 Use Pin System", 
+        Content = "Use 'Place Hologram Pin' for better visual positioning!", 
         Duration = 3 
     })
 end
