@@ -477,7 +477,7 @@ local function enableFlagDragging()
                 
                 -- Update display but don't save position yet
                 if MouseTracker.PositionLabel then
-                    MouseTracker.PositionLabel:SetDesc(string.format("Flag Position: %.1f, %.1f, %.1f\nClick anywhere to place flag!", 
+                    MouseTracker.PositionLabel:SetDesc(string.format("Pin Position: %.1f, %.1f, %.1f\nClick anywhere to place pin!", 
                         raycastResult.Position.X, raycastResult.Position.Y, raycastResult.Position.Z))
                 end
             end
@@ -488,6 +488,9 @@ local function enableFlagDragging()
     local clickConnection
     clickConnection = mouse.Button1Down:Connect(function()
         if FlagSystem.Active then
+            -- Immediately stop active tracking to prevent further mouse following
+            FlagSystem.Active = false
+            
             local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
             
             local raycastParams = RaycastParams.new()
@@ -511,8 +514,13 @@ local function enableFlagDragging()
                 -- Save to position history
                 savePositionToHistory(finalPosition, "Pin Placement")
                 
-                -- Update displays immediately
-                updateCurrentPositionDisplay()
+                -- Update displays immediately with error handling
+                pcall(function()
+                    if currentPosLabel then
+                        currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
+                            finalPosition.X, finalPosition.Y, finalPosition.Z))
+                    end
+                end)
                 
                 -- Stop flag placement mode - this will disconnect all mouse tracking
                 stopFlagPlacement()
@@ -563,31 +571,47 @@ local function startFlagPlacement()
 end
 
 local function stopFlagPlacement()
+    -- Immediately set active to false to stop all tracking
     FlagSystem.Active = false
     
-    -- Disconnect all mouse tracking connections
-    if FlagSystem.DragConnection then
-        FlagSystem.DragConnection:Disconnect()
-        FlagSystem.DragConnection = nil
-    end
+    -- Disconnect all mouse tracking connections with error handling
+    pcall(function()
+        if FlagSystem.DragConnection then
+            FlagSystem.DragConnection:Disconnect()
+            FlagSystem.DragConnection = nil
+        end
+    end)
     
-    if FlagSystem.ClickConnection then
-        FlagSystem.ClickConnection:Disconnect()
-        FlagSystem.ClickConnection = nil
-    end
+    pcall(function()
+        if FlagSystem.ClickConnection then
+            FlagSystem.ClickConnection:Disconnect()
+            FlagSystem.ClickConnection = nil
+        end
+    end)
     
-    if FlagSystem.UserInputConnection then
-        FlagSystem.UserInputConnection:Disconnect()
-        FlagSystem.UserInputConnection = nil
-    end
+    pcall(function()
+        if FlagSystem.UserInputConnection then
+            FlagSystem.UserInputConnection:Disconnect()
+            FlagSystem.UserInputConnection = nil
+        end
+    end)
     
-    -- Update displays
-    updateCurrentPositionDisplay()
+    -- Update displays with error handling
+    pcall(function()
+        if currentPosLabel then
+            currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
+                FishingConfig.FishingPosition.X, 
+                FishingConfig.FishingPosition.Y, 
+                FishingConfig.FishingPosition.Z))
+        end
+    end)
     
     -- Update UI guidance text
-    if MouseTracker.PositionLabel then
-        MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' to set position with simple visual marker")
-    end
+    pcall(function()
+        if MouseTracker.PositionLabel then
+            MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' to set position with simple visual marker")
+        end
+    end)
     
     -- Debug print
     print("📍 Pin placement stopped. Position locked at:", FishingConfig.FishingPosition)
