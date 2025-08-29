@@ -457,6 +457,7 @@ local function removeFishingFlag()
     if FlagSystem.Active then
         stopFlagPlacement()
     end
+end
 
 -- Fishing System
 local FishingSystem = {
