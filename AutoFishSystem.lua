@@ -21,13 +21,18 @@ local Config = nil
 -- Configuration
 local FishingConfig = {
     SelectedBait = "FishingBait1",
-    FishingPosition = Vector3.new(-470.3221740722656, 11, 351.36126708984375),
+    FishingPosition = Vector3.new(0, 0, 0),
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
     AutoWaterDetection = false,
     SearchRadius = 100,
     PositionSetting = false,
     MouseTracking = false,
+    -- Memory system for user interactions
+    ClickMemory = {},
+    TabMemory = {},
+    LastClickPosition = nil,
+    LastTabPosition = nil,
     Stats = {
         FishCaught = 0,
         SessionStartTime = os.time(),
@@ -265,10 +270,16 @@ local FlagSystem = {
     FlagPart = nil,
     FlagMainPart = nil,
     FlagPole = nil,
+    LeftWing = nil,
+    RightWing = nil,
+    AnimeEffects = {},
     DragConnection = nil,
     ClickConnection = nil,
     Active = false,
-    UserInputConnection = nil
+    UserInputConnection = nil,
+    -- Memory system connections
+    ClickMemoryConnection = nil,
+    TabMemoryConnection = nil
 }
 
 local function getMouseWorldPosition()
@@ -287,6 +298,109 @@ local function getMouseWorldPosition()
         -- Fallback to a position in front of the camera
         return unitRay.Origin + unitRay.Direction * 100
     end
+end
+
+-- Memory System Functions
+local function saveClickMemory(position, timestamp)
+    table.insert(FishingConfig.ClickMemory, {
+        Position = position,
+        Timestamp = timestamp or os.time(),
+        Type = "Click"
+    })
+    
+    -- Keep only last 50 clicks to prevent memory overflow
+    if #FishingConfig.ClickMemory > 50 then
+        table.remove(FishingConfig.ClickMemory, 1)
+    end
+    
+    FishingConfig.LastClickPosition = position
+    print("💾 Click Memory Saved:", position)
+end
+
+local function saveTabMemory(position, timestamp)
+    table.insert(FishingConfig.TabMemory, {
+        Position = position,
+        Timestamp = timestamp or os.time(),
+        Type = "Tab"
+    })
+    
+    -- Keep only last 50 tabs to prevent memory overflow
+    if #FishingConfig.TabMemory > 50 then
+        table.remove(FishingConfig.TabMemory, 1)
+    end
+    
+    FishingConfig.LastTabPosition = position
+    print("💾 Tab Memory Saved:", position)
+end
+
+local function startMemoryTracking()
+    local mouse = LocalPlayer:GetMouse()
+    
+    -- Track left clicks
+    if not FlagSystem.ClickMemoryConnection then
+        FlagSystem.ClickMemoryConnection = mouse.Button1Down:Connect(function()
+            local worldPos = getMouseWorldPosition()
+            if worldPos then
+                saveClickMemory(worldPos)
+                
+                -- Visual feedback for click memory
+                WindUI:Notify({ 
+                    Title = "💾 Click Remembered", 
+                    Content = string.format("Position saved: %.1f, %.1f, %.1f", worldPos.X, worldPos.Y, worldPos.Z), 
+                    Duration = 1 
+                })
+            end
+        end)
+    end
+    
+    -- Track Tab key presses
+    if not FlagSystem.TabMemoryConnection then
+        FlagSystem.TabMemoryConnection = UserInputService.InputBegan:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.Tab then
+                local worldPos = getMouseWorldPosition()
+                if worldPos then
+                    saveTabMemory(worldPos)
+                    
+                    -- Visual feedback for tab memory
+                    WindUI:Notify({ 
+                        Title = "💾 Tab Remembered", 
+                        Content = string.format("Tab position saved: %.1f, %.1f, %.1f", worldPos.X, worldPos.Y, worldPos.Z), 
+                        Duration = 1 
+                    })
+                end
+            end
+        end)
+    end
+    
+    print("💾 Memory tracking started!")
+end
+
+local function stopMemoryTracking()
+    if FlagSystem.ClickMemoryConnection then
+        FlagSystem.ClickMemoryConnection:Disconnect()
+        FlagSystem.ClickMemoryConnection = nil
+    end
+    
+    if FlagSystem.TabMemoryConnection then
+        FlagSystem.TabMemoryConnection:Disconnect()
+        FlagSystem.TabMemoryConnection = nil
+    end
+    
+    print("💾 Memory tracking stopped.")
+end
+
+local function getMemoryStats()
+    local clickCount = #FishingConfig.ClickMemory
+    local tabCount = #FishingConfig.TabMemory
+    local totalInteractions = clickCount + tabCount
+    
+    return {
+        ClickCount = clickCount,
+        TabCount = tabCount,
+        TotalInteractions = totalInteractions,
+        LastClick = FishingConfig.LastClickPosition,
+        LastTab = FishingConfig.LastTabPosition
+    }
 end
 
 local function startMouseTracking()
@@ -311,148 +425,235 @@ local function createFishingFlag()
     
     -- Create main flag container
     local flagContainer = Instance.new("Model")
-    flagContainer.Name = "FishingFlagModel"
+    flagContainer.Name = "AnimeFishingFlagModel"
     flagContainer.Parent = workspace
     
     -- Create flag pole (bottom part)
     local pole = Instance.new("Part")
     pole.Name = "FlagPole"
-    pole.Size = Vector3.new(0.3, 5, 0.3)
-    pole.Material = Enum.Material.WoodPlanks
-    pole.Color = Color3.new(0.4, 0.2, 0.1)
+    pole.Size = Vector3.new(0.3, 6, 0.3)
+    pole.Material = Enum.Material.DiamondPlate
+    pole.Color = Color3.new(0.8, 0.8, 0.9)
     pole.CanCollide = false
     pole.Anchored = true
     pole.Shape = Enum.PartType.Cylinder
     pole.Position = FishingConfig.FishingPosition
     pole.Parent = flagContainer
     
-    -- Add metal cap to pole
+    -- Add anime-style crystal cap to pole
     local poleCap = Instance.new("Part")
-    poleCap.Name = "PoleCap"
-    poleCap.Size = Vector3.new(0.4, 0.2, 0.4)
-    poleCap.Material = Enum.Material.Metal
-    poleCap.Color = Color3.new(0.7, 0.7, 0.7)
+    poleCap.Name = "CrystalCap"
+    poleCap.Size = Vector3.new(0.8, 0.8, 0.8)
+    poleCap.Material = Enum.Material.ForceField
+    poleCap.Color = Color3.new(0, 1, 1)
     poleCap.CanCollide = false
     poleCap.Anchored = true
     poleCap.Shape = Enum.PartType.Ball
-    poleCap.Position = pole.Position + Vector3.new(0, 2.6, 0)
+    poleCap.Position = pole.Position + Vector3.new(0, 3.2, 0)
     poleCap.Parent = flagContainer
     
-    -- Create flag part with gradient effect
+    -- Add intense glow to crystal cap
+    local crystalLight = Instance.new("PointLight")
+    crystalLight.Color = Color3.new(0, 1, 1)
+    crystalLight.Brightness = 5
+    crystalLight.Range = 25
+    crystalLight.Parent = poleCap
+    
+    -- Create main anime flag with enhanced design
     local flag = Instance.new("Part")
-    flag.Name = "FishingFlag"
-    flag.Size = Vector3.new(2, 1.5, 0.1)
-    flag.Material = Enum.Material.Neon
-    flag.Color = Color3.new(0, 0.8, 1)
+    flag.Name = "AnimeFlag"
+    flag.Size = Vector3.new(3, 2, 0.1)
+    flag.Material = Enum.Material.ForceField
+    flag.Color = Color3.new(0.2, 0.8, 1)
     flag.CanCollide = false
     flag.Anchored = true
     flag.TopSurface = Enum.SurfaceType.Smooth
     flag.BottomSurface = Enum.SurfaceType.Smooth
-    flag.Position = pole.Position + Vector3.new(1, 1.5, 0)
+    flag.Position = pole.Position + Vector3.new(1.5, 2, 0)
     flag.Parent = flagContainer
     
-    -- Add flag design with SurfaceGui
+    -- Create LEFT WING
+    local leftWing = Instance.new("Part")
+    leftWing.Name = "LeftWing"
+    leftWing.Size = Vector3.new(1.5, 3, 0.2)
+    leftWing.Material = Enum.Material.ForceField
+    leftWing.Color = Color3.new(1, 1, 1)
+    leftWing.Transparency = 0.3
+    leftWing.CanCollide = false
+    leftWing.Anchored = true
+    leftWing.Position = flag.Position + Vector3.new(-1.8, 0.5, 0.5)
+    leftWing.Rotation = Vector3.new(0, 0, -20)
+    leftWing.Parent = flagContainer
+    
+    -- Create RIGHT WING
+    local rightWing = Instance.new("Part")
+    rightWing.Name = "RightWing"
+    rightWing.Size = Vector3.new(1.5, 3, 0.2)
+    rightWing.Material = Enum.Material.ForceField
+    rightWing.Color = Color3.new(1, 1, 1)
+    rightWing.Transparency = 0.3
+    rightWing.CanCollide = false
+    rightWing.Anchored = true
+    rightWing.Position = flag.Position + Vector3.new(-1.8, 0.5, -0.5)
+    rightWing.Rotation = Vector3.new(0, 0, 20)
+    rightWing.Parent = flagContainer
+    
+    -- Add wing glows
+    local leftWingLight = Instance.new("PointLight")
+    leftWingLight.Color = Color3.new(1, 1, 1)
+    leftWingLight.Brightness = 3
+    leftWingLight.Range = 15
+    leftWingLight.Parent = leftWing
+    
+    local rightWingLight = Instance.new("PointLight")
+    rightWingLight.Color = Color3.new(1, 1, 1)
+    rightWingLight.Brightness = 3
+    rightWingLight.Range = 15
+    rightWingLight.Parent = rightWing
+    
+    -- Add flag design with anime-style SurfaceGui
     local surfaceGui = Instance.new("SurfaceGui")
     surfaceGui.Face = Enum.NormalId.Front
     surfaceGui.Parent = flag
     
-    -- Background gradient frame
+    -- Anime-style background with multiple gradients
     local gradientFrame = Instance.new("Frame")
     gradientFrame.Size = UDim2.new(1, 0, 1, 0)
-    gradientFrame.BackgroundTransparency = 0.3
+    gradientFrame.BackgroundTransparency = 0.2
     gradientFrame.BorderSizePixel = 0
     gradientFrame.Parent = surfaceGui
     
     local gradient = Instance.new("UIGradient")
     gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.new(0, 0.5, 1)),
-        ColorSequenceKeypoint.new(1, Color3.new(0, 1, 1))
+        ColorSequenceKeypoint.new(0, Color3.new(0.2, 0.4, 1)),
+        ColorSequenceKeypoint.new(0.5, Color3.new(0, 1, 1)),
+        ColorSequenceKeypoint.new(1, Color3.new(0.8, 0.9, 1))
     })
-    gradient.Rotation = 45
+    gradient.Rotation = 135
     gradient.Parent = gradientFrame
     
-    -- Flag icon
+    -- Anime-style flag icon with multiple emojis
     local flagIcon = Instance.new("TextLabel")
-    flagIcon.Size = UDim2.new(0.4, 0, 0.6, 0)
-    flagIcon.Position = UDim2.new(0.1, 0, 0.2, 0)
+    flagIcon.Size = UDim2.new(0.6, 0, 0.8, 0)
+    flagIcon.Position = UDim2.new(0.05, 0, 0.1, 0)
     flagIcon.BackgroundTransparency = 1
-    flagIcon.Text = "🎣"
-    flagIcon.TextColor3 = Color3.new(1, 1, 1)
+    flagIcon.Text = "🎣✨🌟"
+    flagIcon.TextColor3 = Color3.new(1, 1, 0)
     flagIcon.TextScaled = true
     flagIcon.Font = Enum.Font.SourceSansBold
+    flagIcon.TextStrokeTransparency = 0
+    flagIcon.TextStrokeColor3 = Color3.new(0, 0, 0)
     flagIcon.Parent = gradientFrame
     
-    -- Flag text
+    -- Anime-style flag text
     local flagText = Instance.new("TextLabel")
-    flagText.Size = UDim2.new(0.5, 0, 0.3, 0)
-    flagText.Position = UDim2.new(0.45, 0, 0.35, 0)
+    flagText.Size = UDim2.new(0.35, 0, 0.4, 0)
+    flagText.Position = UDim2.new(0.6, 0, 0.3, 0)
     flagText.BackgroundTransparency = 1
-    flagText.Text = "FISH HERE"
+    flagText.Text = "LEGENDARY\nFISHING\nSPOT"
     flagText.TextColor3 = Color3.new(1, 1, 1)
     flagText.TextScaled = true
     flagText.Font = Enum.Font.SourceSansBold
+    flagText.TextStrokeTransparency = 0
+    flagText.TextStrokeColor3 = Color3.new(0, 0, 1)
     flagText.Parent = gradientFrame
     
-    -- Add glowing effect
-    local pointLight = Instance.new("PointLight")
-    pointLight.Color = Color3.new(0, 0.8, 1)
-    pointLight.Brightness = 2
-    pointLight.Range = 10
-    pointLight.Parent = flag
+    -- Add main flag glow
+    local flagLight = Instance.new("PointLight")
+    flagLight.Color = Color3.new(0, 1, 1)
+    flagLight.Brightness = 4
+    flagLight.Range = 20
+    flagLight.Parent = flag
     
-    -- Create floating text label above flag
+    -- Create floating anime-style text label
     local billboardGui = Instance.new("BillboardGui")
-    billboardGui.Size = UDim2.new(0, 200, 0, 60)
-    billboardGui.StudsOffset = Vector3.new(0, 3, 0)
+    billboardGui.Size = UDim2.new(0, 300, 0, 80)
+    billboardGui.StudsOffset = Vector3.new(0, 4, 0)
     billboardGui.AlwaysOnTop = true
     billboardGui.Parent = flagContainer
     
-    -- Background for text
+    -- Anime-style background for text
     local textBackground = Instance.new("Frame")
     textBackground.Size = UDim2.new(1, 0, 1, 0)
     textBackground.BackgroundColor3 = Color3.new(0, 0, 0)
-    textBackground.BackgroundTransparency = 0.5
-    textBackground.BorderSizePixel = 0
+    textBackground.BackgroundTransparency = 0.3
+    textBackground.BorderSizePixel = 3
+    textBackground.BorderColor3 = Color3.new(0, 1, 1)
     textBackground.Parent = billboardGui
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
+    corner.CornerRadius = UDim.new(0, 15)
     corner.Parent = textBackground
+    
+    local textGradient = Instance.new("UIGradient")
+    textGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.new(0.1, 0.1, 0.3)),
+        ColorSequenceKeypoint.new(1, Color3.new(0, 0.2, 0.4))
+    })
+    textGradient.Parent = textBackground
     
     local textLabel = Instance.new("TextLabel")
     textLabel.Size = UDim2.new(1, 0, 1, 0)
     textLabel.BackgroundTransparency = 1
-    textLabel.Text = "🎣 Fishing Position 🎣"
+    textLabel.Text = "⚡ ANIME FISHING ZONE ⚡"
     textLabel.TextColor3 = Color3.new(0, 1, 1)
     textLabel.TextScaled = true
     textLabel.Font = Enum.Font.SourceSansBold
     textLabel.TextStrokeTransparency = 0
-    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    textLabel.TextStrokeColor3 = Color3.new(1, 1, 0)
     textLabel.Parent = textBackground
     
-    -- Add selection box for visual feedback
+    -- Add selection box with anime effects
     local selectionBox = Instance.new("SelectionBox")
     selectionBox.Color3 = Color3.new(0, 1, 1)
-    selectionBox.LineThickness = 0.3
-    selectionBox.Transparency = 0.3
+    selectionBox.LineThickness = 0.5
+    selectionBox.Transparency = 0.2
     selectionBox.Adornee = flagContainer
     selectionBox.Parent = flagContainer
     
-    -- Add waving animation
-    task.spawn(function()
-        local time = 0
-        while flagContainer.Parent do
-            time = time + 0.1
-            if flag.Parent then
-                flag.Rotation = Vector3.new(0, 0, math.sin(time) * 5)
-            end
-            task.wait(0.1)
-        end
-    end)
-    
+    -- Store references
     FlagSystem.FlagPart = flagContainer
     FlagSystem.FlagMainPart = flag
     FlagSystem.FlagPole = pole
+    FlagSystem.LeftWing = leftWing
+    FlagSystem.RightWing = rightWing
+    FlagSystem.AnimeEffects = {crystalLight, flagLight, leftWingLight, rightWingLight}
+    
+    -- Start anime-style animations
+    task.spawn(function()
+        local time = 0
+        while flagContainer.Parent do
+            time = time + 0.05
+            
+            -- Flag waving animation
+            if flag.Parent then
+                flag.Rotation = Vector3.new(0, 0, math.sin(time * 2) * 8)
+            end
+            
+            -- Wing flapping animation
+            if leftWing.Parent and rightWing.Parent then
+                local flapAngle = math.sin(time * 3) * 15
+                leftWing.Rotation = Vector3.new(0, 0, -20 + flapAngle)
+                rightWing.Rotation = Vector3.new(0, 0, 20 - flapAngle)
+            end
+            
+            -- Pulsing glow effects
+            local glowIntensity = 3 + math.sin(time * 4) * 2
+            for _, light in pairs(FlagSystem.AnimeEffects) do
+                if light.Parent then
+                    light.Brightness = glowIntensity
+                end
+            end
+            
+            -- Crystal cap rotation
+            if poleCap.Parent then
+                poleCap.Rotation = Vector3.new(0, time * 50, 0)
+            end
+            
+            task.wait(0.05)
+        end
+    end)
+    
     return flagContainer
 end
 
@@ -484,7 +685,16 @@ local function enableFlagDragging()
                 
                 -- Update flag position relative to pole
                 if FlagSystem.FlagMainPart then
-                    FlagSystem.FlagMainPart.Position = newPosition + Vector3.new(1, 1.5, 0)
+                    FlagSystem.FlagMainPart.Position = newPosition + Vector3.new(1.5, 2, 0)
+                end
+                
+                -- Update wing positions relative to flag
+                if FlagSystem.LeftWing then
+                    FlagSystem.LeftWing.Position = newPosition + Vector3.new(-0.3, 2.5, 0.5)
+                end
+                
+                if FlagSystem.RightWing then
+                    FlagSystem.RightWing.Position = newPosition + Vector3.new(-0.3, 2.5, -0.5)
                 end
                 
                 -- Update entire flag container position
@@ -524,7 +734,16 @@ local function enableFlagDragging()
                 
                 -- Update flag position relative to pole
                 if FlagSystem.FlagMainPart then
-                    FlagSystem.FlagMainPart.Position = finalPosition + Vector3.new(1, 1.5, 0)
+                    FlagSystem.FlagMainPart.Position = finalPosition + Vector3.new(1.5, 2, 0)
+                end
+                
+                -- Update wing positions relative to flag
+                if FlagSystem.LeftWing then
+                    FlagSystem.LeftWing.Position = finalPosition + Vector3.new(-0.3, 2.5, 0.5)
+                end
+                
+                if FlagSystem.RightWing then
+                    FlagSystem.RightWing.Position = finalPosition + Vector3.new(-0.3, 2.5, -0.5)
                 end
                 
                 -- Update entire flag container position
@@ -551,8 +770,8 @@ local function enableFlagDragging()
             -- Cancel flag placement
             removeFishingFlag()
             WindUI:Notify({ 
-                Title = "❌ Beautiful Flag Placement Cancelled", 
-                Content = "Beautiful flag placement was cancelled", 
+                Title = "❌ Anime Flag Placement Cancelled", 
+                Content = "Anime flag placement was cancelled", 
                 Duration = 2 
             })
         end
@@ -569,8 +788,8 @@ local function startFlagPlacement()
     enableFlagDragging()
     
     WindUI:Notify({ 
-        Title = "🚩 Beautiful Flag Placement Active", 
-        Content = "Move mouse to preview the glowing flag position, then CLICK to place! Press ESC to cancel.", 
+        Title = "⚡ Anime Flag Placement Active", 
+        Content = "Move mouse to preview the anime flag with wings, then CLICK to place! Press ESC to cancel.", 
         Duration = 5 
     })
 end
@@ -598,15 +817,15 @@ local function stopFlagPlacement()
     updateCurrentPositionDisplay()
     
     if MouseTracker.PositionLabel then
-        MouseTracker.PositionLabel:SetDesc("Click 'Place Beautiful Fishing Flag' to set position with glowing animated flag")
+        MouseTracker.PositionLabel:SetDesc("Click 'Place Anime Fishing Flag' to set position with winged animated flag")
     end
     
     -- Debug print
     print("🎣 Flag position confirmed:", FishingConfig.FishingPosition)
     
     WindUI:Notify({ 
-        Title = "🚩 Beautiful Position Confirmed", 
-        Content = string.format("Beautiful fishing flag placed at: %.1f, %.1f, %.1f", 
+        Title = "⚡ Anime Position Confirmed", 
+        Content = string.format("Anime fishing flag with wings placed at: %.1f, %.1f, %.1f", 
             FishingConfig.FishingPosition.X, FishingConfig.FishingPosition.Y, FishingConfig.FishingPosition.Z), 
         Duration = 3 
     })
@@ -881,10 +1100,10 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Mouse position tracking system - now shows beautiful flag system info
+    -- Mouse position tracking system - now shows anime flag system info
     MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
-        Title = "🚩 Beautiful Flag Position System",
-        Desc = "Click 'Place Beautiful Fishing Flag' to set position with glowing animated flag",
+        Title = "⚡ Anime Flag Position System",
+        Desc = "Click 'Place Anime Fishing Flag' to set position with winged animated flag",
         Image = "flag",
         ImageSize = 18,
     })
@@ -903,10 +1122,10 @@ function AutoFishSystem.Init(dependencies)
     -- Update the display immediately after creation
     updateCurrentPositionDisplay()
     
-    -- Place beautiful fishing flag button
+    -- Place anime fishing flag button
     Tabs.FishTab:Button({
-        Title = "🚩 Place Beautiful Fishing Flag",
-        Desc = "Click to activate beautiful flag placement with glowing effects, then move mouse and click anywhere to set fishing position",
+        Title = "⚡ Place Anime Fishing Flag",
+        Desc = "Click to activate anime flag placement with wings and glowing effects, then move mouse and click anywhere to set fishing position",
         Callback = function()
             if not FlagSystem.Active then
                 startFlagPlacement()
@@ -916,15 +1135,119 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    -- Remove beautiful flag button
+    -- Remove anime flag button
     Tabs.FishTab:Button({
-        Title = "🗑️ Remove Beautiful Flag",
-        Desc = "Remove the beautiful glowing fishing flag from the world",
+        Title = "🗑️ Remove Anime Flag",
+        Desc = "Remove the anime flag with wings and glowing effects from the world",
         Callback = function()
             removeFishingFlag()
             WindUI:Notify({ 
-                Title = "🗑️ Beautiful Flag Removed", 
-                Content = "Beautiful fishing flag has been removed from the world", 
+                Title = "🗑️ Anime Flag Removed", 
+                Content = "Anime fishing flag with wings has been removed from the world", 
+                Duration = 2 
+            })
+        end
+    })
+    
+    Tabs.FishTab:Section({ Title = "💾 Memory System", Icon = "brain" })
+    
+    -- Memory tracking toggle
+    local memoryToggle = Tabs.FishTab:Toggle({
+        Title = "💾 Memory Tracking",
+        Desc = "Remember where you click and tab on the screen",
+        Value = false,
+        Callback = function(state)
+            if state then
+                startMemoryTracking()
+                WindUI:Notify({ 
+                    Title = "💾 Memory Active", 
+                    Content = "Now tracking your clicks and tab presses!", 
+                    Duration = 3 
+                })
+            else
+                stopMemoryTracking()
+                WindUI:Notify({ 
+                    Title = "💾 Memory Stopped", 
+                    Content = "Memory tracking has been disabled", 
+                    Duration = 2 
+                })
+            end
+        end
+    })
+    
+    -- Memory statistics display
+    local memoryStatsLabel = Tabs.FishTab:Paragraph({
+        Title = "📊 Memory Statistics",
+        Desc = "💆 Clicks: 0 | ⌨️ Tabs: 0 | 📊 Total: 0",
+        Image = "activity",
+        ImageSize = 18,
+    })
+    
+    -- Last interaction display
+    local lastInteractionLabel = Tabs.FishTab:Paragraph({
+        Title = "🔄 Last Interaction",
+        Desc = "No interactions recorded yet",
+        Image = "clock",
+        ImageSize = 18,
+    })
+    
+    -- Memory controls
+    Tabs.FishTab:Button({
+        Title = "🔄 Use Last Click Position",
+        Desc = "Set fishing position to your last remembered click",
+        Callback = function()
+            if FishingConfig.LastClickPosition then
+                FishingConfig.FishingPosition = FishingConfig.LastClickPosition
+                updateCurrentPositionDisplay()
+                WindUI:Notify({ 
+                    Title = "🔄 Position Updated", 
+                    Content = "Fishing position set to last click location!", 
+                    Duration = 3 
+                })
+            else
+                WindUI:Notify({ 
+                    Title = "⚠️ No Click Memory", 
+                    Content = "No click position has been recorded yet", 
+                    Duration = 2 
+                })
+            end
+        end
+    })
+    
+    Tabs.FishTab:Button({
+        Title = "⌨️ Use Last Tab Position",
+        Desc = "Set fishing position to your last remembered tab",
+        Callback = function()
+            if FishingConfig.LastTabPosition then
+                FishingConfig.FishingPosition = FishingConfig.LastTabPosition
+                updateCurrentPositionDisplay()
+                WindUI:Notify({ 
+                    Title = "⌨️ Position Updated", 
+                    Content = "Fishing position set to last tab location!", 
+                    Duration = 3 
+                })
+            else
+                WindUI:Notify({ 
+                    Title = "⚠️ No Tab Memory", 
+                    Content = "No tab position has been recorded yet", 
+                    Duration = 2 
+                })
+            end
+        end
+    })
+    
+    Tabs.FishTab:Button({
+        Title = "🗑️ Clear Memory",
+        Desc = "Clear all remembered click and tab positions",
+        Callback = function()
+            FishingConfig.ClickMemory = {}
+            FishingConfig.TabMemory = {}
+            FishingConfig.LastClickPosition = nil
+            FishingConfig.LastTabPosition = nil
+            
+            WindUI:Notify({ 
+                Title = "🗑️ Memory Cleared", 
+                Content = "All click and tab memories have been cleared", 
                 Duration = 2 
             })
         end
@@ -1031,10 +1354,37 @@ function AutoFishSystem.Init(dependencies)
         print("⚠️ Auto Fish: Config system not available, settings won't be saved")
     end
     
-    -- Start stats update loop
+    -- Start stats and memory update loop
     task.spawn(function()
         while true do
             updateStats()
+            
+            -- Update memory statistics
+            if memoryStatsLabel then
+                local stats = getMemoryStats()
+                memoryStatsLabel:SetDesc(string.format("💆 Clicks: %d | ⌨️ Tabs: %d | 📊 Total: %d", 
+                    stats.ClickCount, stats.TabCount, stats.TotalInteractions))
+            end
+            
+            -- Update last interaction display
+            if lastInteractionLabel then
+                local desc = "No interactions recorded yet"
+                if FishingConfig.LastClickPosition or FishingConfig.LastTabPosition then
+                    local lastClick = FishingConfig.LastClickPosition
+                    local lastTab = FishingConfig.LastTabPosition
+                    
+                    if lastClick and lastTab then
+                        desc = string.format("Last Click: %.1f,%.1f,%.1f | Last Tab: %.1f,%.1f,%.1f", 
+                            lastClick.X, lastClick.Y, lastClick.Z, lastTab.X, lastTab.Y, lastTab.Z)
+                    elseif lastClick then
+                        desc = string.format("Last Click: %.1f, %.1f, %.1f", lastClick.X, lastClick.Y, lastClick.Z)
+                    elseif lastTab then
+                        desc = string.format("Last Tab: %.1f, %.1f, %.1f", lastTab.X, lastTab.Y, lastTab.Z)
+                    end
+                end
+                lastInteractionLabel:SetDesc(desc)
+            end
+            
             task.wait(2)
         end
     end)
@@ -1046,7 +1396,16 @@ end
 function AutoFishSystem.Cleanup()
     FishingSystem.Stop()
     stopMouseTracking()
+    stopMemoryTracking()
     removeFishingFlag()
+    
+    -- Clear memory data
+    FishingConfig.ClickMemory = {}
+    FishingConfig.TabMemory = {}
+    FishingConfig.LastClickPosition = nil
+    FishingConfig.LastTabPosition = nil
+    
+    print("🧿 Auto Fish System cleaned up successfully!")
 end
 
 return AutoFishSystem
