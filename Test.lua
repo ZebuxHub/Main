@@ -638,45 +638,111 @@ end
 
 -- Function to auto unlock tiles when needed
 local function autoUnlockTilesIfNeeded(islandNumber, eggType)
+    -- Input validation
+    if not islandNumber then 
+        warn("autoUnlockTilesIfNeeded: No island number provided")
+        return false 
+    end
+    if not eggType then 
+        warn("autoUnlockTilesIfNeeded: No egg type provided")
+        return false 
+    end
+    
     -- Check if we have available tiles first
     local farmParts
-    local isOceanEggType = eggType and isOceanEgg(eggType)
+    local isOceanEggType = false
     
-    if isOceanEggType then
-        farmParts = getWaterFarmParts(islandNumber)
+    -- Safe check for ocean egg type
+    local success, result = pcall(function()
+        return isOceanEgg(eggType)
+    end)
+    
+    if success then
+        isOceanEggType = result
     else
-        farmParts = getFarmParts(islandNumber)
+        warn("autoUnlockTilesIfNeeded: Error checking ocean egg type: " .. tostring(result))
+        isOceanEggType = false
+    end
+    
+    -- Get farm parts safely
+    local farmPartsSuccess, farmPartsResult = pcall(function()
+        if isOceanEggType then
+            return getWaterFarmParts(islandNumber)
+        else
+            return getFarmParts(islandNumber)
+        end
+    end)
+    
+    if farmPartsSuccess then
+        farmParts = farmPartsResult or {}
+    else
+        warn("autoUnlockTilesIfNeeded: Error getting farm parts: " .. tostring(farmPartsResult))
+        return false
     end
     
     -- Count available (unlocked and unoccupied) tiles
     local availableCount = 0
     for _, part in ipairs(farmParts) do
-        if not isFarmTileOccupied(part, 6) then
+        local isOccupied = false
+        local checkSuccess, checkResult = pcall(function()
+            return isFarmTileOccupied(part, 6)
+        end)
+        
+        if checkSuccess then
+            isOccupied = checkResult
+        else
+            warn("autoUnlockTilesIfNeeded: Error checking tile occupation: " .. tostring(checkResult))
+            isOccupied = true -- Assume occupied if we can't check
+        end
+        
+        if not isOccupied then
             availableCount = availableCount + 1
         end
     end
     
     -- If we have less than 3 available tiles, try to unlock more
     if availableCount < 3 then
-        local lockedTiles = getLockedTiles(islandNumber)
+        local lockedTiles = {}
+        local lockedTilesSuccess, lockedTilesResult = pcall(function()
+            return getLockedTiles(islandNumber)
+        end)
+        
+        if lockedTilesSuccess then
+            lockedTiles = lockedTilesResult or {}
+        else
+            warn("autoUnlockTilesIfNeeded: Error getting locked tiles: " .. tostring(lockedTilesResult))
+            return false
+        end
         
         if #lockedTiles > 0 then
             -- For ocean eggs, we need to be more careful about which tiles to unlock
             -- because water farms and regular farms are in different locked areas
             
-            -- Sort by cost (cheapest first)
-            table.sort(lockedTiles, function(a, b)
-                return (a.cost or 0) < (b.cost or 0)
+            -- Sort by cost (cheapest first) with error handling
+            local sortSuccess, sortError = pcall(function()
+                table.sort(lockedTiles, function(a, b)
+                    return (a.cost or 0) < (b.cost or 0)
+                end)
             end)
+            
+            if not sortSuccess then
+                warn("autoUnlockTilesIfNeeded: Error sorting locked tiles: " .. tostring(sortError))
+            end
             
             -- Try to unlock the cheapest tiles
             local unlockedCount = 0
             for _, lockInfo in ipairs(lockedTiles) do
                 if unlockedCount >= 2 then break end -- Don't unlock too many at once
                 
-                if unlockTile(lockInfo) then
+                local unlockSuccess, unlockError = pcall(function()
+                    return unlockTile(lockInfo)
+                end)
+                
+                if unlockSuccess and unlockError then
                     unlockedCount = unlockedCount + 1
                     task.wait(0.5) -- Wait between unlocks
+                elseif not unlockSuccess then
+                    warn("autoUnlockTilesIfNeeded: Error unlocking tile: " .. tostring(unlockError))
                 end
             end
             
@@ -819,7 +885,8 @@ local function getFarmParts(islandNumber)
     
     -- Filter out locked tiles by checking the Locks folder
     local unlockedFarmParts = {}
-    local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
+    local env = island:FindFirstChild("ENV")
+    local locksFolder = env and env:FindFirstChild("Locks")
     
     if locksFolder then
         -- Create a map of locked areas using CFrame and size
@@ -1775,12 +1842,12 @@ task.spawn(function()
     if success and result then
         AutoFishSystem = result
         
-        -- Wait for zebuxConfig to be available
-        local maxWaitTime = 30 -- Wait up to 30 seconds
+        -- Wait for zebuxConfig to be available (much shorter wait)
+        local maxWaitTime = 5 -- Wait up to 5 seconds
         local waitTime = 0
         while not zebuxConfig and waitTime < maxWaitTime do
-            task.wait(0.5)
-            waitTime = waitTime + 0.5
+            task.wait(0.1)
+            waitTime = waitTime + 0.1
         end
         
         if AutoFishSystem and AutoFishSystem.Init then
@@ -2449,7 +2516,8 @@ local function scanAllTilesAndModels(eggType)
     if art then
         local island = art:FindFirstChild(islandName)
         if island then
-            local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
+            local env = island:FindFirstChild("ENV")
+            local locksFolder = env and env:FindFirstChild("Locks")
             if locksFolder then
                 for _, lockModel in ipairs(locksFolder:GetChildren()) do
                     if lockModel:IsA("Model") then
@@ -2761,7 +2829,7 @@ local function attemptPlacement()
     -- Place eggs on available tiles (limit to prevent lag)
     local placed = 0
     local attempts = 0
-    local maxAttempts = math.min(#availableEggs, #availableTiles, 1) -- Limit to 5 attempts max
+    local maxAttempts = math.min(#availableEggs, #availableTiles, 5) -- Increase to 5 attempts max
     
     while #availableEggs > 0 and #availableTiles > 0 and attempts < maxAttempts do
         attempts = attempts + 1
