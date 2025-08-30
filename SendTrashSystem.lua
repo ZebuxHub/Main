@@ -841,7 +841,9 @@ function SendTrashSystem.Init(dependencies)
         Value = {},
         Multi = true,
         AllowNone = true,
-        Callback = function(selection) end
+        Callback = function(selection)
+            selectedPetTypes = selectionToList(selection)
+        end
     })
     
     -- Send pet mutation filter (now include-only)
@@ -852,7 +854,9 @@ function SendTrashSystem.Init(dependencies)
         Value = {},
         Multi = true,
         AllowNone = true,
-        Callback = function(selection) end
+        Callback = function(selection)
+            selectedPetMuts = selectionToList(selection)
+        end
     })
     
     TrashTab:Section({ Title = "🥚 Send Egg Selectors", Icon = "mail" })
@@ -865,7 +869,9 @@ function SendTrashSystem.Init(dependencies)
         Value = {},
         Multi = true,
         AllowNone = true,
-        Callback = function(selection) end
+        Callback = function(selection)
+            selectedEggTypes = selectionToList(selection)
+        end
     })
     
     -- Send egg mutation filter (now include-only)
@@ -876,7 +882,9 @@ function SendTrashSystem.Init(dependencies)
         Value = {},
         Multi = true,
         AllowNone = true,
-        Callback = function(selection) end
+        Callback = function(selection)
+            selectedEggMuts = selectionToList(selection)
+        end
     })
     
     -- Selling UI removed per request
