@@ -286,32 +286,34 @@ end
 
 -- Check if item should be sent/sold based on filters
 local function shouldSendItem(item, includeTypes, includeMutations)
-    -- Don't send/sell locked items
-    if item.locked then
+    -- Don't send locked items
+    if item.locked then return false end
+    
+    -- Normalize values for robust comparison
+    local function norm(v)
+        return v and tostring(v):lower() or nil
+    end
+    local itemType = norm(item.type)
+    local itemMut  = norm(item.mutation)
+    
+    -- STRICT: require a valid T (type) to exist
+    if not itemType or itemType == "" or itemType == "unknown" then
         return false
     end
     
-    -- Include-only filtering: if user selected any, item MUST match one
+    -- Build lookup sets for O(1) checks
+    local typesSet, mutsSet
     if includeTypes and #includeTypes > 0 then
-        local typeAllowed = false
-        for _, t in ipairs(includeTypes) do
-            if item.type == t then
-                typeAllowed = true
-                break
-            end
-        end
-        if not typeAllowed then return false end
+        typesSet = {}
+        for _, t in ipairs(includeTypes) do typesSet[norm(t)] = true end
+        if not typesSet[itemType] then return false end
     end
-    
     if includeMutations and #includeMutations > 0 then
-        local mutAllowed = false
-        for _, m in ipairs(includeMutations) do
-            if item.mutation == m then
-                mutAllowed = true
-                break
-            end
-        end
-        if not mutAllowed then return false end
+        -- STRICT for M: if selectors provided, item must have an M and it must match
+        if not itemMut or itemMut == "" then return false end
+        mutsSet = {}
+        for _, m in ipairs(includeMutations) do mutsSet[norm(m)] = true end
+        if not mutsSet[itemMut] then return false end
     end
     
     return true
