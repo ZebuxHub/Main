@@ -54,6 +54,7 @@ local autoDeleteMinSpeed = 0
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
+local lastReceiverName, lastReceiverId -- for webhook author/avatar
 
 -- Webhook/session reporting
 local webhookUrl = ""
@@ -105,6 +106,49 @@ local function getIconUrlFor(kind, typeName)
         return robloxIconUrl(EggIconMap[typeName])
     end
     return nil
+end
+
+local function getAvatarUrl(userId)
+    if not userId then return nil end
+    return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(userId) .. "&width=180&height=180&format=png"
+end
+
+local function sendWebhookSummary()
+    if webhookSent or webhookUrl == "" or #sessionLogs == 0 then return end
+    local totalSent = sessionLimits.sendPetCount
+    local fields = { { name = "Items Sent", value = tostring(totalSent), inline = true } }
+    local details = ""
+    local startIdx = math.max(1, #sessionLogs - 9)
+    for i = startIdx, #sessionLogs do
+        local it = sessionLogs[i]
+        local icon = getIconUrlFor(it.kind, it.type)
+        local line = string.format("%s • %s [%s] → %s", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
+        if icon then line = line .. "\n" .. icon end
+        details = details .. line .. "\n"
+    end
+    local thumb = (#sessionLogs > 0 and getIconUrlFor(sessionLogs[#sessionLogs].kind, sessionLogs[#sessionLogs].type)) or nil
+    local authorName = lastReceiverName or (sessionLogs[#sessionLogs] and sessionLogs[#sessionLogs].receiver) or nil
+    local authorIcon = lastReceiverId and getAvatarUrl(lastReceiverId) or nil
+    local payload = {
+        embeds = {
+            {
+                title = "Send Trash Session Summary",
+                description = details ~= "" and details or "No items were sent.",
+                color = 5814783,
+                fields = fields,
+                thumbnail = thumb and { url = thumb } or nil,
+                author = authorName and { name = authorName, icon_url = authorIcon } or nil,
+                footer = { text = "Build A Zoo" },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }
+        }
+    }
+    local json = HttpService:JSONEncode(payload)
+    http_request = http_request or request or (syn and syn.request)
+    if http_request then
+        http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
+        webhookSent = true
+    end
 end
 
 -- Helper function to safely get attribute
@@ -676,6 +720,8 @@ local function processTrash()
             targetPlayerObj = getRandomPlayer()
         end
         local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
+        lastReceiverName = targetPlayer
+        lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
         print("✅ Final target player for this cycle: " .. tostring(targetPlayer or "nil"))
         print("🎮 Send mode: " .. sendMode)
         
@@ -727,40 +773,7 @@ local function processTrash()
         if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
             -- Immediately post webhook summary when limit hit
             if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                task.spawn(function()
-                    local ok, err = pcall(function()
-                        local totalSent = sessionLimits.sendPetCount
-                        local fields = { { name = "Items Sent", value = tostring(totalSent), inline = true } }
-                        local details = ""
-                        local startIdx = math.max(1, #sessionLogs - 9)
-                        for i = startIdx, #sessionLogs do
-                            local it = sessionLogs[i]
-                            local icon = getIconUrlFor(it.kind, it.type)
-                            local line = string.format("%s • %s [%s] → %s", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
-                            if icon then line = line .. "\n" .. icon end
-                            details = details .. line .. "\n"
-                        end
-                        local payload = {
-                            embeds = {
-                                {
-                                    title = "Send Trash Session Summary",
-                                    description = details ~= "" and details or "No items were sent.",
-                                    color = 5814783,
-                                    fields = fields,
-                                    thumbnail = { url = (#sessionLogs > 0 and getIconUrlFor(sessionLogs[#sessionLogs].kind, sessionLogs[#sessionLogs].type)) or nil },
-                                    footer = { text = "Build A Zoo" },
-                                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                                }
-                            }
-                        }
-                        local json = HttpService:JSONEncode(payload)
-                        http_request = http_request or request or (syn and syn.request)
-                        if http_request then
-                            http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
-                        end
-                    end)
-                    if ok then webhookSent = true end
-                end)
+                task.spawn(sendWebhookSummary)
             end
             trashEnabled = false
             if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
