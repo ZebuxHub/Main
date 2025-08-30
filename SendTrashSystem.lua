@@ -308,13 +308,13 @@ local function sendItemToPlayer(item, playerName, itemType)
     if item.placed then
         print("🏗️ Item is placed on ground, removing first...")
         removeFromGround(itemUID)
-        wait(0.5) -- Brief wait after removal
+        wait(0.1) -- Quick wait after removal
     end
     
     -- Focus the item first (REQUIRED before sending)
     focusItem(itemUID)
-    print("⏳ Waiting 1 second for focus to process...")
-    wait(1) -- Wait for focus to process
+    print("⏳ Waiting 0.3 seconds for focus to process...")
+    wait(0.3) -- Quick wait for focus to process
     
     local success, err = pcall(function()
         -- Find the target player object
@@ -358,12 +358,12 @@ local function sellPet(pet)
     if pet.placed then
         print("🏗️ Pet is placed on ground, removing first...")
         removeFromGround(petUID)
-        wait(0.5) -- Brief wait after removal
+        wait(0.1) -- Quick wait after removal
     end
     
     -- Focus the pet first
     focusItem(petUID)
-    wait(0.5) -- Small delay to ensure focus is processed
+    wait(0.2) -- Quick delay to ensure focus is processed
     
     local success, err = pcall(function()
         local args = {"Sell", petUID}
@@ -414,7 +414,7 @@ local function autoDeleteSlowPets(speedThreshold)
             if petLocked == 0 and petSpeed < speedThreshold then
                 PetRE:FireServer('Sell', petUID)
                 deletedCount = deletedCount + 1
-                wait(0.1) -- Small delay between deletions
+                wait(0.05) -- Very quick delay between deletions
                 
                 -- Limit to 5 deletions per cycle to avoid spam
                 if deletedCount >= 5 then
@@ -473,7 +473,7 @@ local function processTrash()
         end
         
         if #petInventory == 0 and #eggInventory == 0 then
-            wait(5)
+            wait(1)
             continue
         end
         
@@ -530,8 +530,8 @@ local function processTrash()
                     print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(pet, targetPlayer, "pet")
                     sentAnyItem = true
-                    print("⏸️ Waiting 1 second before next action...")
-                    wait(1)
+                    print("⏸️ Waiting 0.3 seconds before next action...")
+                    wait(0.3)
                     break -- Send one at a time
                 end
             end
@@ -544,8 +544,8 @@ local function processTrash()
                     print("📦 About to send egg " .. egg.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
                     sentAnyItem = true
-                    print("⏸️ Waiting 1 second before next action...")
-                    wait(1)
+                    print("⏸️ Waiting 0.3 seconds before next action...")
+                    wait(0.3)
                     break -- Send one at a time
                 end
             end
@@ -569,7 +569,7 @@ local function processTrash()
             for _, pet in ipairs(petInventory) do
                 if shouldSendItem(pet, sellExcludeTypes, sellExcludeMutations) then
                     sellPet(pet)
-                    wait(1)
+                    wait(0.3)
                     break -- Sell one at a time
                 end
             end
@@ -583,7 +583,7 @@ local function processTrash()
         -- Update status
         updateStatus()
         
-        wait(2) -- Wait before next cycle
+        wait(0.5) -- Quick wait before next cycle
     end
 end
 
