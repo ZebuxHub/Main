@@ -63,9 +63,7 @@ local webhookSent = false
 -- Session limits
 local sessionLimits = {
     sendPetCount = 0,
-    sellPetCount = 0,
     maxSendPet = 50,
-    maxSellPet = 50,
     limitReachedNotified = false -- Track if user has been notified
 }
 
@@ -401,48 +399,7 @@ local function sendItemToPlayer(item, playerName, itemType)
 end
 
 -- Sell pet (only pets, no eggs)
-local function sellPet(pet)
-    if sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
-        if not sessionLimits.limitReachedNotified then
-            WindUI:Notify({
-                Title = "⚠️ Sell Limit Reached",
-                Content = "Reached maximum sell limit for this session (" .. sessionLimits.maxSellPet .. ")",
-                Duration = 5
-            })
-            sessionLimits.limitReachedNotified = true
-        end
-        return false
-    end
-    
-    local petUID = pet.uid
-    print("💰 Starting sell process for pet " .. petUID)
-    
-    -- If pet is placed on ground, remove it first
-    if pet.placed then
-        print("🏗️ Pet is placed on ground, removing first...")
-        removeFromGround(petUID)
-        wait(0.1) -- Quick wait after removal
-    end
-    
-    -- Focus the pet first
-    focusItem(petUID)
-    wait(0.2) -- Quick delay to ensure focus is processed
-    
-    local success, err = pcall(function()
-        local args = {"Sell", petUID}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
-    end)
-    
-    if success then
-        sessionLimits.sellPetCount = sessionLimits.sellPetCount + 1
-        actionCounter = actionCounter + 1
-        print("✅ Sold pet " .. petUID)
-    else
-        warn("Failed to sell pet " .. petUID .. ": " .. tostring(err))
-    end
-    
-    return success
-end
+-- Selling pets has been removed per user request
 
 -- Auto-delete slow pets
 local function autoDeleteSlowPets(speedThreshold)
@@ -460,8 +417,7 @@ local function autoDeleteSlowPets(speedThreshold)
     end
     
     local deletedCount = 0
-    local PetRE = ReplicatedStorage:FindFirstChild("Remote"):FindFirstChild("PetRE")
-    
+    local PetRE = ReplicatedStorage:FindChild("Remote") and ReplicatedStorage.Remote:FindFirstChild("PetRE")
     if not PetRE then
         return 0, "PetRE not found"
     end
@@ -553,7 +509,7 @@ local function processTrash()
         
         if #petInventory == 0 and #eggInventory == 0 then
             -- If limit reached, finalize session; else notify once
-            if sessionLimits.sendPetCount >= sessionLimits.maxSendPet or sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
+            if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
                 trashEnabled = false
                 if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
             else
@@ -649,29 +605,7 @@ local function processTrash()
             end
         end
         
-        -- If no items were sent, try selling pets (only pets, no eggs)
-        if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
-            local sellExcludeTypes = {}
-            local sellExcludeMutations = {}
-            
-            if sellPetTypeDropdown and sellPetTypeDropdown.GetValue then
-                local success, result = pcall(function() return sellPetTypeDropdown:GetValue() end)
-                sellExcludeTypes = success and result or {}
-            end
-            
-            if sellPetMutationDropdown and sellPetMutationDropdown.GetValue then
-                local success, result = pcall(function() return sellPetMutationDropdown:GetValue() end)
-                sellExcludeMutations = success and result or {}
-            end
-            
-            for _, pet in ipairs(petInventory) do
-                if shouldSendItem(pet, sellExcludeTypes, sellExcludeMutations) then
-                    sellPet(pet)
-                    wait(0.3)
-                    break -- Sell one at a time
-                end
-            end
-        end
+        -- Selling removed
         
         -- Auto-delete slow pets if enabled (only for pets, not eggs)
         if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
@@ -679,7 +613,7 @@ local function processTrash()
         end
         
         -- Stop if session limit reached
-        if sessionLimits.sendPetCount >= sessionLimits.maxSendPet or sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
+        if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
             trashEnabled = false
             if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
         end
