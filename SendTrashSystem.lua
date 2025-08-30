@@ -512,7 +512,7 @@ end
 
 -- Remove placed item from ground
 local function removeFromGround(itemUID)
-    print("🏗️ Removing item from ground: " .. tostring(itemUID))
+    
     
     local success, err = pcall(function()
         local args = {"Del", itemUID}
@@ -520,9 +520,9 @@ local function removeFromGround(itemUID)
     end)
     
     if success then
-        print("✅ Item " .. itemUID .. " removed from ground")
+        
     else
-        warn("❌ Failed to remove item " .. itemUID .. " from ground: " .. tostring(err))
+        
     end
     
     return success
@@ -530,7 +530,7 @@ end
 
 -- Focus pet/egg before sending/selling (exactly like manual method)
 local function focusItem(itemUID)
-    print("🔍 Focusing item: " .. tostring(itemUID))
+    
     
     local success, err = pcall(function()
         local args = {"Focus", itemUID}
@@ -538,9 +538,9 @@ local function focusItem(itemUID)
     end)
     
     if success then
-        print("🎯 Focus command sent successfully for item " .. itemUID)
+        
     else
-        warn("❌ Failed to focus item " .. itemUID .. ": " .. tostring(err))
+        
     end
     
     return success
@@ -561,18 +561,16 @@ local function sendItemToPlayer(item, playerName, itemType)
     end
     
     local itemUID = item.uid
-    print("🚀 Starting send process for " .. itemType .. " " .. itemUID .. " to " .. playerName)
+    
     
     -- If item is placed on ground, remove it first
     if item.placed then
-        print("🏗️ Item is placed on ground, removing first...")
         removeFromGround(itemUID)
         wait(0.1) -- Quick wait after removal
     end
     
     -- Focus the item first (REQUIRED before sending)
     focusItem(itemUID)
-    print("⏳ Waiting 0.3 seconds for focus to process...")
     wait(0.3) -- Quick wait for focus to process
     
     local success, err = pcall(function()
@@ -582,16 +580,13 @@ local function sendItemToPlayer(item, playerName, itemType)
             error("Player " .. playerName .. " not found")
         end
         
-        print("📤 Sending to player: " .. playerName .. " (Player object found)")
         local args = {targetPlayer}
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
-        print("📮 GiftRE fired successfully")
     end)
     
     if success then
         sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
         actionCounter = actionCounter + 1
-        print("✅ Sent " .. itemType .. " " .. itemUID .. " to " .. playerName)
         -- Log for webhook
         table.insert(sessionLogs, {
             kind = itemType,
@@ -601,7 +596,7 @@ local function sendItemToPlayer(item, playerName, itemType)
             receiver = playerName,
         })
     else
-        warn("Failed to send " .. itemType .. " " .. itemUID .. " to " .. playerName .. ": " .. tostring(err))
+        
     end
     
     return success
@@ -694,13 +689,11 @@ local function processTrash()
             
             if success and result then
                 sendMode = result
-                print("🎮 Dropdown returned send mode: " .. tostring(sendMode))
             else
-                print("❌ Failed to get send mode from dropdown, using default: Both")
                 sendMode = "Both"
             end
         else
-            print("❌ Send mode dropdown not found, using default: Both")
+            
         end
         
         local petInventory = {}
@@ -764,7 +757,6 @@ local function processTrash()
         if targetPlayerName and targetPlayerName ~= "Random Player" then
             targetPlayerObj = resolveTargetPlayerByName(targetPlayerName)
             if not targetPlayerObj then
-                print("⚠️ Selected player not found, falling back to random")
                 targetPlayerObj = getRandomPlayer()
             end
         else
@@ -773,8 +765,6 @@ local function processTrash()
         local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
         lastReceiverName = targetPlayer
         lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
-        print("✅ Final target player for this cycle: " .. tostring(targetPlayer or "nil"))
-        print("🎮 Send mode: " .. sendMode)
         
         -- Send items to other players
         local sentAnyItem = false
@@ -786,7 +776,6 @@ local function processTrash()
                 pet = refreshItemFromData(pet.uid, false, pet)
                 if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
                     local petName = pet.type or pet.uid
-                    print("📦 About to send pet " .. petName .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(pet, targetPlayer, "pet")
                     sentAnyItem = true
                     wait(0.3)
@@ -804,7 +793,6 @@ local function processTrash()
                 local mList = (selectedEggMuts and #selectedEggMuts > 0) and selectedEggMuts or includeEggMutations
                 if shouldSendItem(egg, tList, mList) and targetPlayer then
                     local eggName = egg.type or egg.uid
-                    print("📦 About to send egg " .. eggName .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
                     sentAnyItem = true
                     wait(0.3)
@@ -867,7 +855,6 @@ function SendTrashSystem.Init(dependencies)
             if numValue < 1 then numValue = 1 end -- Minimum of 1
             sessionLimits.maxSendPet = numValue
             sessionLimits.limitReachedNotified = false -- Reset notification
-            print("Session limits updated: " .. numValue .. " items per session")
         end,
     })
     
