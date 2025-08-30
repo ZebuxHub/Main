@@ -226,8 +226,8 @@ local function getPetInventory()
         if petData:IsA("Configuration") then
             local petInfo = {
                 uid = petData.Name,
-                type = safeGetAttribute(petData, "Type", "Unknown"),
-                mutation = safeGetAttribute(petData, "Mutation", ""),
+                type = safeGetAttribute(petData, "T", safeGetAttribute(petData, "Type", "Unknown")),
+                mutation = safeGetAttribute(petData, "M", safeGetAttribute(petData, "Mutation", "")),
                 speed = safeGetAttribute(petData, "Speed", 0),
                 locked = safeGetAttribute(petData, "LK", 0) == 1,
                 placed = safeGetAttribute(petData, "D", nil) ~= nil -- Check if pet is placed
@@ -257,8 +257,8 @@ local function getEggInventory()
         if eggData:IsA("Configuration") then
             local eggInfo = {
                 uid = eggData.Name,
-                type = safeGetAttribute(eggData, "Type", "Unknown"),
-                mutation = safeGetAttribute(eggData, "Mutation", ""),
+                type = safeGetAttribute(eggData, "T", safeGetAttribute(eggData, "Type", "Unknown")),
+                mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "")),
                 locked = safeGetAttribute(eggData, "LK", 0) == 1,
                 placed = safeGetAttribute(eggData, "D", nil) ~= nil -- Check if egg is placed
             }
@@ -552,6 +552,13 @@ local function processTrash()
         end
         
         if #petInventory == 0 and #eggInventory == 0 then
+            -- If limit reached, finalize session; else notify once
+            if sessionLimits.sendPetCount >= sessionLimits.maxSendPet or sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
+                trashEnabled = false
+                if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+            else
+                WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
+            end
             wait(1)
             continue
         end
@@ -616,7 +623,7 @@ local function processTrash()
         -- Send items to other players
         local sentAnyItem = false
         
-        -- Try to send pets first
+        -- Try to send pets first (respect T/M before any action)
         if sendMode == "Pets" or sendMode == "Both" then
             for _, pet in ipairs(petInventory) do
                 if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
@@ -629,7 +636,7 @@ local function processTrash()
             end
         end
         
-        -- Try to send eggs if no pets were sent
+        -- Try to send eggs if no pets were sent (respect T/M before any action)
         if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
                 if shouldSendItem(egg, includeEggTypes, includeEggMutations) and targetPlayer then
@@ -669,6 +676,12 @@ local function processTrash()
         -- Auto-delete slow pets if enabled (only for pets, not eggs)
         if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
             autoDeleteSlowPets(autoDeleteMinSpeed)
+        end
+        
+        -- Stop if session limit reached
+        if sessionLimits.sendPetCount >= sessionLimits.maxSendPet or sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
+            trashEnabled = false
+            if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
         end
         
         -- Update status
