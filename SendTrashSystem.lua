@@ -44,8 +44,6 @@ local sendPetTypeDropdown
 local sendPetMutationDropdown
 local sendEggTypeDropdown
 local sendEggMutationDropdown
-local sellPetTypeDropdown
-local sellPetMutationDropdown
 local speedThresholdSlider
 local sessionLimitInput
 local statusParagraph
@@ -676,7 +674,6 @@ function SendTrashSystem.Init(dependencies)
             local numValue = tonumber(value) or 50
             if numValue < 1 then numValue = 1 end -- Minimum of 1
             sessionLimits.maxSendPet = numValue
-            sessionLimits.maxSellPet = numValue
             sessionLimits.limitReachedNotified = false -- Reset notification
             print("Session limits updated: " .. numValue .. " items per session")
         end,
@@ -814,29 +811,7 @@ function SendTrashSystem.Init(dependencies)
         Callback = function(selection) end
     })
     
-    TrashTab:Section({ Title = "💰 Sell Pet Filters", Icon = "dollar-sign" })
-    
-    -- Sell pet type filter
-    sellPetTypeDropdown = TrashTab:Dropdown({
-        Title = "🚫 Exclude Pet Types (from selling)",
-        Desc = "Select pet types to NOT sell (empty = sell all types)",
-        Values = getAllPetTypes(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection) end
-    })
-    
-    -- Sell pet mutation filter
-    sellPetMutationDropdown = TrashTab:Dropdown({
-        Title = "🚫 Exclude Pet Mutations (from selling)",
-        Desc = "Select mutations to NOT sell (empty = sell all mutations)",
-        Values = getAllMutations(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection) end
-    })
+    -- Selling UI removed per request
     
     TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
     
@@ -874,12 +849,7 @@ function SendTrashSystem.Init(dependencies)
             if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
                 pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
             end
-            if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
-                pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
-            end
-            if sellPetMutationDropdown and sellPetMutationDropdown.SetValues then
-                pcall(function() sellPetMutationDropdown:SetValues(getAllMutations()) end)
-            end
+            -- Selling UI removed
             
             updateStatus()
             
@@ -934,8 +904,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
-        Config:Register("sellPetTypeFilter", sellPetTypeDropdown)
-        Config:Register("sellPetMutationFilter", sellPetMutationDropdown)
+        -- Selling config removed
         Config:Register("speedThreshold", speedThresholdSlider)
         Config:Register("sessionLimit", sessionLimitInput)
     end
