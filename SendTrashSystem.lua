@@ -143,7 +143,7 @@ local function getAvatarUrl(userId)
 end
 
 local function sendWebhookSummary()
-    if webhookSent or webhookUrl == "" or #sessionLogs == 0 then return end
+    if webhookSent or webhookUrl == "" then return end
     local totalSent = sessionLimits.sendPetCount
     local fields = { { name = "Items Sent", value = tostring(totalSent), inline = true } }
     local details = ""
@@ -870,49 +870,9 @@ function SendTrashSystem.Init(dependencies)
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
             else
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
-                -- Send webhook once per session when turned off
-                if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                    task.spawn(function()
-                        local success, err = pcall(function()
-                            local totalSent = sessionLimits.sendPetCount
-                            local totalSold = sessionLimits.sellPetCount
-                            local fields = {}
-                            table.insert(fields, { name = "Items Sent", value = tostring(totalSent), inline = true })
-                            
-                            -- Build concise description list (last 10 items)
-                            local details = ""
-                            local startIdx = math.max(1, #sessionLogs - 9)
-                            for i = startIdx, #sessionLogs do
-                                local it = sessionLogs[i]
-                                details = details .. string.format("%s • %s [%s] → %s\n", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
-                            end
-                            
-                            local payload = {
-                                embeds = {
-                                    {
-                                        title = "Send Trash Session Summary",
-                                        description = details ~= "" and details or "No items were sent.",
-                                        color = 5814783,
-                                        fields = fields,
-                                        footer = { text = "Build A Zoo" },
-                                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                                    }
-                                }
-                            }
-                            local json = HttpService:JSONEncode(payload)
-                            http_request = http_request or request or (syn and syn.request)
-                            if http_request then
-                                http_request({
-                                    Url = webhookUrl,
-                                    Method = "POST",
-                                    Headers = { ["Content-Type"] = "application/json" },
-                                    Body = json,
-                                })
-                            end
-                        end)
-                        if success then webhookSent = true end
-                    end)
-                end
+                -- Always send summary on manual stop
+                task.spawn(sendWebhookSummary)
+                webhookSent = true
             end
         end
     })
