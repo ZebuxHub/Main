@@ -583,6 +583,10 @@ local function buyMutatedEgg()
                                 if mutateText and mutateText:IsA("TextLabel") then
                                     local mutationText = mutateText.Text
                                     if mutationText and mutationText ~= "" then
+                                        -- Map "Dino" to "Jurassic" for consistency (CRITICAL FIX)
+                                        if string.lower(mutationText) == "dino" then
+                                            mutationText = "Jurassic"
+                                        end
                                         -- This egg has a mutation, try to buy it using the same method as main script
                                         print("Auto Quest: Found mutated egg, attempting to buy: " .. eggModel.Name)
                                         
