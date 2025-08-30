@@ -500,18 +500,28 @@ function FruitSelection.CreateUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 6
     scrollFrame.ScrollBarImageColor3 = colors.primary
+    -- Disable AutomaticCanvasSize and handle manually for better control
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000) -- Start with reasonable default
+    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    scrollFrame.ScrollingEnabled = true
     scrollFrame.Parent = content
     
-         local gridLayout = Instance.new("UIGridLayout")
-     gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
-     gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
-     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-     gridLayout.Parent = scrollFrame
-     
-     -- Add UIPadding to ensure proper scrolling
-     local padding = Instance.new("UIPadding")
-     padding.PaddingBottom = UDim.new(0, 8)
-     padding.Parent = scrollFrame
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
+    gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    gridLayout.Parent = scrollFrame
+    
+    -- Add UIPadding to ensure proper scrolling
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 50)
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.PaddingRight = UDim.new(0, 8)
+    padding.Parent = scrollFrame
     
     -- Window Control Events
     local closeBtn = windowControls.CloseBtn
@@ -585,6 +595,41 @@ function FruitSelection.CreateUI()
     return ScreenGui
 end
 
+-- Update ScrollingFrame canvas size based on content
+local function updateCanvasSize(scrollFrame)
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if not gridLayout then return end
+    
+    -- Wait for layout to update
+    task.wait(0.2)
+    
+    -- Calculate content size based on grid layout
+    local itemCount = 0
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            itemCount = itemCount + 1
+        end
+    end
+    
+    if itemCount > 0 then
+        -- Calculate rows needed (3 items per row)
+        local rows = math.ceil(itemCount / 3)
+        local cellHeight = 120 -- Height of each cell
+        local cellPadding = 8 -- Padding between cells
+        local topPadding = 8 -- Top padding from UIPadding
+        local bottomPadding = 50 -- Bottom padding from UIPadding
+        
+        -- More accurate calculation including all padding
+        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
+        
+        -- Always update canvas size to ensure proper scrolling
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+        
+        -- Also force a canvas position reset to ensure scrollability
+        scrollFrame.CanvasPosition = Vector2.new(0, 0)
+    end
+end
+
 -- Refresh Content
 function FruitSelection.RefreshContent()
     if not ScreenGui then return end
@@ -618,6 +663,45 @@ function FruitSelection.RefreshContent()
             end
             card.BackgroundColor3 = colors.selected
         end
+    end
+    
+    -- Update canvas size to ensure proper scrolling
+    -- Multiple approaches to ensure it works properly
+    task.spawn(function()
+        updateCanvasSize(scrollFrame)
+    end)
+    
+    -- Also try after a longer delay as backup
+    task.spawn(function()
+        task.wait(0.5)
+        updateCanvasSize(scrollFrame)
+    end)
+    
+    -- Connect to layout changes for real-time updates
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if gridLayout then
+        local connection = nil
+        connection = gridLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            task.wait(0.1)
+            local itemCount = 0
+            for _, child in pairs(scrollFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    itemCount = itemCount + 1
+                end
+            end
+            
+            if itemCount > 0 then
+                local rows = math.ceil(itemCount / 3)
+                local totalHeight = 8 + (rows * 120) + ((rows - 1) * 8) + 50
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+            end
+            
+            -- Disconnect after first successful update
+            if connection then
+                connection:Disconnect()
+                connection = nil
+            end
+        end)
     end
 end
 
