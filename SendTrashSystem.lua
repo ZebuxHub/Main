@@ -249,7 +249,7 @@ local function sendPetToPlayer(petUID, playerName)
         return false
     end
     
-    -- Focus the pet first
+    -- Focus the pet first (REQUIRED before sending)
     focusPet(petUID)
     wait(0.5) -- Small delay to ensure focus is processed
     
