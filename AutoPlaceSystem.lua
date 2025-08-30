@@ -224,8 +224,14 @@ local function getFarmParts(islandNumber, isWater)
                     matches = child.Name:match(pattern)
                 end
                 
+                -- Validate that it's a proper 8x8x8 farm tile
                 if matches and child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                    table.insert(farmParts, child)
+                    -- Additional validation for water farm tiles
+                    if isWater and child.Name == "WaterFarm_split_0_0_0" then
+                        table.insert(farmParts, child)
+                    elseif not isWater then
+                        table.insert(farmParts, child)
+                    end
                 end
             end
             scanForFarmParts(child)
@@ -284,10 +290,15 @@ local function getFarmParts(islandNumber, isWater)
     return unlockedFarmParts
 end
 
--- Optimized tile availability checking
+-- Optimized tile availability checking with 8x8 grid alignment
 local function isTileOccupied(farmPart)
     local center = farmPart.Position
-    local surfacePosition = Vector3.new(center.X, center.Y + 12, center.Z)
+    -- Use grid-snapped position for consistent detection
+    local surfacePosition = Vector3.new(
+        math.floor(center.X / 8) * 8 + 4, -- Snap to 8x8 grid center (X)
+        center.Y + 12, -- Standard height for pets/eggs
+        math.floor(center.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
+    )
     
     -- Check PlayerBuiltBlocks
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
@@ -391,11 +402,13 @@ end
 local function placePet(farmPart, petUID)
     if not farmPart or not petUID then return false end
     
-    -- Calculate surface position
+    -- Enhanced surface position calculation for 8x8 tiles
+    -- Ensure perfect centering on both water and regular farm tiles
+    local tileCenter = farmPart.Position
     local surfacePosition = Vector3.new(
-        farmPart.Position.X,
-        farmPart.Position.Y + (farmPart.Size.Y / 2),
-        farmPart.Position.Z
+        math.floor(tileCenter.X / 8) * 8 + 4, -- Snap to 8x8 grid center (X)
+        tileCenter.Y + (farmPart.Size.Y / 2), -- Surface height
+        math.floor(tileCenter.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
     )
     
     -- Equip egg to Deploy S2
@@ -411,12 +424,14 @@ local function placePet(farmPart, petUID)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
     task.wait(0.1)
     
-    -- Teleport to tile
+    -- Teleport to tile (use grid-snapped position for consistency)
     local char = LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
-            hrp.CFrame = CFrame.new(farmPart.Position)
+            -- Teleport to the exact center of the 8x8 tile
+            local teleportPos = Vector3.new(surfacePosition.X, farmPart.Position.Y, surfacePosition.Z)
+            hrp.CFrame = CFrame.new(teleportPos)
             task.wait(0.1)
         end
     end
@@ -505,8 +520,14 @@ local function attemptPlacement()
         if eggInfo.mutation then
             WindUI:Notify({ 
                 Title = "🏠 Auto Place", 
-                Content = "Placed " .. eggInfo.mutation .. " " .. eggInfo.type .. "!", 
+                Content = "Placed " .. eggInfo.mutation .. " " .. eggInfo.type .. " on 8x8 tile!", 
                 Duration = 3 
+            })
+        else
+            WindUI:Notify({ 
+                Title = "🏠 Auto Place", 
+                Content = "Placed " .. eggInfo.type .. " on 8x8 tile!", 
+                Duration = 2 
             })
         end
         
@@ -668,7 +689,7 @@ function AutoPlaceSystem.CreateUI()
     -- Manual placement button
     Tabs.PlaceTab:Button({
         Title = "🏠 Place One Pet Now",
-        Desc = "Manually place one pet right now",
+        Desc = "Manually place one pet right now (8x8 grid aligned)",
         Callback = function()
             local success, message = attemptPlacement()
             WindUI:Notify({ 
@@ -691,6 +712,25 @@ function AutoPlaceSystem.CreateUI()
             }
             updateStats()
             WindUI:Notify({ Title = "📊 Stats Reset", Content = "Placement statistics reset!", Duration = 2 })
+        end
+    })
+    
+    -- Debug: Show tile information
+    Tabs.PlaceTab:Button({
+        Title = "🔍 Debug Tile Info",
+        Desc = "Show available tiles and grid alignment info",
+        Callback = function()
+            local regularAvailable, waterAvailable = updateTileCache()
+            local allEggs = updateAvailableEggs()
+            
+            local message = string.format("🏠 Tile Info:\n📊 Regular: %d available\n🌊 Water: %d available\n🥚 Eggs: %d ready\n📐 Grid: 8x8 aligned", 
+                regularAvailable, waterAvailable, #allEggs)
+            
+            WindUI:Notify({ 
+                Title = "🔍 Debug Info", 
+                Content = message, 
+                Duration = 5 
+            })
         end
     })
     
