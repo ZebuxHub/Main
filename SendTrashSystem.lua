@@ -121,10 +121,8 @@ local function sendWebhookSummary()
     local startIdx = math.max(1, #sessionLogs - 9)
     for i = startIdx, #sessionLogs do
         local it = sessionLogs[i]
-        local icon = getIconUrlFor(it.kind, it.type)
         local line = string.format("%s • %s [%s] → %s", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
-        if icon then line = line .. "\n" .. icon end
-        details = details .. line .. "\n"
+        details = details .. "• " .. line .. "\n"
     end
     local thumb = (#sessionLogs > 0 and getIconUrlFor(sessionLogs[#sessionLogs].kind, sessionLogs[#sessionLogs].type)) or nil
     local authorName = lastReceiverName or (sessionLogs[#sessionLogs] and sessionLogs[#sessionLogs].receiver) or nil
@@ -137,6 +135,7 @@ local function sendWebhookSummary()
                 color = 5814783,
                 fields = fields,
                 thumbnail = thumb and { url = thumb } or nil,
+                image = thumb and { url = thumb } or nil,
                 author = authorName and { name = authorName, icon_url = authorIcon } or nil,
                 footer = { text = "Build A Zoo" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -1033,6 +1032,8 @@ function SendTrashSystem.Init(dependencies)
         Callback = function()
             sessionLimits.sendPetCount = 0
             sessionLimits.limitReachedNotified = false -- Reset notification
+            webhookSent = false
+            sessionLogs = {}
             actionCounter = 0
             updateStatus()
             
