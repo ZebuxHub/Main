@@ -222,13 +222,12 @@ local function shouldSendItem(item, excludeTypes, excludeMutations)
     return true
 end
 
--- Focus pet before sending/selling
+-- Focus pet before sending/selling (exactly like manual method)
 local function focusPet(petUID)
-    print("🔍 Attempting to focus pet: " .. tostring(petUID))
+    print("🔍 Focusing pet: " .. tostring(petUID))
     
     local success, err = pcall(function()
         local args = {"Focus", petUID}
-        print("📤 Firing CharacterRE with args:", args[1], args[2])
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     
@@ -256,7 +255,7 @@ local function sendPetToPlayer(petUID, playerName)
     print("🚀 Starting send process for pet " .. petUID .. " to " .. playerName)
     focusPet(petUID)
     print("⏳ Waiting 1 second for focus to process...")
-    wait(1) -- Increased delay to ensure focus is properly processed
+    wait(1) -- Wait for focus to process
     
     local success, err = pcall(function()
         -- Find the target player object
@@ -439,7 +438,8 @@ local function processTrash()
                 print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
                 sendPetToPlayer(pet.uid, targetPlayer)
                 sentAnyPet = true
-                wait(1)
+                print("⏸️ Waiting 1 second before next action...")
+                wait(1) -- Normal delay between sends
                 break -- Send one at a time
             end
         end
