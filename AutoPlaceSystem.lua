@@ -436,11 +436,12 @@ local function placePet(farmPart, petUID)
         end
     end
     
-    -- Place pet
+    -- Place pet (using proper vector.create format)
+    local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
     local args = {
         "Place",
         {
-            DST = {X = surfacePosition.X, Y = surfacePosition.Y, Z = surfacePosition.Z},
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
             ID = petUID
         }
     }
@@ -730,6 +731,33 @@ function AutoPlaceSystem.CreateUI()
                 Title = "🔍 Debug Info", 
                 Content = message, 
                 Duration = 5 
+            })
+        end
+    })
+    
+    -- Debug: Show placement format
+    Tabs.PlaceTab:Button({
+        Title = "🔍 Debug Placement Format",
+        Desc = "Show the exact remote firing format used",
+        Callback = function()
+            local examplePos = Vector3.new(-116.287, 16, -180.081)
+            local exampleUID = "eb1f4cffc75d4651906fc3d3f4472e5c"
+            local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
+            
+            print("🔧 Placement Remote Format:")
+            print('local args = {')
+            print('    "Place",')
+            print('    {')
+            print('        DST = vector.create(' .. examplePos.X .. ', ' .. examplePos.Y .. ', ' .. examplePos.Z .. '),')
+            print('        ID = "' .. exampleUID .. '"')
+            print('    }')
+            print('}')
+            print('game:GetService("ReplicatedStorage"):WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))')
+            
+            WindUI:Notify({ 
+                Title = "🔧 Debug Format", 
+                Content = "Placement format printed to console!", 
+                Duration = 3 
             })
         end
     })
