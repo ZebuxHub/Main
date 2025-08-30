@@ -406,27 +406,37 @@ local function processTrash()
         
         -- Process pets for sending
         local targetPlayer = nil
+        print("🔍 Checking target player selection...")
+        
         if targetPlayerDropdown and targetPlayerDropdown.GetValue then
             local success, result = pcall(function() return targetPlayerDropdown:GetValue() end)
+            print("📋 Dropdown GetValue success:", success, "result:", tostring(result))
+            
             if success and result then
                 if result == "Random Player" then
                     targetPlayer = getRandomPlayer()
+                    print("🎲 Using random player: " .. tostring(targetPlayer))
                 else
                     -- Use the specifically selected player
                     targetPlayer = result
-                    print("🎯 Target player selected: " .. targetPlayer)
+                    print("🎯 Using selected target player: " .. targetPlayer)
                 end
             else
                 targetPlayer = getRandomPlayer()
+                print("⚠️ Dropdown failed, using random player: " .. tostring(targetPlayer))
             end
         else
             targetPlayer = getRandomPlayer()
+            print("❌ No dropdown found, using random player: " .. tostring(targetPlayer))
         end
+        
+        print("✅ Final target player for this cycle: " .. tostring(targetPlayer))
         
         -- Send pets to other players
         local sentAnyPet = false
         for _, pet in ipairs(petInventory) do
             if shouldSendItem(pet, excludeTypes, excludeMutations) and targetPlayer then
+                print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
                 sendPetToPlayer(pet.uid, targetPlayer)
                 sentAnyPet = true
                 wait(1)
