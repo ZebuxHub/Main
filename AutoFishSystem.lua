@@ -770,11 +770,25 @@ local function pullFish()
     -- Wait a moment for fish to be caught before collecting
     task.wait(0.5)
     
-    -- Auto-collect fish
-    local collectSuccess = collectNearbyFish()
+    -- Auto-collect fish with error handling
+    local collectSuccess = false
+    if collectNearbyFish then
+        local success, result = pcall(collectNearbyFish)
+        if success then
+            collectSuccess = result
+        else
+            warn("Error in collectNearbyFish: " .. tostring(result))
+        end
+    else
+        warn("collectNearbyFish function is nil!")
+    end
     
     -- Unanchor player after fishing attempt
-    unanchorPlayer()
+    if unanchorPlayer then
+        pcall(unanchorPlayer)
+    else
+        warn("unanchorPlayer function is nil!")
+    end
     
     FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
     FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
@@ -863,9 +877,12 @@ local function runAutoFish()
         local success = startFishing()
         
         if success then
-            -- Wait for the fish to be ready to pull
-            if waitForFishPull() then
-                if pullFish() then
+            -- Wait for the fish to be ready to pull with error handling
+            local pullSuccess, pullWaitResult = pcall(waitForFishPull)
+            if pullSuccess and pullWaitResult then
+                -- Call pullFish with error handling
+                local fishSuccess, fishResult = pcall(pullFish)
+                if fishSuccess and fishResult then
                     local castTime = tick() - castStartTime
                     WindUI:Notify({ 
                         Title = "🎣 Auto Fish", 
@@ -875,14 +892,14 @@ local function runAutoFish()
                 else
                     WindUI:Notify({ 
                         Title = "🎣 Auto Fish", 
-                        Content = "❌ Failed to pull fish", 
+                        Content = "❌ Failed to pull fish: " .. tostring(fishResult), 
                         Duration = 2 
                     })
                 end
             else
                 WindUI:Notify({ 
                     Title = "🎣 Auto Fish", 
-                    Content = "⏰ Fish pull timeout", 
+                    Content = "⏰ Fish pull timeout: " .. tostring(pullWaitResult), 
                     Duration = 2 
                 })
             end
@@ -1055,10 +1072,11 @@ function AutoFishSystem.Init(dependencies)
     Tabs.FishTab:Slider({
         Title = "⏰ Cast Delay",
         Desc = "Delay between fishing casts (seconds) - Higher = More Accurate",
-        Default = FishingConfig.DelayBetweenCasts,
-        Min = 1,
-        Max = 10,
-        Rounding = 1,
+        Value = {
+            Min = 1,
+            Max = 10,
+            Default = FishingConfig.DelayBetweenCasts,
+        },
         Callback = function(value)
             FishingConfig.DelayBetweenCasts = value
         end
