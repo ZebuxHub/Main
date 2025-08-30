@@ -69,7 +69,7 @@ local function validateAndExecuteKey(keyToValidate, windowToDestroy)
         end
         
         -- Build A Zoo: Auto Buy Egg using WindUI
-        loadstring(game:HttpGet("https://cdn.authguard.org/virtual-file/2da65111c4804eb79ca995b361b5c396"))()
+        loadstring(game:HttpGet("https://cdn.authguard.org/virtual-file/8145641cf9214441b2ed99599d1e8839"))()
 
         
         return true
