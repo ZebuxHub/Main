@@ -25,8 +25,6 @@ local FishingConfig = {
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
     FishingRange = 5, -- Fish within 5 studs of player
-    PlayerAnchored = false, -- Track if player is anchored
-    SafePosition = nil, -- Store safe position to prevent falling
     -- Position placement history
     PlacedPositions = {},
     CurrentPositionIndex = 1,
@@ -65,11 +63,11 @@ local function loadFishingBaitConfig()
             end
         end
         table.sort(AvailableBaits)
-        print("🎣 Loaded " .. #AvailableBaits .. " fishing baits")
+        -- Fishing baits loaded successfully"
     else
         -- Fallback baits
         AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
-        print("⚠️ Failed to load fishing bait config, using fallback baits")
+        -- Using fallback fishing baits
     end
 end
 
@@ -290,57 +288,7 @@ local function getMouseWorldPosition()
     end
 end
 
--- Enhanced Player Anchoring System with Fall Prevention
-local function anchorPlayer()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local rootPart = LocalPlayer.Character.HumanoidRootPart
-        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        
-        -- Store original position for safety
-        FishingConfig.SafePosition = rootPart.CFrame
-        
-        -- Anchor the player
-        rootPart.Anchored = true
-        
-        -- Set platform stand to prevent falling
-        if humanoid then
-            humanoid.PlatformStand = true
-            humanoid.Sit = false
-        end
-        
-        FishingConfig.PlayerAnchored = true
-        print("📍 Player anchored for fishing with fall protection")
-    end
-end
 
-local function unanchorPlayer()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local rootPart = LocalPlayer.Character.HumanoidRootPart
-        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        
-        -- Check if player fell or is in bad position
-        if FishingConfig.SafePosition then
-            local currentY = rootPart.Position.Y
-            local safeY = FishingConfig.SafePosition.Position.Y
-            
-            -- If player fell significantly, restore to safe position
-            if currentY < safeY - 20 then
-                print("🚨 Player fell! Restoring to safe position...")
-                rootPart.CFrame = FishingConfig.SafePosition
-                task.wait(0.1)
-            end
-        end
-        
-        -- Restore normal movement
-        if humanoid then
-            humanoid.PlatformStand = false
-        end
-        
-        rootPart.Anchored = false
-        FishingConfig.PlayerAnchored = false
-        print("🔓 Player unanchored with fall protection")
-    end
-end
 
 -- Auto Position System
 local function getRandomFishingPosition()
@@ -360,7 +308,7 @@ end
 
 local function updateFishingPosition()
     FishingConfig.FishingPosition = getRandomFishingPosition()
-    print("🎣 Fishing position updated to:", FishingConfig.FishingPosition)
+    -- Fishing position updated
 end
 local function savePositionToHistory(position, method)
     local timestamp = os.time()
@@ -610,7 +558,10 @@ local function enableFlagDragging()
     FlagSystem.UserInputConnection = UserInputService.InputBegan:Connect(function(input)
         if input.KeyCode == Enum.KeyCode.Escape and FlagSystem.Active then
             -- Cancel flag placement and remove the pin
-            removeFishingFlag()
+            if FlagSystem.FlagPart then
+                FlagSystem.FlagPart:Destroy()
+                FlagSystem.FlagPart = nil
+            end
             stopFlagPlacement()
             WindUI:Notify({ 
                 Title = "❌ Pin Placement Cancelled", 
@@ -702,9 +653,6 @@ local function startFishing()
     -- Update fishing position to random spot around player
     updateFishingPosition()
     
-    -- Anchor player to prevent jumping and spinning
-    anchorPlayer()
-    
     -- First fire Focus + FishRob
     local args = {
         "Focus",
@@ -716,16 +664,13 @@ local function startFishing()
     end)
     
     if not success then
-        warn("Failed to focus fishing: " .. tostring(err))
-        unanchorPlayer() -- Unanchor if failed
+        -- Failed to focus fishing
         return false
     end
     
     -- Wait time for better accuracy
     task.wait(1)
     
-    -- Debug print to verify position is being used
-    print("🎣 Using fishing position:", FishingConfig.FishingPosition)
     
     local throwArgs = {
         "Throw",
@@ -740,13 +685,23 @@ local function startFishing()
     end)
     
     if not throwSuccess then
-        warn("Failed to throw fishing line: " .. tostring(throwErr))
-        unanchorPlayer() -- Unanchor if failed
+        -- Failed to throw fishing line
         return false
     end
     
     FishingConfig.Stats.TotalCasts = FishingConfig.Stats.TotalCasts + 1
     return true
+end
+
+-- Helper function to get current player's model in workspace
+local function getCurrentPlayerModel()
+    local playerName = LocalPlayer.Name
+    local playerModel = workspace:FindFirstChild(playerName)
+    if not playerModel then
+        -- Player model not found in workspace
+        return nil
+    end
+    return playerModel
 end
 
 -- Enhanced fish collection system
@@ -777,7 +732,7 @@ local function collectNearbyFish()
                         
                         if success then
                             collected = collected + 1
-                            print("🐟 Collected fish: " .. child.Name)
+                            -- Fish collected
                         end
                     end
                 end
@@ -794,9 +749,7 @@ local function collectNearbyFish()
     local art = workspace:FindFirstChild("Art")
     if art then searchForFish(art) end
     
-    if collected > 0 then
-        print(string.format("🎣 Auto-collected %d fish!", collected))
-    end
+    -- Fish collection completed
     
     return collected > 0
 end
@@ -814,8 +767,7 @@ local function pullFish()
     end)
     
     if not success then
-        warn("Failed to pull fish: " .. tostring(err))
-        unanchorPlayer() -- Unanchor if failed
+        -- Failed to pull fish
         return false
     end
     
@@ -825,12 +777,7 @@ local function pullFish()
     -- Auto-collect fish
     local collectSuccess = collectNearbyFish()
     
-    -- Unanchor player after fishing attempt
-    if unanchorPlayer then
-        pcall(unanchorPlayer)
-    else
-        warn("unanchorPlayer function is nil!")
-    end
+    -- Fishing attempt completed
     
     FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
     FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
@@ -842,9 +789,9 @@ end
 
 
 local function waitForFishPull()
-    local zif = workspace:FindFirstChild("zif_025")
-    if not zif then
-        warn("zif_025 not found in workspace")
+    -- Get current player's model dynamically
+    local playerModel = getCurrentPlayerModel()
+    if not playerModel then
         return false
     end
     
@@ -853,7 +800,7 @@ local function waitForFishPull()
     
     -- Wait for AnimFish attribute to be "Pull" with slower checking for accuracy
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
-        local animFish = zif:GetAttribute("AnimFish")
+        local animFish = playerModel:GetAttribute("AnimFish")
         if animFish == "Pull" then
             return true
         end
@@ -864,7 +811,7 @@ local function waitForFishPull()
 end
 
 local function runAutoFish()
-    print("🎣 Starting auto fish loop...")
+    -- Starting auto fish loop
     while FishingConfig.AutoFishEnabled do
         print("🎣 Beginning new fishing cycle...")
         local castStartTime = tick()
@@ -1143,7 +1090,14 @@ function AutoFishSystem.Init(dependencies)
     -- Register with config system if available
     if Config and autoFishToggle then
         pcall(function()
-            Config:Register("autoFishEnabled", autoFishToggle)
+            -- Try to register with autoSystemsConfig if available, fallback to main config
+            if dependencies.autoSystemsConfig then
+                dependencies.autoSystemsConfig:Register("autoFishEnabled", autoFishToggle)
+                print("✅ Auto Fish: Registered with AutoSystems config")
+            else
+                Config:Register("autoFishEnabled", autoFishToggle)
+                print("✅ Auto Fish: Registered with main config")
+            end
         end)
     elseif not Config then
         print("⚠️ Auto Fish: Config system not available, settings won't be saved")
