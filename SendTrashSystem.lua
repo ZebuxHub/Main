@@ -53,6 +53,7 @@ local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
+local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 
 -- Webhook/session reporting
 local webhookUrl = ""
@@ -595,11 +596,13 @@ local function processTrash()
         if sendPetTypeDropdown and sendPetTypeDropdown.GetValue then
             local success, result = pcall(function() return sendPetTypeDropdown:GetValue() end)
             includePetTypes = success and selectionToList(result) or {}
+            selectedPetTypes = includePetTypes
         end
         
         if sendPetMutationDropdown and sendPetMutationDropdown.GetValue then
             local success, result = pcall(function() return sendPetMutationDropdown:GetValue() end)
             includePetMutations = success and selectionToList(result) or {}
+            selectedPetMuts = includePetMutations
         end
         
         -- Get selector settings for eggs (include-only)
@@ -609,11 +612,13 @@ local function processTrash()
         if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
             local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
             includeEggTypes = success and selectionToList(result) or {}
+            selectedEggTypes = includeEggTypes
         end
         
         if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
             local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
             includeEggMutations = success and selectionToList(result) or {}
+            selectedEggMuts = includeEggMutations
         end
         
         -- Get target player (robust): prefer cached selection, resolve actual Player
@@ -655,7 +660,10 @@ local function processTrash()
         if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
                 egg = refreshItemFromData(egg.uid, true, egg)
-                if shouldSendItem(egg, includeEggTypes, includeEggMutations) and targetPlayer then
+                -- Use cached selectors if available to avoid UI GetValue glitches
+                local tList = (selectedEggTypes and #selectedEggTypes > 0) and selectedEggTypes or includeEggTypes
+                local mList = (selectedEggMuts and #selectedEggMuts > 0) and selectedEggMuts or includeEggMutations
+                if shouldSendItem(egg, tList, mList) and targetPlayer then
                     local eggName = egg.type or egg.uid
                     print("📦 About to send egg " .. eggName .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
