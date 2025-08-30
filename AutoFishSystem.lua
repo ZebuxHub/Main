@@ -749,54 +749,6 @@ local function startFishing()
     return true
 end
 
-local function pullFish()
-    local args = {
-        "POUT",
-        {
-            SUC = 1
-        }
-    }
-    
-    local success, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
-    end)
-    
-    if not success then
-        warn("Failed to pull fish: " .. tostring(err))
-        unanchorPlayer() -- Unanchor if failed
-        return false
-    end
-    
-    -- Wait a moment for fish to be caught before collecting
-    task.wait(0.5)
-    
-    -- Auto-collect fish with error handling
-    local collectSuccess = false
-    if collectNearbyFish then
-        local success, result = pcall(collectNearbyFish)
-        if success then
-            collectSuccess = result
-        else
-            warn("Error in collectNearbyFish: " .. tostring(result))
-        end
-    else
-        warn("collectNearbyFish function is nil!")
-    end
-    
-    -- Unanchor player after fishing attempt
-    if unanchorPlayer then
-        pcall(unanchorPlayer)
-    else
-        warn("unanchorPlayer function is nil!")
-    end
-    
-    FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
-    FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
-    FishingConfig.Stats.LastCatchTime = os.time()
-    
-    return true
-end
-
 -- Enhanced fish collection system
 local function collectNearbyFish()
     local playerRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -849,6 +801,46 @@ local function collectNearbyFish()
     return collected > 0
 end
 
+local function pullFish()
+    local args = {
+        "POUT",
+        {
+            SUC = 1
+        }
+    }
+    
+    local success, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
+    end)
+    
+    if not success then
+        warn("Failed to pull fish: " .. tostring(err))
+        unanchorPlayer() -- Unanchor if failed
+        return false
+    end
+    
+    -- Wait a moment for fish to be caught before collecting
+    task.wait(0.5)
+    
+    -- Auto-collect fish
+    local collectSuccess = collectNearbyFish()
+    
+    -- Unanchor player after fishing attempt
+    if unanchorPlayer then
+        pcall(unanchorPlayer)
+    else
+        warn("unanchorPlayer function is nil!")
+    end
+    
+    FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
+    FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
+    FishingConfig.Stats.LastCatchTime = os.time()
+    
+    return true
+end
+
+
+
 local function waitForFishPull()
     local zif = workspace:FindFirstChild("zif_025")
     if not zif then
@@ -872,9 +864,12 @@ local function waitForFishPull()
 end
 
 local function runAutoFish()
+    print("🎣 Starting auto fish loop...")
     while FishingConfig.AutoFishEnabled do
+        print("🎣 Beginning new fishing cycle...")
         local castStartTime = tick()
         local success = startFishing()
+        print("🎣 Start fishing result:", success)
         
         if success then
             -- Wait for the fish to be ready to pull with error handling
