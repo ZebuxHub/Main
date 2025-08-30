@@ -68,9 +68,19 @@ local Dependencies = {}
 -- Fast farm parts getter (cached)
 local function getFarmPartsQuick(farmType, islandNumber)
     if farmType == "water" then
-        return Dependencies.getWaterFarmParts(islandNumber)
+        if Dependencies.getWaterFarmParts then
+            return Dependencies.getWaterFarmParts(islandNumber)
+        else
+            warn("AutoPlaceV2: getWaterFarmParts dependency not available")
+            return {}
+        end
     else
-        return Dependencies.getFarmParts(islandNumber)
+        if Dependencies.getFarmParts then
+            return Dependencies.getFarmParts(islandNumber)
+        else
+            warn("AutoPlaceV2: getFarmParts dependency not available")
+            return {}
+        end
     end
 end
 
@@ -84,8 +94,8 @@ local function quickFarmCheck(farmType)
         return tracker.available, tracker.total
     end
     
-    local islandName = Dependencies.getAssignedIslandName()
-    local islandNumber = Dependencies.getIslandNumberFromName(islandName)
+    local islandName = Dependencies.getAssignedIslandName and Dependencies.getAssignedIslandName()
+    local islandNumber = Dependencies.getIslandNumberFromName and Dependencies.getIslandNumberFromName(islandName)
     if not islandNumber then return 0, 0 end
     
     local farmParts = getFarmPartsQuick(farmType, islandNumber)
@@ -123,6 +133,13 @@ local function deepTileScan(farmType)
     
     -- Perform deep scan using main script's function
     local eggType = farmType == "water" and "SeaweedEgg" or "BasicEgg" -- Representative types
+    
+    -- Safety check for dependencies
+    if not Dependencies.scanAllTilesAndModels then
+        warn("AutoPlaceV2: scanAllTilesAndModels dependency not available")
+        return {}
+    end
+    
     local tileMap, totalTiles, occupiedTiles, lockedTiles = Dependencies.scanAllTilesAndModels(eggType)
     
     local availableTiles = {}
@@ -156,7 +173,7 @@ local function categorizeEggs()
     EggQueues.regular = {}
     EggQueues.ocean = {}
     
-    local availableEggs = Dependencies.listAvailableEggUIDs()
+    local availableEggs = Dependencies.listAvailableEggUIDs and Dependencies.listAvailableEggUIDs() or {}
     
     for _, eggInfo in ipairs(availableEggs) do
         local eggType = eggInfo.type
@@ -197,7 +214,7 @@ local function categorizeEggs()
             -- Prioritize by mutation, then by farm type
             if mutation then
                 table.insert(EggQueues.priority, eggInfo)
-            elseif Dependencies.isOceanEgg(eggType) then
+            elseif Dependencies.isOceanEgg and Dependencies.isOceanEgg(eggType) then
                 table.insert(EggQueues.ocean, eggInfo)
             else
                 table.insert(EggQueues.regular, eggInfo)
@@ -217,7 +234,7 @@ local function selectBestEgg()
     -- Priority 1: Mutation eggs (try both farm types)
     if #EggQueues.priority > 0 then
         for _, eggInfo in ipairs(EggQueues.priority) do
-            local isOcean = Dependencies.isOceanEgg(eggInfo.type)
+            local isOcean = Dependencies.isOceanEgg and Dependencies.isOceanEgg(eggInfo.type)
             if (isOcean and waterAvail > 0) or (not isOcean and regularAvail > 0) then
                 return eggInfo, isOcean and "water" or "regular"
             end
@@ -260,7 +277,7 @@ local function batchPlaceEggs(selectedEgg, farmType)
     
     -- Get eggs of the same type for batch processing
     local sameTyeEggs = {}
-    local availableEggs = Dependencies.listAvailableEggUIDs()
+    local availableEggs = Dependencies.listAvailableEggUIDs and Dependencies.listAvailableEggUIDs() or {}
     
     for _, eggInfo in ipairs(availableEggs) do
         if eggInfo.type == selectedEgg.type and #sameTyeEggs < Config.placementBatchSize then
@@ -277,7 +294,7 @@ local function batchPlaceEggs(selectedEgg, farmType)
         local tileInfo = availableTiles[i]
         
         if eggInfo and tileInfo then
-            local success = Dependencies.placeEggInstantly(eggInfo, tileInfo)
+            local success = Dependencies.placeEggInstantly and Dependencies.placeEggInstantly(eggInfo, tileInfo)
             if success then
                 placedCount = placedCount + 1
                 -- Small delay between placements
@@ -373,7 +390,7 @@ local function setupEventHandlers()
     connections = {}
     
     -- Monitor egg container changes
-    local eggContainer = Dependencies.getEggContainer()
+    local eggContainer = Dependencies.getEggContainer and Dependencies.getEggContainer()
     if eggContainer then
         table.insert(connections, eggContainer.ChildAdded:Connect(function(child)
             debounceEvent("eggAdded", function()
@@ -583,7 +600,7 @@ function AutoPlaceV2.SetupUI(Tabs, WindUI)
     local function getLockedTilesForCurrentIsland()
         local lockedTiles = {}
         
-        local islandName = Dependencies.getAssignedIslandName()
+        local islandName = Dependencies.getAssignedIslandName and Dependencies.getAssignedIslandName()
         if not islandName then return lockedTiles end
         
         local art = workspace:FindFirstChild("Art")
