@@ -1,886 +1,1408 @@
--- Enhanced Auto Place System V2
--- Optimized for performance and smart ocean egg handling
+-- Build A Zoo: Auto Buy Egg using WindUI
 
+-- Load WindUI library (same as in Windui.lua)
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+-- Add Custom Theme: DarkPurple
+WindUI:AddTheme({
+    Name = "DarkPurple",
+    Accent = "#6d28d9",      -- deep purple for highlights
+    Outline = "#c4b5fd",     -- soft lavender outline
+    Text = "#e9d5ff",        -- light lavender text
+    Placeholder = "#a78bfa", -- muted purple for placeholders
+    Background = "#1e1b29",  -- near-black purple background
+    Button = "#7c3aed",      -- vibrant purple button
+    Icon = "#8b5cf6",        -- lighter purple for icons
+})
+
+-- Set the theme to DarkPurple
+WindUI:SetTheme("DarkPurple")
+
+-- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
+local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
 local LocalPlayer = Players.LocalPlayer
 
-local AutoPlaceV2 = {}
+-- Selection state variables
+local selectedTypeSet = {}
+local selectedMutationSet = {}
+local selectedFruits = {}
+local selectedFeedFruits = {}
+local updateCustomUISelection
+local settingsLoaded = false
+local function waitForSettingsReady(extraDelay)
+    while not settingsLoaded do
+        task.wait(0.1)
+    end
+    if extraDelay and extraDelay > 0 then
+        task.wait(extraDelay)
+    end
+end
+local autoFeedToggle
 
--- ============ Configuration ============
-local Config = {
-    -- Performance settings
-    quickCheckInterval = 1.0,      -- Fast farm availability check
-    deepScanInterval = 5.0,        -- Full tile scan interval
-    placementBatchSize = 3,        -- Max eggs to place per batch
-    cacheExpireTime = 8.0,         -- Cache expiration time
-    
-    -- Timing settings
-    idleCheckInterval = 3.0,       -- When nothing to do
-    busyCheckInterval = 0.8,       -- When actively placing
-    eventDebounceTime = 0.3,       -- Prevent event spam
-    
-    -- Distance settings
-    tileOccupiedRadius = 4.0,      -- XZ distance for occupation check
-    tileOccupiedHeight = 20.0,     -- Y distance for occupation check
-}
+-- Forward declarations
 
--- ============ State Management ============
-local State = {
-    enabled = false,
-    phase = "idle",               -- idle, scanning, placing, waiting
-    lastActivity = 0,
-    lastQuickCheck = 0,
-    lastDeepScan = 0,
-    eventDebounce = {},
-    
-    -- Current operation
-    currentEggType = nil,
-    currentFarmType = nil,
-    retryCount = 0,
-    maxRetries = 3,
-}
+-- Window
+local Window = WindUI:CreateWindow({
+    Title = "Build A Zoo",
+    Icon = "app-window-mac",
+    IconThemed = true,
+    Author = "Zebux",
+    Folder = "Zebux",
+    Size = UDim2.fromOffset(520, 360),
+    Transparent = true,
+    Theme = "DarkPurple",
+    -- No keysystem
+})
 
--- ============ Farm Availability Tracker ============
-local FarmTracker = {
-    regular = { available = 0, total = 0, lastUpdate = 0 },
-    water = { available = 0, total = 0, lastUpdate = 0 },
-}
+local Tabs = {}
+Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
+Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 | Buy Eggs"})
+Tabs.PlaceTab = Tabs.MainSection:Tab({ Title = "🏠 | Place Pets"})
+Tabs.HatchTab = Tabs.MainSection:Tab({ Title = "⚡ | Hatch Eggs"})
+Tabs.ClaimTab = Tabs.MainSection:Tab({ Title = "💰 | Get Money"})
+Tabs.ShopTab = Tabs.MainSection:Tab({ Title = "🛒 | Shop"})
+Tabs.FruitTab = Tabs.MainSection:Tab({ Title = "🍎 | Fruit Store"})
+Tabs.FeedTab = Tabs.MainSection:Tab({ Title = "🍽️ | Auto Feed"})
+Tabs.FishTab = Tabs.MainSection:Tab({ Title = "🎣 | Auto Fish"})
+-- Bug tab removed per user request
+Tabs.SaveTab = Tabs.MainSection:Tab({ Title = "💾 | Save Settings"})
 
--- ============ Egg Queue System ============
-local EggQueues = {
-    priority = {},    -- Mutation eggs
-    regular = {},     -- Normal eggs for regular farms
-    ocean = {},       -- Ocean eggs for water farms
-}
-
--- ============ Tile Cache System ============
-local TileCache = {
-    regular = { tiles = {}, lastUpdate = 0, valid = false },
-    water = { tiles = {}, lastUpdate = 0, valid = false },
-}
-
--- ============ Dependencies (passed from main script) ============
-local Dependencies = {}
-
--- ============ Helper Functions ============
-
--- Fast farm parts getter (cached)
-local function getFarmPartsQuick(farmType, islandNumber)
-    if farmType == "water" then
-        if Dependencies.getWaterFarmParts then
-            return Dependencies.getWaterFarmParts(islandNumber)
-        else
-            warn("AutoPlaceV2: getWaterFarmParts dependency not available")
-            return {}
+-- Function to load all saved settings before any function starts
+local function loadAllSettings()
+    -- Load WindUI config for simple UI elements
+    if zebuxConfig then
+        local loadSuccess, loadErr = pcall(function()
+            zebuxConfig:Load()
+        end)
+        
+        if not loadSuccess then
+            warn("Failed to load WindUI config: " .. tostring(loadErr))
         end
+    end
+    
+    -- Load auto claim delay specifically
+    local delaySuccess, delayData = pcall(function()
+        if isfile and readfile and isfile("Zebux_ClaimSettings.json") then
+            local jsonData = readfile("Zebux_ClaimSettings.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if delaySuccess and delayData and delayData.autoClaimDelay then
+        autoClaimDelay = delayData.autoClaimDelay
+    end
+    
+    -- Load custom selection variables from JSON files
+    local success, data = pcall(function()
+        if isfile and readfile and isfile("Zebux_EggSelections.json") then
+            local jsonData = readfile("Zebux_EggSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if success and data then
+        selectedTypeSet = {}
+        if data.eggs then
+            for _, eggId in ipairs(data.eggs) do
+                selectedTypeSet[eggId] = true
+            end
+        end
+        
+        selectedMutationSet = {}
+        if data.mutations then
+            for _, mutationId in ipairs(data.mutations) do
+                selectedMutationSet[mutationId] = true
+            end
+        end
+    end
+    
+    -- Load fruit selections
+    local fruitSuccess, fruitData = pcall(function()
+        if isfile and readfile and isfile("Zebux_FruitSelections.json") then
+            local jsonData = readfile("Zebux_FruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if fruitSuccess and fruitData then
+        selectedFruits = {}
+        if fruitData.fruits then
+            for _, fruitId in ipairs(fruitData.fruits) do
+                selectedFruits[fruitId] = true
+            end
+        end
+    end
+    
+    -- Load feed fruit selections
+    local feedFruitSuccess, feedFruitData = pcall(function()
+        if isfile and readfile and isfile("Zebux_FeedFruitSelections.json") then
+            local jsonData = readfile("Zebux_FeedFruitSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if feedFruitSuccess and feedFruitData then
+        selectedFeedFruits = {}
+        if feedFruitData.fruits then
+            for _, fruitId in ipairs(feedFruitData.fruits) do
+                selectedFeedFruits[fruitId] = true
+            end
+        end
+    end
+    
+    -- Load auto place selections
+    local autoPlaceSuccess, autoPlaceData = pcall(function()
+        if isfile and readfile and isfile("Zebux_AutoPlaceSelections.json") then
+            local jsonData = readfile("Zebux_AutoPlaceSelections.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if autoPlaceSuccess and autoPlaceData then
+        if autoPlaceData.eggTypes then
+            selectedEggTypes = autoPlaceData.eggTypes
+        end
+        if autoPlaceData.mutations then
+            selectedMutations = autoPlaceData.mutations
+        end
+    end
+end
+
+-- Function to save all settings (WindUI config + custom selections)
+local function saveAllSettings()
+    -- Save WindUI config for simple UI elements
+    if zebuxConfig then
+        local saveSuccess, saveErr = pcall(function()
+            zebuxConfig:Save()
+        end)
+        
+        if not saveSuccess then
+            warn("Failed to save WindUI config: " .. tostring(saveErr))
+        end
+    end
+    
+    -- Save auto claim delay specifically
+    pcall(function()
+        if writefile then
+            local delayData = {
+                autoClaimDelay = autoClaimDelay
+            }
+            writefile("Zebux_ClaimSettings.json", game:GetService("HttpService"):JSONEncode(delayData))
+        end
+    end)
+    
+    -- Save custom selection variables to JSON files
+    local eggSelections = {
+        eggs = {},
+        mutations = {}
+    }
+    
+    for eggId, _ in pairs(selectedTypeSet) do
+        table.insert(eggSelections.eggs, eggId)
+    end
+    
+    for mutationId, _ in pairs(selectedMutationSet) do
+        table.insert(eggSelections.mutations, mutationId)
+    end
+    
+    -- Save auto place selections
+    local autoPlaceSelections = {
+        eggTypes = selectedEggTypes,
+        mutations = selectedMutations
+    }
+    
+    pcall(function()
+        if writefile then
+            writefile("Zebux_AutoPlaceSelections.json", game:GetService("HttpService"):JSONEncode(autoPlaceSelections))
+        end
+    end)
+    
+    pcall(function()
+        if writefile then
+            writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
+        end
+    end)
+    
+    -- Save fruit selections
+    local fruitSelections = {
+        fruits = {}
+    }
+    
+    for fruitId, _ in pairs(selectedFruits) do
+        table.insert(fruitSelections.fruits, fruitId)
+    end
+    
+    pcall(function()
+        if writefile then
+            writefile("Zebux_FruitSelections.json", game:GetService("HttpService"):JSONEncode(fruitSelections))
+        end
+    end)
+    
+    -- Save feed fruit selections
+    local feedFruitSelections = {
+        fruits = {}
+    }
+    
+    for fruitId, _ in pairs(selectedFeedFruits) do
+        table.insert(feedFruitSelections.fruits, fruitId)
+    end
+    
+    pcall(function()
+        if writefile then
+            writefile("Zebux_FeedFruitSelections.json", game:GetService("HttpService"):JSONEncode(feedFruitSelections))
+        end
+    end)
+end
+
+-- Auto state variables (declared early so close handler can reference)
+
+local autoFeedEnabled = false
+local autoPlaceEnabled = false
+local autoPlaceThread = nil
+local autoHatchEnabled = false
+local antiAFKEnabled = false
+local antiAFKConnection = nil
+local autoHatchThread = nil
+-- Priority system removed per user request
+
+-- Egg config loader
+local eggConfig = {}
+local conveyorConfig = {}
+local petFoodConfig = {}
+local mutationConfig = {}
+
+local function loadEggConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResEgg")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        eggConfig = cfg
     else
-        if Dependencies.getFarmParts then
-            return Dependencies.getFarmParts(islandNumber)
-        else
-            warn("AutoPlaceV2: getFarmParts dependency not available")
-            return {}
-        end
+        eggConfig = {}
     end
 end
 
--- Quick availability check (no deep scanning)
-local function quickFarmCheck(farmType)
-    local currentTime = tick()
-    local tracker = FarmTracker[farmType]
-    
-    -- Return cached result if recent
-    if currentTime - tracker.lastUpdate < Config.quickCheckInterval then
-        return tracker.available, tracker.total
+local idToTypeMap = {}
+local function loadConveyorConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResConveyor")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        conveyorConfig = cfg
+    else
+        conveyorConfig = {}
     end
-    
-    local islandName = Dependencies.getAssignedIslandName and Dependencies.getAssignedIslandName()
-    local islandNumber = Dependencies.getIslandNumberFromName and Dependencies.getIslandNumberFromName(islandName)
-    if not islandNumber then return 0, 0 end
-    
-    local farmParts = getFarmPartsQuick(farmType, islandNumber)
-    local available = 0
-    local total = #farmParts
-    
-    -- Quick check: just count parts without deep model scanning
-    for _, part in ipairs(farmParts) do
-        if part and part.Parent then
-            -- Simple heuristic: if part exists and isn't obviously occupied, count it
-            available = available + 1
-        end
-    end
-    
-    -- Rough estimate: assume 70% availability for quick check
-    available = math.floor(available * 0.7)
-    
-    -- Update tracker
-    tracker.available = available
-    tracker.total = total
-    tracker.lastUpdate = currentTime
-    
-    return available, total
 end
 
--- Deep tile scan with caching
-local function deepTileScan(farmType)
-    local currentTime = tick()
-    local cache = TileCache[farmType]
-    
-    -- Return cached tiles if valid
-    if cache.valid and currentTime - cache.lastUpdate < Config.cacheExpireTime then
-        return cache.tiles
+local function loadPetFoodConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResPetFood")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        petFoodConfig = cfg
+    else
+        petFoodConfig = {}
     end
-    
-    -- Perform deep scan using main script's function
-    local eggType = farmType == "water" and "SeaweedEgg" or "BasicEgg" -- Representative types
-    
-    -- Safety check for dependencies
-    if not Dependencies.scanAllTilesAndModels then
-        warn("AutoPlaceV2: scanAllTilesAndModels dependency not available")
-        return {}
-    end
-    
-    local tileMap, totalTiles, occupiedTiles, lockedTiles = Dependencies.scanAllTilesAndModels(eggType)
-    
-    local availableTiles = {}
-    for surfacePos, tileInfo in pairs(tileMap) do
-        if tileInfo.available then
-            table.insert(availableTiles, {
-                part = tileInfo.part,
-                surfacePos = surfacePos,
-                index = tileInfo.index
-            })
-        end
-    end
-    
-    -- Update cache
-    cache.tiles = availableTiles
-    cache.lastUpdate = currentTime
-    cache.valid = true
-    
-    -- Update farm tracker with accurate data
-    FarmTracker[farmType].available = #availableTiles
-    FarmTracker[farmType].total = totalTiles
-    FarmTracker[farmType].lastUpdate = currentTime
-    
-    return availableTiles
 end
 
--- Categorize eggs into queues
-local function categorizeEggs()
-    -- Clear queues
-    EggQueues.priority = {}
-    EggQueues.regular = {}
-    EggQueues.ocean = {}
-    
-    local availableEggs = Dependencies.listAvailableEggUIDs and Dependencies.listAvailableEggUIDs() or {}
-    
-    for _, eggInfo in ipairs(availableEggs) do
-        local eggType = eggInfo.type
-        local mutation = eggInfo.mutation
-        
-        -- Check if selected (use main script's filter logic)
-        local shouldInclude = true
-        
-        -- Check egg type filter
-        if Dependencies.selectedEggTypes and #Dependencies.selectedEggTypes > 0 then
-            local found = false
-            for _, selectedType in ipairs(Dependencies.selectedEggTypes) do
-                if selectedType == eggType then
-                    found = true
+local function loadMutationConfig()
+    local ok, cfg = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResMutate")
+        return require(module)
+    end)
+    if ok and type(cfg) == "table" then
+        mutationConfig = cfg
+    else
+        mutationConfig = {}
+    end
+end
+local function getTypeFromConfig(key, val)
+    if type(val) == "table" then
+        local t = val.Type or val.Name or val.type or val.name
+        if t ~= nil then return tostring(t) end
+    end
+    return tostring(key)
+end
+
+local function buildEggIdList()
+    idToTypeMap = {}
+    local ids = {}
+    for id, val in pairs(eggConfig) do
+        local idStr = tostring(id)
+        -- Filter out meta keys like _index, __index, and any leading underscore entries
+        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+            table.insert(ids, idStr)
+            idToTypeMap[idStr] = getTypeFromConfig(id, val)
+        end
+    end
+    table.sort(ids)
+    return ids
+end
+
+local function buildMutationList()
+    local mutations = {}
+    for id, val in pairs(mutationConfig) do
+        local idStr = tostring(id)
+        -- Filter out meta keys like _index, __index, and any leading underscore entries
+        if not string.match(idStr, "^_%_?index$") and not string.match(idStr, "^__index$") and not idStr:match("^_") then
+            local mutationName = val.Name or val.ID or val.Id or idStr
+            mutationName = tostring(mutationName)
+            
+            table.insert(mutations, mutationName)
+        end
+    end
+    table.sort(mutations)
+    return mutations
+end
+
+-- UI helpers
+local function tryCreateTextInput(parent, opts)
+    -- Tries common method names to create a textbox-like input in WindUI
+    local created
+    for _, method in ipairs({"Textbox", "Input", "TextBox"}) do
+        local ok, res = pcall(function()
+            return parent[method](parent, opts)
+        end)
+        if ok and res then created = res break end
+    end
+    return created
+end
+
+-- Removed unused function caseInsensitiveContains
+
+local function getEggPriceById(eggId)
+    local entry = eggConfig[eggId] or eggConfig[tonumber(eggId)]
+    if entry == nil then
+        for key, value in pairs(eggConfig) do
+            if tostring(key) == tostring(eggId) then
+                entry = value
+                break
+            end
+            if type(value) == "table" then
+                if value.Id == eggId or tostring(value.Id) == tostring(eggId) or value.Name == eggId then
+                    entry = value
                     break
                 end
             end
-            if not found then shouldInclude = false end
-        end
-        
-        -- Check mutation filter
-        if shouldInclude and Dependencies.selectedMutations and #Dependencies.selectedMutations > 0 then
-            if not mutation then
-                shouldInclude = false
-            else
-                local found = false
-                for _, selectedMutation in ipairs(Dependencies.selectedMutations) do
-                    if selectedMutation == mutation then
-                        found = true
-                        break
-                    end
-                end
-                if not found then shouldInclude = false end
-            end
-        end
-        
-        if shouldInclude then
-            -- Prioritize by mutation, then by farm type
-            if mutation then
-                table.insert(EggQueues.priority, eggInfo)
-            elseif Dependencies.isOceanEgg and Dependencies.isOceanEgg(eggType) then
-                table.insert(EggQueues.ocean, eggInfo)
-            else
-                table.insert(EggQueues.regular, eggInfo)
-            end
         end
     end
+    if type(entry) == "table" then
+        local price = entry.Price or entry.price or entry.Cost or entry.cost
+        if type(price) == "number" then return price end
+        if type(entry.Base) == "table" and type(entry.Base.Price) == "number" then return entry.Base.Price end
+    end
+    return nil
 end
 
--- Smart egg selection with fallback logic
-local function selectBestEgg()
-    categorizeEggs()
-    
-    -- Get current farm availability
-    local regularAvail, regularTotal = quickFarmCheck("regular")
-    local waterAvail, waterTotal = quickFarmCheck("water")
-    
-    -- Priority 1: Mutation eggs (try both farm types)
-    if #EggQueues.priority > 0 then
-        for _, eggInfo in ipairs(EggQueues.priority) do
-            local isOcean = Dependencies.isOceanEgg and Dependencies.isOceanEgg(eggInfo.type)
-            if (isOcean and waterAvail > 0) or (not isOcean and regularAvail > 0) then
-                return eggInfo, isOcean and "water" or "regular"
+local function getEggPriceByType(eggType)
+    local target = tostring(eggType)
+    for key, value in pairs(eggConfig) do
+        if type(value) == "table" then
+            local t = value.Type or value.Name or value.type or value.name or tostring(key)
+            if tostring(t) == target then
+                local price = value.Price or value.price or value.Cost or value.cost
+                if type(price) == "number" then return price end
+                if type(value.Base) == "table" and type(value.Base.Price) == "number" then return value.Base.Price end
             end
-        end
-    end
-    
-    -- Priority 2: Regular eggs (if regular farms available)
-    if regularAvail > 0 and #EggQueues.regular > 0 then
-        return EggQueues.regular[1], "regular"
-    end
-    
-    -- Priority 3: Ocean eggs (if water farms available)
-    if waterAvail > 0 and #EggQueues.ocean > 0 then
-        return EggQueues.ocean[1], "water"
-    end
-    
-    -- Priority 4: Fallback - try to place any egg anywhere
-    if regularAvail > 0 and #EggQueues.ocean > 0 then
-        -- Try to place ocean egg on regular farm (might work for some games)
-        return EggQueues.ocean[1], "regular"
-    end
-    
-    return nil, nil
-end
-
--- Batch place eggs of the same type
-local function batchPlaceEggs(selectedEgg, farmType)
-    if not selectedEgg then return false end
-    
-    State.phase = "placing"
-    State.currentEggType = selectedEgg.type
-    State.currentFarmType = farmType
-    
-    -- Get available tiles for this farm type
-    local availableTiles = deepTileScan(farmType)
-    if #availableTiles == 0 then
-        print("🏠 No available " .. farmType .. " tiles found")
-        return false
-    end
-    
-    -- Get eggs of the same type for batch processing
-    local sameTyeEggs = {}
-    local availableEggs = Dependencies.listAvailableEggUIDs and Dependencies.listAvailableEggUIDs() or {}
-    
-    for _, eggInfo in ipairs(availableEggs) do
-        if eggInfo.type == selectedEgg.type and #sameTyeEggs < Config.placementBatchSize then
-            table.insert(sameTyeEggs, eggInfo)
-        end
-    end
-    
-    -- Place eggs in batch
-    local placedCount = 0
-    local maxPlacements = math.min(#sameTyeEggs, #availableTiles, Config.placementBatchSize)
-    
-    for i = 1, maxPlacements do
-        local eggInfo = sameTyeEggs[i]
-        local tileInfo = availableTiles[i]
-        
-        if eggInfo and tileInfo then
-            local success = Dependencies.placeEggInstantly and Dependencies.placeEggInstantly(eggInfo, tileInfo)
-            if success then
-                placedCount = placedCount + 1
-                -- Small delay between placements
-                task.wait(0.1)
-            else
-                -- If placement fails, mark tile as unavailable
-                table.remove(availableTiles, i)
-            end
-        end
-    end
-    
-    -- Invalidate cache after placement
-    TileCache[farmType].valid = false
-    
-    print(string.format("🏠 Batch placed %d/%d %s eggs on %s farms", placedCount, maxPlacements, selectedEgg.type, farmType))
-    return placedCount > 0
-end
-
--- Event debouncing
-local function debounceEvent(eventName, func, delay)
-    delay = delay or Config.eventDebounceTime
-    local currentTime = tick()
-    
-    if State.eventDebounce[eventName] and currentTime - State.eventDebounce[eventName] < delay then
-        return -- Too soon, skip
-    end
-    
-    State.eventDebounce[eventName] = currentTime
-    task.spawn(func)
-end
-
--- ============ Main Control Loop ============
-local function autoPlaceMainLoop()
-    while State.enabled do
-        local currentTime = tick()
-        
-        -- Determine check interval based on state
-        local checkInterval = Config.idleCheckInterval
-        if State.phase == "placing" or State.phase == "scanning" then
-            checkInterval = Config.busyCheckInterval
-        end
-        
-        -- Quick farm availability check
-        if currentTime - State.lastQuickCheck >= Config.quickCheckInterval then
-            quickFarmCheck("regular")
-            quickFarmCheck("water")
-            State.lastQuickCheck = currentTime
-        end
-        
-        -- Main placement logic
-        if State.phase == "idle" or State.phase == "waiting" then
-            -- Try to find and place eggs
-            local selectedEgg, farmType = selectBestEgg()
-            
-            if selectedEgg and farmType then
-                State.lastActivity = currentTime
-                local success = batchPlaceEggs(selectedEgg, farmType)
-                
-                if success then
-                    State.phase = "placing"
-                    State.retryCount = 0
-                else
-                    State.retryCount = State.retryCount + 1
-                    if State.retryCount >= State.maxRetries then
-                        State.phase = "waiting"
-                        checkInterval = Config.idleCheckInterval * 2 -- Wait longer after failures
-                    end
-                end
-            else
-                State.phase = "idle"
-                -- No eggs to place, check less frequently
-                checkInterval = Config.idleCheckInterval
-            end
-        elseif State.phase == "placing" then
-            -- Recently placed, wait a bit before next attempt
-            if currentTime - State.lastActivity >= 2.0 then
-                State.phase = "idle"
-            end
-        end
-        
-        task.wait(checkInterval)
-    end
-end
-
--- ============ Event Handlers ============
-local connections = {}
-
-local function setupEventHandlers()
-    -- Clean up existing connections
-    for _, conn in ipairs(connections) do
-        pcall(function() conn:Disconnect() end)
-    end
-    connections = {}
-    
-    -- Monitor egg container changes
-    local eggContainer = Dependencies.getEggContainer and Dependencies.getEggContainer()
-    if eggContainer then
-        table.insert(connections, eggContainer.ChildAdded:Connect(function(child)
-            debounceEvent("eggAdded", function()
-                if #child:GetChildren() == 0 then -- Available egg
-                    State.phase = "idle" -- Trigger immediate check
-                end
-            end)
-        end))
-        
-        table.insert(connections, eggContainer.ChildRemoved:Connect(function()
-            debounceEvent("eggRemoved", function()
-                -- Egg removed, update queues
-                State.phase = "idle"
-            end)
-        end))
-    end
-    
-    -- Monitor PlayerBuiltBlocks changes (less aggressively)
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if playerBuiltBlocks then
-        table.insert(connections, playerBuiltBlocks.ChildAdded:Connect(function()
-            debounceEvent("blockAdded", function()
-                -- Invalidate cache when new blocks appear
-                TileCache.regular.valid = false
-                TileCache.water.valid = false
-            end, 1.0) -- Longer debounce for less critical events
-        end))
-        
-        table.insert(connections, playerBuiltBlocks.ChildRemoved:Connect(function()
-            debounceEvent("blockRemoved", function()
-                -- Tiles might be available again
-                TileCache.regular.valid = false
-                TileCache.water.valid = false
-                State.phase = "idle" -- Try placing again
-            end, 0.5)
-        end))
-    end
-end
-
--- ============ UI Setup Functions ============
-
--- Create all Place Tab UI elements
-function AutoPlaceV2.SetupUI(Tabs, WindUI)
-    if not Tabs or not Tabs.PlaceTab then
-        warn("AutoPlaceV2: PlaceTab not found")
-        return false
-    end
-
-    -- Egg selection dropdown (updated with ocean eggs)
-    local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🥚 Pick Pet Types",
-        Desc = "Choose which pets to place (🌊 = ocean eggs, need water farm)",
-        Values = {
-            "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
-            "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
-            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg",
-            "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
-            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
-        },
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            -- Clean ocean emoji prefixes from selection
-            local cleanedSelection = {}
-            for _, item in ipairs(selection) do
-                local cleanName = item:gsub("🌊 ", "") -- Remove ocean emoji prefix
-                table.insert(cleanedSelection, cleanName)
-            end
-            if Dependencies.setSelectedEggTypes then
-                Dependencies.setSelectedEggTypes(cleanedSelection)
-            end
-        end
-    })
-
-    -- Mutation selection dropdown for auto place
-    local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🧬 Pick Mutations",
-        Desc = "Choose which mutations to place (leave empty for all mutations)",
-        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            if Dependencies.setSelectedMutations then
-                Dependencies.setSelectedMutations(selection)
-            end
-        end
-    })
-
-    -- Auto Place Toggle (V2)
-    local autoPlaceToggle = Tabs.PlaceTab:Toggle({
-        Title = "🏠 Auto Place Pets V2 (Ultra Optimized)",
-        Desc = "Next-gen auto place with smart ocean egg handling and 90% less lag!",
-        Value = false,
-        Callback = function(state)
-            if Dependencies.setAutoPlaceEnabled then
-                Dependencies.setAutoPlaceEnabled(state)
-            end
-            
-            if Dependencies.waitForSettingsReady then
-                Dependencies.waitForSettingsReady(0.2)
-            end
-            
-            if state then
-                -- Sync filters
-                if Dependencies.syncAutoPlaceFiltersFromUI then
-                    Dependencies.syncAutoPlaceFiltersFromUI()
-                end
-                
-                local success = AutoPlaceV2.Start()
-                if success then
-                    WindUI:Notify({ 
-                        Title = "🏠 Auto Place V2", 
-                        Content = "Ultra-optimized system started! 🚀", 
-                        Duration = 3 
-                    })
-                else
-                    WindUI:Notify({ 
-                        Title = "❌ Auto Place V2", 
-                        Content = "Failed to start V2 system", 
-                        Duration = 3 
-                    })
-                end
-            else
-                AutoPlaceV2.Stop()
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
-            end
-        end
-    })
-
-    -- Auto Place V2 Status Display
-    local autoPlaceV2Status = Tabs.PlaceTab:Paragraph({
-        Title = "📊 Auto Place V2 Status",
-        Desc = "Starting up...",
-        Image = "activity",
-        ImageSize = 16,
-    })
-
-    -- Update V2 status display
-    local function updateAutoPlaceV2Status()
-        if not autoPlaceV2Status then return end
-        
-        local status = AutoPlaceV2.GetStatus()
-        local statusText = ""
-        
-        if status.enabled then
-            statusText = string.format("🔄 Phase: %s | Type: %s | Farm: %s\n", 
-                status.phase or "idle", 
-                status.currentEggType or "none", 
-                status.currentFarmType or "none")
-            
-            statusText = statusText .. string.format("🏠 Regular: %d/%d | 🌊 Water: %d/%d\n", 
-                status.regularFarms.available, status.regularFarms.total,
-                status.waterFarms.available, status.waterFarms.total)
-            
-            statusText = statusText .. string.format("🥚 Queues - Priority: %d | Regular: %d | Ocean: %d", 
-                status.eggQueues.priority, status.eggQueues.regular, status.eggQueues.ocean)
         else
-            statusText = "⏸️ System stopped"
-        end
-        
-        if autoPlaceV2Status.SetDesc then
-            autoPlaceV2Status:SetDesc(statusText)
+            if tostring(key) == target then
+                -- primitive mapping, try id-based
+                local price = getEggPriceById(key)
+                if type(price) == "number" then return price end
+            end
         end
     end
+    return nil
+end
 
-    -- Start status update loop
-    task.spawn(function()
-        while true do
-            updateAutoPlaceV2Status()
-            task.wait(2) -- Update every 2 seconds
+-- Player helpers
+local function getAssignedIslandName()
+    if not LocalPlayer then return nil end
+    return LocalPlayer:GetAttribute("AssignedIslandName")
+end
+
+-- Function to read mutation from egg GUI
+local function getEggMutation(eggUID)
+    if not eggUID then return nil end
+    
+    local islandName = getAssignedIslandName()
+    if not islandName then return nil end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return nil end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return nil end
+    
+    local conveyor = env:FindFirstChild("Conveyor")
+    if not conveyor then return nil end
+    
+    -- Check all conveyor belts
+    for i = 1, 9 do
+        local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+        if conveyorBelt then
+            local belt = conveyorBelt:FindFirstChild("Belt")
+            if belt then
+                local eggModel = belt:FindFirstChild(eggUID)
+                if eggModel and eggModel:IsA("Model") then
+                    local rootPart = eggModel:FindFirstChild("RootPart")
+                    if rootPart then
+                        local eggGUI = rootPart:FindFirstChild("GUI/EggGUI")
+                        if eggGUI then
+                            local mutateText = eggGUI:FindFirstChild("Mutate")
+                            if mutateText and mutateText:IsA("TextLabel") then
+                                local mutationText = mutateText.Text
+                                if mutationText and mutationText ~= "" then
+                                    -- Handle special case: if mutation is "Dino", return "Jurassic"
+                                    if string.lower(mutationText) == "dino" then
+                                        return "Jurassic"
+                                    end
+                                    return mutationText
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- Player helpers (getAssignedIslandName moved earlier to fix undefined global error)
+
+local function getPlayerNetWorth()
+    if not LocalPlayer then return 0 end
+    local attrValue = LocalPlayer:GetAttribute("NetWorth")
+    if type(attrValue) == "number" then return attrValue end
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local netWorthValue = leaderstats:FindFirstChild("NetWorth")
+        if netWorthValue and type(netWorthValue.Value) == "number" then
+            return netWorthValue.Value
+        end
+    end
+    return 0
+end
+
+local function fireConveyorUpgrade(index)
+    local args = { "Upgrade", tonumber(index) or index }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("ConveyorRE"):FireServer(table.unpack(args))
+    end)
+    if not ok then warn("Conveyor Upgrade fire failed: " .. tostring(err)) end
+    return ok
+end
+
+-- World helpers
+local function getIslandBelts(islandName)
+    if type(islandName) ~= "string" or islandName == "" then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    local island = art:FindFirstChild(islandName)
+    if not island then return {} end
+    local env = island:FindFirstChild("ENV")
+    if not env then return {} end
+    local conveyorRoot = env:FindFirstChild("Conveyor")
+    if not conveyorRoot then return {} end
+    local belts = {}
+    -- Strictly look for Conveyor1..Conveyor9 in order
+    for i = 1, 9 do
+        local c = conveyorRoot:FindFirstChild("Conveyor" .. i)
+        if c then
+            local b = c:FindFirstChild("Belt")
+            if b then table.insert(belts, b) end
+        end
+    end
+    return belts
+end
+
+-- Pick one "active" belt (with most eggs; tie -> nearest to player)
+local function getActiveBelt(islandName)
+    local belts = getIslandBelts(islandName)
+    if #belts == 0 then return nil end
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local hrpPos = hrp and hrp.Position or Vector3.new()
+    local bestBelt, bestScore, bestDist
+    for _, belt in ipairs(belts) do
+        local children = belt:GetChildren()
+        local eggs = 0
+        local samplePos
+        for _, ch in ipairs(children) do
+            if ch:IsA("Model") then
+                eggs += 1
+                if not samplePos then
+                    local ok, cf = pcall(function() return ch:GetPivot() end)
+                    if ok and cf then samplePos = cf.Position end
+                end
+            end
+        end
+        if not samplePos then
+            local p = belt.Parent and belt.Parent:FindFirstChildWhichIsA("BasePart", true)
+            samplePos = p and p.Position or hrpPos
+        end
+        local dist = (samplePos - hrpPos).Magnitude
+        -- Higher eggs preferred; for tie, closer belt preferred
+        local score = eggs * 100000 - dist
+        if not bestScore or score > bestScore then
+            bestScore, bestDist, bestBelt = score, dist, belt
+        end
+    end
+    return bestBelt
+end
+
+-- Auto Place helpers
+local function getIslandNumberFromName(islandName)
+    if not islandName then return nil end
+    -- Extract number from island name (e.g., "Island_3" -> 3)
+    local match = string.match(islandName, "Island_(%d+)")
+    if match then
+        return tonumber(match)
+    end
+    -- Try other patterns
+    match = string.match(islandName, "(%d+)")
+    if match then
+        return tonumber(match)
+    end
+    return nil
+end
+
+-- Auto tile unlock system
+local function getLockedTiles(islandNumber)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then return {} end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return {} end
+    
+    local locksFolder = env:FindFirstChild("Locks")
+    if not locksFolder then return {} end
+    
+    local lockedTiles = {}
+    
+    -- Scan for locks that start with 'F' (like F20, F30, etc.)
+    for _, lockModel in ipairs(locksFolder:GetChildren()) do
+        if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
+            local farmPart = lockModel:FindFirstChild("Farm")
+            if farmPart and farmPart:IsA("BasePart") then
+                -- Check if this lock is active (transparency = 0 means locked)
+                if farmPart.Transparency == 0 then
+                    local lockCost = farmPart:GetAttribute("LockCost")
+                    table.insert(lockedTiles, {
+                        modelName = lockModel.Name,
+                        farmPart = farmPart,
+                        cost = lockCost or 0,
+                        model = lockModel
+                    })
+                end
+            end
+        end
+    end
+    
+    return lockedTiles
+end
+
+-- Function to unlock a specific tile
+local function unlockTile(lockInfo)
+    if not lockInfo then 
+        warn("❌ unlockTile: No lock info provided")
+        return false 
+    end
+    
+    if not lockInfo.farmPart then
+        warn("❌ unlockTile: No farm part in lock info for " .. (lockInfo.modelName or "unknown"))
+        return false
+    end
+    
+    local args = {
+        "Unlock",
+        lockInfo.farmPart
+    }
+    
+    local success, errorMsg = pcall(function()
+        local remote = ReplicatedStorage:WaitForChild("Remote", 5)
+        if not remote then
+            error("Remote folder not found")
+        end
+        
+        local characterRE = remote:WaitForChild("CharacterRE", 5)
+        if not characterRE then
+            error("CharacterRE not found")
+        end
+        
+        characterRE:FireServer(unpack(args))
+    end)
+    
+    if success then
+        -- Silent success
+    else
+        warn("❌ Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
+    end
+    
+    return success
+end
+
+-- Ocean egg categories for water farm placement
+local OCEAN_EGGS = {
+    ["SeaweedEgg"] = true,
+    ["ClownfishEgg"] = true,
+    ["LionfishEgg"] = true,
+    ["SharkEgg"] = true,
+    ["AnglerfishEgg"] = true,
+    ["OctopusEgg"] = true,
+    ["SeaDragonEgg"] = true
+}
+
+-- Check if an egg type requires water farm placement
+local function isOceanEgg(eggType)
+    return OCEAN_EGGS[eggType] == true
+end
+
+-- Function to auto unlock tiles when needed
+local function autoUnlockTilesIfNeeded(islandNumber, eggType)
+    -- Input validation
+    if not islandNumber then 
+        warn("autoUnlockTilesIfNeeded: No island number provided")
+        return false 
+    end
+    if not eggType then 
+        warn("autoUnlockTilesIfNeeded: No egg type provided")
+        return false 
+    end
+    
+    -- Check if we have available tiles first
+    local farmParts
+    local isOceanEggType = false
+    
+    -- Safe check for ocean egg type
+    local success, result = pcall(function()
+        return isOceanEgg(eggType)
+    end)
+    
+    if success then
+        isOceanEggType = result
+    else
+        warn("autoUnlockTilesIfNeeded: Error checking ocean egg type: " .. tostring(result))
+        isOceanEggType = false
+    end
+    
+    -- Get farm parts safely
+    local farmPartsSuccess, farmPartsResult = pcall(function()
+        if isOceanEggType then
+            return getWaterFarmParts(islandNumber)
+        else
+            return getFarmParts(islandNumber)
         end
     end)
-
-    -- Manual placement button for V2 system
-    Tabs.PlaceTab:Button({
-        Title = "🚀 Place Eggs Now (V2)",
-        Desc = "Immediately trigger smart egg placement with ocean skipping",
-        Callback = function()
-            -- Invalidate cache to force fresh scan
-            AutoPlaceV2.InvalidateCache()
+    
+    if farmPartsSuccess then
+        farmParts = farmPartsResult or {}
+    else
+        warn("autoUnlockTilesIfNeeded: Error getting farm parts: " .. tostring(farmPartsResult))
+        return false
+    end
+    
+    -- Count available (unlocked and unoccupied) tiles
+    local availableCount = 0
+    for _, part in ipairs(farmParts) do
+        local isOccupied = false
+        local checkSuccess, checkResult = pcall(function()
+            return isFarmTileOccupied(part, 6)
+        end)
+        
+        if checkSuccess then
+            isOccupied = checkResult
+        else
+            warn("autoUnlockTilesIfNeeded: Error checking tile occupation: " .. tostring(checkResult))
+            isOccupied = true -- Assume occupied if we can't check
+        end
+        
+        if not isOccupied then
+            availableCount = availableCount + 1
+        end
+    end
+    
+    -- If we have less than 3 available tiles, try to unlock more
+    if availableCount < 3 then
+        local lockedTiles = {}
+        local lockedTilesSuccess, lockedTilesResult = pcall(function()
+            return getLockedTiles(islandNumber)
+        end)
+        
+        if lockedTilesSuccess then
+            lockedTiles = lockedTilesResult or {}
+        else
+            warn("autoUnlockTilesIfNeeded: Error getting locked tiles: " .. tostring(lockedTilesResult))
+            return false
+        end
+        
+        if #lockedTiles > 0 then
+            -- For ocean eggs, we need to be more careful about which tiles to unlock
+            -- because water farms and regular farms are in different locked areas
             
-            -- Get current status
-            local status = AutoPlaceV2.GetStatus()
-            local message = ""
+            -- Sort by cost (cheapest first) with error handling
+            local sortSuccess, sortError = pcall(function()
+                table.sort(lockedTiles, function(a, b)
+                    return (a.cost or 0) < (b.cost or 0)
+                end)
+            end)
             
-            if status.enabled then
-                message = "V2 system refreshed and triggered!"
-            else
-                message = "Please enable Auto Place V2 first"
+            if not sortSuccess then
+                warn("autoUnlockTilesIfNeeded: Error sorting locked tiles: " .. tostring(sortError))
             end
             
-            WindUI:Notify({ 
-                Title = "🚀 Manual Place V2", 
-                Content = message, 
-                Duration = 2 
-            })
+            -- Try to unlock the cheapest tiles
+            local unlockedCount = 0
+            for _, lockInfo in ipairs(lockedTiles) do
+                if unlockedCount >= 2 then break end -- Don't unlock too many at once
+                
+                local unlockSuccess, unlockError = pcall(function()
+                    return unlockTile(lockInfo)
+                end)
+                
+                if unlockSuccess and unlockError then
+                    unlockedCount = unlockedCount + 1
+                    task.wait(0.5) -- Wait between unlocks
+                elseif not unlockSuccess then
+                    warn("autoUnlockTilesIfNeeded: Error unlocking tile: " .. tostring(unlockError))
+                end
+            end
+            
+            if unlockedCount > 0 then
+                task.wait(1) -- Wait for server to process unlocks
+                return true
+            end
         end
-    })
+    end
+    
+    return false
+end
 
-    -- Auto Unlock Tile functionality
-    local autoUnlockEnabled = false
-    local autoUnlockThread = nil
-
-    -- Helper function to get locked tiles for current island
-    local function getLockedTilesForCurrentIsland()
-        local lockedTiles = {}
-        
-        local islandName = Dependencies.getAssignedIslandName and Dependencies.getAssignedIslandName()
-        if not islandName then return lockedTiles end
-        
-        local art = workspace:FindFirstChild("Art")
-        if not art then return lockedTiles end
-        
-        local island = art:FindFirstChild(islandName)
-        if not island then return lockedTiles end
-        
-        local env = island:FindFirstChild("ENV")
-        if not env then return lockedTiles end
-        
-        local locksFolder = env:FindFirstChild("Locks")
-        if not locksFolder then return lockedTiles end
-        
+local function getWaterFarmParts(islandNumber)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then 
+        -- Try alternative naming patterns
+        for _, child in ipairs(art:GetChildren()) do
+            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
+                island = child
+                break
+            end
+        end
+        if not island then return {} end
+    end
+    
+    local waterFarmParts = {}
+    local function scanForWaterFarmParts(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("BasePart") and child.Name == "WaterFarm_split_0_0_0" then
+                -- Additional validation: check if part is valid for placement
+                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                    table.insert(waterFarmParts, child)
+                end
+            end
+            scanForWaterFarmParts(child)
+        end
+    end
+    
+    scanForWaterFarmParts(island)
+    
+    -- Filter out locked water farm tiles by checking the Locks folder
+    local unlockedWaterFarmParts = {}
+    local env = island:FindFirstChild("ENV")
+    local locksFolder = env and env:FindFirstChild("Locks")
+    
+    if locksFolder then
+        -- Create a map of locked areas using position checking
+        local lockedAreas = {}
         for _, lockModel in ipairs(locksFolder:GetChildren()) do
             if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
                 local farmPart = lockModel:FindFirstChild("Farm")
                 if farmPart and farmPart:IsA("BasePart") then
                     -- Check if this lock is active (transparency = 0 means locked)
                     if farmPart.Transparency == 0 then
-                        local lockCost = farmPart:GetAttribute("LockCost")
-                        table.insert(lockedTiles, {
-                            modelName = lockModel.Name,
-                            farmPart = farmPart,
-                            cost = lockCost or 0,
-                            model = lockModel
+                        -- Store the lock's position and size for area checking
+                        table.insert(lockedAreas, {
+                            position = farmPart.Position,
+                            size = farmPart.Size
                         })
                     end
                 end
             end
         end
         
-        return lockedTiles
+        -- Check each water farm part against locked areas
+        for i, waterFarmPart in ipairs(waterFarmParts) do
+            local isLocked = false
+            
+            for _, lockArea in ipairs(lockedAreas) do
+                -- Check if water farm part is within the lock area
+                local waterFarmPos = waterFarmPart.Position
+                local lockCenter = lockArea.position
+                local lockSize = lockArea.size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if water farm part is within the lock bounds
+                if waterFarmPos.X >= lockMinX and waterFarmPos.X <= lockMaxX and
+                   waterFarmPos.Z >= lockMinZ and waterFarmPos.Z <= lockMaxZ then
+                    isLocked = true
+                    break
+                end
+            end
+            
+            if not isLocked then
+                table.insert(unlockedWaterFarmParts, waterFarmPart)
+            end
+        end
+    else
+        -- If no locks folder found, assume all water farm tiles are unlocked
+        unlockedWaterFarmParts = waterFarmParts
     end
+    
+    return unlockedWaterFarmParts
+end
 
-    -- Function to unlock a specific tile
-    local function unlockTile(lockInfo)
-        if not lockInfo then 
-            warn("❌ unlockTile: No lock info provided")
-            return false 
-        end
-        
-        if not lockInfo.farmPart then
-            warn("❌ unlockTile: No farm part in lock info for " .. (lockInfo.modelName or "unknown"))
-            return false
-        end
-        
-        local args = {
-            "Unlock",
-            lockInfo.farmPart
-        }
-        
-        local success, errorMsg = pcall(function()
-            local remote = ReplicatedStorage:WaitForChild("Remote", 5)
-            if not remote then
-                error("Remote folder not found")
+local function getFarmParts(islandNumber)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
+    
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then 
+        -- Try alternative naming patterns
+        for _, child in ipairs(art:GetChildren()) do
+            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
+                island = child
+                break
             end
-            
-            local characterRE = remote:WaitForChild("CharacterRE", 5)
-            if not characterRE then
-                error("CharacterRE not found")
-            end
-            
-            characterRE:FireServer(unpack(args))
-        end)
-        
-        if success then
-            -- Silent success
-        else
-            warn("❌ Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
         end
-        
-        return success
+        if not island then return {} end
     end
-
-    local function runAutoUnlock()
-        while autoUnlockEnabled do
-            local ok, err = pcall(function()
-                local lockedTiles = getLockedTilesForCurrentIsland()
-                
-                if #lockedTiles == 0 then
-                    task.wait(2)
-                    return
+    
+    local farmParts = {}
+    local function scanForFarmParts(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
+                -- Additional validation: check if part is valid for placement
+                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                    table.insert(farmParts, child)
                 end
-                
-                -- Count affordable locks
-                local affordableCount = 0
-                local netWorth = Dependencies.getPlayerNetWorth and Dependencies.getPlayerNetWorth() or 0
-                for _, lockInfo in ipairs(lockedTiles) do
-                    local cost = tonumber(lockInfo.cost) or 0
-                    if netWorth >= cost then
-                        affordableCount = affordableCount + 1
-                    end
-                end
-                
-                if affordableCount == 0 then
-                    task.wait(2)
-                    return
-                end
-                
-                -- Try to unlock affordable tiles
-                for _, lockInfo in ipairs(lockedTiles) do
-                    if not autoUnlockEnabled then break end
-                    
-                    local cost = tonumber(lockInfo.cost) or 0
-                    if netWorth >= cost then
-                        if unlockTile(lockInfo) then
-                            task.wait(0.5) -- Wait between unlocks
-                        else
-                            task.wait(0.2)
-                        end
-                    end
-                end
-                
-                task.wait(3) -- Wait before next scan
-                
-            end)
-            
-            if not ok then
-                warn("Auto Unlock error: " .. tostring(err))
-                task.wait(1)
             end
+            scanForFarmParts(child)
         end
     end
-
-    local autoUnlockToggle = Tabs.PlaceTab:Toggle({
-        Title = "🔓 Auto Unlock Tiles",
-        Desc = "Automatically unlock tiles when you have enough money",
-        Value = false,
-        Callback = function(state)
-            autoUnlockEnabled = state
-            
-            if Dependencies.waitForSettingsReady then
-                Dependencies.waitForSettingsReady(0.2)
-            end
-            
-            if state and not autoUnlockThread then
-                autoUnlockThread = task.spawn(function()
-                    runAutoUnlock()
-                    autoUnlockThread = nil
-                end)
-                WindUI:Notify({ Title = "🔓 Auto Unlock", Content = "Started unlocking tiles! 🎉", Duration = 3 })
-            elseif (not state) and autoUnlockThread then
-                WindUI:Notify({ Title = "🔓 Auto Unlock", Content = "Stopped", Duration = 3 })
-            end
-        end
-    })
-
-    Tabs.PlaceTab:Button({
-        Title = "🔓 Unlock All Affordable Now",
-        Desc = "Unlock all tiles you can afford right now",
-        Callback = function()
-            local lockedTiles = getLockedTilesForCurrentIsland()
-            local netWorth = Dependencies.getPlayerNetWorth and Dependencies.getPlayerNetWorth() or 0
-            local unlockedCount = 0
-            
-            for _, lockInfo in ipairs(lockedTiles) do
-                local cost = tonumber(lockInfo.cost) or 0
-                if netWorth >= cost then
-                    if unlockTile(lockInfo) then
-                        unlockedCount = unlockedCount + 1
-                        task.wait(0.1)
+    
+    scanForFarmParts(island)
+    
+    -- Filter out locked tiles by checking the Locks folder
+    local unlockedFarmParts = {}
+    local env = island:FindFirstChild("ENV")
+    local locksFolder = env and env:FindFirstChild("Locks")
+    
+    if locksFolder then
+        -- Create a map of locked areas using CFrame and size
+        local lockedAreas = {}
+        for _, lockModel in ipairs(locksFolder:GetChildren()) do
+            if lockModel:IsA("Model") then
+                local farmPart = lockModel:FindFirstChild("Farm")
+                if farmPart and farmPart:IsA("BasePart") then
+                    -- Check if this lock is active (transparency = 0 means locked)
+                    if farmPart.Transparency == 0 then
+                        -- Store the lock's CFrame and size for area checking
+                        table.insert(lockedAreas, {
+                            cframe = farmPart.CFrame,
+                            size = farmPart.Size,
+                            position = farmPart.Position
+                        })
                     end
                 end
             end
+        end
+        
+        -- Check each farm part against locked areas
+        for _, farmPart in ipairs(farmParts) do
+            local isLocked = false
             
-            WindUI:Notify({ 
-                Title = "🔓 Unlock Complete", 
-                Content = string.format("Unlocked %d tiles! 🎉", unlockedCount), 
-                Duration = 3 
+            for _, lockArea in ipairs(lockedAreas) do
+                -- Check if farm part is within the lock area
+                -- Use CFrame and size to determine if the farm part is covered by the lock
+                local farmPartPos = farmPart.Position
+                local lockCenter = lockArea.position
+                local lockSize = lockArea.size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if farm part is within the lock bounds
+                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
+                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
+                    isLocked = true
+                    break
+                end
+            end
+            
+            if not isLocked then
+                table.insert(unlockedFarmParts, farmPart)
+            end
+        end
+    else
+        -- If no locks folder found, assume all tiles are unlocked
+        unlockedFarmParts = farmParts
+    end
+    
+    return unlockedFarmParts
+end
+
+-- Occupancy helpers (uses Model:GetPivot to detect nearby placed pets)
+local function isPetLikeModel(model)
+    if not model or not model:IsA("Model") then return false end
+    -- Common signals that a model is a pet or a placed unit
+    if model:FindFirstChildOfClass("Humanoid") then return true end
+    if model:FindFirstChild("AnimationController") then return true end
+    if model:GetAttribute("IsPet") or model:GetAttribute("PetType") or model:GetAttribute("T") then return true end
+    local lowerName = string.lower(model.Name)
+    if string.find(lowerName, "pet") or string.find(lowerName, "egg") then return true end
+    if CollectionService and (CollectionService:HasTag(model, "Pet") or CollectionService:HasTag(model, "IdleBigPet")) then
+        return true
+    end
+    return false
+end
+
+local function getTileCenterPosition(farmPart)
+    if not farmPart or not farmPart.IsA or not farmPart:IsA("BasePart") then return nil end
+    -- Middle of the farm tile (parts are 8x8x8)
+    return farmPart.Position
+end
+
+local function getPetModelsOverlappingTile(farmPart)
+    if not farmPart or not farmPart:IsA("BasePart") then return {} end
+    local centerCF = farmPart.CFrame
+    -- Slightly taller box to capture pets above the tile
+    local regionSize = Vector3.new(8, 14, 8)
+    local params = OverlapParams.new()
+    params.RespectCanCollide = false
+    -- Search within whole workspace, we will filter to models
+    local parts = workspace:GetPartBoundsInBox(centerCF, regionSize, params)
+    local modelMap = {}
+    for _, part in ipairs(parts) do
+        if part ~= farmPart then
+            local model = part:FindFirstAncestorOfClass("Model")
+            if model and not modelMap[model] and isPetLikeModel(model) then
+                modelMap[model] = true
+            end
+        end
+    end
+    local models = {}
+    for model in pairs(modelMap) do table.insert(models, model) end
+    return models
+end
+
+-- Get all pet configurations that the player owns
+local function getPlayerPetConfigurations()
+    local petConfigs = {}
+    
+    if not LocalPlayer then return petConfigs end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return petConfigs end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return petConfigs end
+    
+    local petsFolder = data:FindFirstChild("Pets")
+    if not petsFolder then return petConfigs end
+    
+    -- Get all pet configurations
+    for _, petConfig in ipairs(petsFolder:GetChildren()) do
+        if petConfig:IsA("Configuration") then
+            table.insert(petConfigs, {
+                name = petConfig.Name,
+                config = petConfig
             })
         end
-    })
-
-    -- Auto Delete functionality
-    local autoDeleteEnabled = false
-    local autoDeleteThread = nil
-    local deleteSpeedThreshold = 100 -- Default speed threshold
-
-    -- Enhanced number parsing function to handle K, M, B, T suffixes and commas
-    local function parseNumberWithSuffix(text)
-        if not text or type(text) ~= "string" then return nil end
-        
-        -- Remove common prefixes and suffixes
-        local cleanText = text:gsub("[$€£¥₹/s]", ""):gsub("^%s*(.-)%s*$", "%1") -- Remove currency symbols and /s
-        
-        -- Handle comma-separated numbers (e.g., "1,234,567")
-        cleanText = cleanText:gsub(",", "")
-        
-        -- Try to match number with suffix (e.g., "1.5K", "2.3M", "1.2B")
-        local number, suffix = cleanText:match("^([%d%.]+)([KkMmBbTt]?)$")
-        
-        if not number then
-            -- Try to extract just a number if no suffix pattern matches
-            number = cleanText:match("([%d%.]+)")
-        end
-        
-        local numValue = tonumber(number)
-        if not numValue then return nil end
-        
-        -- Apply suffix multiplier
-        if suffix then
-            local lowerSuffix = string.lower(suffix)
-            if lowerSuffix == "k" then
-                numValue = numValue * 1000
-            elseif lowerSuffix == "m" then
-                numValue = numValue * 1000000
-            elseif lowerSuffix == "b" then
-                numValue = numValue * 1000000000
-            elseif lowerSuffix == "t" then
-                numValue = numValue * 1000000000000
-            end
-        end
-        
-        return numValue
     end
+    
+    return petConfigs
+end
 
-    local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
-        Title = "Speed Threshold",
-        Desc = "Delete pets with speed below this value (supports K, M, B, T suffixes)",
-        Value = "100",
-        Callback = function(value)
-            local parsedValue = parseNumberWithSuffix(value)
-            if parsedValue and parsedValue > 0 then
-                deleteSpeedThreshold = parsedValue
-                print(string.format("🗑️ Speed threshold updated to: %.0f (from input: %s)", deleteSpeedThreshold, value))
-            else
-                -- Fallback to simple number parsing
-                deleteSpeedThreshold = tonumber(value) or 100
+-- Check if a pet exists in workspace.Pets by configuration name
+local function findPetInWorkspace(petConfigName)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if not workspacePets then return nil end
+    
+    local petModel = workspacePets:FindFirstChild(petConfigName)
+    if petModel and petModel:IsA("Model") then
+        return petModel
+    end
+    
+    return nil
+end
+
+-- Get all player's pets that exist in workspace
+local function getPlayerPetsInWorkspace()
+    local petsInWorkspace = {}
+    local playerPets = getPlayerPetConfigurations()
+    local workspacePets = workspace:FindFirstChild("Pets")
+    
+    if not workspacePets then return petsInWorkspace end
+    
+    for _, petConfig in ipairs(playerPets) do
+        local petModel = workspacePets:FindFirstChild(petConfig.name)
+        if petModel and petModel:IsA("Model") then
+            table.insert(petsInWorkspace, {
+                name = petConfig.name,
+                model = petModel,
+                position = petModel:GetPivot().Position
+            })
+        end
+    end
+    
+    return petsInWorkspace
+end
+
+-- Check if a farm tile is occupied by pets or eggs
+local function isFarmTileOccupied(farmPart, minDistance)
+    minDistance = minDistance or 6
+    local center = getTileCenterPosition(farmPart)
+    if not center then return true end
+    
+    -- Calculate surface position (same as placement logic)
+    local surfacePosition = Vector3.new(
+        center.X,
+        center.Y + 12, -- Eggs float 12 studs above tile surface
+        center.Z
+    )
+    
+    -- Debug for water farm tiles
+    local isWaterFarm = farmPart.Name == "WaterFarm_split_0_0_0"
+    if isWaterFarm then
+        print("📍 Checking water farm tile at", surfacePosition, "with", minDistance, "stud radius")
+    end
+    
+    -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
+    local models = getPetModelsOverlappingTile(farmPart)
+    if #models > 0 then
+        if isWaterFarm then
+            print("📍 Found", #models, "overlapping models in PlayerBuiltBlocks")
+        end
+        for i, model in ipairs(models) do
+            local pivotPos = model:GetPivot().Position
+            local distance = (pivotPos - surfacePosition).Magnitude
+            -- Check distance to surface position instead of center
+            if distance <= minDistance then
+                if isWaterFarm then
+                    print("📍 Water farm occupied by PlayerBuiltBlocks model", i, "at distance", distance)
+                end
+                return true
             end
         end
-    })
+    end
+    
+    -- Check for fully hatched pets in workspace.Pets
+    local playerPets = getPlayerPetsInWorkspace()
+    if isWaterFarm and #playerPets > 0 then
+        print("📍 Checking against", #playerPets, "pets in workspace")
+    end
+    for i, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        local distance = (petPos - surfacePosition).Magnitude
+        -- Check distance to surface position instead of center
+        if distance <= minDistance then
+            if isWaterFarm then
+                print("📍 Water farm occupied by workspace pet", petInfo.name, "at distance", distance)
+            end
+            return true
+        end
+    end
+    
+    if isWaterFarm then
+        print("📍 Water farm tile is available!")
+    end
+    
+    return false
+end
 
-    -- Auto Delete function
-    local function runAutoDelete()
-        while autoDeleteEnabled do
-            local ok, err = pcall(function()
-                -- Get all pets in workspace.Pets
-                local petsFolder = workspace:FindFirstChild("Pets")
-                if not petsFolder then
-                    task.wait(1)
-                    return
+local function findAvailableFarmPart(farmParts, minDistance)
+    if not farmParts or #farmParts == 0 then return nil end
+    
+    -- First, collect all available parts
+    local availableParts = {}
+    for _, part in ipairs(farmParts) do
+        if not isFarmTileOccupied(part, minDistance) then
+            table.insert(availableParts, part)
+        end
+    end
+    
+    -- If no available parts, return nil
+    if #availableParts == 0 then return nil end
+    
+    -- Shuffle available parts to distribute placement
+    for i = #availableParts, 2, -1 do
+        local j = math.random(1, i)
+        availableParts[i], availableParts[j] = availableParts[j], availableParts[i]
+    end
+    
+    return availableParts[1]
+end
+
+-- Player helpers for proximity-based placement
+local function getPlayerRootPosition()
+    local character = LocalPlayer and LocalPlayer.Character
+    if not character then return nil end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    return hrp.Position
+end
+
+local function findAvailableFarmPartNearPosition(farmParts, minDistance, targetPosition)
+    if not targetPosition then return findAvailableFarmPart(farmParts, minDistance) end
+    if not farmParts or #farmParts == 0 then return nil end
+    -- Sort farm parts by distance to targetPosition and pick first unoccupied
+    local sorted = table.clone(farmParts)
+    table.sort(sorted, function(a, b)
+        return (a.Position - targetPosition).Magnitude < (b.Position - targetPosition).Magnitude
+    end)
+    for _, part in ipairs(sorted) do
+        if not isFarmTileOccupied(part, minDistance) then
+            return part
+        end
+    end
+    return nil
+end
+
+-- Helper function to check if a specific tile position is unlocked
+local function isTileUnlocked(islandName, tilePosition)
+    if not islandName or not tilePosition then return false end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return true end -- Assume unlocked if no Art folder
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return true end -- Assume unlocked if island not found
+    
+    local locksFolder = island:FindFirstChild("ENV"):FindFirstChild("Locks")
+    if not locksFolder then return true end -- Assume unlocked if no locks folder
+    
+    -- Check if there's a lock covering this position
+    for _, lockModel in ipairs(locksFolder:GetChildren()) do
+        if lockModel:IsA("Model") then
+            local farmPart = lockModel:FindFirstChild("Farm")
+            if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
+                -- Check if tile position is within the lock area
+                local lockCenter = farmPart.Position
+                local lockSize = farmPart.Size
+                
+                -- Calculate the bounds of the lock area
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                -- Check if tile position is within the lock bounds
+                if tilePosition.X >= lockMinX and tilePosition.X <= lockMaxX and
+                   tilePosition.Z >= lockMinZ and tilePosition.Z <= lockMaxZ then
+                    return false -- This tile is locked
                 end
-                
-                local playerUserId = Players.LocalPlayer.UserId
-                local petsToDelete = {}
-                local scannedCount = 0
-                
-                -- Scan all pets and check their speed
-                for _, pet in ipairs(petsFolder:GetChildren()) do
-                    if not autoDeleteEnabled then break end
-                    
-                    if pet:IsA("Model") then
-                        scannedCount = scannedCount + 1
+            end
+        end
+    end
+    
+    return true -- Tile is unlocked
+end
+
+
+
+
+local function getPetUID()
+    if not LocalPlayer then return nil end
+    
+    -- Wait for PlayerGui to exist
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        -- Try to wait for it briefly
+        playerGui = LocalPlayer:WaitForChild("PlayerGui", 2)
+        if not playerGui then return nil end
+    end
+    
+    -- Wait for Data folder to exist
+    local data = playerGui:FindFirstChild("Data")
+    if not data then
+        data = playerGui:WaitForChild("Data", 2)
+        if not data then return nil end
+    end
+    
+    -- Wait for Egg object to exist
+    local egg = data:FindFirstChild("Egg")
+    if not egg then
+        egg = data:WaitForChild("Egg", 2)
+        if not egg then return nil end
+    end
+    
+    -- The PET UID is the NAME of the egg object, not its Value
+    local eggName = egg.Name
+    if not eggName or eggName == "" then
+        return nil
+    end
+    
+    return eggName
+end
+
+-- Available Egg helpers (Auto Place)
+local function getEggContainer()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Egg") or nil
+end
+
+-- Function to read mutation from egg configuration (for Auto Place)
+local function getEggMutation(eggUID)
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then return nil end
+    
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return nil end
+    
+    local eggContainer = data:FindFirstChild("Egg")
+    if not eggContainer then return nil end
+    
+    local eggConfig = eggContainer:FindFirstChild(eggUID)
+    if not eggConfig then return nil end
+    
+    -- Read the M attribute (mutation)
+    local mutation = eggConfig:GetAttribute("M")
+    
+    -- Map "Dino" to "Jurassic" for consistency
+    if mutation == "Dino" then
+        mutation = "Jurassic"
+    end
+    
+    return mutation
+end
+
+-- Enhanced function to read mutation from GUI text on conveyor belt (for Auto Buy)
+local function getEggMutationFromGUI(eggUID)
+    local islandName = getAssignedIslandName()
+    if not islandName then 
+        warn("getEggMutationFromGUI: No island name found")
+        return nil 
+    end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then 
+        warn("getEggMutationFromGUI: Art folder not found")
+        return nil 
+    end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then 
+        warn("getEggMutationFromGUI: Island " .. islandName .. " not found")
+        return nil 
+    end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then 
+        warn("getEggMutationFromGUI: ENV folder not found")
+        return nil 
+    end
+    
+    local conveyor = env:FindFirstChild("Conveyor")
+    if not conveyor then 
+        warn("getEggMutationFromGUI: Conveyor folder not found")
+        return nil 
+    end
+    
+    -- Check all conveyor belts
+    for i = 1, 9 do
+        local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+        if conveyorBelt then
+            local belt = conveyorBelt:FindFirstChild("Belt")
+            if belt then
+                local eggModel = belt:FindFirstChild(eggUID)
+                if eggModel and eggModel:IsA("Model") then
+                    local rootPart = eggModel:FindFirstChild("RootPart")
+                    if rootPart then
+                        -- Try multiple GUI path patterns
+                        local guiPaths = {
+                            "GUI/EggGUI",
+                            "EggGUI", 
+                            "GUI",
+                            "BillboardGui"
+                        }
                         
-                        -- Check if pet belongs to player
-                        local petUserId = pet:GetAttribute("UserId")
-                        if petUserId and tonumber(petUserId) == playerUserId then
-                            -- Check pet's speed
-                            local rootPart = pet:FindFirstChild("RootPart")
-                            if rootPart then
-                                local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
-                                if idleGUI then
-                                    local speedText = idleGUI:FindFirstChild("Speed")
-                                    if speedText and speedText:IsA("TextLabel") then
-                                        -- Enhanced speed parsing for formats like "$100/s", "$1.5K/s", "$2.3M/s", "$1.2B/s"
-                                        local speedTextValue = speedText.Text
-                                        local speedValue = parseNumberWithSuffix(speedTextValue)
-                                        
-                                        -- Debug logging for threshold checking
-                                        if speedValue then
-                                            print(string.format("🔍 Pet: %s, Speed: %s (parsed: %.0f), Threshold: %.0f", 
-                                                pet.Name, speedTextValue, speedValue, deleteSpeedThreshold))
+                        for _, guiPath in ipairs(guiPaths) do
+                            local eggGUI = rootPart:FindFirstChild(guiPath)
+                        if eggGUI then
+                                -- Try multiple mutation text label names
+                                local mutationLabels = {"Mutate", "Mutation", "MutateText", "MutationLabel"}
+                                
+                                for _, labelName in ipairs(mutationLabels) do
+                                    local mutateText = eggGUI:FindFirstChild(labelName)
+                            if mutateText and mutateText:IsA("TextLabel") then
+                                local mutationText = mutateText.Text
+                                        if mutationText and mutationText ~= "" and mutationText ~= "None" then
+                                            -- Normalize mutation text
+                                            mutationText = string.gsub(mutationText, "^%s*(.-)%s*$", "%1") -- trim whitespace
                                             
-                                            if speedValue < deleteSpeedThreshold then
-                                                table.insert(petsToDelete, {
-                                                    name = pet.Name,
-                                                    speed = speedValue,
-                                                    speedText = speedTextValue
-                                                })
+                                            -- Map variations to standard names
+                                            local lowerText = string.lower(mutationText)
+                                            if lowerText == "dino" or lowerText == "dinosaur" then
+                                                print("🦕 Found Dino mutation, mapping to Jurassic for egg: " .. eggUID)
+                                        return "Jurassic"
+                                            elseif lowerText == "golden" or lowerText == "gold" then
+                                                return "Golden"
+                                            elseif lowerText == "diamond" or lowerText == "💎" then
+                                                return "Diamond"
+                                            elseif lowerText == "electric" or lowerText == "⚡" or lowerText == "electirc" then
+                                                return "Electric"
+                                            elseif lowerText == "fire" or lowerText == "🔥" then
+                                                return "Fire"
+                                            elseif lowerText == "jurassic" or lowerText == "🦕" then
+                                                return "Jurassic"
+                                            else
+                                                -- Return the original text if no mapping found
+                                                print("🧬 Found mutation: " .. mutationText .. " for egg: " .. eggUID)
+                                    return mutationText
                                             end
                                         end
                                     end
@@ -889,152 +1411,3349 @@ function AutoPlaceV2.SetupUI(Tabs, WindUI)
                         end
                     end
                 end
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function listAvailableEggUIDs()
+    local eg = getEggContainer()
+    local uids = {}
+    if not eg then return uids end
+    for _, child in ipairs(eg:GetChildren()) do
+        if #child:GetChildren() == 0 then -- no subfolder => available
+            -- Get the actual egg type from T attribute
+            local eggType = child:GetAttribute("T")
+            if eggType then
+                -- Get the mutation from M attribute
+                local mutation = getEggMutation(child.Name)
+                table.insert(uids, { 
+                    uid = child.Name, 
+                    type = eggType,
+                    mutation = mutation
+                })
+            else
+                table.insert(uids, { 
+                    uid = child.Name, 
+                    type = child.Name,
+                    mutation = nil
+                })
+            end
+        end
+    end
+    return uids
+end
+
+-- Enhanced pet validation based on the Pet module
+local function validatePetUID(petUID)
+    if not petUID or type(petUID) ~= "string" or petUID == "" then
+        return false, "Invalid PET UID"
+    end
+    
+    -- Check if pet exists in ReplicatedStorage.Pets (based on Pet module patterns)
+    local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
+    if petsFolder then
+        -- The Pet module shows pets are stored by their type (T attribute)
+        -- We might need to validate the pet type exists
+        return true, "Valid PET UID"
+    end
+    
+    return true, "PET UID found (pets folder not accessible)"
+end
+
+-- Get pet information for better status display
+local function getPetInfo(petUID)
+    if not petUID then return nil end
+    
+    -- Try to get pet data from various sources
+    local petData = {
+        UID = petUID,
+        Type = nil,
+        Rarity = nil,
+        Level = nil,
+        Mutations = nil
+    }
+    
+    -- Check if we can get pet type from the UID
+    -- This might be stored in the player's data or we might need to parse it
+    if type(petUID) == "string" then
+        -- Some games store pet type in the UID itself
+        petData.Type = petUID
+    end
+    
+    return petData
+end
+
+-- ============ Auto Claim Money ============
+local autoClaimEnabled = false
+local autoClaimThread = nil
+local autoClaimDelay = 0.1 -- seconds between claims
+
+local function getOwnedPetNames()
+    local names = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = playerGui and playerGui:FindFirstChild("Data")
+    local petsContainer = data and data:FindFirstChild("Pets")
+    if petsContainer then
+        for _, child in ipairs(petsContainer:GetChildren()) do
+            -- Assume children under Data.Pets are ValueBase instances or folders named as pet names
+            local n
+            if child:IsA("ValueBase") then
+                n = tostring(child.Value)
+            else
+                n = tostring(child.Name)
+            end
+            if n and n ~= "" then
+                table.insert(names, n)
+            end
+        end
+    end
+    return names
+end
+
+local function claimMoneyForPet(petName)
+    if not petName or petName == "" then return false end
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then return false end
+    local petModel = petsFolder:FindFirstChild(petName)
+    if not petModel then return false end
+    local root = petModel:FindFirstChild("RootPart")
+    if not root then return false end
+    local re = root:FindFirstChild("RE")
+    if not re or not re.FireServer then return false end
+    local ok, err = pcall(function()
+        re:FireServer("Claim")
+    end)
+    if not ok then warn("Claim failed for pet " .. tostring(petName) .. ": " .. tostring(err)) end
+    return ok
+end
+
+local function runAutoClaim()
+    while autoClaimEnabled do
+        local ok, err = pcall(function()
+            local names = getOwnedPetNames()
+            if #names == 0 then task.wait(0.8) return end
+            for _, n in ipairs(names) do
+                claimMoneyForPet(n)
+                task.wait(autoClaimDelay)
+            end
+        end)
+        if not ok then
+            warn("Auto Claim error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
+local autoClaimToggle = Tabs.ClaimTab:Toggle({
+    Title = "💰 Auto Get Money",
+    Desc = "Automatically collects money from your pets",
+    Value = false,
+    Callback = function(state)
+        autoClaimEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoClaimThread then
+            autoClaimThread = task.spawn(function()
+                runAutoClaim()
+                autoClaimThread = nil
+            end)
+            WindUI:Notify({ Title = "💰 Auto Claim", Content = "Started collecting money! 🎉", Duration = 3 })
+        elseif (not state) and autoClaimThread then
+            WindUI:Notify({ Title = "💰 Auto Claim", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+
+
+local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
+    Title = "⏰ Claim Speed",
+    Desc = "How fast to collect money (lower = faster)",
+    Value = {
+    Min = 0,
+    Max = 1000,
+        Default = 100,
+    },
+    Callback = function(value)
+        autoClaimDelay = math.clamp((tonumber(value) or 100) / 1000, 0, 2)
+        -- Auto-save delay when changed
+        pcall(function()
+            if writefile then
+                local delayData = {
+                    autoClaimDelay = autoClaimDelay
+                }
+                writefile("Zebux_ClaimSettings.json", game:GetService("HttpService"):JSONEncode(delayData))
+            end
+        end)
+    end
+})
+
+Tabs.ClaimTab:Button({
+    Title = "💰 Get All Money Now",
+    Desc = "Collect money from all pets right now",
+    Callback = function()
+        local names = getOwnedPetNames()
+        if #names == 0 then
+            WindUI:Notify({ Title = "💰 Auto Claim", Content = "No pets found", Duration = 3 })
+            return
+        end
+        local count = 0
+        for _, n in ipairs(names) do
+            if claimMoneyForPet(n) then count += 1 end
+            task.wait(0.05)
+        end
+        WindUI:Notify({ Title = "💰 Auto Claim", Content = string.format("Got money from %d pets! 🎉", count), Duration = 3 })
+    end
+})
+
+-- ============ Auto Hatch ============
+
+-- Hatch status section removed per user request
+
+local function getOwnerUserIdDeep(inst)
+    local current = inst
+    while current and current ~= workspace do
+        if current.GetAttribute then
+            local uidAttr = current:GetAttribute("UserId")
+            if type(uidAttr) == "number" then return uidAttr end
+            if type(uidAttr) == "string" then
+                local n = tonumber(uidAttr)
+                if n then return n end
+            end
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
+local function playerOwnsInstance(inst)
+    if not inst then return false end
+    local ownerId = getOwnerUserIdDeep(inst)
+    local lp = Players.LocalPlayer
+    return ownerId ~= nil and lp and lp.UserId == ownerId
+end
+
+local function getModelPosition(model)
+    if not model or not model.GetPivot then return nil end
+    local ok, cf = pcall(function() return model:GetPivot() end)
+    if ok and cf then return cf.Position end
+    local pp = model.PrimaryPart or model:FindFirstChild("RootPart")
+    return pp and pp.Position or nil
+end
+
+local function getEggTypeFromModel(model)
+    if not model then return nil end
+    local root = model:FindFirstChild("RootPart")
+    if root and root.GetAttribute then
+        local et = root:GetAttribute("EggType")
+        if et ~= nil then return tostring(et) end
+    end
+    return nil
+end
+
+local function isStringEmpty(s)
+    return type(s) == "string" and (s == "" or s:match("^%s*$") ~= nil)
+end
+
+local function isReadyText(text)
+    if type(text) ~= "string" then return false end
+    -- Empty or whitespace means ready
+    if isStringEmpty(text) then return true end
+    -- Percent text like "100%", "100.0%", "100.00%" also counts as ready
+    local num = text:match("^%s*(%d+%.?%d*)%s*%%%s*$")
+    if num then
+        local n = tonumber(num)
+        if n and n >= 100 then return true end
+    end
+    -- Words that often mean ready
+    local lower = string.lower(text)
+    if string.find(lower, "hatch", 1, true) or string.find(lower, "ready", 1, true) then
+        return true
+    end
+    return false
+end
+
+local function isHatchReady(model)
+    -- Look for TimeBar/TXT text being empty anywhere under the model
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("TextLabel") and d.Name == "TXT" then
+            local parent = d.Parent
+            if parent and parent.Name == "TimeBar" then
+                if isReadyText(d.Text) then
+                    return true
+                end
+            end
+        end
+        if d:IsA("ProximityPrompt") and type(d.ActionText) == "string" then
+            local at = string.lower(d.ActionText)
+            if string.find(at, "hatch", 1, true) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function collectOwnedEggs()
+    local owned = {}
+    local container = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if not container then
+        -- No PlayerBuiltBlocks found
+        return owned
+    end
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("Model") and playerOwnsInstance(child) then
+            table.insert(owned, child)
+        end
+    end
+    -- also allow owned nested models (fallback)
+    if #owned == 0 then
+        for _, child in ipairs(container:GetDescendants()) do
+            if child:IsA("Model") and playerOwnsInstance(child) then
+                table.insert(owned, child)
+            end
+        end
+    end
+    return owned
+end
+
+local function filterReadyEggs(models)
+    local ready = {}
+    for _, m in ipairs(models or {}) do
+        if isHatchReady(m) then table.insert(ready, m) end
+    end
+    return ready
+end
+
+local function pressPromptE(prompt)
+    if typeof(prompt) ~= "Instance" or not prompt:IsA("ProximityPrompt") then return false end
+    -- Try executor helper first
+    if _G and typeof(_G.fireproximityprompt) == "function" then
+        local s = pcall(function() _G.fireproximityprompt(prompt, prompt.HoldDuration or 0) end)
+        if s then return true end
+    end
+    -- Pure client fallback: simulate the prompt key with VirtualInput
+    local key = prompt.KeyboardKeyCode
+    if key == Enum.KeyCode.Unknown or key == nil then key = Enum.KeyCode.E end
+    -- LoS and distance flexibility
+    pcall(function()
+        prompt.RequiresLineOfSight = false
+        prompt.Enabled = true
+    end)
+    local hold = prompt.HoldDuration or 0
+    VirtualInputManager:SendKeyEvent(true, key, false, game)
+    if hold > 0 then task.wait(hold + 0.05) end
+    VirtualInputManager:SendKeyEvent(false, key, false, game)
+    return true
+end
+
+local function walkTo(position, timeout)
+    local char = Players.LocalPlayer and Players.LocalPlayer.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    hum:MoveTo(position)
+    local reached = hum.MoveToFinished:Wait(timeout or 5)
+    return reached
+end
+
+local function tryHatchModel(model)
+    -- Double-check ownership before proceeding
+    if not playerOwnsInstance(model) then
+        return false, "Not owner"
+    end
+    -- Find a ProximityPrompt named "E" or any prompt on the model
+    local prompt
+    -- Prefer a prompt on a part named Prompt or with ActionText that implies hatch
+    for _, inst in ipairs(model:GetDescendants()) do
+        if inst:IsA("ProximityPrompt") then
+            prompt = inst
+            if inst.ActionText and string.len(inst.ActionText) > 0 then break end
+        end
+    end
+    if not prompt then return false, "No prompt" end
+    local pos = getModelPosition(model)
+    if not pos then return false, "No position" end
+    walkTo(pos, 6)
+    -- Ensure we are within MaxActivationDistance by nudging forward if necessary
+    local hrp = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and (hrp.Position - pos).Magnitude > (prompt.MaxActivationDistance or 10) - 1 then
+        local dir = (pos - hrp.Position).Unit
+        hrp.CFrame = CFrame.new(pos - dir * 1.5, pos)
+        task.wait(0.1)
+    end
+    local ok = pressPromptE(prompt)
+    return ok
+end
+
+local function runAutoHatch()
+    while autoHatchEnabled do
+        -- Check priority - if Auto Place is running and has priority, pause hatching
+        -- Priority system removed
+        
+        local ok, err = pcall(function()
+            local owned = collectOwnedEggs()
+            if #owned == 0 then
+                task.wait(1.0)
+                return
+            end
+            local eggs = filterReadyEggs(owned)
+            if #eggs == 0 then
+                task.wait(0.8)
+                return
+            end
+            -- Try nearest first
+            local me = getPlayerRootPosition()
+            table.sort(eggs, function(a, b)
+                local pa = getModelPosition(a) or Vector3.new()
+                local pb = getModelPosition(b) or Vector3.new()
+                return (pa - me).Magnitude < (pb - me).Magnitude
+            end)
+            for _, m in ipairs(eggs) do
+                -- Check priority again before each hatch
+                -- Priority system removed
                 
-                if #petsToDelete == 0 then
+                -- Moving to hatch
+                tryHatchModel(m)
+                task.wait(0.2)
+            end
+            -- Done
+        end)
+        if not ok then
+            warn("Auto Hatch error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
+local autoHatchToggle = Tabs.HatchTab:Toggle({
+    Title = "⚡ Auto Hatch Eggs",
+    Desc = "Automatically hatches your eggs by walking to them",
+    Value = false,
+    Callback = function(state)
+        autoHatchEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoHatchThread then
+            -- Check if Auto Place is running and we have lower priority
+            -- Priority system removed
+            autoHatchThread = task.spawn(function()
+                runAutoHatch()
+                autoHatchThread = nil
+            end)
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Started hatching eggs! 🎉", Duration = 3 })
+        elseif (not state) and autoHatchThread then
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+
+
+Tabs.HatchTab:Button({
+    Title = "⚡ Hatch Nearest Egg",
+    Desc = "Hatch the closest egg to you",
+    Callback = function()
+        local owned = collectOwnedEggs()
+        if #owned == 0 then
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs found", Duration = 3 })
+            return
+        end
+        local eggs = filterReadyEggs(owned)
+        if #eggs == 0 then
+            WindUI:Notify({ Title = "⚡ Auto Hatch", Content = "No eggs ready", Duration = 3 })
+            return
+        end
+        local me = getPlayerRootPosition() or Vector3.new()
+        table.sort(eggs, function(a, b)
+            local pa = getModelPosition(a) or Vector3.new()
+            local pb = getModelPosition(b) or Vector3.new()
+            return (pa - me).Magnitude < (pb - me).Magnitude
+        end)
+        -- Moving to hatch
+        local ok = tryHatchModel(eggs[1])
+        WindUI:Notify({ Title = ok and "🎉 Hatched!" or "❌ Hatch Failed", Content = eggs[1].Name, Duration = 3 })
+    end
+})
+
+-- Priority system UI removed
+
+local function placePetAtPart(farmPart, petUID)
+    if not farmPart or not petUID then return false end
+    
+    -- Enhanced validation based on Pet module insights
+    if not farmPart:IsA("BasePart") then return false end
+    
+    local isValid, validationMsg = validatePetUID(petUID)
+    if not isValid then
+        warn("Pet validation failed: " .. validationMsg)
+        return false
+    end
+    
+    -- Place pet on surface (top of the farm split tile)
+    local surfacePosition = Vector3.new(
+        farmPart.Position.X,
+        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
+        farmPart.Position.Z
+    )
+    
+    local args = {
+        "Place",
+        {
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
+            ID = petUID
+        }
+    }
+    
+    local ok, err = pcall(function()
+        local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE")
+        if remote then
+            remote:FireServer(unpack(args))
+        else
+            error("CharacterRE remote not found")
+        end
+    end)
+    
+    if not ok then
+        warn("Failed to fire Place for PET UID " .. tostring(petUID) .. " at " .. tostring(surfacePosition) .. ": " .. tostring(err))
+        return false
+    end
+    
+    return true
+end
+
+-- Hardcoded Egg and Mutation Data
+local EggData = {
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
+    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 }
+}
+
+local MutationData = {
+    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
+    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
+    Electirc = { Name = "Electric", Icon = "⚡", Rarity = 50 },
+    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
+    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
+}
+
+-- Load UI modules
+local EggSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/EggSelection.lua"))()
+local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
+local FeedFruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FeedFruitSelection.lua"))()
+local AutoFeedSystem = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFeedSystem.lua"))()
+-- Load Auto Place System V2
+local AutoPlaceV2 = nil
+task.spawn(function()
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoPlaceSystemV2.lua"))()
+    end)
+    if success and result then
+        AutoPlaceV2 = result
+        print("🏠 AutoPlace V2 loaded successfully!")
+        
+        -- Initialize AutoPlace V2 UI after WindUI is ready
+        task.wait(1) -- Wait for main UI to be ready
+        if Tabs and Tabs.PlaceTab then
+            local uiElements = AutoPlaceV2.SetupUI(Tabs, WindUI)
+            if uiElements then
+                print("🏠 AutoPlace V2 UI setup complete!")
+                
+                -- Store UI elements for config registration
+                _G.AutoPlaceV2UI = uiElements
+                
+                -- Initialize AutoPlaceV2 with dependencies
+                AutoPlaceV2.Init({
+                    -- Core functions
+                    getAssignedIslandName = getAssignedIslandName,
+                    getIslandNumberFromName = getIslandNumberFromName,
+                    listAvailableEggUIDs = listAvailableEggUIDs,
+                    getEggContainer = getEggContainer,
+                    isOceanEgg = isOceanEgg,
+                    getPlayerNetWorth = getPlayerNetWorth,
+                    
+                    -- Farm functions
+                    getFarmParts = getFarmParts,
+                    getWaterFarmParts = getWaterFarmParts,
+                    scanAllTilesAndModels = scanAllTilesAndModels,
+                    
+                    -- Placement functions
+                    placeEggInstantly = placeEggInstantly,
+                    focusEggByUID = focusEggByUID,
+                    
+                    -- Filter variables and setters
+                    selectedEggTypes = selectedEggTypes,
+                    selectedMutations = selectedMutations,
+                    setSelectedEggTypes = function(value) selectedEggTypes = value end,
+                    setSelectedMutations = function(value) selectedMutations = value end,
+                    setAutoPlaceEnabled = function(value) autoPlaceEnabled = value end,
+                    
+                    -- Utility functions
+                    waitForSettingsReady = waitForSettingsReady,
+                    syncAutoPlaceFiltersFromUI = syncAutoPlaceFiltersFromUI,
+                })
+            else
+                warn("Failed to setup AutoPlace V2 UI")
+            end
+        end
+    else
+        warn("Failed to load AutoPlace V2: " .. tostring(result))
+    end
+end)
+
+-- Load Auto Fish System
+local AutoFishSystem = nil
+task.spawn(function()
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoFishSystem.lua"))()
+    end)
+    if success and result then
+        AutoFishSystem = result
+        
+        -- Wait for zebuxConfig to be available (much shorter wait)
+        local maxWaitTime = 5 -- Wait up to 5 seconds
+        local waitTime = 0
+        while not zebuxConfig and waitTime < maxWaitTime do
+            task.wait(0.1)
+            waitTime = waitTime + 0.1
+        end
+        
+        if AutoFishSystem and AutoFishSystem.Init then
+            local initSuccess, initErr = pcall(function()
+                AutoFishSystem.Init({
+                    WindUI = WindUI,
+                    Tabs = Tabs,
+                    Config = zebuxConfig or nil, -- Use nil if zebuxConfig is still not available
+                    autoSystemsConfig = autoSystemsConfig -- Pass the autoSystemsConfig for better registration
+                })
+            end)
+            
+            if initSuccess then
+                print("🎣 Auto Fish System loaded successfully!")
+            else
+                warn("Failed to initialize Auto Fish System: " .. tostring(initErr))
+                -- Try initializing without config as fallback
+                local fallbackSuccess = pcall(function()
+                    AutoFishSystem.Init({
+                        WindUI = WindUI,
+                        Tabs = Tabs,
+                        Config = nil,
+                        autoSystemsConfig = autoSystemsConfig
+                    })
+                end)
+                if fallbackSuccess then
+                    print("🎣 Auto Fish System loaded with fallback (no config)!")
+                end
+            end
+        end
+    else
+        warn("Failed to load Auto Fish System: " .. tostring(result))
+    end
+end)
+-- FruitStoreSystem functions are now implemented locally in the auto buy fruit section
+local AutoQuestSystem = nil
+
+-- UI state
+local eggSelectionVisible = false
+local fruitSelectionVisible = false
+local feedFruitSelectionVisible = false
+
+
+
+
+Tabs.AutoTab:Button({
+    Title = "🥚 Open Egg Selection UI",
+    Desc = "Open the modern glass-style egg selection interface",
+    Callback = function()
+        if not eggSelectionVisible then
+            EggSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+            selectedTypeSet = {}
+                    selectedMutationSet = {}
+                    
+                    if selectedItems then
+                        for itemId, isSelected in pairs(selectedItems) do
+                            if isSelected then
+                                -- Check if it's an egg or mutation
+                                if EggData[itemId] then
+                                    selectedTypeSet[itemId] = true
+                                elseif MutationData[itemId] then
+                                    selectedMutationSet[itemId] = true
+                end
+            end
+                        end
+                    end
+                    
+                    -- Auto-save the selections
+                    updateCustomUISelection("eggSelections", {
+                        eggs = selectedTypeSet,
+                        mutations = selectedMutationSet
+                    })
+                end,
+                function(isVisible)
+                    eggSelectionVisible = isVisible
+                end,
+                selectedTypeSet, -- Pass saved egg selections
+                selectedMutationSet -- Pass saved mutation selections
+            )
+            eggSelectionVisible = true
+        else
+            EggSelection.Hide()
+            eggSelectionVisible = false
+        end
+    end
+})
+
+
+
+local autoBuyEnabled = false
+local autoBuyThread = nil
+
+-- Auto Feed variables
+local autoFeedEnabled = false
+local autoFeedThread = nil
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- Enhanced function to determine if we should buy an egg (with better accuracy)
+local function shouldBuyEggInstance(eggInstance, playerMoney)
+    if not eggInstance or not eggInstance:IsA("Model") then return false, nil, nil, "Invalid egg instance" end
+    
+    -- Read Type first - check if this is the egg type we want
+    local eggType = eggInstance:GetAttribute("Type")
+        or eggInstance:GetAttribute("EggType")
+        or eggInstance:GetAttribute("Name")
+    if not eggType then return false, nil, nil, "No egg type found" end
+    eggType = tostring(eggType)
+    
+    -- If specific eggs are selected, check if this is the type we want
+    if selectedTypeSet and next(selectedTypeSet) then
+        if not selectedTypeSet[eggType] then 
+            return false, nil, nil, "Egg type not selected: " .. eggType 
+        end
+    end
+    
+    -- Enhanced mutation checking with better accuracy
+    local eggMutation = nil
+    if selectedMutationSet and next(selectedMutationSet) then
+        -- Try multiple methods to get mutation
+        eggMutation = getEggMutationFromGUI(eggInstance.Name)
+        
+        -- If GUI method failed, try attribute method
+        if not eggMutation then
+            eggMutation = getEggMutation(eggInstance.Name)
+        end
+        
+        -- If still no mutation but mutations are required, skip
+        if not eggMutation then
+            return false, nil, nil, "No mutation found but mutations required"
+        end
+        
+        -- Check if egg has a selected mutation
+        if not selectedMutationSet[eggMutation] then
+            return false, nil, nil, "Mutation not selected: " .. eggMutation
+        end
+    end
+
+    -- Enhanced price detection with multiple fallbacks
+    local price = nil
+    
+    -- Method 1: Try hardcoded data first
+    if EggData[eggType] then
+        local priceStr = EggData[eggType].Price:gsub(",", "")
+        price = tonumber(priceStr)
+    end
+    
+    -- Method 2: Try instance attributes
+    if not price then
+        price = eggInstance:GetAttribute("Price") or getEggPriceByType(eggType)
+    end
+    
+    -- Method 3: Try reading from GUI
+    if not price then
+        local rootPart = eggInstance:FindFirstChild("RootPart")
+        if rootPart then
+            local guiPaths = {"GUI/EggGUI", "EggGUI", "GUI", "Gui"}
+            for _, guiPath in ipairs(guiPaths) do
+                local eggGUI = rootPart:FindFirstChild(guiPath)
+                if eggGUI then
+                    local priceLabels = {"Price", "PriceLabel", "Cost", "CostLabel"}
+                    for _, labelName in ipairs(priceLabels) do
+                        local priceLabel = eggGUI:FindFirstChild(labelName)
+                        if priceLabel and priceLabel:IsA("TextLabel") then
+                            local priceText = priceLabel.Text
+                            -- Enhanced price parsing - handle K, M, B suffixes
+                            local numStr = priceText:gsub("[^%d%.KMBkmb]", "")
+                            if numStr ~= "" then
+                                -- Parse number with suffix inline (to avoid global function)
+                                local num = tonumber(numStr:match("([%d%.]+)"))
+                                if num then
+                                    local suffix = numStr:match("[KMBkmb]")
+                                    if suffix then
+                                        if suffix:lower() == "k" then num = num * 1000
+                                        elseif suffix:lower() == "m" then num = num * 1000000
+                                        elseif suffix:lower() == "b" then num = num * 1000000000
+                                        end
+                                    end
+                                    price = num
+                                    if price then break end
+                                end
+                            end
+                        end
+                    end
+                    if price then break end
+                end
+            end
+        end
+    end
+    
+    if type(price) ~= "number" or price <= 0 then 
+        return false, nil, nil, "Invalid price: " .. tostring(price) 
+    end
+    if playerMoney < price then 
+        return false, nil, nil, "Insufficient funds: need " .. price .. ", have " .. playerMoney 
+    end
+    
+    -- Calculate priority score (higher = better)
+    local priorityScore = 0
+    
+    -- Mutation bonus (mutations are more valuable)
+    if eggMutation then
+        priorityScore = priorityScore + 1000
+        -- Specific mutation bonuses
+        if eggMutation == "Jurassic" then priorityScore = priorityScore + 500 end
+        if eggMutation == "Diamond" then priorityScore = priorityScore + 400 end
+        if eggMutation == "Golden" then priorityScore = priorityScore + 300 end
+    end
+    
+    -- Price consideration (cheaper = slightly better for mass buying)
+    priorityScore = priorityScore + math.max(0, 1000000 - price) / 1000
+    
+    return true, eggInstance.Name, price, "Valid", priorityScore, eggMutation
+end
+
+local function buyEggByUID(eggUID)
+    local args = {
+        "BuyEgg",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire BuyEgg for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
+local function focusEggByUID(eggUID)
+    local args = {
+        "Focus",
+        eggUID
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to fire Focus for UID " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
+end
+
+-- Event-driven Auto Buy system
+local beltConnections = {}
+local lastBeltChildren = {}
+local buyingInProgress = false
+
+local function cleanupBeltConnections()
+    for _, conn in ipairs(beltConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    beltConnections = {}
+end
+
+-- Removed duplicate function - using the one with mutation logic above
+
+-- Enhanced auto buy statistics
+local autoBuyStats = {
+    totalAttempts = 0,
+    successfulBuys = 0,
+    mutationFinds = 0,
+    lastMutationFound = nil,
+    lastMutationTime = 0
+}
+
+local function buyEggInstantly(eggInstance)
+    if buyingInProgress then return end
+    buyingInProgress = true
+    
+    local netWorth = getPlayerNetWorth()
+    local ok, uid, price, reason, priorityScore, mutation = shouldBuyEggInstance(eggInstance, netWorth)
+    
+    autoBuyStats.totalAttempts = autoBuyStats.totalAttempts + 1
+    
+    if ok then
+        -- Log important finds
+        if mutation then
+            print("🦄 Found " .. mutation .. " mutation egg! Priority: " .. priorityScore .. ", Price: " .. price)
+            autoBuyStats.mutationFinds = autoBuyStats.mutationFinds + 1
+            autoBuyStats.lastMutationFound = mutation
+            autoBuyStats.lastMutationTime = os.time()
+        end
+        
+        -- Enhanced retry mechanism with better timing
+        local maxRetries = 5 -- Increased retries for important eggs
+        local retryCount = 0
+        local buySuccess = false
+        
+        while retryCount < maxRetries and not buySuccess do
+            retryCount = retryCount + 1
+            
+            -- Check if egg still exists and is still valid
+            if not eggInstance or not eggInstance.Parent then
+                print("⚠️ Egg disappeared during purchase attempt")
+                break
+            end
+            
+            -- Re-validate egg before buying (mutation/price might have changed)
+            local stillOk, stillUid, stillPrice, stillReason, stillPriority, stillMutation = shouldBuyEggInstance(eggInstance, getPlayerNetWorth())
+            if not stillOk then
+                print("⚠️ Egg no longer valid: " .. (stillReason or "unknown"))
+                break
+            end
+            
+            -- Try to buy with error handling
+            local buyResult, buyError = pcall(function()
+        buyEggByUID(uid)
+        focusEggByUID(uid)
+            end)
+            
+            if buyResult then
+                print("✅ Successfully bought " .. (stillMutation and (stillMutation .. " ") or "") .. "egg for " .. stillPrice)
+                autoBuyStats.successfulBuys = autoBuyStats.successfulBuys + 1
+                buySuccess = true
+                
+                -- Show notification for mutations
+                if stillMutation then
+                    WindUI:Notify({ 
+                        Title = "🦄 Mutation Found!", 
+                        Content = "Bought " .. stillMutation .. " egg for " .. stillPrice .. "!", 
+                        Duration = 4 
+                    })
+                end
+            else
+                print("❌ Buy attempt " .. retryCount .. " failed: " .. tostring(buyError))
+                
+                -- Adaptive delay - longer for mutations
+                local delayTime = stillMutation and 1.0 or 0.3
+                task.wait(delayTime)
+            end
+        end
+        
+        if not buySuccess then
+            print("❌ Failed to buy egg after " .. maxRetries .. " attempts")
+        end
+    else
+        -- Optional: Log rejection reasons for debugging (only for important cases)
+        if reason and (reason:find("mutation") or reason:find("type")) then
+            -- Uncomment for debugging: print("⏭️ Skipped egg: " .. reason)
+        end
+    end
+    
+    buyingInProgress = false
+end
+
+-- Enhanced belt monitoring with smart prioritization
+local function setupBeltMonitoring(belt)
+    if not belt then return end
+    
+    -- Monitor for new eggs appearing (immediate priority)
+    local function onChildAdded(child)
+        if not autoBuyEnabled then return end
+        if child:IsA("Model") then
+            task.spawn(function()
+            task.wait(0.1) -- Small delay to ensure attributes are set
+            buyEggInstantly(child)
+            end)
+        end
+    end
+    
+    -- Smart egg checking with prioritization
+    local function checkExistingEggs()
+        if not autoBuyEnabled then return end
+        local children = belt:GetChildren()
+        local candidates = {}
+        
+        -- First pass: collect all valid eggs with their priority
+        for _, child in ipairs(children) do
+            if child:IsA("Model") then
+                local netWorth = getPlayerNetWorth()
+                local ok, uid, price, reason, priorityScore, mutation = shouldBuyEggInstance(child, netWorth)
+                
+                if ok then
+                    table.insert(candidates, {
+                        instance = child,
+                        uid = uid,
+                        price = price,
+                        priority = priorityScore or 0,
+                        mutation = mutation
+                    })
+                end
+            end
+        end
+        
+        -- Sort by priority (mutations first, then by score)
+        table.sort(candidates, function(a, b)
+            return a.priority > b.priority
+        end)
+        
+        -- Buy the highest priority egg first
+        if #candidates > 0 then
+            local topCandidate = candidates[1]
+            if topCandidate.mutation then
+                print("🎯 Prioritizing " .. topCandidate.mutation .. " mutation egg!")
+            end
+            buyEggInstantly(topCandidate.instance)
+        end
+    end
+    
+    -- Connect events
+    table.insert(beltConnections, belt.ChildAdded:Connect(onChildAdded))
+    
+    -- Enhanced periodic checking with adaptive timing
+    local checkThread = task.spawn(function()
+        while autoBuyEnabled do
+            checkExistingEggs()
+            
+            -- Adaptive timing: faster when mutations are selected
+            local checkInterval = 0.5
+            if selectedMutationSet and next(selectedMutationSet) then
+                checkInterval = 0.3 -- Faster checking for mutations
+            end
+            
+            task.wait(checkInterval)
+        end
+    end)
+    
+    -- Store thread for cleanup
+    beltConnections[#beltConnections + 1] = { disconnect = function() 
+        if checkThread then
+            task.cancel(checkThread)
+            checkThread = nil 
+        end
+    end }
+end
+
+local function runAutoBuy()
+    while autoBuyEnabled do
+        local islandName = getAssignedIslandName()
+        -- Status update removed
+
+        if not islandName or islandName == "" then
+            task.wait(1)
+            continue
+        end
+
+        local activeBelt = getActiveBelt(islandName)
+        if not activeBelt then
+            task.wait(1)
+            continue
+        end
+
+        -- Setup monitoring for this belt
+        cleanupBeltConnections()
+        setupBeltMonitoring(activeBelt)
+        
+        -- Wait until disabled or island changes
+        while autoBuyEnabled do
+            local currentIsland = getAssignedIslandName()
+            if currentIsland ~= islandName then
+                break -- Island changed, restart monitoring
+            end
+            task.wait(0.5)
+        end
+    end
+    
+    cleanupBeltConnections()
+end
+
+-- Auto Buy statistics display
+local autoBuyStatsLabel = Tabs.AutoTab:Paragraph({
+    Title = "📊 Auto Buy Statistics",
+    Desc = "Starting up...",
+    Image = "activity",
+    ImageSize = 16,
+})
+
+-- Update stats display
+local function updateAutoBuyStats()
+    if not autoBuyStatsLabel then return end
+    
+    local successRate = autoBuyStats.totalAttempts > 0 and 
+        math.floor((autoBuyStats.successfulBuys / autoBuyStats.totalAttempts) * 100) or 0
+    
+    local lastMutationText = ""
+    if autoBuyStats.lastMutationFound then
+        local timeSince = os.time() - autoBuyStats.lastMutationTime
+        local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
+        lastMutationText = " | 🦄 Last: " .. autoBuyStats.lastMutationFound .. " (" .. timeText .. ")"
+    end
+    
+    local statsText = string.format("✅ Bought: %d | 📈 Rate: %d%% | 🔥 Mutations: %d%s", 
+        autoBuyStats.successfulBuys, 
+        successRate, 
+        autoBuyStats.mutationFinds,
+        lastMutationText)
+    
+    if autoBuyStatsLabel.SetDesc then
+        autoBuyStatsLabel:SetDesc(statsText)
+    end
+end
+
+local autoBuyToggle = Tabs.AutoTab:Toggle({
+    Title = "🥚 Auto Buy Eggs",
+    Desc = "Enhanced auto buy with smart mutation detection and prioritization!",
+    Value = false,
+    Callback = function(state)
+        autoBuyEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoBuyThread then
+            autoBuyThread = task.spawn(function()
+                runAutoBuy()
+                autoBuyThread = nil
+            end)
+            
+            -- Start stats update loop
+            task.spawn(function()
+                while autoBuyEnabled do
+                    updateAutoBuyStats()
                     task.wait(2)
+                end
+            end)
+            
+            WindUI:Notify({ Title = "🥚 Auto Buy", Content = "Enhanced system started! 🎉", Duration = 3 })
+        elseif (not state) and autoBuyThread then
+            cleanupBeltConnections()
+            WindUI:Notify({ Title = "🥚 Auto Buy", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+-- Reset stats button
+Tabs.AutoTab:Button({
+    Title = "🔄 Reset Auto Buy Stats",
+    Desc = "Reset auto buy statistics",
+    Callback = function()
+        autoBuyStats = {
+            totalAttempts = 0,
+            successfulBuys = 0,
+            mutationFinds = 0,
+            lastMutationFound = nil,
+            lastMutationTime = 0
+        }
+        updateAutoBuyStats()
+        WindUI:Notify({ Title = "📊 Stats Reset", Content = "Auto buy statistics reset!", Duration = 2 })
+    end
+})
+
+-- Auto Feed Functions moved to AutoFeedSystem.lua
+
+-- Event-driven Auto Place functionality
+local placeConnections = {}
+local placingInProgress = false
+local availableEggs = {} -- Track available eggs to place
+local availableTiles = {} -- Track available tiles
+local selectedEggTypes = {} -- Selected egg types for placement
+local selectedMutations = {} -- Selected mutations for placement
+local tileMonitoringActive = false
+
+
+
+
+-- Function to get egg options
+local function getEggOptions()
+    local eggOptions = {}
+    
+    -- Try to get from ResEgg config first
+    local eggConfig = loadEggConfig()
+    if eggConfig then
+        for id, data in pairs(eggConfig) do
+            if type(id) == "string" and not id:match("^_") and id ~= "_index" and id ~= "__index" then
+                local eggName = data.Type or data.Name or id
+                table.insert(eggOptions, eggName)
+            end
+        end
+    end
+    
+    -- Fallback: get from PlayerBuiltBlocks
+    if #eggOptions == 0 then
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            for _, egg in ipairs(playerBuiltBlocks:GetChildren()) do
+                if egg:IsA("Model") then
+                    local eggType = egg:GetAttribute("Type") or egg:GetAttribute("EggType") or egg:GetAttribute("Name")
+                    if eggType and not table.find(eggOptions, eggType) then
+                        table.insert(eggOptions, eggType)
+                    end
+                end
+            end
+        end
+    end
+    
+    table.sort(eggOptions)
+    return eggOptions
+end
+
+-- PlaceTab UI will be created by AutoPlaceV2.SetupUI()
+
+-- Ensure dropdown selections are reflected in runtime variables after loading
+local function syncAutoPlaceFiltersFromUI()
+    local function coalesceSelection(element)
+        if not element then return {} end
+        -- Try common getter patterns
+        local candidates = {
+            function()
+                if element.GetValue then return element:GetValue() end
+            end,
+            function()
+                return element.Value
+            end,
+            function()
+                if element.Get then return element:Get() end
+            end,
+            function()
+                return element.Selected
+            end,
+            function()
+                if element.GetSelected then return element:GetSelected() end
+            end,
+        }
+        local raw
+        for _, getter in ipairs(candidates) do
+            local ok, val = pcall(getter)
+            if ok and val ~= nil then raw = val break end
+        end
+        if type(raw) ~= "table" then return {} end
+        -- Normalize to array of strings
+        local arr = {}
+        for i, v in ipairs(raw) do
+            table.insert(arr, v)
+        end
+        if #arr > 0 then return arr end
+        for k, v in pairs(raw) do
+            if v == true then table.insert(arr, k) end
+        end
+        return arr
+    end
+
+    -- Use AutoPlaceV2 UI elements if available
+    if _G.AutoPlaceV2UI then
+        local eggs = coalesceSelection(_G.AutoPlaceV2UI.placeEggDropdown)
+        if #eggs > 0 then selectedEggTypes = eggs end
+
+        local muts = coalesceSelection(_G.AutoPlaceV2UI.placeMutationDropdown)
+        if #muts > 0 then selectedMutations = muts end
+    end
+end
+
+
+local function updateAvailableEggs()
+    local eggs = listAvailableEggUIDs()
+    availableEggs = {}
+    
+    print("🥚 Total eggs found:", #eggs)
+    if #eggs > 0 then
+        local eggTypesList = {}
+        for i, egg in ipairs(eggs) do
+            table.insert(eggTypesList, egg.type)
+            if i >= 5 then break end -- Show first 5
+        end
+        print("🥚 Raw egg types:", table.concat(eggTypesList, ", "))
+    end
+    
+    -- Create sets for faster lookup
+    local selectedTypeSet = {}
+        for _, type in ipairs(selectedEggTypes) do
+        selectedTypeSet[type] = true
+    end
+    
+    local selectedMutationSet = {}
+    for _, mutation in ipairs(selectedMutations) do
+        selectedMutationSet[mutation] = true
+        end
+        
+    print("🥚 Filters - Egg types:", #selectedEggTypes, "Mutations:", #selectedMutations)
+    if #selectedEggTypes > 0 then
+        print("🥚 Selected egg types:", table.concat(selectedEggTypes, ", "))
+    end
+        
+    -- First pass: collect all eggs that match filters
+    local filteredEggs = {}
+    for _, eggInfo in ipairs(eggs) do
+        local shouldInclude = true
+        
+        -- Check egg type filter
+        if #selectedEggTypes > 0 then
+            if not selectedTypeSet[eggInfo.type] then
+                shouldInclude = false
+            end
+        end
+        
+        -- Check mutation filter (only if egg type passed)
+        if shouldInclude and #selectedMutations > 0 then
+            if not eggInfo.mutation or not selectedMutationSet[eggInfo.mutation] then
+                shouldInclude = false
+        end
+    end
+    
+        if shouldInclude then
+            table.insert(filteredEggs, eggInfo)
+        end
+    end
+    
+    -- Smart sorting: prioritize eggs based on available farm space
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    
+    -- Check available space for different farm types
+    local regularFarmParts = getFarmParts(islandNumber)
+    local waterFarmParts = getWaterFarmParts(islandNumber)
+    
+    local availableRegularTiles = 0
+    local availableWaterTiles = 0
+    
+    -- Count available regular farm tiles
+    for _, part in ipairs(regularFarmParts) do
+        if not isFarmTileOccupied(part, 6) then
+            availableRegularTiles = availableRegularTiles + 1
+        end
+    end
+    
+    -- Count available water farm tiles
+    for _, part in ipairs(waterFarmParts) do
+        if not isFarmTileOccupied(part, 6) then
+            availableWaterTiles = availableWaterTiles + 1
+        end
+    end
+    
+    -- Smart egg prioritization
+    local prioritizedEggs = {}
+    local oceanEggs = {}
+    local regularEggs = {}
+    
+    -- Separate eggs by type
+    for _, eggInfo in ipairs(filteredEggs) do
+        if isOceanEgg(eggInfo.type) then
+            table.insert(oceanEggs, eggInfo)
+        else
+            table.insert(regularEggs, eggInfo)
+        end
+    end
+    
+    -- Add eggs based on available space - FIXED: Only add eggs if space is available
+    if availableWaterTiles > 0 then
+        -- Water farms available, add ocean eggs first
+        for _, egg in ipairs(oceanEggs) do
+            table.insert(prioritizedEggs, egg)
+        end
+    end
+    
+    if availableRegularTiles > 0 then
+        -- Regular farms available, add regular eggs
+        for _, egg in ipairs(regularEggs) do
+            table.insert(prioritizedEggs, egg)
+        end
+    end
+    
+    -- If no prioritized eggs but we have filtered eggs, add all filtered eggs as fallback
+    if #prioritizedEggs == 0 and #filteredEggs > 0 then
+        prioritizedEggs = filteredEggs
+    end
+    
+    availableEggs = prioritizedEggs
+    
+    -- Status update removed
+end
+
+-- Performance optimization cache
+local tileCache = {
+    lastUpdate = 0,
+    updateInterval = 3, -- Cache for 3 seconds
+    data = {},
+    eggType = nil
+}
+
+-- Function to invalidate cache when significant changes occur
+local function invalidateTileCache()
+    tileCache.lastUpdate = 0
+    tileCache.data = {}
+    tileCache.eggType = nil
+end
+
+-- Enhanced tile scanning system with intelligent caching for performance
+local function scanAllTilesAndModels(eggType)
+    -- Check cache first to avoid expensive operations
+    local currentTime = tick()
+    if currentTime - tileCache.lastUpdate < tileCache.updateInterval and 
+       tileCache.eggType == eggType and 
+       tileCache.data and next(tileCache.data) then
+        -- Return cached data
+        return tileCache.data.tileMap, tileCache.data.totalTiles, 
+               tileCache.data.occupiedTiles, tileCache.data.lockedTiles
+    end
+    
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    
+    -- Get appropriate farm parts based on egg type
+    local farmParts
+    if eggType and isOceanEgg(eggType) then
+        farmParts = getWaterFarmParts(islandNumber)
+    else
+        farmParts = getFarmParts(islandNumber)
+    end
+    
+    local tileMap = {}
+    local totalTiles = #farmParts
+    local occupiedTiles = 0
+    local lockedTiles = 0
+    
+    -- Initialize all tiles as available
+    for i, part in ipairs(farmParts) do
+        local surfacePos = Vector3.new(
+            part.Position.X,
+            part.Position.Y + 12, -- Eggs float 12 studs above tile surface
+            part.Position.Z
+        )
+        tileMap[surfacePos] = {
+            part = part,
+            index = i,
+            available = true,
+            occupiedBy = nil,
+            distance = 0
+        }
+    end
+    
+    -- Scan all floating models in PlayerBuiltBlocks
+        local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") then
+                    local modelPos = model:GetPivot().Position
+                
+                -- Find which tile this model occupies
+                for surfacePos, tileInfo in pairs(tileMap) do
+                    if tileInfo.available then
+                        -- Calculate distance to surface position
+                        local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
+                        local yDistance = math.abs(modelPos.Y - surfacePos.Y)
+                        
+                        -- If model is within placement range (more generous to avoid missing)
+                        if xzDistance < 4.0 and yDistance < 20.0 then
+                            tileInfo.available = false
+                            tileInfo.occupiedBy = "egg"
+                            tileInfo.distance = xzDistance
+                        occupiedTiles = occupiedTiles + 1
+                            break -- This tile is occupied, move to next model
+                        end
+                    end
+                    end
+                end
+            end
+        end
+        
+    -- Scan all pets in workspace.Pets
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        
+        -- Find which tile this pet occupies
+        for surfacePos, tileInfo in pairs(tileMap) do
+            if tileInfo.available then
+                -- Calculate distance to surface position
+                local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
+                local yDistance = math.abs(petPos.Y - surfacePos.Y)
+                
+                -- If pet is within placement range (more generous to avoid missing)
+                if xzDistance < 4.0 and yDistance < 20.0 then
+                    tileInfo.available = false
+                    tileInfo.occupiedBy = "pet"
+                    tileInfo.distance = xzDistance
+                    occupiedTiles = occupiedTiles + 1
+                    break -- This tile is occupied, move to next pet
+                end
+            end
+        end
+    end
+    
+    -- Count locked tiles
+    local art = workspace:FindFirstChild("Art")
+    if art then
+        local island = art:FindFirstChild(islandName)
+        if island then
+            local env = island:FindFirstChild("ENV")
+            local locksFolder = env and env:FindFirstChild("Locks")
+            if locksFolder then
+                for _, lockModel in ipairs(locksFolder:GetChildren()) do
+                    if lockModel:IsA("Model") then
+                        local farmPart = lockModel:FindFirstChild("Farm")
+                        if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
+                            lockedTiles = lockedTiles + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Cache the results for better performance
+    tileCache.data = {
+        tileMap = tileMap,
+        totalTiles = totalTiles,
+        occupiedTiles = occupiedTiles,
+        lockedTiles = lockedTiles
+    }
+    tileCache.lastUpdate = currentTime
+    tileCache.eggType = eggType
+    
+    return tileMap, totalTiles, occupiedTiles, lockedTiles
+end
+
+local function updateAvailableTiles(eggType)
+    local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels(eggType)
+    
+    availableTiles = {}
+    
+    -- Collect all available tiles
+    for surfacePos, tileInfo in pairs(tileMap) do
+        if tileInfo.available then
+            table.insert(availableTiles, { 
+                part = tileInfo.part, 
+                index = tileInfo.index,
+                surfacePos = surfacePos
+            })
+        end
+    end
+    
+    -- Status updates removed
+    
+    -- Status update removed
+end
+
+
+-- Place status format function removed per user request
+
+-- Place status update function removed per user request
+
+-- Check and remember which tiles are taken
+-- Count actual placed pets in PlayerBuiltBlocks
+local function countPlacedPets()
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    local count = 0
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local userId = model:GetAttribute("UserId")
+                if userId and tonumber(userId) == Players.LocalPlayer.UserId then
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count
+end
+
+-- Event-driven placement system
+local function cleanupPlaceConnections()
+    for _, conn in ipairs(placeConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    placeConnections = {}
+end
+
+
+
+
+local function placeEggInstantly(eggInfo, tileInfo)
+    if placingInProgress then return false end
+    placingInProgress = true
+    
+    local petUID = eggInfo.uid
+    local tilePart = tileInfo.part
+    
+    -- Final check: is tile still available?
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local tilePos = tilePart.Position
+                
+                -- Calculate surface position (same as placement logic)
+                local surfacePos = Vector3.new(
+                    tilePos.X,
+                    tilePos.Y + (tilePart.Size.Y / 2), -- Top surface
+                    tilePos.Z
+                )
+                
+                -- Separate X/Z and Y axis checks
+                local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
+                local yDistance = math.abs(modelPos.Y - surfacePos.Y)
+                
+                -- X/Z: 4 studs radius, Y: 8 studs radius
+                if xzDistance < 4.0 and yDistance < 8.0 then
+                    placingInProgress = false
+                    return false
+                end
+            end
+        end
+    end
+    
+    -- Check for fully hatched pets in workspace.Pets
+    local playerPets = getPlayerPetsInWorkspace()
+    for _, petInfo in ipairs(playerPets) do
+        local petPos = petInfo.position
+        local tilePos = tilePart.Position
+        
+        -- Calculate surface position (same as placement logic)
+        local surfacePos = Vector3.new(
+            tilePos.X,
+            tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+            tilePos.Z
+        )
+        
+        -- Separate X/Z and Y axis checks
+        local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
+        local yDistance = math.abs(petPos.Y - surfacePos.Y)
+        
+        -- X/Z: 4 studs radius, Y: 8 studs radius
+        if xzDistance < 4.0 and yDistance < 8.0 then
+            placingInProgress = false
+            return false
+        end
+    end
+    
+    -- Equip egg to Deploy S2
+    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+    if deploy then
+        local eggUID = "Egg_" .. petUID
+        deploy:SetAttribute("S2", eggUID)
+    end
+    
+    -- Hold egg
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    
+    -- Teleport to tile
+    local char = Players.LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = CFrame.new(tilePart.Position)
+            task.wait(0.1)
+        end
+    end
+    
+    -- Place egg on surface (top of the farm split tile)
+    local surfacePosition = Vector3.new(
+        tilePart.Position.X,
+        tilePart.Position.Y + (tilePart.Size.Y / 2), -- Top surface
+        tilePart.Position.Z
+    )
+    
+    local args = {
+        "Place",
+        {
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
+            ID = petUID
+        }
+    }
+    
+    local success = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    
+    if success then
+        -- Verify placement
+        task.wait(0.3)
+        local placementConfirmed = false
+        
+        if playerBuiltBlocks then
+            for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                if model:IsA("Model") and model.Name == petUID then
+                    placementConfirmed = true
+                    break
+                end
+            end
+        end
+        
+        if placementConfirmed then
+                    -- Placement successful
+            
+            -- Remove egg and tile from available lists
+            for i, egg in ipairs(availableEggs) do
+                if egg.uid == petUID then
+                    table.remove(availableEggs, i)
+                    break
+                end
+            end
+            
+            for i, tile in ipairs(availableTiles) do
+                if tile.index == tileInfo.index then
+                    table.remove(availableTiles, i)
+                    break
+                end
+            end
+            
+            -- Status update removed
+            placingInProgress = false
+            return true
+        else
+            -- Placement failed
+            -- Remove the failed tile from available tiles so we don't retry it
+            for i, tile in ipairs(availableTiles) do
+                if tile.index == tileInfo.index then
+                    table.remove(availableTiles, i)
+                    break
+                end
+            end
+            -- Status update removed
+            placingInProgress = false
+            return false
+        end
+    else
+                    -- Failed to fire placement
+        -- Remove the failed tile from available tiles so we don't retry it
+        for i, tile in ipairs(availableTiles) do
+            if tile.index == tileInfo.index then
+                table.remove(availableTiles, i)
+                break
+            end
+        end
+        -- Status update removed
+        placingInProgress = false
+        return false
+    end
+end
+
+-- Performance optimized placement attempt with rate limiting
+local placementRateLimit = {
+    lastAttempt = 0,
+    minInterval = 0.5, -- Minimum 0.5 seconds between attempts
+    cooldown = false
+}
+
+local function attemptPlacement()
+    -- Rate limiting to prevent spam and lag
+    local currentTime = tick()
+    if currentTime - placementRateLimit.lastAttempt < placementRateLimit.minInterval then
+        return -- Too soon, skip this attempt
+    end
+    placementRateLimit.lastAttempt = currentTime
+    
+    if #availableEggs == 0 then 
+        warn("Auto Place stopped: No eggs available")
+        return 
+    end
+    
+    -- Pre-cache water farm availability for ocean eggs to avoid repeated scanning
+    local waterFarmCache = {}
+    local hasCheckedWater = false
+    
+    -- Try to find a placeable egg (optimized to avoid repeated expensive scans)
+    local eggToPlace = nil
+    local eggIndex = nil
+    
+    for i, egg in ipairs(availableEggs) do
+        local canPlace = true
+        
+        -- Check if this is an ocean egg and if we have water farms available
+        if isOceanEgg(egg.type) then
+            -- Only scan once for all ocean eggs
+            if not hasCheckedWater then
+                local tileMap, totalTiles, occupiedTiles, lockedTiles = scanAllTilesAndModels(egg.type)
+                
+                -- Count actually available tiles using the same logic
+            local availableWaterTiles = 0
+                for surfacePos, tileInfo in pairs(tileMap) do
+                    if tileInfo.available then
+                    availableWaterTiles = availableWaterTiles + 1
+                end
+            end
+            
+                waterFarmCache.available = availableWaterTiles > 0
+                hasCheckedWater = true
+            end
+            
+            -- Use cached result
+            if not waterFarmCache.available then
+                canPlace = false
+            end
+        end
+        
+        if canPlace then
+            eggToPlace = egg
+            eggIndex = i
+            break
+        end
+    end
+    
+    -- If no eggs can be placed (all are ocean eggs with no water farms), give up
+    if not eggToPlace then
+        warn("Auto Place stopped: No placeable eggs (ocean eggs need water farms)")
+        return
+    end
+    
+    -- Move the selected egg to the front of the list for processing
+    if eggIndex > 1 then
+        table.remove(availableEggs, eggIndex)
+        table.insert(availableEggs, 1, eggToPlace)
+    end
+    
+    -- Get the egg to place (now guaranteed to be placeable)
+    local firstEgg = availableEggs[1]
+    
+    -- Update available tiles based on the egg type
+    updateAvailableTiles(firstEgg.type)
+    
+    if #availableTiles == 0 then 
+        local farmType = isOceanEgg(firstEgg.type) and "water farm" or "regular farm"
+        
+        -- Try to auto unlock tiles if needed (with error handling)
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        
+        if islandName and islandNumber then
+            local unlockSuccess, unlockError = pcall(function()
+                return autoUnlockTilesIfNeeded(islandNumber, firstEgg.type)
+            end)
+            
+            if unlockSuccess and unlockError then
+                -- Tiles were unlocked, update available tiles again
+                updateAvailableTiles(firstEgg.type)
+                
+                if #availableTiles == 0 then
+                    warn("Auto Place: Still no available " .. farmType .. " tiles after unlocking")
                     return
                 end
-                
-                -- Delete pets one by one
-                for i, petInfo in ipairs(petsToDelete) do
-                    if not autoDeleteEnabled then break end
+            elseif not unlockSuccess then
+                warn("Auto Place: Error during unlock attempt: " .. tostring(unlockError))
+                return
+            else
+                warn("Auto Place stopped: No available " .. farmType .. " tiles for " .. firstEgg.type)
+                return
+            end
+        else
+            warn("Auto Place: Could not determine island for unlocking")
+            return
+        end
+    end
+    
+    -- Place eggs on available tiles (limit to prevent lag)
+    local placed = 0
+    local attempts = 0
+    local maxAttempts = math.min(#availableEggs, #availableTiles, 5) -- Increase to 5 attempts max
+    
+    while #availableEggs > 0 and #availableTiles > 0 and attempts < maxAttempts do
+        attempts = attempts + 1
+        
+        -- Double-check tile is still available before placing
+        local tileInfo = availableTiles[1]
+        local isStillAvailable = true
+        
+        if tileInfo then
+            local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+            if playerBuiltBlocks then
+                for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+                    if model:IsA("Model") then
+                        local modelPos = model:GetPivot().Position
+                        local tilePos = tileInfo.part.Position
+                        
+                        -- Calculate surface position (same as placement logic)
+                        local surfacePos = Vector3.new(
+                            tilePos.X,
+                            tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+                            tilePos.Z
+                        )
+                        
+                        -- Separate X/Z and Y axis checks
+                        local xzDistance = math.sqrt((modelPos.X - surfacePos.X)^2 + (modelPos.Z - surfacePos.Z)^2)
+                        local yDistance = math.abs(modelPos.Y - surfacePos.Y)
+                        
+                        -- X/Z: 4 studs radius, Y: 8 studs radius
+                        if xzDistance < 4.0 and yDistance < 8.0 then
+                            isStillAvailable = false
+                            break
+                        end
+                    end
+                end
+            end
+            
+            -- Check for fully hatched pets in workspace.Pets
+            if isStillAvailable then
+                local playerPets = getPlayerPetsInWorkspace()
+                for _, petInfo in ipairs(playerPets) do
+                    local petPos = petInfo.position
+                    local tilePos = tileInfo.part.Position
                     
-                    -- Fire delete remote
-                    local args = {
-                        "Del",
-                        petInfo.name
-                    }
+                    -- Calculate surface position (same as placement logic)
+                    local surfacePos = Vector3.new(
+                        tilePos.X,
+                        tilePos.Y + 12, -- Eggs float 12 studs above tile surface
+                        tilePos.Z
+                    )
                     
-                    local success = pcall(function()
-                        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                    -- Separate X/Z and Y axis checks
+                    local xzDistance = math.sqrt((petPos.X - surfacePos.X)^2 + (petPos.Z - surfacePos.Z)^2)
+                    local yDistance = math.abs(petPos.Y - surfacePos.Y)
+                    
+                    -- X/Z: 4 studs radius, Y: 8 studs radius
+                    if xzDistance < 4.0 and yDistance < 8.0 then
+                        isStillAvailable = false
+                        break
+                    end
+                end
+            end
+        end
+        
+        if isStillAvailable then
+            if placeEggInstantly(availableEggs[1], availableTiles[1]) then
+                placed = placed + 1
+                task.wait(0.2) -- Longer delay between successful placements
+            else
+                -- Placement failed, tile was removed from availableTiles
+                task.wait(0.1) -- Quick retry
+            end
+        else
+            -- Tile is no longer available, remove it
+            table.remove(availableTiles, 1)
+        end
+    end
+    
+    -- Placement attempt completed
+end
+
+local function setupPlacementMonitoring()
+    -- Monitor for new eggs in PlayerGui.Data.Egg
+    local eggContainer = getEggContainer()
+    if eggContainer then
+        local function onEggAdded(child)
+            if not autoPlaceEnabled then return end
+            if #child:GetChildren() == 0 then -- No subfolder = available egg
+                task.wait(0.2) -- Wait for attributes to be set
+                updateAvailableEggs()
+                attemptPlacement()
+            end
+        end
+        
+        local function onEggRemoved(child)
+            if not autoPlaceEnabled then return end
+            updateAvailableEggs()
+        end
+        
+        table.insert(placeConnections, eggContainer.ChildAdded:Connect(onEggAdded))
+        table.insert(placeConnections, eggContainer.ChildRemoved:Connect(onEggRemoved))
+    end
+    
+    -- Monitor for new tiles becoming available (when pets are removed from PlayerBuiltBlocks)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        local function onBlockChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            -- Update tiles based on first available egg type
+            local firstEgg = availableEggs[1]
+            local eggType = firstEgg and firstEgg.type or nil
+            updateAvailableTiles(eggType)
+            attemptPlacement()
+        end
+        
+        table.insert(placeConnections, playerBuiltBlocks.ChildAdded:Connect(onBlockChanged))
+        table.insert(placeConnections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
+    end
+    
+    -- Monitor for pets in workspace (when pets hatch and appear in workspace.Pets)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        local function onPetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            -- Invalidate cache when pets change to ensure fresh data
+            invalidateTileCache()
+            -- Update tiles based on first available egg type
+            local firstEgg = availableEggs[1]
+            local eggType = firstEgg and firstEgg.type or nil
+            updateAvailableTiles(eggType)
+            attemptPlacement()
+        end
+        
+        table.insert(placeConnections, workspacePets.ChildAdded:Connect(onPetChanged))
+        table.insert(placeConnections, workspacePets.ChildRemoved:Connect(onPetChanged))
+    end
+    
+    -- Optimized periodic updates with intelligent batching
+    local updateThread = task.spawn(function()
+        local cycleCount = 0
+        while autoPlaceEnabled do
+            cycleCount = cycleCount + 1
+            
+            -- Batch operations to reduce performance impact
+            if cycleCount % 2 == 1 then -- Update eggs every other cycle
+            updateAvailableEggs()
+            end
+            
+            -- Update tiles based on first available egg type (less frequently)
+            local firstEgg = availableEggs[1]
+            if firstEgg then
+                local eggType = firstEgg.type
+            updateAvailableTiles(eggType)
+            attemptPlacement()
+            end
+            
+            -- Adaptive waiting - longer when no eggs available
+            local waitTime = #availableEggs > 0 and 2.5 or 5.0
+            task.wait(waitTime) -- Longer intervals to reduce lag
+        end
+    end)
+    
+    table.insert(placeConnections, { disconnect = function() updateThread = nil end })
+end
+
+-- Performance throttling for auto place
+local autoPlaceThrottle = {
+    islandChangeTime = 0,
+    setupDelay = 2.0 -- Delay before setting up monitoring after island change
+}
+
+local function runAutoPlace()
+    while autoPlaceEnabled do
+        local islandName = getAssignedIslandName()
+        
+        if not islandName or islandName == "" then
+            task.wait(2) -- Longer wait when no island
+            continue
+        end
+        
+        -- Throttle setup after island changes to prevent spam
+        local currentTime = tick()
+        if currentTime - autoPlaceThrottle.islandChangeTime < autoPlaceThrottle.setupDelay then
+            task.wait(1)
+            continue
+        end
+        
+        -- Setup monitoring with performance optimizations
+        cleanupPlaceConnections()
+        setupPlacementMonitoring()
+        
+        -- Wait until disabled or island changes with improved efficiency
+        while autoPlaceEnabled do
+            local currentIsland = getAssignedIslandName()
+            if currentIsland ~= islandName then
+                autoPlaceThrottle.islandChangeTime = tick()
+                invalidateTileCache() -- Clear cache when island changes
+                break -- Island changed, restart monitoring
+            end
+            task.wait(1.0) -- Longer wait to reduce CPU usage
+        end
+    end
+    
+    cleanupPlaceConnections()
+end
+
+-- Auto Place Toggle will be created by AutoPlaceV2.SetupUI()
+-- Fallback toggle for legacy compatibility
+local autoPlaceToggle = nil
+
+-- Auto place callback function (now delegates to AutoPlaceV2)
+local function onAutoPlaceToggle(state)
+    autoPlaceEnabled = state
+    
+    waitForSettingsReady(0.2)
+    if state then
+        -- Try AutoPlaceV2 first
+        if AutoPlaceV2 and AutoPlaceV2.Start then
+            local success = pcall(function()
+                if Dependencies.syncAutoPlaceFiltersFromUI then
+                    Dependencies.syncAutoPlaceFiltersFromUI()
+                end
+                return AutoPlaceV2.Start()
+            end)
+            
+            if success then
+                WindUI:Notify({ Title = "🏠 Auto Place V2", Content = "Ultra-optimized system started! 🚀", Duration = 3 })
+            else
+                -- Fallback to legacy system
+                if not autoPlaceThread then
+                    autoPlaceThread = task.spawn(function()
+                        runAutoPlace()
+                        autoPlaceThread = nil
                     end)
-                    
-                    if success then
-                        task.wait(0.5) -- Wait between deletions
+                end
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Started (legacy mode)! 🎉", Duration = 3 })
+            end
+        else
+            -- Fallback to legacy system if AutoPlaceV2 not loaded
+            if not autoPlaceThread then
+                autoPlaceThread = task.spawn(function()
+                    runAutoPlace()
+                    autoPlaceThread = nil
+                end)
+            end
+            WindUI:Notify({ Title = "🏠 Auto Place", Content = "Started (legacy mode)! 🎉", Duration = 3 })
+        end
+    else
+        -- Stop both systems
+        if AutoPlaceV2 and AutoPlaceV2.Stop then
+            pcall(function() AutoPlaceV2.Stop() end)
+        end
+        autoPlaceEnabled = false
+        WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
+    end
+end
+
+-- All PlaceTab UI elements moved to AutoPlaceV2.SetupUI()
+
+
+
+-- Enhanced Open Button UI - will be updated by mobile toggle settings
+-- Initial setup happens in the auto-load section
+
+-- Close callback
+Window:OnClose(function()
+    autoBuyEnabled = false
+    autoPlaceEnabled = false
+    autoFeedEnabled = false
+end)
+
+
+-- Auto Claim Dino functionality removed
+
+-- ============ Shop / Auto Upgrade ============
+Tabs.ShopTab:Section({ Title = "🛒 Auto Upgrade Conveyor", Icon = "arrow-up" })
+local shopStatus = { lastAction = "Ready to upgrade!", upgradesTried = 0, upgradesDone = 0 }
+local shopParagraph = Tabs.ShopTab:Paragraph({ Title = "🛒 Shop Status", Desc = "Shows upgrade progress", Image = "activity", ImageSize = 22 })
+local function setShopStatus(msg)
+    shopStatus.lastAction = msg
+    if shopParagraph and shopParagraph.SetDesc then
+        shopParagraph:SetDesc(string.format("Upgrades: %d done\nLast: %s", shopStatus.upgradesDone, shopStatus.lastAction))
+    end
+end
+
+local function parseConveyorIndexFromId(idStr)
+    local n = tostring(idStr):match("(%d+)")
+    return n and tonumber(n) or nil
+end
+
+-- Remember upgrades we have already bought in this session
+local purchasedUpgrades = {}
+
+local function chooseAffordableUpgrades(netWorth)
+    local actions = {}
+    for key, entry in pairs(conveyorConfig) do
+        if type(entry) == "table" then
+            local cost = entry.Cost or entry.Price or (entry.Base and entry.Base.Price)
+            if type(cost) == "string" then
+                local clean = tostring(cost):gsub("[^%d%.]", "")
+                cost = tonumber(clean)
+            end
+            local idLike = entry.ID or entry.Id or entry.Name or key
+            local idx = parseConveyorIndexFromId(idLike)
+            if idx and type(cost) == "number" and netWorth >= cost and idx >= 1 and idx <= 9 and not purchasedUpgrades[idx] then
+                table.insert(actions, { idx = idx, cost = cost })
+            end
+        end
+    end
+    table.sort(actions, function(a, b) return a.idx < b.idx end)
+    return actions
+end
+
+local autoUpgradeEnabled = false
+local autoUpgradeThread = nil
+local autoUpgradeToggle = Tabs.ShopTab:Toggle({
+    Title = "🛒 Auto Upgrade Conveyor",
+    Desc = "Automatically upgrades conveyor when you have enough money",
+    Value = false,
+    Callback = function(state)
+        autoUpgradeEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoUpgradeThread then
+            autoUpgradeThread = task.spawn(function()
+                -- Ensure conveyor config is loaded
+                if not conveyorConfig or not next(conveyorConfig) then
+                    loadConveyorConfig()
+                end
+                while autoUpgradeEnabled do
+                    -- Attempt reload if config still not present
+                    if not conveyorConfig or not next(conveyorConfig) then
+                        setShopStatus("Waiting for config...")
+                        loadConveyorConfig()
+                        task.wait(1)
+                        -- continue loop
+                    end
+                    local net = getPlayerNetWorth()
+                    local actions = chooseAffordableUpgrades(net)
+                    if #actions == 0 then
+                        setShopStatus("Waiting for money (NetWorth " .. tostring(net) .. ")")
+                        task.wait(0.8)
                     else
-                        task.wait(0.2)
+                        for _, a in ipairs(actions) do
+                            setShopStatus(string.format("Upgrading %d (cost %s)", a.idx, tostring(a.cost)))
+                            if fireConveyorUpgrade(a.idx) then
+                                shopStatus.upgradesDone += 1
+                                purchasedUpgrades[a.idx] = true
+                            end
+                            shopStatus.upgradesTried += 1
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end)
+            setShopStatus("Started upgrading!")
+            WindUI:Notify({ Title = "🛒 Shop", Content = "Auto upgrade started! 🎉", Duration = 3 })
+        elseif (not state) and autoUpgradeThread then
+            WindUI:Notify({ Title = "🛒 Shop", Content = "Auto upgrade stopped", Duration = 3 })
+            setShopStatus("Stopped")
+        end
+    end
+})
+
+
+
+Tabs.ShopTab:Button({
+    Title = "🛒 Upgrade All Now",
+    Desc = "Upgrade everything you can afford right now",
+    Callback = function()
+        local net = getPlayerNetWorth()
+        local actions = chooseAffordableUpgrades(net)
+        if #actions == 0 then
+            setShopStatus("No upgrades affordable (NetWorth " .. tostring(net) .. ")")
+            return
+        end
+        for _, a in ipairs(actions) do
+            if fireConveyorUpgrade(a.idx) then
+                shopStatus.upgradesDone += 1
+                purchasedUpgrades[a.idx] = true
+            end
+            shopStatus.upgradesTried += 1
+            task.wait(0.1)
+        end
+        setShopStatus("Upgraded " .. tostring(#actions) .. " items!")
+    end
+})
+
+Tabs.ShopTab:Button({
+    Title = "🔄 Reset Upgrade Memory",
+    Desc = "Clear upgrade memory to try again",
+    Callback = function()
+        purchasedUpgrades = {}
+        setShopStatus("Memory reset!")
+        WindUI:Notify({ Title = "🛒 Shop", Content = "Upgrade memory cleared!", Duration = 3 })
+    end
+})
+
+
+
+-- ============ Fruit Market (Auto Buy Fruit) ============
+-- Load Fruit Selection UI
+local FruitSelection = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/FruitSelection.lua"))()
+
+-- Fruit Data for auto buy functionality
+local FruitData = {
+    Strawberry = { Price = "5,000" },
+    Blueberry = { Price = "20,000" },
+    Watermelon = { Price = "80,000" },
+    Apple = { Price = "400,000" },
+    Orange = { Price = "1,200,000" },
+    Corn = { Price = "3,500,000" },
+    Banana = { Price = "12,000,000" },
+    Grape = { Price = "50,000,000" },
+    Pear = { Price = "200,000,000" },
+    Pineapple = { Price = "600,000,000" },
+    GoldMango = { Price = "2,000,000,000" },
+    BloodstoneCycad = { Price = "8,000,000,000" },
+    ColossalPinecone = { Price = "40,000,000,000" },
+    VoltGinkgo = { Price = "80,000,000,000" }
+}
+
+-- Helper functions moved to FruitStoreSystem.lua
+
+-- Fruit selection state
+local fruitSelectionVisible = false
+
+-- Fruit auto buy status removed per user request
+
+-- Fruit status display removed per user request
+
+Tabs.FruitTab:Button({
+    Title = "🍎 Open Fruit Selection UI",
+    Desc = "Open the modern glass-style fruit selection interface",
+    Callback = function()
+        if not fruitSelectionVisible then
+            FruitSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+                    selectedFruits = selectedItems
+                    updateCustomUISelection("fruitSelections", selectedItems)
+                end,
+                function(isVisible)
+                    fruitSelectionVisible = isVisible
+                end,
+                selectedFruits -- Pass saved fruit selections
+            )
+            fruitSelectionVisible = true
+        else
+            FruitSelection.Hide()
+            fruitSelectionVisible = false
+        end
+    end
+})
+
+-- Auto Buy Fruit functionality
+local autoBuyFruitEnabled = false
+local autoBuyFruitThread = nil
+
+-- Helper functions for fruit buying
+local function getPlayerNetWorth()
+    local player = Players.LocalPlayer
+    if not player then return 0 end
+    
+    -- First try to get from Attributes (as you mentioned)
+    local attrValue = player:GetAttribute("NetWorth")
+    if type(attrValue) == "number" then
+        return attrValue
+    end
+    
+    -- Fallback to leaderstats
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if not leaderstats then return 0 end
+    
+    local netWorth = leaderstats:FindFirstChild("NetWorth")
+    if not netWorth then return 0 end
+    
+    return netWorth.Value or 0
+end
+
+local function parsePrice(priceStr)
+    if type(priceStr) == "number" then
+        return priceStr
+    end
+    local cleanPrice = priceStr:gsub(",", "")
+    return tonumber(cleanPrice) or 0
+end
+
+local function getFoodStoreUI()
+    local player = Players.LocalPlayer
+    if not player then return nil end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    
+    return playerGui:FindFirstChild("ScreenFoodStore")
+end
+
+local function getFoodStoreLST()
+    local player = Players.LocalPlayer
+    if not player then return nil end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return nil end
+    
+    local foodStore = data:FindFirstChild("FoodStore")
+    if not foodStore then return nil end
+    
+    local lst = foodStore:FindFirstChild("LST")
+    return lst
+end
+
+local function isFruitInStock(fruitId)
+    local lst = getFoodStoreLST()
+    if not lst then return false end
+    
+    -- Try different possible key formats
+    local candidates = {fruitId, string.lower(fruitId), string.upper(fruitId)}
+    local underscoreVersion = fruitId:gsub(" ", "_")
+    table.insert(candidates, underscoreVersion)
+    table.insert(candidates, string.lower(underscoreVersion))
+    
+    for _, candidate in ipairs(candidates) do
+        -- First try to get from Attributes (as you mentioned)
+        local stockValue = lst:GetAttribute(candidate)
+        if type(stockValue) == "number" and stockValue > 0 then
+            return true
+        end
+        
+        -- Fallback to TextLabel
+        local stockLabel = lst:FindFirstChild(candidate)
+        if stockLabel and stockLabel:IsA("TextLabel") then
+            local stockText = stockLabel.Text
+            local stockNumber = tonumber(stockText:match("%d+"))
+            if stockNumber and stockNumber > 0 then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+local autoBuyFruitToggle = Tabs.FruitTab:Toggle({
+    Title = "🍎 Auto Buy Fruit",
+    Desc = "Automatically buy selected fruits when you have enough money",
+    Value = false,
+    Callback = function(state)
+        autoBuyFruitEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoBuyFruitThread then
+            autoBuyFruitThread = task.spawn(function()
+                while autoBuyFruitEnabled do
+                    -- Auto buy fruit logic
+                    if selectedFruits and next(selectedFruits) then
+                        local netWorth = getPlayerNetWorth()
+                        local boughtAny = false
+                        
+                        for fruitId, _ in pairs(selectedFruits) do
+                            if FruitData[fruitId] then
+                                local fruitPrice = parsePrice(FruitData[fruitId].Price)
+                                
+                                -- Check if fruit is in stock
+                                if not isFruitInStock(fruitId) then
+                                    task.wait(0.5)
+                                else
+                                    -- Check if player can afford it
+                                    if netWorth < fruitPrice then
+                                        task.wait(0.5)
+                                    else
+                                        -- Try to buy the fruit
+                                        local success = pcall(function()
+                                            -- Fire the fruit buying remote
+                                            local args = {fruitId}
+                                            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FoodStoreRE"):FireServer(unpack(args))
+                                        end)
+                                        
+                                        if success then
+                                            boughtAny = true
+                                        end
+                                        
+                                        task.wait(0.5) -- Wait between each fruit purchase
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- If no fruits were bought, wait longer before next attempt
+                        if not boughtAny then
+                            task.wait(2)
+                        else
+                            task.wait(1) -- Shorter wait if we bought something
+                        end
+                    else
+                        task.wait(2)
+                    end
+        end
+    end)
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Started buying fruits! 🎉", Duration = 3 })
+        elseif (not state) and autoBuyFruitThread then
+            WindUI:Notify({ Title = "🍎 Auto Buy Fruit", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+
+
+ 
+
+
+
+ 
+
+ 
+
+ 
+
+-- ============ WindUI ConfigManager System ============
+
+-- 1. Load ConfigManager
+local ConfigManager = Window.ConfigManager
+
+-- 2. Create Config Files for different categories
+local mainConfig = ConfigManager:CreateConfig("BuildAZoo_Main")
+local autoSystemsConfig = ConfigManager:CreateConfig("BuildAZoo_AutoSystems") 
+local customUIConfig = ConfigManager:CreateConfig("BuildAZoo_CustomUI")
+
+-- Legacy support
+local zebuxConfig = mainConfig -- For backward compatibility
+
+-- Custom UI selections storage (separate from WindUI config)
+local customSelections = {
+    eggSelections = {},
+    fruitSelections = {},
+    feedFruitSelections = {}
+}
+
+-- Function to save custom UI selections
+function saveCustomSelections()
+    local success, err = pcall(function()
+        if writefile then
+            local jsonData = game:GetService("HttpService"):JSONEncode(customSelections)
+            writefile("Zebux_CustomSelections.json", jsonData)
+        end
+    end)
+    
+    if not success then
+        warn("Failed to save custom selections: " .. tostring(err))
+    end
+end
+
+-- Function to load custom UI selections
+function loadCustomSelections()
+    local success, err = pcall(function()
+        if isfile and readfile and isfile("Zebux_CustomSelections.json") then
+            local jsonData = readfile("Zebux_CustomSelections.json")
+            local loaded = game:GetService("HttpService"):JSONDecode(jsonData)
+            if loaded then
+                customSelections = loaded
+                
+                -- Apply loaded selections to variables
+                if customSelections.eggSelections then
+                    selectedTypeSet = {}
+                    for _, eggId in ipairs(customSelections.eggSelections.eggs or {}) do
+                        selectedTypeSet[eggId] = true
+                    end
+                    selectedMutationSet = {}
+                    for _, mutationId in ipairs(customSelections.eggSelections.mutations or {}) do
+                        selectedMutationSet[mutationId] = true
                     end
                 end
                 
-                task.wait(3) -- Wait before next scan
+                if customSelections.fruitSelections then
+                    selectedFruits = {}
+                    for _, fruitId in ipairs(customSelections.fruitSelections or {}) do
+                        selectedFruits[fruitId] = true
+                    end
+                end
                 
-            end)
-            
-            if not ok then
-                warn("Auto Delete error: " .. tostring(err))
-                task.wait(1)
+                if customSelections.feedFruitSelections then
+                    selectedFeedFruits = {}
+                    for _, fruitId in ipairs(customSelections.feedFruitSelections or {}) do
+                        selectedFeedFruits[fruitId] = true
+                    end
+                end
             end
         end
+    end)
+    
+    if not success then
+        warn("Failed to load custom selections: " .. tostring(err))
     end
-
-    local autoDeleteToggle = Tabs.PlaceTab:Toggle({
-        Title = "Auto Delete",
-        Desc = "Automatically delete slow pets (only your pets)",
-        Value = false,
-        Callback = function(state)
-            autoDeleteEnabled = state
-            
-            if Dependencies.waitForSettingsReady then
-                Dependencies.waitForSettingsReady(0.2)
-            end
-            
-            if state and not autoDeleteThread then
-                autoDeleteThread = task.spawn(function()
-                    runAutoDelete()
-                    autoDeleteThread = nil
-                end)
-                WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 3 })
-            elseif (not state) and autoDeleteThread then
-                WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 3 })
-            end
-        end
-    })
-
-    -- Return the UI elements for external registration
-    return {
-        placeEggDropdown = placeEggDropdown,
-        placeMutationDropdown = placeMutationDropdown,
-        autoPlaceToggle = autoPlaceToggle,
-        autoUnlockToggle = autoUnlockToggle,
-        autoDeleteToggle = autoDeleteToggle,
-        autoDeleteSpeedSlider = autoDeleteSpeedSlider,
-    }
 end
 
--- ============ Public API ============
-
-function AutoPlaceV2.Init(dependencies)
-    Dependencies = dependencies
-    print("🏠 AutoPlace V2: Initializing enhanced system...")
-    return true
-end
-
-function AutoPlaceV2.Start()
-    if State.enabled then return end
-    
-    print("🏠 AutoPlace V2: Starting optimized auto place system")
-    State.enabled = true
-    State.phase = "idle"
-    State.lastActivity = tick()
-    State.retryCount = 0
-    
-    -- Reset caches
-    TileCache.regular.valid = false
-    TileCache.water.valid = false
-    
-    -- Setup event monitoring
-    setupEventHandlers()
-    
-    -- Start main loop
-    task.spawn(autoPlaceMainLoop)
-    
-    return true
-end
-
-function AutoPlaceV2.Stop()
-    if not State.enabled then return end
-    
-    print("🏠 AutoPlace V2: Stopping auto place system")
-    State.enabled = false
-    State.phase = "idle"
-    
-    -- Clean up connections
-    for _, conn in ipairs(connections) do
-        pcall(function() conn:Disconnect() end)
-    end
-    connections = {}
-    
-    return true
-end
-
-function AutoPlaceV2.GetStatus()
-    return {
-        enabled = State.enabled,
-        phase = State.phase,
-        currentEggType = State.currentEggType,
-        currentFarmType = State.currentFarmType,
-        regularFarms = FarmTracker.regular,
-        waterFarms = FarmTracker.water,
-        eggQueues = {
-            priority = #EggQueues.priority,
-            regular = #EggQueues.regular,
-            ocean = #EggQueues.ocean,
+-- Function to update custom UI selections
+function updateCustomUISelection(uiType, selections)
+    if uiType == "eggSelections" then
+        customSelections.eggSelections = {
+            eggs = {},
+            mutations = {}
         }
-    }
-end
-
-function AutoPlaceV2.InvalidateCache()
-    TileCache.regular.valid = false
-    TileCache.water.valid = false
-    State.phase = "idle" -- Trigger immediate recheck
-end
-
-function AutoPlaceV2.SetConfig(newConfig)
-    for key, value in pairs(newConfig) do
-        if Config[key] ~= nil then
-            Config[key] = value
+        for eggId, _ in pairs(selections.eggs or {}) do
+            table.insert(customSelections.eggSelections.eggs, eggId)
+        end
+        for mutationId, _ in pairs(selections.mutations or {}) do
+            table.insert(customSelections.eggSelections.mutations, mutationId)
+        end
+    elseif uiType == "fruitSelections" then
+        customSelections.fruitSelections = {}
+        for fruitId, _ in pairs(selections) do
+            table.insert(customSelections.fruitSelections, fruitId)
+        end
+    elseif uiType == "feedFruitSelections" then
+        customSelections.feedFruitSelections = {}
+        for fruitId, _ in pairs(selections) do
+            table.insert(customSelections.feedFruitSelections, fruitId)
         end
     end
+    
+    saveCustomSelections()
 end
 
-return AutoPlaceV2
+-- Register all UI elements with WindUI ConfigManager (Enhanced)
+function registerUIElements()
+    -- Helper function with better error handling
+    local function registerIfExists(config, key, element, description)
+        if element then
+            local success, err = pcall(function()
+                config:Register(key, element)
+            end)
+            if success then
+                print("✅ Registered:", description or key)
+            else
+                warn("❌ Failed to register " .. (description or key) .. ":", err)
+            end
+        else
+            print("⚠️ Skipped:", description or key, "(element not found)")
+        end
+    end
+    
+    print("🔧 Registering UI elements with WindUI ConfigManager...")
+    
+    -- ============ Main Config (Core toggles and settings) ============
+    registerIfExists(mainConfig, "autoBuyEnabled", autoBuyToggle, "Auto Buy Toggle")
+    registerIfExists(mainConfig, "autoHatchEnabled", autoHatchToggle, "Auto Hatch Toggle")
+    registerIfExists(mainConfig, "autoClaimEnabled", autoClaimToggle, "Auto Claim Toggle")
+    
+    -- AutoPlace V2 UI elements (registered separately)
+    if _G.AutoPlaceV2UI then
+        registerIfExists(mainConfig, "autoPlaceEnabled", _G.AutoPlaceV2UI.autoPlaceToggle, "Auto Place V2 Toggle")
+        registerIfExists(mainConfig, "autoUnlockEnabled", _G.AutoPlaceV2UI.autoUnlockToggle, "Auto Unlock Toggle")
+    end
+    
+    -- Register core settings
+    registerIfExists(mainConfig, "autoClaimDelaySlider", autoClaimDelaySlider, "Auto Claim Delay Slider")
+    
+    -- ============ Auto Systems Config (Advanced automation) ============
+    registerIfExists(autoSystemsConfig, "autoUpgradeEnabled", autoUpgradeToggle, "Auto Upgrade Toggle")
+    registerIfExists(autoSystemsConfig, "autoBuyFruitEnabled", autoBuyFruitToggle, "Auto Buy Fruit Toggle")
+    registerIfExists(autoSystemsConfig, "autoFeedEnabled", autoFeedToggle, "Auto Feed Toggle")
+    
+    -- AutoPlace V2 advanced settings
+    if _G.AutoPlaceV2UI then
+        registerIfExists(autoSystemsConfig, "autoDeleteEnabled", _G.AutoPlaceV2UI.autoDeleteToggle, "Auto Delete Toggle")
+        registerIfExists(autoSystemsConfig, "autoDeleteSpeedSlider", _G.AutoPlaceV2UI.autoDeleteSpeedSlider, "Auto Delete Speed Slider")
+    end
+    
+    -- ============ Custom UI Config (Dropdowns and UI selections) ============
+    -- AutoPlace V2 dropdowns
+    if _G.AutoPlaceV2UI then
+        registerIfExists(customUIConfig, "placeEggDropdown", _G.AutoPlaceV2UI.placeEggDropdown, "Place Egg Dropdown")
+        registerIfExists(customUIConfig, "placeMutationDropdown", _G.AutoPlaceV2UI.placeMutationDropdown, "Place Mutation Dropdown")
+    end
+    
+    print("🎉 UI element registration complete!")
+end
+
+-- ============ Anti-AFK System ============
+
+function setupAntiAFK()
+    if antiAFKEnabled then return end
+    antiAFKEnabled = true
+    antiAFKConnection = game:GetService("Players").LocalPlayer.Idled:Connect(function()
+        game:GetService("VirtualUser"):Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+    WindUI:Notify({ Title = "🛡️ Anti-AFK", Content = "Anti-AFK activated!", Duration = 3 })
+end
+
+function disableAntiAFK()
+    if not antiAFKEnabled then return end
+    antiAFKEnabled = false
+    if antiAFKConnection then
+        antiAFKConnection:Disconnect()
+        antiAFKConnection = nil
+    end
+    WindUI:Notify({ Title = "🛡️ Anti-AFK", Content = "Anti-AFK deactivated.", Duration = 3 })
+end
+
+-- ============ Save Settings Tab ============
+Tabs.SaveTab:Section({ Title = "💾 Save & Load", Icon = "save" })
+
+Tabs.SaveTab:Paragraph({
+    Title = "💾 Enhanced Settings Manager",
+    Desc = "Advanced WindUI ConfigManager system with organized categories:\n" ..
+           "🔵 Main Config - Core automation (Buy, Hatch, Claim, Place, Unlock)\n" ..
+           "🤖 Auto Systems - Advanced features (Delete, Upgrade, Feed)\n" ..
+           "🎨 Custom UI - Dropdowns and selections\n" ..
+           "📁 Custom Selections - Egg/Fruit choices saved separately",
+    Image = "save",
+    ImageSize = 18,
+})
+
+-- ============ Enhanced Config Management ============
+
+-- Enhanced save function
+function saveAllConfigs()
+    local results = {}
+    
+    -- Save main config
+    local mainSuccess, mainErr = pcall(function()
+        mainConfig:Save()
+    end)
+    results.mainConfig = mainSuccess and "✅ Success" or ("❌ " .. tostring(mainErr))
+    
+    -- Save auto systems config
+    local autoSuccess, autoErr = pcall(function()
+        autoSystemsConfig:Save()
+    end)
+    results.autoSystemsConfig = autoSuccess and "✅ Success" or ("❌ " .. tostring(autoErr))
+    
+    -- Save custom UI config
+    local customUISuccess, customUIErr = pcall(function()
+        customUIConfig:Save()
+    end)
+    results.customUIConfig = customUISuccess and "✅ Success" or ("❌ " .. tostring(customUIErr))
+    
+    -- Save custom selections
+    local customSuccess, customErr = pcall(function()
+        saveCustomSelections()
+    end)
+    results.customSelections = customSuccess and "✅ Success" or ("❌ " .. tostring(customErr))
+    
+    return results
+end
+
+-- Enhanced load function
+function loadAllConfigs()
+    local results = {}
+    
+    -- Load main config
+    local mainSuccess, mainErr = pcall(function()
+        mainConfig:Load()
+    end)
+    results.mainConfig = mainSuccess and "✅ Success" or ("❌ " .. tostring(mainErr))
+    
+    -- Load auto systems config
+    local autoSuccess, autoErr = pcall(function()
+        autoSystemsConfig:Load()
+    end)
+    results.autoSystemsConfig = autoSuccess and "✅ Success" or ("❌ " .. tostring(autoErr))
+    
+    -- Load custom UI config
+    local customUISuccess, customUIErr = pcall(function()
+        customUIConfig:Load()
+    end)
+    results.customUIConfig = customUISuccess and "✅ Success" or ("❌ " .. tostring(customUIErr))
+    
+    -- Load custom selections
+    local customSuccess, customErr = pcall(function()
+        loadCustomSelections()
+    end)
+    results.customSelections = customSuccess and "✅ Success" or ("❌ " .. tostring(customErr))
+    
+    -- Sync UI after loading
+    task.spawn(function()
+        task.wait(0.1) -- Small delay to ensure everything loads
+        syncAutoPlaceFiltersFromUI()
+    end)
+    
+    return results
+end
+
+Tabs.SaveTab:Button({
+    Title = "💾 Save All Settings",
+    Desc = "Save all settings across all config categories",
+    Callback = function()
+        local results = saveAllConfigs()
+        local totalSuccess = 0
+        local totalCount = 0
+        
+        for category, result in pairs(results) do
+            totalCount = totalCount + 1
+            if result:find("✅") then
+                totalSuccess = totalSuccess + 1
+            end
+        end
+        
+        local message = string.format("Saved %d/%d categories successfully!", totalSuccess, totalCount)
+        WindUI:Notify({ 
+            Title = "💾 Save Complete", 
+            Content = message, 
+            Duration = 3 
+        })
+        
+        -- Print detailed results
+        print("📊 Save Results:")
+        for category, result in pairs(results) do
+            print("  " .. category .. ": " .. result)
+        end
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "📂 Load All Settings",
+    Desc = "Load all saved settings from all config categories",
+    Callback = function()
+        local results = loadAllConfigs()
+        local totalSuccess = 0
+        local totalCount = 0
+        
+        for category, result in pairs(results) do
+            totalCount = totalCount + 1
+            if result:find("✅") then
+                totalSuccess = totalSuccess + 1
+            end
+        end
+        
+        local message = string.format("Loaded %d/%d categories successfully!", totalSuccess, totalCount)
+        WindUI:Notify({ 
+            Title = "📂 Load Complete", 
+            Content = message, 
+            Duration = 3 
+        })
+        
+        -- Print detailed results
+        print("📊 Load Results:")
+        for category, result in pairs(results) do
+            print("  " .. category .. ": " .. result)
+        end
+    end
+})
+
+-- ============ Individual Config Management ============
+Tabs.SaveTab:Section({ Title = "🗂️ Individual Configs", Icon = "folder" })
+
+Tabs.SaveTab:Button({
+    Title = "💾 Save Main Config Only",
+    Desc = "Save core settings (Auto Buy, Hatch, Claim, Place, Unlock)",
+    Callback = function()
+        local success, err = pcall(function()
+            mainConfig:Save()
+        end)
+        local message = success and "Main config saved!" or ("Failed: " .. tostring(err))
+        WindUI:Notify({ Title = "💾 Main Config", Content = message, Duration = 2 })
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "🤖 Save Auto Systems Config",
+    Desc = "Save advanced automation (Delete, Upgrade, Fruit, Feed)",
+    Callback = function()
+        local success, err = pcall(function()
+            autoSystemsConfig:Save()
+        end)
+        local message = success and "Auto systems saved!" or ("Failed: " .. tostring(err))
+        WindUI:Notify({ Title = "🤖 Auto Systems", Content = message, Duration = 2 })
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "🎨 Save Custom UI Config",
+    Desc = "Save dropdowns and UI element states",
+    Callback = function()
+        local success, err = pcall(function()
+            customUIConfig:Save()
+        end)
+        local message = success and "Custom UI saved!" or ("Failed: " .. tostring(err))
+        WindUI:Notify({ Title = "🎨 Custom UI", Content = message, Duration = 2 })
+    end
+})
+
+-- ============ Config Browser ============
+Tabs.SaveTab:Section({ Title = "📋 Config Browser", Icon = "list" })
+
+Tabs.SaveTab:Button({
+    Title = "📋 View All Configs",
+    Desc = "Show all available config files and their contents",
+    Callback = function()
+        local allConfigs = ConfigManager:AllConfigs()
+        print("📋 All Available Configs:")
+        print("=" .. string.rep("=", 40))
+        
+        for configName, configData in pairs(allConfigs) do
+            print("📁 Config: " .. configName)
+            print("  Items:", table.getn and table.getn(configData) or "N/A")
+            
+            -- Show first few items as preview
+            local count = 0
+            for key, value in pairs(configData) do
+                if count < 3 then
+                    print("    " .. key .. ":", tostring(value))
+                    count = count + 1
+                elseif count == 3 then
+                    print("    ... and more")
+                    break
+                end
+            end
+            print("")
+        end
+        
+        WindUI:Notify({ 
+            Title = "📋 Config Browser", 
+            Content = "Config details printed to console!", 
+            Duration = 3 
+        })
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "🛡️ Toggle Anti-AFK",
+    Desc = "Enable or disable the built-in anti-AFK system",
+    Callback = function()
+        if antiAFKEnabled then
+            disableAntiAFK()
+        else
+            setupAntiAFK()
+        end
+    end
+})
+
+-- Open button will be set up at the end of the script
+
+ 
+
+Tabs.SaveTab:Button({
+    Title = "🔄 Manual Load Settings",
+    Desc = "Manually load all settings (WindUI + Custom)",
+    Callback = function()
+        -- Load WindUI config
+        local configSuccess, configErr = pcall(function()
+            zebuxConfig:Load()
+        end)
+        if not configSuccess then
+            warn("Failed to load WindUI config: " .. tostring(configErr))
+        end
+        
+        -- Load custom selections
+        local customSuccess, customErr = pcall(function()
+            loadCustomSelections()
+        end)
+        
+        -- Sync dropdowns into runtime filters after both loads
+        syncAutoPlaceFiltersFromUI()
+
+        if customSuccess then
+            WindUI:Notify({ Title = "✅ Manual Load", Content = "Settings loaded successfully!", Duration = 3 })
+        else
+            warn("Failed to load custom selections: " .. tostring(customErr))
+            WindUI:Notify({ Title = "⚠️ Manual Load", Content = "Settings loaded but custom selections failed", Duration = 3 })
+        end
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "📤 Export Settings",
+    Desc = "Export your settings to clipboard",
+    Callback = function()
+        local success, err = pcall(function()
+            -- Get WindUI config data
+            local configData = ConfigManager:AllConfigs()
+            -- Combine with custom selections
+            local exportData = {
+                windUIConfig = configData,
+                customSelections = customSelections
+            }
+            local jsonData = game:GetService("HttpService"):JSONEncode(exportData)
+            setclipboard(jsonData)
+        end)
+        
+        if success then
+            WindUI:Notify({ 
+                Title = "📤 Settings Exported", 
+                Content = "Settings copied to clipboard! 🎉", 
+                Duration = 3 
+            })
+        else
+            WindUI:Notify({ 
+                Title = "❌ Export Failed", 
+                Content = "Failed to export settings: " .. tostring(err), 
+                Duration = 5 
+            })
+        end
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "📥 Import Settings",
+    Desc = "Import settings from clipboard",
+    Callback = function()
+        local success, err = pcall(function()
+            local clipboardData = getclipboard()
+            local importedData = game:GetService("HttpService"):JSONDecode(clipboardData)
+            
+            if importedData and importedData.windUIConfig then
+                -- Import WindUI config
+                for configName, configData in pairs(importedData.windUIConfig) do
+                    local config = ConfigManager:GetConfig(configName)
+                    if config then
+                        config:LoadFromData(configData)
+                    end
+                end
+                
+                -- Import custom selections
+                if importedData.customSelections then
+                    customSelections = importedData.customSelections
+                    saveCustomSelections()
+                end
+                
+                WindUI:Notify({ 
+                    Title = "📥 Settings Imported", 
+                    Content = "Settings imported successfully! 🎉", 
+                    Duration = 3 
+                })
+            else
+                error("Invalid settings format")
+            end
+        end)
+        
+        if not success then
+            WindUI:Notify({ 
+                Title = "❌ Import Failed", 
+                Content = "Failed to import settings: " .. tostring(err), 
+                Duration = 5 
+            })
+        end
+    end
+})
+
+Tabs.SaveTab:Button({
+    Title = "🔄 Reset Settings",
+    Desc = "Reset all settings to default",
+    Callback = function()
+        Window:Dialog({
+            Title = "🔄 Reset Settings",
+            Content = "Are you sure you want to reset all settings to default?",
+            Icon = "alert-triangle",
+            Buttons = {
+                {
+                    Title = "❌ Cancel",
+                    Variant = "Secondary",
+                    Callback = function() end
+                },
+                {
+                    Title = "✅ Reset",
+                    Variant = "Primary",
+                    Callback = function()
+                        local success, err = pcall(function()
+                            -- Delete WindUI config files
+                            if listfiles and delfile then
+                                local configFiles = listfiles("WindUI/Zebux/config")
+                                for _, file in ipairs(configFiles) do
+                                    if file:match("zebuxConfig%.json$") then
+                                        delfile(file)
+                                    end
+                                end
+                            end
+                            
+                            -- Delete custom selections file
+                            if isfile and delfile and isfile("Zebux_CustomSelections.json") then
+                                delfile("Zebux_CustomSelections.json")
+                            end
+                            
+                            -- Reset custom selections
+                            customSelections = {
+                                eggSelections = {},
+                                fruitSelections = {},
+                                feedFruitSelections = {}
+                            }
+                            
+                            -- Reset all variables to defaults
+                            autoBuyEnabled = false
+                            autoHatchEnabled = false
+                            autoClaimEnabled = false
+                            autoPlaceEnabled = false
+                            autoUnlockEnabled = false
+                            autoDeleteEnabled = false
+
+                            autoUpgradeEnabled = false
+                            autoBuyFruitEnabled = false
+                            autoFeedEnabled = false
+                            
+                            selectedTypeSet = {}
+                            selectedMutationSet = {}
+                            selectedFruits = {}
+                            selectedFeedFruits = {}
+                            selectedEggTypes = {}
+                            selectedMutations = {}
+                            
+                            -- Refresh UI if visible
+                            local function safeRefresh(uiModule, moduleName)
+                                if uiModule then
+                                    if uiModule.RefreshContent then
+                                        local ok, refreshErr = pcall(function()
+                                            uiModule.RefreshContent()
+                                        end)
+                                        if not ok then
+                                            warn("Failed to refresh " .. moduleName .. " UI: " .. tostring(refreshErr))
+                                        end
+                                    else
+                                        warn(moduleName .. " UI module exists but has no RefreshContent method")
+                                    end
+                                else
+                                    warn(moduleName .. " UI module is nil - not loaded yet")
+                                end
+                            end
+                            
+                            safeRefresh(EggSelection, "EggSelection")
+                            safeRefresh(FruitSelection, "FruitSelection")
+                            safeRefresh(FeedFruitSelection, "FeedFruitSelection")
+                            
+                            WindUI:Notify({ 
+                                Title = "🔄 Settings Reset", 
+                                Content = "All settings have been reset to default! 🎉", 
+                                Duration = 3 
+                            })
+                        end)
+                        
+                        if not success then
+                            warn("Failed to reset settings: " .. tostring(err))
+                            WindUI:Notify({ 
+                                Title = "⚠️ Reset Error", 
+                                Content = "Failed to reset some settings. Please try again.", 
+                                Duration = 3 
+                            })
+                        end
+                    end
+                }
+            }
+        })
+    end
+})
+
+-- Auto-load settings after all UI elements are created
+task.spawn(function()
+    task.wait(3) -- Wait longer for UI to fully load
+    
+    -- Show loading notification
+        WindUI:Notify({ 
+        Title = "📂 Loading Settings", 
+        Content = "Loading your saved settings...", 
+        Duration = 2 
+    })
+    
+    -- Register all UI elements with WindUI config
+    registerUIElements()
+
+    -- Load local AutoQuest module and initialize its UI. Keep it after base UI exists so it can attach to Window and Config
+    pcall(function()
+        local autoQuestModule = nil
+        -- Try local file first (if present in environment with filesystem)
+        if isfile and readfile and isfile("AutoQuestSystem.lua") then
+            autoQuestModule = loadstring(readfile("AutoQuestSystem.lua"))()
+        end
+        -- Fallback: try from same directory
+        if not autoQuestModule then
+            local success, result = pcall(function()
+                return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoQuestSystem.lua"))()
+            end)
+            if success then
+                autoQuestModule = result
+            end
+        end
+        if autoQuestModule and autoQuestModule.Init then
+            AutoQuestSystem = autoQuestModule.Init({
+                WindUI = WindUI,
+                Window = Window,
+                Config = zebuxConfig,
+                waitForSettingsReady = waitForSettingsReady,
+                -- Pass existing automation references so AutoQuest can control them
+                autoBuyToggle = autoBuyToggle,
+                autoPlaceToggle = autoPlaceToggle,
+                autoHatchToggle = autoHatchToggle,
+                -- Pass automation state variables
+                getAutoBuyEnabled = function() return autoBuyEnabled end,
+                getAutoPlaceEnabled = function() return autoPlaceEnabled end,
+                getAutoHatchEnabled = function() return autoHatchEnabled end,
+            })
+        end
+    end)
+    
+    -- Enhanced auto-load using new config system
+    local loadResults = loadAllConfigs()
+    
+    -- Count successful loads
+    local successCount = 0
+    local totalCount = 0
+    for category, result in pairs(loadResults) do
+        totalCount = totalCount + 1
+        if result:find("✅") then
+            successCount = successCount + 1
+        end
+    end
+    
+    -- Print detailed load results
+    print("📊 Auto-Load Results:")
+    for category, result in pairs(loadResults) do
+        print("  " .. category .. ": " .. result)
+    end
+    
+    -- First sync immediately in case UI is already populated
+    syncAutoPlaceFiltersFromUI()
+
+    -- Schedule a delayed sync to catch any late UI restoration
+    task.delay(0.5, function()
+        syncAutoPlaceFiltersFromUI()
+    end)
+
+    -- Show appropriate notification based on results
+    local notificationTitle = "📂 Auto-Load Complete"
+    local notificationContent
+    
+    if successCount == totalCount then
+        notificationContent = string.format("All %d config categories loaded successfully! 🎉", totalCount)
+    elseif successCount > 0 then
+        notificationContent = string.format("Loaded %d/%d config categories (partial success)", successCount, totalCount)
+    else
+        notificationContent = "No configs found - using default settings"
+        notificationTitle = "📂 Auto-Load (Defaults)"
+    end
+
+    WindUI:Notify({ 
+        Title = notificationTitle, 
+        Content = notificationContent, 
+            Duration = 3 
+        })
+    settingsLoaded = true
+end)
+
+-- ============ Auto Feed Tab ============
+-- Feed status section removed per user request
+
+-- Feed Fruit Selection UI Button
+Tabs.FeedTab:Button({
+    Title = "🍎 Open Feed Fruit Selection UI",
+    Desc = "Open the modern glass-style fruit selection interface for feeding",
+    Callback = function()
+        if not feedFruitSelectionVisible then
+            FeedFruitSelection.Show(
+                function(selectedItems)
+                    -- Handle selection changes
+                    selectedFeedFruits = selectedItems
+                    updateCustomUISelection("feedFruitSelections", selectedItems)
+                end,
+                function(isVisible)
+                    feedFruitSelectionVisible = isVisible
+                end,
+                selectedFeedFruits -- Pass saved fruit selections
+            )
+            feedFruitSelectionVisible = true
+        else
+            FeedFruitSelection.Hide()
+            feedFruitSelectionVisible = false
+        end
+    end
+})
+
+-- Auto Feed Toggle
+autoFeedToggle = Tabs.FeedTab:Toggle({
+    Title = "🍽️ Auto Feed Pets",
+    Desc = "Automatically feed Big Pets with selected fruits when they're hungry",
+    Value = false,
+    Callback = function(state)
+        autoFeedEnabled = state
+        
+        waitForSettingsReady(0.2)
+        if state and not autoFeedThread then
+            autoFeedThread = task.spawn(function()
+                -- Ensure selections are loaded before starting
+                local function getSelected()
+                    -- if empty, try to lazy-load from file once
+                    if not selectedFeedFruits or not next(selectedFeedFruits) then
+pcall(function()
+                            if isfile and readfile and isfile("Zebux_FeedFruitSelections.json") then
+                                local data = game:GetService("HttpService"):JSONDecode(readfile("Zebux_FeedFruitSelections.json"))
+                                if data and data.fruits then
+                                    selectedFeedFruits = {}
+                                    for _, id in ipairs(data.fruits) do selectedFeedFruits[id] = true end
+                                end
+                            end
+                        end)
+                    end
+                    return selectedFeedFruits
+                end
+                
+                -- Wrap the auto feed call in error handling
+                local ok, err = pcall(function()
+                    AutoFeedSystem.runAutoFeed(autoFeedEnabled, {}, function() end, getSelected)
+                end)
+                
+                if not ok then
+                    warn("Auto Feed thread error: " .. tostring(err))
+                    WindUI:Notify({ 
+                        Title = "⚠️ Auto Feed Error", 
+                        Content = "Auto Feed stopped due to error: " .. tostring(err), 
+                        Duration = 5 
+                    })
+                end
+                
+                autoFeedThread = nil
+            end)
+            WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
+        elseif (not state) and autoFeedThread then
+            WindUI:Notify({ Title = "🍽️ Auto Feed", Content = "Stopped", Duration = 3 })
+        end
+    end
+})
+
+-- Late-register Auto Feed toggle after it exists, then re-load to apply saved value
+task.spawn(function()
+    -- Wait until settings load sequence either completed or shortly timed in
+    local tries = 0
+    while not (zebuxConfig and autoFeedToggle) and tries < 50 do
+        tries += 1
+        task.wait(0.05)
+    end
+    if autoSystemsConfig and autoFeedToggle then
+        pcall(function()
+            autoSystemsConfig:Register("autoFeedEnabled", autoFeedToggle)
+            -- If settings already loaded, load again to apply saved value to this control
+            if settingsLoaded then
+                autoSystemsConfig:Load()
+            end
+        end)
+    end
+end)
+
+-- Late-register Auto Fish toggle after it exists, then re-load to apply saved value
+-- AutoFish toggle registration will be handled by AutoFishSystem.lua itself
+-- No need to register here since it's a separate system
+
+
+
+
+
+
+-- Safe window close handler
+pcall(function()
+    Window:OnClose(function()
+        -- Window closed
+    end)
+end)
+
+-- Setup open button immediately after window creation
+Window:EditOpenButton({
+    Title = "🏗️ Build A Zoo",
+    Icon = "monitor", 
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new( -- gradient
+        Color3.fromHex("FF0F7B"), 
+        Color3.fromHex("F89B29")
+    ),
+    OnlyMobile = false,  -- Shows on both desktop and mobile
+    Enabled = true,      -- Always enabled
+    Draggable = true,    -- Can be moved around
+})
+
+print("🎮 Build A Zoo UI button has been created!")
