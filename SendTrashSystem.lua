@@ -226,7 +226,7 @@ end
 local function focusPet(petUID)
     local success, err = pcall(function()
         local args = {"Focus", petUID}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     
     if success then
@@ -401,8 +401,14 @@ local function processTrash()
         local targetPlayer = nil
         if targetPlayerDropdown and targetPlayerDropdown.GetValue then
             local success, result = pcall(function() return targetPlayerDropdown:GetValue() end)
-            if success and result and result ~= "Random Player" then
-                targetPlayer = result
+            if success and result then
+                if result == "Random Player" then
+                    targetPlayer = getRandomPlayer()
+                else
+                    -- Use the specifically selected player
+                    targetPlayer = result
+                    print("🎯 Target player selected: " .. targetPlayer)
+                end
             else
                 targetPlayer = getRandomPlayer()
             end
