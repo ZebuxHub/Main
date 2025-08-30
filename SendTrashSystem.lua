@@ -224,15 +224,18 @@ end
 
 -- Focus pet before sending/selling
 local function focusPet(petUID)
+    print("🔍 Attempting to focus pet: " .. tostring(petUID))
+    
     local success, err = pcall(function()
         local args = {"Focus", petUID}
+        print("📤 Firing CharacterRE with args:", args[1], args[2])
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     
     if success then
-        print("🎯 Focused pet " .. petUID)
+        print("🎯 Focus command sent successfully for pet " .. petUID)
     else
-        warn("Failed to focus pet " .. petUID .. ": " .. tostring(err))
+        warn("❌ Failed to focus pet " .. petUID .. ": " .. tostring(err))
     end
     
     return success
@@ -250,8 +253,10 @@ local function sendPetToPlayer(petUID, playerName)
     end
     
     -- Focus the pet first (REQUIRED before sending)
+    print("🚀 Starting send process for pet " .. petUID .. " to " .. playerName)
     focusPet(petUID)
-    wait(0.5) -- Small delay to ensure focus is processed
+    print("⏳ Waiting 1 second for focus to process...")
+    wait(1) -- Increased delay to ensure focus is properly processed
     
     local success, err = pcall(function()
         -- Find the target player object
@@ -260,8 +265,10 @@ local function sendPetToPlayer(petUID, playerName)
             error("Player " .. playerName .. " not found")
         end
         
+        print("📤 Sending to player: " .. playerName .. " (Player object found)")
         local args = {targetPlayer}
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
+        print("📮 GiftRE fired successfully")
     end)
     
     if success then
