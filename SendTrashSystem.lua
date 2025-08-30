@@ -584,7 +584,8 @@ local function processTrash()
         if sendMode == "Pets" or sendMode == "Both" then
             for _, pet in ipairs(petInventory) do
                 if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
-                    print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
+                    local petName = pet.type or pet.uid
+                    print("📦 About to send pet " .. petName .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(pet, targetPlayer, "pet")
                     sentAnyItem = true
                     wait(0.3)
@@ -597,7 +598,8 @@ local function processTrash()
         if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
                 if shouldSendItem(egg, includeEggTypes, includeEggMutations) and targetPlayer then
-                    print("📦 About to send egg " .. egg.uid .. " to target: " .. tostring(targetPlayer))
+                    local eggName = egg.type or egg.uid
+                    print("📦 About to send egg " .. eggName .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
                     sentAnyItem = true
                     wait(0.3)
@@ -701,7 +703,6 @@ function SendTrashSystem.Init(dependencies)
                             local totalSold = sessionLimits.sellPetCount
                             local fields = {}
                             table.insert(fields, { name = "Items Sent", value = tostring(totalSent), inline = true })
-                            table.insert(fields, { name = "Pets Sold", value = tostring(totalSold), inline = true })
                             
                             -- Build concise description list (last 10 items)
                             local details = ""
