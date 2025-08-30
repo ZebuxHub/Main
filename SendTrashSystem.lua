@@ -67,6 +67,46 @@ local sessionLimits = {
     limitReachedNotified = false -- Track if user has been notified
 }
 
+-- Pretty Discord embed assets
+local EggIconMap = {
+    BasicEgg = 129248801621928,
+    RareEgg = 71012831091414,
+    SuperRareEgg = 93845452154351,
+    SeaweedEgg = 87125339619211,
+    EpicEgg = 116395645531721,
+    LegendEgg = 90834918351014,
+    ClownfishEgg = 124419920608938,
+    PrismaticEgg = 79960683434582,
+    LionfishEgg = 100181295820053,
+    HyperEgg = 104958288296273,
+    VoidEgg = 122396162708984,
+    BowserEgg = 71500536051510,
+    SharkEgg = 71032472532652,
+    DemonEgg = 126412407639969,
+    CornEgg = 94739512852461,
+    AnglerfishEgg = 121296998588378,
+    BoneDragonEgg = 83209913424562,
+    UltraEgg = 83909590718799,
+    DinoEgg = 80783528632315,
+    FlyEgg = 109240587278187,
+    UnicornEgg = 123427249205445,
+    OctopusEgg = 84758700095552,
+    AncientEgg = 113910587565739,
+    SeaDragonEgg = 130514093439717,
+}
+
+local function robloxIconUrl(assetId)
+    if not assetId then return nil end
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. tostring(assetId) .. "&width=420&height=420&format=png"
+end
+
+local function getIconUrlFor(kind, typeName)
+    if kind == "egg" and typeName and EggIconMap[typeName] then
+        return robloxIconUrl(EggIconMap[typeName])
+    end
+    return nil
+end
+
 -- Helper function to safely get attribute
 local function safeGetAttribute(obj, attrName, default)
     if not obj then return default end
@@ -685,6 +725,43 @@ local function processTrash()
         
         -- Stop if session limit reached
         if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+            -- Immediately post webhook summary when limit hit
+            if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+                task.spawn(function()
+                    local ok, err = pcall(function()
+                        local totalSent = sessionLimits.sendPetCount
+                        local fields = { { name = "Items Sent", value = tostring(totalSent), inline = true } }
+                        local details = ""
+                        local startIdx = math.max(1, #sessionLogs - 9)
+                        for i = startIdx, #sessionLogs do
+                            local it = sessionLogs[i]
+                            local icon = getIconUrlFor(it.kind, it.type)
+                            local line = string.format("%s • %s [%s] → %s", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
+                            if icon then line = line .. "\n" .. icon end
+                            details = details .. line .. "\n"
+                        end
+                        local payload = {
+                            embeds = {
+                                {
+                                    title = "Send Trash Session Summary",
+                                    description = details ~= "" and details or "No items were sent.",
+                                    color = 5814783,
+                                    fields = fields,
+                                    thumbnail = { url = (#sessionLogs > 0 and getIconUrlFor(sessionLogs[#sessionLogs].kind, sessionLogs[#sessionLogs].type)) or nil },
+                                    footer = { text = "Build A Zoo" },
+                                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                                }
+                            }
+                        }
+                        local json = HttpService:JSONEncode(payload)
+                        http_request = http_request or request or (syn and syn.request)
+                        if http_request then
+                            http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
+                        end
+                    end)
+                    if ok then webhookSent = true end
+                end)
+            end
             trashEnabled = false
             if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
         end
@@ -713,23 +790,6 @@ function SendTrashSystem.Init(dependencies)
         ImageSize = 22
     })
     
-    -- Speed threshold for auto-delete
-    speedThresholdSlider = TrashTab:Input({
-        Title = "Auto Delete Speed Threshold",
-        Desc = "Delete pets below this speed automatically (0 = disabled)",
-        Default = "0",
-        Numeric = true,
-        Finished = true,
-        Callback = function(value)
-            local numValue = tonumber(value) or 0
-            autoDeleteMinSpeed = numValue
-            if numValue > 0 then
-                print("Auto Delete: Enabled for pets below speed " .. numValue)
-            else
-                print("Auto Delete: Disabled")
-            end
-        end,
-    })
     
     -- Session limit input
     sessionLimitInput = TrashTab:Input({
