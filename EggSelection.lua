@@ -647,18 +647,26 @@ function EggSelection.CreateUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 6
     scrollFrame.ScrollBarImageColor3 = colors.primary
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Let AutomaticCanvasSize handle it
+    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     scrollFrame.Parent = content
     
-         local gridLayout = Instance.new("UIGridLayout")
-     gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
-     gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
-     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-     gridLayout.Parent = scrollFrame
-     
-     -- Add UIPadding to ensure proper scrolling
-     local padding = Instance.new("UIPadding")
-     padding.PaddingBottom = UDim.new(0, 50)
-     padding.Parent = scrollFrame
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
+    gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    gridLayout.Parent = scrollFrame
+    
+    -- Add UIPadding to ensure proper scrolling
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 50)
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.PaddingRight = UDim.new(0, 8)
+    padding.Parent = scrollFrame
     
     -- Window Control Events
     local closeBtn = windowControls.CloseBtn
@@ -734,6 +742,38 @@ function EggSelection.CreateUI()
     return ScreenGui
 end
 
+-- Update ScrollingFrame canvas size based on content
+local function updateCanvasSize(scrollFrame)
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if not gridLayout then return end
+    
+    -- Wait for layout to update
+    task.wait(0.1)
+    
+    -- Calculate content size based on grid layout
+    local itemCount = 0
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            itemCount = itemCount + 1
+        end
+    end
+    
+    if itemCount > 0 then
+        -- Calculate rows needed (3 items per row)
+        local rows = math.ceil(itemCount / 3)
+        local cellHeight = 120 -- Height of each cell
+        local padding = 8 -- Padding between cells
+        local bottomPadding = 50 -- Extra padding at bottom
+        
+        local totalHeight = (rows * cellHeight) + ((rows - 1) * padding) + bottomPadding
+        
+        -- Update canvas size if AutomaticCanvasSize doesn't work
+        if scrollFrame.CanvasSize.Y.Offset < totalHeight then
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+        end
+    end
+end
+
 -- Refresh Content based on current page
 function EggSelection.RefreshContent()
     if not ScreenGui then return end
@@ -771,6 +811,11 @@ function EggSelection.RefreshContent()
             card.BackgroundColor3 = colors.selected
         end
     end
+    
+    -- Update canvas size to ensure proper scrolling
+    task.spawn(function()
+        updateCanvasSize(scrollFrame)
+    end)
 end
 
 -- Public Functions
