@@ -647,9 +647,11 @@ function EggSelection.CreateUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 6
     scrollFrame.ScrollBarImageColor3 = colors.primary
-    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Let AutomaticCanvasSize handle it
+    -- Disable AutomaticCanvasSize and handle manually for better control
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000) -- Start with reasonable default
     scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    scrollFrame.ScrollingEnabled = true
     scrollFrame.Parent = content
     
     local gridLayout = Instance.new("UIGridLayout")
@@ -745,10 +747,13 @@ end
 -- Update ScrollingFrame canvas size based on content
 local function updateCanvasSize(scrollFrame)
     local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
-    if not gridLayout then return end
+    if not gridLayout then 
+        print("🚫 No gridLayout found in scrollFrame")
+        return 
+    end
     
     -- Wait for layout to update
-    task.wait(0.1)
+    task.wait(0.2) -- Increased wait time
     
     -- Calculate content size based on grid layout
     local itemCount = 0
@@ -758,19 +763,30 @@ local function updateCanvasSize(scrollFrame)
         end
     end
     
+    print(string.format("📊 Canvas update - Page: %s, Items: %d", currentPage, itemCount))
+    
     if itemCount > 0 then
         -- Calculate rows needed (3 items per row)
         local rows = math.ceil(itemCount / 3)
         local cellHeight = 120 -- Height of each cell
-        local padding = 8 -- Padding between cells
-        local bottomPadding = 50 -- Extra padding at bottom
+        local cellPadding = 8 -- Padding between cells
+        local topPadding = 8 -- Top padding from UIPadding
+        local bottomPadding = 50 -- Bottom padding from UIPadding
         
-        local totalHeight = (rows * cellHeight) + ((rows - 1) * padding) + bottomPadding
+        -- More accurate calculation including all padding
+        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
         
-        -- Update canvas size if AutomaticCanvasSize doesn't work
-        if scrollFrame.CanvasSize.Y.Offset < totalHeight then
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-        end
+        print(string.format("📏 Calculated height: %d (rows: %d)", totalHeight, rows))
+        
+        -- Always update canvas size to ensure proper scrolling
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+        
+        -- Also force a canvas position reset to ensure scrollability
+        scrollFrame.CanvasPosition = Vector2.new(0, 0)
+        
+        print(string.format("✅ Canvas size updated to: %d", totalHeight))
+    else
+        print("⚠️ No items found for canvas size calculation")
     end
 end
 
@@ -813,9 +829,44 @@ function EggSelection.RefreshContent()
     end
     
     -- Update canvas size to ensure proper scrolling
+    -- Multiple approaches to ensure it works properly
     task.spawn(function()
         updateCanvasSize(scrollFrame)
     end)
+    
+    -- Also try after a longer delay as backup
+    task.spawn(function()
+        task.wait(0.5)
+        updateCanvasSize(scrollFrame)
+    end)
+    
+    -- Connect to layout changes for real-time updates
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if gridLayout then
+        local connection = nil
+        connection = gridLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            task.wait(0.1)
+            local itemCount = 0
+            for _, child in pairs(scrollFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    itemCount = itemCount + 1
+                end
+            end
+            
+            if itemCount > 0 then
+                local rows = math.ceil(itemCount / 3)
+                local totalHeight = 8 + (rows * 120) + ((rows - 1) * 8) + 50
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+                print(string.format("🔄 Real-time canvas update - Items: %d, Height: %d", itemCount, totalHeight))
+            end
+            
+            -- Disconnect after first successful update
+            if connection then
+                connection:Disconnect()
+                connection = nil
+            end
+        end)
+    end
 end
 
 -- Public Functions
@@ -904,6 +955,23 @@ function EggSelection.UpdateSelections(eggs, mutations)
     
     if ScreenGui then
         EggSelection.RefreshContent()
+    end
+end
+
+-- Debug function to test scrolling
+function EggSelection.TestScrolling()
+    if ScreenGui then
+        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
+        if scrollFrame then
+            print(string.format("🔍 ScrollFrame Size: %s", tostring(scrollFrame.Size)))
+            print(string.format("🔍 CanvasSize: %s", tostring(scrollFrame.CanvasSize)))
+            print(string.format("🔍 Current Page: %s", currentPage))
+            
+            -- Force scroll to bottom to test
+            local maxScroll = math.max(0, scrollFrame.CanvasSize.Y.Offset - scrollFrame.AbsoluteSize.Y)
+            scrollFrame.CanvasPosition = Vector2.new(0, maxScroll)
+            print(string.format("🔽 Forced scroll to bottom: %d", maxScroll))
+        end
     end
 end
 
