@@ -108,6 +108,33 @@ local function getIconUrlFor(kind, typeName)
     return nil
 end
 
+-- Cute emoji for readability in Discord
+local EggEmojiMap = {
+    BasicEgg = "🥚",
+    RareEgg = "🔷",
+    SuperRareEgg = "💎",
+    EpicEgg = "🌟",
+    LegendEgg = "🏆",
+    PrismaticEgg = "✨",
+    HyperEgg = "⚡",
+    VoidEgg = "🕳️",
+    BowserEgg = "🐢",
+    SharkEgg = "🦈",
+    LionfishEgg = "🐟",
+    ClownfishEgg = "🐠",
+    AnglerfishEgg = "🐡",
+    OctopusEgg = "🐙",
+    SeaweedEgg = "🐚",
+    BoneDragonEgg = "💀",
+    DinoEgg = "🦖",
+    FlyEgg = "🪶",
+    UnicornEgg = "🦄",
+    AncientEgg = "🗿",
+    UltraEgg = "🚀",
+    CornEgg = "🌽",
+    SeaDragonEgg = "🐉",
+}
+
 local function getAvatarUrl(userId)
     if not userId then return nil end
     return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(userId) .. "&width=180&height=180&format=png"
@@ -121,16 +148,18 @@ local function sendWebhookSummary()
     local startIdx = math.max(1, #sessionLogs - 9)
     for i = startIdx, #sessionLogs do
         local it = sessionLogs[i]
-        local line = string.format("%s • %s [%s] → %s", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
-        details = details .. "• " .. line .. "\n"
+        local emoji = (it.kind == "egg" and EggEmojiMap[it.type or ""]) or (it.kind == "pet" and "🐾") or "📦"
+        local line = string.format("%s %s • %s → %s", emoji, it.type or it.uid, it.mutation and ("[" .. it.mutation .. "]") or "[None]", it.receiver or "?")
+        details = details .. line .. "\n"
     end
-    local thumb = (#sessionLogs > 0 and getIconUrlFor(sessionLogs[#sessionLogs].kind, sessionLogs[#sessionLogs].type)) or nil
+    local last = sessionLogs[#sessionLogs]
+    local thumb = last and getIconUrlFor(last.kind, last.type) or nil
     local authorName = lastReceiverName or (sessionLogs[#sessionLogs] and sessionLogs[#sessionLogs].receiver) or nil
     local authorIcon = lastReceiverId and getAvatarUrl(lastReceiverId) or nil
     local payload = {
         embeds = {
             {
-                title = "Send Trash Session Summary",
+                title = "Send Trash • Session Summary",
                 description = details ~= "" and details or "No items were sent.",
                 color = 5814783,
                 fields = fields,
