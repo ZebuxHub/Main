@@ -2,6 +2,7 @@
 -- Optimized for performance and smart ocean egg handling
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoPlaceV2 = {}
@@ -410,6 +411,536 @@ local function setupEventHandlers()
             end, 0.5)
         end))
     end
+end
+
+-- ============ UI Setup Functions ============
+
+-- Create all Place Tab UI elements
+function AutoPlaceV2.SetupUI(Tabs, WindUI)
+    if not Tabs or not Tabs.PlaceTab then
+        warn("AutoPlaceV2: PlaceTab not found")
+        return false
+    end
+
+    -- Egg selection dropdown (updated with ocean eggs)
+    local placeEggDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "🥚 Pick Pet Types",
+        Desc = "Choose which pets to place (🌊 = ocean eggs, need water farm)",
+        Values = {
+            "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
+            "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
+            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg",
+            "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
+            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
+        },
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            -- Clean ocean emoji prefixes from selection
+            local cleanedSelection = {}
+            for _, item in ipairs(selection) do
+                local cleanName = item:gsub("🌊 ", "") -- Remove ocean emoji prefix
+                table.insert(cleanedSelection, cleanName)
+            end
+            if Dependencies.setSelectedEggTypes then
+                Dependencies.setSelectedEggTypes(cleanedSelection)
+            end
+        end
+    })
+
+    -- Mutation selection dropdown for auto place
+    local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "🧬 Pick Mutations",
+        Desc = "Choose which mutations to place (leave empty for all mutations)",
+        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            if Dependencies.setSelectedMutations then
+                Dependencies.setSelectedMutations(selection)
+            end
+        end
+    })
+
+    -- Auto Place Toggle (V2)
+    local autoPlaceToggle = Tabs.PlaceTab:Toggle({
+        Title = "🏠 Auto Place Pets V2 (Ultra Optimized)",
+        Desc = "Next-gen auto place with smart ocean egg handling and 90% less lag!",
+        Value = false,
+        Callback = function(state)
+            if Dependencies.setAutoPlaceEnabled then
+                Dependencies.setAutoPlaceEnabled(state)
+            end
+            
+            if Dependencies.waitForSettingsReady then
+                Dependencies.waitForSettingsReady(0.2)
+            end
+            
+            if state then
+                -- Sync filters
+                if Dependencies.syncAutoPlaceFiltersFromUI then
+                    Dependencies.syncAutoPlaceFiltersFromUI()
+                end
+                
+                if AutoPlaceV2.Start() then
+                    WindUI:Notify({ 
+                        Title = "🏠 Auto Place V2", 
+                        Content = "Ultra-optimized system started! 🚀", 
+                        Duration = 3 
+                    })
+                else
+                    WindUI:Notify({ 
+                        Title = "❌ Auto Place V2", 
+                        Content = "Failed to start V2 system", 
+                        Duration = 3 
+                    })
+                end
+            else
+                AutoPlaceV2.Stop()
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
+            end
+        end
+    })
+
+    -- Auto Place V2 Status Display
+    local autoPlaceV2Status = Tabs.PlaceTab:Paragraph({
+        Title = "📊 Auto Place V2 Status",
+        Desc = "Starting up...",
+        Image = "activity",
+        ImageSize = 16,
+    })
+
+    -- Update V2 status display
+    local function updateAutoPlaceV2Status()
+        if not autoPlaceV2Status then return end
+        
+        local status = AutoPlaceV2.GetStatus()
+        local statusText = ""
+        
+        if status.enabled then
+            statusText = string.format("🔄 Phase: %s | Type: %s | Farm: %s\n", 
+                status.phase or "idle", 
+                status.currentEggType or "none", 
+                status.currentFarmType or "none")
+            
+            statusText = statusText .. string.format("🏠 Regular: %d/%d | 🌊 Water: %d/%d\n", 
+                status.regularFarms.available, status.regularFarms.total,
+                status.waterFarms.available, status.waterFarms.total)
+            
+            statusText = statusText .. string.format("🥚 Queues - Priority: %d | Regular: %d | Ocean: %d", 
+                status.eggQueues.priority, status.eggQueues.regular, status.eggQueues.ocean)
+        else
+            statusText = "⏸️ System stopped"
+        end
+        
+        if autoPlaceV2Status.SetDesc then
+            autoPlaceV2Status:SetDesc(statusText)
+        end
+    end
+
+    -- Start status update loop
+    task.spawn(function()
+        while true do
+            updateAutoPlaceV2Status()
+            task.wait(2) -- Update every 2 seconds
+        end
+    end)
+
+    -- Manual placement button for V2 system
+    Tabs.PlaceTab:Button({
+        Title = "🚀 Place Eggs Now (V2)",
+        Desc = "Immediately trigger smart egg placement with ocean skipping",
+        Callback = function()
+            -- Invalidate cache to force fresh scan
+            AutoPlaceV2.InvalidateCache()
+            
+            -- Get current status
+            local status = AutoPlaceV2.GetStatus()
+            local message = ""
+            
+            if status.enabled then
+                message = "V2 system refreshed and triggered!"
+            else
+                message = "Please enable Auto Place V2 first"
+            end
+            
+            WindUI:Notify({ 
+                Title = "🚀 Manual Place V2", 
+                Content = message, 
+                Duration = 2 
+            })
+        end
+    })
+
+    -- Auto Unlock Tile functionality
+    local autoUnlockEnabled = false
+    local autoUnlockThread = nil
+
+    -- Helper function to get locked tiles for current island
+    local function getLockedTilesForCurrentIsland()
+        local lockedTiles = {}
+        
+        local islandName = Dependencies.getAssignedIslandName()
+        if not islandName then return lockedTiles end
+        
+        local art = workspace:FindFirstChild("Art")
+        if not art then return lockedTiles end
+        
+        local island = art:FindFirstChild(islandName)
+        if not island then return lockedTiles end
+        
+        local env = island:FindFirstChild("ENV")
+        if not env then return lockedTiles end
+        
+        local locksFolder = env:FindFirstChild("Locks")
+        if not locksFolder then return lockedTiles end
+        
+        for _, lockModel in ipairs(locksFolder:GetChildren()) do
+            if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
+                local farmPart = lockModel:FindFirstChild("Farm")
+                if farmPart and farmPart:IsA("BasePart") then
+                    -- Check if this lock is active (transparency = 0 means locked)
+                    if farmPart.Transparency == 0 then
+                        local lockCost = farmPart:GetAttribute("LockCost")
+                        table.insert(lockedTiles, {
+                            modelName = lockModel.Name,
+                            farmPart = farmPart,
+                            cost = lockCost or 0,
+                            model = lockModel
+                        })
+                    end
+                end
+            end
+        end
+        
+        return lockedTiles
+    end
+
+    -- Function to unlock a specific tile
+    local function unlockTile(lockInfo)
+        if not lockInfo then 
+            warn("❌ unlockTile: No lock info provided")
+            return false 
+        end
+        
+        if not lockInfo.farmPart then
+            warn("❌ unlockTile: No farm part in lock info for " .. (lockInfo.modelName or "unknown"))
+            return false
+        end
+        
+        local args = {
+            "Unlock",
+            lockInfo.farmPart
+        }
+        
+        local success, errorMsg = pcall(function()
+            local remote = ReplicatedStorage:WaitForChild("Remote", 5)
+            if not remote then
+                error("Remote folder not found")
+            end
+            
+            local characterRE = remote:WaitForChild("CharacterRE", 5)
+            if not characterRE then
+                error("CharacterRE not found")
+            end
+            
+            characterRE:FireServer(unpack(args))
+        end)
+        
+        if success then
+            -- Silent success
+        else
+            warn("❌ Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
+        end
+        
+        return success
+    end
+
+    local function runAutoUnlock()
+        while autoUnlockEnabled do
+            local ok, err = pcall(function()
+                local lockedTiles = getLockedTilesForCurrentIsland()
+                
+                if #lockedTiles == 0 then
+                    task.wait(2)
+                    return
+                end
+                
+                -- Count affordable locks
+                local affordableCount = 0
+                local netWorth = Dependencies.getPlayerNetWorth and Dependencies.getPlayerNetWorth() or 0
+                for _, lockInfo in ipairs(lockedTiles) do
+                    local cost = tonumber(lockInfo.cost) or 0
+                    if netWorth >= cost then
+                        affordableCount = affordableCount + 1
+                    end
+                end
+                
+                if affordableCount == 0 then
+                    task.wait(2)
+                    return
+                end
+                
+                -- Try to unlock affordable tiles
+                for _, lockInfo in ipairs(lockedTiles) do
+                    if not autoUnlockEnabled then break end
+                    
+                    local cost = tonumber(lockInfo.cost) or 0
+                    if netWorth >= cost then
+                        if unlockTile(lockInfo) then
+                            task.wait(0.5) -- Wait between unlocks
+                        else
+                            task.wait(0.2)
+                        end
+                    end
+                end
+                
+                task.wait(3) -- Wait before next scan
+                
+            end)
+            
+            if not ok then
+                warn("Auto Unlock error: " .. tostring(err))
+                task.wait(1)
+            end
+        end
+    end
+
+    local autoUnlockToggle = Tabs.PlaceTab:Toggle({
+        Title = "🔓 Auto Unlock Tiles",
+        Desc = "Automatically unlock tiles when you have enough money",
+        Value = false,
+        Callback = function(state)
+            autoUnlockEnabled = state
+            
+            if Dependencies.waitForSettingsReady then
+                Dependencies.waitForSettingsReady(0.2)
+            end
+            
+            if state and not autoUnlockThread then
+                autoUnlockThread = task.spawn(function()
+                    runAutoUnlock()
+                    autoUnlockThread = nil
+                end)
+                WindUI:Notify({ Title = "🔓 Auto Unlock", Content = "Started unlocking tiles! 🎉", Duration = 3 })
+            elseif (not state) and autoUnlockThread then
+                WindUI:Notify({ Title = "🔓 Auto Unlock", Content = "Stopped", Duration = 3 })
+            end
+        end
+    })
+
+    Tabs.PlaceTab:Button({
+        Title = "🔓 Unlock All Affordable Now",
+        Desc = "Unlock all tiles you can afford right now",
+        Callback = function()
+            local lockedTiles = getLockedTilesForCurrentIsland()
+            local netWorth = Dependencies.getPlayerNetWorth and Dependencies.getPlayerNetWorth() or 0
+            local unlockedCount = 0
+            
+            for _, lockInfo in ipairs(lockedTiles) do
+                local cost = tonumber(lockInfo.cost) or 0
+                if netWorth >= cost then
+                    if unlockTile(lockInfo) then
+                        unlockedCount = unlockedCount + 1
+                        task.wait(0.1)
+                    end
+                end
+            end
+            
+            WindUI:Notify({ 
+                Title = "🔓 Unlock Complete", 
+                Content = string.format("Unlocked %d tiles! 🎉", unlockedCount), 
+                Duration = 3 
+            })
+        end
+    })
+
+    -- Auto Delete functionality
+    local autoDeleteEnabled = false
+    local autoDeleteThread = nil
+    local deleteSpeedThreshold = 100 -- Default speed threshold
+
+    -- Enhanced number parsing function to handle K, M, B, T suffixes and commas
+    local function parseNumberWithSuffix(text)
+        if not text or type(text) ~= "string" then return nil end
+        
+        -- Remove common prefixes and suffixes
+        local cleanText = text:gsub("[$€£¥₹/s]", ""):gsub("^%s*(.-)%s*$", "%1") -- Remove currency symbols and /s
+        
+        -- Handle comma-separated numbers (e.g., "1,234,567")
+        cleanText = cleanText:gsub(",", "")
+        
+        -- Try to match number with suffix (e.g., "1.5K", "2.3M", "1.2B")
+        local number, suffix = cleanText:match("^([%d%.]+)([KkMmBbTt]?)$")
+        
+        if not number then
+            -- Try to extract just a number if no suffix pattern matches
+            number = cleanText:match("([%d%.]+)")
+        end
+        
+        local numValue = tonumber(number)
+        if not numValue then return nil end
+        
+        -- Apply suffix multiplier
+        if suffix then
+            local lowerSuffix = string.lower(suffix)
+            if lowerSuffix == "k" then
+                numValue = numValue * 1000
+            elseif lowerSuffix == "m" then
+                numValue = numValue * 1000000
+            elseif lowerSuffix == "b" then
+                numValue = numValue * 1000000000
+            elseif lowerSuffix == "t" then
+                numValue = numValue * 1000000000000
+            end
+        end
+        
+        return numValue
+    end
+
+    local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
+        Title = "Speed Threshold",
+        Desc = "Delete pets with speed below this value (supports K, M, B, T suffixes)",
+        Value = "100",
+        Callback = function(value)
+            local parsedValue = parseNumberWithSuffix(value)
+            if parsedValue and parsedValue > 0 then
+                deleteSpeedThreshold = parsedValue
+                print(string.format("🗑️ Speed threshold updated to: %.0f (from input: %s)", deleteSpeedThreshold, value))
+            else
+                -- Fallback to simple number parsing
+                deleteSpeedThreshold = tonumber(value) or 100
+            end
+        end
+    })
+
+    -- Auto Delete function
+    local function runAutoDelete()
+        while autoDeleteEnabled do
+            local ok, err = pcall(function()
+                -- Get all pets in workspace.Pets
+                local petsFolder = workspace:FindFirstChild("Pets")
+                if not petsFolder then
+                    task.wait(1)
+                    return
+                end
+                
+                local playerUserId = Players.LocalPlayer.UserId
+                local petsToDelete = {}
+                local scannedCount = 0
+                
+                -- Scan all pets and check their speed
+                for _, pet in ipairs(petsFolder:GetChildren()) do
+                    if not autoDeleteEnabled then break end
+                    
+                    if pet:IsA("Model") then
+                        scannedCount = scannedCount + 1
+                        
+                        -- Check if pet belongs to player
+                        local petUserId = pet:GetAttribute("UserId")
+                        if petUserId and tonumber(petUserId) == playerUserId then
+                            -- Check pet's speed
+                            local rootPart = pet:FindFirstChild("RootPart")
+                            if rootPart then
+                                local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
+                                if idleGUI then
+                                    local speedText = idleGUI:FindFirstChild("Speed")
+                                    if speedText and speedText:IsA("TextLabel") then
+                                        -- Enhanced speed parsing for formats like "$100/s", "$1.5K/s", "$2.3M/s", "$1.2B/s"
+                                        local speedTextValue = speedText.Text
+                                        local speedValue = parseNumberWithSuffix(speedTextValue)
+                                        
+                                        -- Debug logging for threshold checking
+                                        if speedValue then
+                                            print(string.format("🔍 Pet: %s, Speed: %s (parsed: %.0f), Threshold: %.0f", 
+                                                pet.Name, speedTextValue, speedValue, deleteSpeedThreshold))
+                                            
+                                            if speedValue < deleteSpeedThreshold then
+                                                table.insert(petsToDelete, {
+                                                    name = pet.Name,
+                                                    speed = speedValue,
+                                                    speedText = speedTextValue
+                                                })
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                if #petsToDelete == 0 then
+                    task.wait(2)
+                    return
+                end
+                
+                -- Delete pets one by one
+                for i, petInfo in ipairs(petsToDelete) do
+                    if not autoDeleteEnabled then break end
+                    
+                    -- Fire delete remote
+                    local args = {
+                        "Del",
+                        petInfo.name
+                    }
+                    
+                    local success = pcall(function()
+                        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                    end)
+                    
+                    if success then
+                        task.wait(0.5) -- Wait between deletions
+                    else
+                        task.wait(0.2)
+                    end
+                end
+                
+                task.wait(3) -- Wait before next scan
+                
+            end)
+            
+            if not ok then
+                warn("Auto Delete error: " .. tostring(err))
+                task.wait(1)
+            end
+        end
+    end
+
+    local autoDeleteToggle = Tabs.PlaceTab:Toggle({
+        Title = "Auto Delete",
+        Desc = "Automatically delete slow pets (only your pets)",
+        Value = false,
+        Callback = function(state)
+            autoDeleteEnabled = state
+            
+            if Dependencies.waitForSettingsReady then
+                Dependencies.waitForSettingsReady(0.2)
+            end
+            
+            if state and not autoDeleteThread then
+                autoDeleteThread = task.spawn(function()
+                    runAutoDelete()
+                    autoDeleteThread = nil
+                end)
+                WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 3 })
+            elseif (not state) and autoDeleteThread then
+                WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 3 })
+            end
+        end
+    })
+
+    -- Return the UI elements for external registration
+    return {
+        placeEggDropdown = placeEggDropdown,
+        placeMutationDropdown = placeMutationDropdown,
+        autoPlaceToggle = autoPlaceToggle,
+        autoUnlockToggle = autoUnlockToggle,
+        autoDeleteToggle = autoDeleteToggle,
+        autoDeleteSpeedSlider = autoDeleteSpeedSlider,
+    }
 end
 
 -- ============ Public API ============
