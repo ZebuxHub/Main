@@ -54,6 +54,7 @@ local statusParagraph
 local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
+local selectedTargetName = "Random Player" -- cache target selection
 
 -- Webhook/session reporting
 local webhookUrl = ""
@@ -189,6 +190,21 @@ local function refreshPlayerList()
     end
     
     return playerList
+end
+
+-- Resolve target player by either Username or DisplayName (case-insensitive)
+local function resolveTargetPlayerByName(name)
+    if not name or name == "" then return nil end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name == name or p.DisplayName == name then
+            return p
+        end
+        -- case-insensitive fallback
+        if string.lower(p.Name) == string.lower(name) or string.lower(p.DisplayName) == string.lower(name) then
+            return p
+        end
+    end
+    return nil
 end
 
 -- Get random player
@@ -547,33 +563,20 @@ local function processTrash()
             includeEggMutations = success and result or {}
         end
         
-        -- Get target player
-        local targetPlayer = nil
-        print("🔍 Checking target player selection...")
-        
-        if targetPlayerDropdown and targetPlayerDropdown.GetValue then
-            local success, result = pcall(function() return targetPlayerDropdown:GetValue() end)
-            print("📋 Dropdown GetValue success:", success, "result:", tostring(result))
-            
-            if success and result then
-                if result == "Random Player" then
-                    targetPlayer = getRandomPlayer()
-                    print("🎲 Using random player: " .. tostring(targetPlayer))
-                else
-                    -- Use the specifically selected player
-                    targetPlayer = result
-                    print("🎯 Using selected target player: " .. targetPlayer)
-                end
-            else
-                targetPlayer = getRandomPlayer()
-                print("⚠️ Dropdown failed, using random player: " .. tostring(targetPlayer))
+        -- Get target player (robust): prefer cached selection, resolve actual Player
+        local targetPlayerName = selectedTargetName
+        local targetPlayerObj = nil
+        if targetPlayerName and targetPlayerName ~= "Random Player" then
+            targetPlayerObj = resolveTargetPlayerByName(targetPlayerName)
+            if not targetPlayerObj then
+                print("⚠️ Selected player not found, falling back to random")
+                targetPlayerObj = getRandomPlayer()
             end
         else
-            targetPlayer = getRandomPlayer()
-            print("❌ No dropdown found, using random player: " .. tostring(targetPlayer))
+            targetPlayerObj = getRandomPlayer()
         end
-        
-        print("✅ Final target player for this cycle: " .. tostring(targetPlayer))
+        local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
+        print("✅ Final target player for this cycle: " .. tostring(targetPlayer or "nil"))
         print("🎮 Send mode: " .. sendMode)
         
         -- Send items to other players
@@ -757,7 +760,9 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Select player to send items to (Random = different player each time)",
         Values = refreshPlayerList(),
         Value = "Random Player",
-        Callback = function(selection) end
+        Callback = function(selection)
+            selectedTargetName = selection or "Random Player"
+        end
     })
     
     TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
