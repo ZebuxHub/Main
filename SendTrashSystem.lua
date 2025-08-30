@@ -340,7 +340,12 @@ end
 local function updateTargetPlayerDropdown()
     if not targetPlayerDropdown or not targetPlayerDropdown.SetValues then return end
     local newValues = refreshPlayerList()
-    pcall(function() targetPlayerDropdown:SetValues(newValues) end)
+    -- Prefer WindUI :Refresh if available (matches example usage)
+    if targetPlayerDropdown.Refresh then
+        pcall(function() targetPlayerDropdown:Refresh(newValues) end)
+    else
+        pcall(function() targetPlayerDropdown:SetValues(newValues) end)
+    end
     -- Preserve previous selections that still exist
     local existSet = {}
     for _, v in ipairs(newValues) do existSet[v] = true end
