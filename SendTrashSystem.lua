@@ -52,7 +52,7 @@ local statusParagraph
 local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
-local selectedTargetName = "Random Player"
+local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 
@@ -141,32 +141,55 @@ local function getAvatarUrl(userId)
 end
 
 local function sendWebhookSummary()
-    if webhookSent or webhookUrl == "" then return end
+    if webhookSent or webhookUrl == "" or #sessionLogs == 0 then return end
     local totalSent = sessionLimits.sendPetCount
-    local fields = { { name = "Items Sent", value = tostring(totalSent), inline = true } }
-    local details = ""
-    local startIdx = math.max(1, #sessionLogs - 9)
-    for i = startIdx, #sessionLogs do
-        local it = sessionLogs[i]
-        local emoji = (it.kind == "egg" and EggEmojiMap[it.type or ""]) or (it.kind == "pet" and "🐾") or "📦"
-        local line = string.format("%s %s • %s → %s", emoji, it.type or it.uid, it.mutation and ("[" .. it.mutation .. "]") or "[None]", it.receiver or "?")
-        details = details .. line .. "\n"
+
+    -- Group events by receiver and by type/mutation for readable blocks
+    local byReceiver = {}
+    for _, it in ipairs(sessionLogs) do
+        local r = it.receiver or "?"
+        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0 }
+        local key = (it.type or it.uid or "?") .. "|" .. (it.mutation or "None") .. "|" .. (it.kind or "?")
+        local rec = byReceiver[r]
+        rec.counts[key] = (rec.counts[key] or 0) + 1
+        rec.list[key] = { type = it.type, mutation = it.mutation or "None", kind = it.kind }
+        rec.total = rec.total + 1
     end
+
+    -- Build a multi-line description similar to your example
+    local lines = {}
+    table.insert(lines, "👤 Trader\n" .. (Players.LocalPlayer and Players.LocalPlayer.Name or "Player"))
+    table.insert(lines, "🎯 Targets")
+    for receiver, rec in pairs(byReceiver) do
+        table.insert(lines, string.format("- %s received %d", receiver, rec.total))
+    end
+    table.insert(lines, "📦 Items")
+    for receiver, rec in pairs(byReceiver) do
+        for key, _ in pairs(rec.counts) do
+            local entry = rec.list[key]
+            local emoji = (entry.kind == "egg" and EggEmojiMap[entry.type or ""]) or (entry.kind == "pet" and "🐾") or "📦"
+            local count = rec.counts[key]
+            table.insert(lines, string.format("%s %s [%s] - %d", emoji, entry.type or "?", entry.mutation or "None", count))
+        end
+    end
+    local description = table.concat(lines, "\n")
+
+    -- Visuals
     local last = sessionLogs[#sessionLogs]
     local thumb = last and getIconUrlFor(last.kind, last.type) or nil
-    local authorName = lastReceiverName or (sessionLogs[#sessionLogs] and sessionLogs[#sessionLogs].receiver) or nil
-    local authorIcon = lastReceiverId and getAvatarUrl(lastReceiverId) or nil
+    local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
+    local authorIcon = Players.LocalPlayer and getAvatarUrl(Players.LocalPlayer.UserId) or nil
+
     local payload = {
         embeds = {
             {
-                title = "Send Trash • Session Summary",
-                description = details ~= "" and details or "No items were sent.",
+                title = "Trade Summary",
+                description = description,
                 color = 5814783,
-                fields = fields,
+                fields = { { name = "Total Sent", value = tostring(totalSent), inline = true } },
                 thumbnail = thumb and { url = thumb } or nil,
-                image = thumb and { url = thumb } or nil,
                 author = authorName and { name = authorName, icon_url = authorIcon } or nil,
-                footer = { text = "Build A Zoo" },
+                footer = { text = "Send Trash" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
         }
@@ -332,14 +355,6 @@ local function getRandomPlayer()
     end
     
     return nil
-end
-
--- Safely update target dropdown values and keep current selections when possible
-local function updateTargetPlayerDropdown()
-    if not targetPlayerDropdown or not targetPlayerDropdown.SetValues then return end
-    local newValues = refreshPlayerList()
-    pcall(function() targetPlayerDropdown:SetValues(newValues) end)
-    if targetPlayerDropdown.Select then pcall(function() targetPlayerDropdown:Select(selectedTargetName) end) end
 end
 
 -- Convert dropdown selection into a plain string list
@@ -744,11 +759,14 @@ local function processTrash()
         end
         
         -- Get target player (robust): prefer cached selection, resolve actual Player
-        -- Resolve single target or random
+        local targetPlayerName = selectedTargetName
         local targetPlayerObj = nil
-        if selectedTargetName and selectedTargetName ~= "Random Player" then
-            targetPlayerObj = resolveTargetPlayerByName(selectedTargetName)
-            if not targetPlayerObj then targetPlayerObj = getRandomPlayer() end
+        if targetPlayerName and targetPlayerName ~= "Random Player" then
+            targetPlayerObj = resolveTargetPlayerByName(targetPlayerName)
+            if not targetPlayerObj then
+                print("⚠️ Selected player not found, falling back to random")
+                targetPlayerObj = getRandomPlayer()
+            end
         else
             targetPlayerObj = getRandomPlayer()
         end
@@ -868,9 +886,49 @@ function SendTrashSystem.Init(dependencies)
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
             else
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
-                -- Always send summary on manual stop
-                task.spawn(sendWebhookSummary)
-                webhookSent = true
+                -- Send webhook once per session when turned off
+                if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+                    task.spawn(function()
+                        local success, err = pcall(function()
+                            local totalSent = sessionLimits.sendPetCount
+                            local totalSold = sessionLimits.sellPetCount
+                            local fields = {}
+                            table.insert(fields, { name = "Items Sent", value = tostring(totalSent), inline = true })
+                            
+                            -- Build concise description list (last 10 items)
+                            local details = ""
+                            local startIdx = math.max(1, #sessionLogs - 9)
+                            for i = startIdx, #sessionLogs do
+                                local it = sessionLogs[i]
+                                details = details .. string.format("%s • %s [%s] → %s\n", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
+                            end
+                            
+                            local payload = {
+                                embeds = {
+                                    {
+                                        title = "Send Trash Session Summary",
+                                        description = details ~= "" and details or "No items were sent.",
+                                        color = 5814783,
+                                        fields = fields,
+                                        footer = { text = "Build A Zoo" },
+                                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                                    }
+                                }
+                            }
+                            local json = HttpService:JSONEncode(payload)
+                            http_request = http_request or request or (syn and syn.request)
+                            if http_request then
+                                http_request({
+                                    Url = webhookUrl,
+                                    Method = "POST",
+                                    Headers = { ["Content-Type"] = "application/json" },
+                                    Body = json,
+                                })
+                            end
+                        end)
+                        if success then webhookSent = true end
+                    end)
+                end
             end
         end
     })
@@ -888,7 +946,7 @@ function SendTrashSystem.Init(dependencies)
     
     -- Target player dropdown
     targetPlayerDropdown = TrashTab:Dropdown({
-        Title = "🎯 Target Player",
+        Title = "🎯 Target Player (for sending)",
         Desc = "Select player to send items to (Random = different player each time)",
         Values = refreshPlayerList(),
         Value = "Random Player",
@@ -896,7 +954,6 @@ function SendTrashSystem.Init(dependencies)
             selectedTargetName = selection or "Random Player"
         end
     })
-    task.defer(updateTargetPlayerDropdown)
     
     TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
     
