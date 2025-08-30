@@ -41,9 +41,12 @@ local targetPlayerDropdown
 local sendModeDropdown
 local sendPetTypeDropdown
 local sendPetMutationDropdown
+local sendEggTypeDropdown
+local sendEggMutationDropdown
 local sellPetTypeDropdown
 local sellPetMutationDropdown
 local speedThresholdSlider
+local sessionLimitInput
 local statusParagraph
 
 -- State variables
@@ -56,7 +59,8 @@ local sessionLimits = {
     sendPetCount = 0,
     sellPetCount = 0,
     maxSendPet = 50,
-    maxSellPet = 50
+    maxSellPet = 50,
+    limitReachedNotified = false -- Track if user has been notified
 }
 
 -- Helper function to safely get attribute
@@ -96,6 +100,40 @@ local function getAllPetTypes()
     local sortedTypes = {}
     for petType in pairs(types) do
         table.insert(sortedTypes, petType)
+    end
+    table.sort(sortedTypes)
+    
+    return sortedTypes
+end
+
+-- Get all egg types from inventory + hardcoded list
+local function getAllEggTypes()
+    local types = {}
+    
+    -- Add hardcoded egg types
+    for _, eggType in ipairs(HardcodedEggTypes) do
+        types[eggType] = true
+    end
+    
+    -- Add types from inventory
+    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+        local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+        if eggsFolder then
+            for _, eggData in pairs(eggsFolder:GetChildren()) do
+                if eggData:IsA("Configuration") then
+                    local eggType = safeGetAttribute(eggData, "Type", nil)
+                    if eggType then
+                        types[eggType] = true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Convert to sorted array
+    local sortedTypes = {}
+    for eggType in pairs(types) do
+        table.insert(sortedTypes, eggType)
     end
     table.sort(sortedTypes)
     
@@ -293,11 +331,14 @@ end
 -- Send item (pet or egg) to player
 local function sendItemToPlayer(item, playerName, itemType)
     if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-        WindUI:Notify({
-            Title = "⚠️ Send Limit",
-            Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")",
-            Duration = 3
-        })
+        if not sessionLimits.limitReachedNotified then
+            WindUI:Notify({
+                Title = "⚠️ Send Limit Reached",
+                Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")",
+                Duration = 5
+            })
+            sessionLimits.limitReachedNotified = true
+        end
         return false
     end
     
@@ -343,11 +384,14 @@ end
 -- Sell pet (only pets, no eggs)
 local function sellPet(pet)
     if sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
-        WindUI:Notify({
-            Title = "⚠️ Sell Limit",
-            Content = "Reached maximum sell limit for this session (" .. sessionLimits.maxSellPet .. ")",
-            Duration = 3
-        })
+        if not sessionLimits.limitReachedNotified then
+            WindUI:Notify({
+                Title = "⚠️ Sell Limit Reached",
+                Content = "Reached maximum sell limit for this session (" .. sessionLimits.maxSellPet .. ")",
+                Duration = 5
+            })
+            sessionLimits.limitReachedNotified = true
+        end
         return false
     end
     
@@ -493,18 +537,32 @@ local function processTrash()
             continue
         end
         
-        -- Get filter settings
-        local excludeTypes = {}
-        local excludeMutations = {}
+        -- Get filter settings for pets
+        local excludePetTypes = {}
+        local excludePetMutations = {}
         
         if sendPetTypeDropdown and sendPetTypeDropdown.GetValue then
             local success, result = pcall(function() return sendPetTypeDropdown:GetValue() end)
-            excludeTypes = success and result or {}
+            excludePetTypes = success and result or {}
         end
         
         if sendPetMutationDropdown and sendPetMutationDropdown.GetValue then
             local success, result = pcall(function() return sendPetMutationDropdown:GetValue() end)
-            excludeMutations = success and result or {}
+            excludePetMutations = success and result or {}
+        end
+        
+        -- Get filter settings for eggs
+        local excludeEggTypes = {}
+        local excludeEggMutations = {}
+        
+        if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
+            local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
+            excludeEggTypes = success and result or {}
+        end
+        
+        if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
+            local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
+            excludeEggMutations = success and result or {}
         end
         
         -- Get target player
@@ -538,45 +596,29 @@ local function processTrash()
         
         -- Send items to other players
         local sentAnyItem = false
-        local sentCount = 0
-        local maxBatchSize = 3
         
         -- Try to send pets first
         if sendMode == "Pets" or sendMode == "Both" then
             for _, pet in ipairs(petInventory) do
-                if shouldSendItem(pet, excludeTypes, excludeMutations) and targetPlayer then
+                if shouldSendItem(pet, excludePetTypes, excludePetMutations) and targetPlayer then
                     print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(pet, targetPlayer, "pet")
                     sentAnyItem = true
-                    sentCount = sentCount + 1
-                    
-                    if sentCount >= maxBatchSize then
-                        print("📦 Sent batch of " .. sentCount .. " pets")
-                        break -- Send batch of 3
-                    end
-                    
-                    print("⏸️ Waiting 0.3 seconds before next item...")
                     wait(0.3)
+                    break -- Send one at a time
                 end
             end
         end
         
-        -- Try to send eggs if batch not full
-        if sentCount < maxBatchSize and (sendMode == "Eggs" or sendMode == "Both") then
+        -- Try to send eggs if no pets were sent
+        if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
-                if shouldSendItem(egg, excludeTypes, excludeMutations) and targetPlayer then
+                if shouldSendItem(egg, excludeEggTypes, excludeEggMutations) and targetPlayer then
                     print("📦 About to send egg " .. egg.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
                     sentAnyItem = true
-                    sentCount = sentCount + 1
-                    
-                    if sentCount >= maxBatchSize then
-                        print("📦 Sent batch of " .. sentCount .. " items")
-                        break -- Send batch of 3
-                    end
-                    
-                    print("⏸️ Waiting 0.3 seconds before next item...")
                     wait(0.3)
+                    break -- Send one at a time
                 end
             end
         end
@@ -585,7 +627,6 @@ local function processTrash()
         if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
             local sellExcludeTypes = {}
             local sellExcludeMutations = {}
-            local soldCount = 0
             
             if sellPetTypeDropdown and sellPetTypeDropdown.GetValue then
                 local success, result = pcall(function() return sellPetTypeDropdown:GetValue() end)
@@ -600,14 +641,8 @@ local function processTrash()
             for _, pet in ipairs(petInventory) do
                 if shouldSendItem(pet, sellExcludeTypes, sellExcludeMutations) then
                     sellPet(pet)
-                    soldCount = soldCount + 1
-                    
-                    if soldCount >= maxBatchSize then
-                        print("💰 Sold batch of " .. soldCount .. " pets")
-                        break -- Sell batch of 3
-                    end
-                    
                     wait(0.3)
+                    break -- Sell one at a time
                 end
             end
         end
@@ -656,6 +691,23 @@ function SendTrashSystem.Init(dependencies)
             else
                 print("Auto Delete: Disabled")
             end
+        end,
+    })
+    
+    -- Session limit input
+    sessionLimitInput = TrashTab:Input({
+        Title = "Session Limit",
+        Desc = "Maximum items to send/sell per session (default: 50)",
+        Default = "50",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            local numValue = tonumber(value) or 50
+            if numValue < 1 then numValue = 1 end -- Minimum of 1
+            sessionLimits.maxSendPet = numValue
+            sessionLimits.maxSellPet = numValue
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            print("Session limits updated: " .. numValue .. " items per session")
         end,
     })
     
@@ -722,6 +774,30 @@ function SendTrashSystem.Init(dependencies)
         Callback = function(selection) end
     })
     
+    TrashTab:Section({ Title = "🥚 Send Egg Filters", Icon = "mail" })
+    
+    -- Send egg type filter
+    sendEggTypeDropdown = TrashTab:Dropdown({
+        Title = "🚫 Exclude Egg Types (from sending)",
+        Desc = "Select egg types to NOT send (empty = send all types)",
+        Values = getAllEggTypes(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection) end
+    })
+    
+    -- Send egg mutation filter
+    sendEggMutationDropdown = TrashTab:Dropdown({
+        Title = "🚫 Exclude Egg Mutations (from sending)", 
+        Desc = "Select mutations to NOT send (empty = send all mutations)",
+        Values = getAllMutations(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection) end
+    })
+    
     TrashTab:Section({ Title = "💰 Sell Pet Filters", Icon = "dollar-sign" })
     
     -- Sell pet type filter
@@ -763,6 +839,12 @@ function SendTrashSystem.Init(dependencies)
             if sendPetMutationDropdown and sendPetMutationDropdown.SetValues then
                 pcall(function() sendPetMutationDropdown:SetValues(getAllMutations()) end)
             end
+            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
+                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
+            end
+            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
+                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
+            end
             if sellPetTypeDropdown and sellPetTypeDropdown.SetValues then
                 pcall(function() sellPetTypeDropdown:SetValues(getAllPetTypes()) end)
             end
@@ -803,6 +885,7 @@ function SendTrashSystem.Init(dependencies)
         Callback = function()
             sessionLimits.sendPetCount = 0
             sessionLimits.sellPetCount = 0
+            sessionLimits.limitReachedNotified = false -- Reset notification
             actionCounter = 0
             updateStatus()
             
@@ -821,9 +904,12 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("targetPlayer", targetPlayerDropdown)
         Config:Register("sendPetTypeFilter", sendPetTypeDropdown)
         Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
+        Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
+        Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
         Config:Register("sellPetTypeFilter", sellPetTypeDropdown)
         Config:Register("sellPetMutationFilter", sellPetMutationDropdown)
         Config:Register("speedThreshold", speedThresholdSlider)
+        Config:Register("sessionLimit", sessionLimitInput)
     end
     
     -- Initial status update
