@@ -45,6 +45,144 @@ local Window = WindUI:CreateWindow({
     -- No keysystem
 })
 
+-- ============ Mobile Floating Toggle Button System ============
+local FloatingToggle = {}
+local toggleButton = nil
+local isWindowVisible = true
+
+local function createFloatingToggle()
+    local Players = game:GetService("Players")
+    local UserInputService = game:GetService("UserInputService")
+    local LocalPlayer = Players.LocalPlayer
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Create ScreenGui for floating button
+    local floatingGui = Instance.new("ScreenGui")
+    floatingGui.Name = "ZebuxFloatingToggle"
+    floatingGui.ResetOnSpawn = false
+    floatingGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    floatingGui.Parent = PlayerGui
+    
+    -- Create floating button
+    local button = Instance.new("TextButton")
+    button.Name = "FloatingToggle"
+    button.Size = UDim2.fromOffset(60, 60)
+    button.Position = UDim2.new(0, 10, 0.5, -30) -- Left side, center vertically
+    button.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
+    button.BorderSizePixel = 0
+    button.Text = "🏠"
+    button.TextColor3 = Color3.white
+    button.TextScaled = true
+    button.Font = Enum.Font.SourceSansBold
+    button.ZIndex = 10000
+    button.Parent = floatingGui
+    
+    -- Add corner radius
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 30)
+    corner.Parent = button
+    
+    -- Add shadow/stroke
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.7
+    stroke.Parent = button
+    
+    -- Add glow effect
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 122, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 200))
+    })
+    gradient.Rotation = 45
+    gradient.Parent = button
+    
+    -- Button functionality
+    button.MouseButton1Click:Connect(function()
+        isWindowVisible = not isWindowVisible
+        Window:SetOpen(isWindowVisible)
+        
+        -- Update button appearance based on state
+        if isWindowVisible then
+            button.Text = "🏠"
+            button.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
+            gradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 122, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 200))
+            })
+        else
+            button.Text = "⚡"
+            button.BackgroundColor3 = Color3.fromRGB(255, 69, 58)
+            gradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 69, 58)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 50, 40))
+            })
+        end
+        
+        -- Visual feedback
+        local originalSize = button.Size
+        button:TweenSize(UDim2.fromOffset(70, 70), "Out", "Quad", 0.1, true, function()
+            button:TweenSize(originalSize, "Out", "Quad", 0.1, true)
+        end)
+    end)
+    
+    -- Hover effects for better mobile interaction
+    button.MouseEnter:Connect(function()
+        stroke.Transparency = 0.3
+        button:TweenSize(UDim2.fromOffset(65, 65), "Out", "Quad", 0.2, true)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        stroke.Transparency = 0.7
+        button:TweenSize(UDim2.fromOffset(60, 60), "Out", "Quad", 0.2, true)
+    end)
+    
+    -- Make draggable for user positioning
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    button.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = button.Position
+        end
+    end)
+    
+    button.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    button.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    toggleButton = button
+    
+    -- Show initial notification
+    WindUI:Notify({ 
+        Title = "📱 Mobile Toggle Ready", 
+        Content = "Floating toggle button created! Drag to reposition. Tap to open/close menu.", 
+        Duration = 5 
+    })
+end
+
+FloatingToggle.Create = createFloatingToggle
+FloatingToggle.GetButton = function() return toggleButton end
+
+-- Create floating toggle immediately for mobile users
+task.spawn(function()
+    task.wait(2) -- Wait for UI to load
+    FloatingToggle.Create()
+end)
+
 local Tabs = {}
 Tabs.MainSection = Window:Section({ Title = "🤖 Auto Helpers", Opened = true })
 Tabs.AutoTab = Tabs.MainSection:Tab({ Title = "🥚 | Buy Eggs"})
@@ -130,6 +268,21 @@ local function loadAllSettings()
         end
     end
     
+    -- Load additional settings (money delay, etc.)
+    local additionalSuccess, additionalData = pcall(function()
+        if isfile("Zebux_AdditionalSettings.json") then
+            local jsonData = readfile("Zebux_AdditionalSettings.json")
+            return game:GetService("HttpService"):JSONDecode(jsonData)
+        end
+    end)
+    
+    if additionalSuccess and additionalData then
+        if additionalData.autoClaimDelayValue then
+            autoClaimDelayValue = additionalData.autoClaimDelayValue
+            autoClaimDelay = math.clamp(autoClaimDelayValue / 1000, 0, 2)
+        end
+    end
+    
     -- Load auto place selections
     local autoPlaceSuccess, autoPlaceData = pcall(function()
         if isfile("Zebux_AutoPlaceSelections.json") then
@@ -181,12 +334,22 @@ local function saveAllSettings()
         mutations = selectedMutations
     }
     
+    -- Save additional settings that WindUI doesn't handle
+    local additionalSettings = {
+        autoClaimDelayValue = autoClaimDelayValue -- Save the raw slider value
+    }
+    
     pcall(function()
         writefile("Zebux_AutoPlaceSelections.json", game:GetService("HttpService"):JSONEncode(autoPlaceSelections))
     end)
     
     pcall(function()
         writefile("Zebux_EggSelections.json", game:GetService("HttpService"):JSONEncode(eggSelections))
+    end)
+    
+    -- Save additional settings
+    pcall(function()
+        writefile("Zebux_AdditionalSettings.json", game:GetService("HttpService"):JSONEncode(additionalSettings))
     end)
     
     -- Save fruit selections
@@ -503,7 +666,7 @@ local function getActiveBelt(islandName)
         local samplePos
         for _, ch in ipairs(children) do
             if ch:IsA("Model") then
-                eggs += 1
+                eggs = eggs + 1
                 if not samplePos then
                     local ok, cf = pcall(function() return ch:GetPivot() end)
                     if ok and cf then samplePos = cf.Position end
@@ -1321,7 +1484,59 @@ local function getEggMutationFromGUI(eggUID)
                             if mutateText and mutateText:IsA("TextLabel") then
                                 local mutationText = mutateText.Text
                                 if mutationText and mutationText ~= "" then
-                                    -- Map "Dino" to "Jurassic" for consistency
+                                    -- Map "Dino" to "Jurassic" for consistency (CRITICAL FIX)
+                                    if string.lower(mutationText) == "dino" then
+                                        return "Jurassic"
+                                    end
+                                    return mutationText
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- Function to read mutation from egg GUI
+local function getEggMutation(eggUID)
+    if not eggUID then return nil end
+    
+    local islandName = getAssignedIslandName()
+    if not islandName then return nil end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return nil end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return nil end
+    
+    local conveyor = env:FindFirstChild("Conveyor")
+    if not conveyor then return nil end
+    
+    -- Check all conveyor belts
+    for i = 1, 9 do
+        local conveyorBelt = conveyor:FindFirstChild("Conveyor" .. i)
+        if conveyorBelt then
+            local belt = conveyorBelt:FindFirstChild("Belt")
+            if belt then
+                local eggModel = belt:FindFirstChild(eggUID)
+                if eggModel and eggModel:IsA("Model") then
+                    local rootPart = eggModel:FindFirstChild("RootPart")
+                    if rootPart then
+                        local eggGUI = rootPart:FindFirstChild("GUI/EggGUI")
+                        if eggGUI then
+                            local mutateText = eggGUI:FindFirstChild("Mutate")
+                            if mutateText and mutateText:IsA("TextLabel") then
+                                local mutationText = mutateText.Text
+                                if mutationText and mutationText ~= "" then
+                                    -- Handle special case: if mutation is "Dino", return "Jurassic"
                                     if string.lower(mutationText) == "dino" then
                                         return "Jurassic"
                                     end
@@ -1410,6 +1625,7 @@ end
 local autoClaimEnabled = false
 local autoClaimThread = nil
 local autoClaimDelay = 0.1 -- seconds between claims
+local autoClaimDelayValue = 100 -- slider value (0-1000) for persistence
 
 local function getOwnedPetNames()
     local names = {}
@@ -1492,12 +1708,20 @@ local autoClaimToggle = Tabs.ClaimTab:Toggle({
 local autoClaimDelaySlider = Tabs.ClaimTab:Slider({
     Title = "⏰ Claim Speed",
     Desc = "How fast to collect money (lower = faster)",
-    Default = 100,
+    Default = autoClaimDelayValue,
     Min = 0,
     Max = 1000,
     Rounding = 0,
     Callback = function(value)
+        autoClaimDelayValue = value -- Store the raw slider value for persistence
         autoClaimDelay = math.clamp((tonumber(value) or 100) / 1000, 0, 2)
+        
+        -- Show current delay in notification
+        WindUI:Notify({ 
+            Title = "⏰ Claim Speed Updated", 
+            Content = string.format("Money collection delay: %.3fs", autoClaimDelay), 
+            Duration = 2 
+        })
     end
 })
 
@@ -1512,7 +1736,7 @@ Tabs.ClaimTab:Button({
         end
         local count = 0
         for _, n in ipairs(names) do
-            if claimMoneyForPet(n) then count += 1 end
+            if claimMoneyForPet(n) then count = count + 1 end
             task.wait(0.05)
         end
         WindUI:Notify({ Title = "💰 Auto Claim", Content = string.format("Got money from %d pets! 🎉", count), Duration = 3 })
@@ -1859,9 +2083,10 @@ local EggData = {
 local MutationData = {
     Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
     Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electirc = { Name = "Electric", Icon = "⚡", Rarity = 50 },
+    Electric = { Name = "Electric", Icon = "⚡", Rarity = 50 },
     Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
+    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 },
+    Dino = { Name = "Jurassic", Icon = "🦕", Rarity = 100 } -- Alias for Jurassic
 }
 
 -- Load UI modules
@@ -2182,13 +2407,13 @@ local function runAutoBuy()
 
         if not islandName or islandName == "" then
             task.wait(1)
-            continue
+            goto continue_main_loop
         end
 
         local activeBelt = getActiveBelt(islandName)
         if not activeBelt then
             task.wait(1)
-            continue
+            goto continue_main_loop
         end
 
         -- Setup monitoring for this belt
@@ -2203,6 +2428,8 @@ local function runAutoBuy()
             end
             task.wait(0.5)
         end
+        
+        ::continue_main_loop::
     end
     
     cleanupBeltConnections()
@@ -3104,7 +3331,7 @@ local function runAutoPlace()
         
         if not islandName or islandName == "" then
             task.wait(1)
-            continue
+            goto continue_auto_place
         end
         
         -- Setup monitoring
@@ -3121,6 +3348,8 @@ local function runAutoPlace()
             end
             task.wait(0.5)
         end
+        
+        ::continue_auto_place::
     end
     
     cleanupPlaceConnections()
@@ -3696,10 +3925,10 @@ local autoUpgradeToggle = Tabs.ShopTab:Toggle({
                         for _, a in ipairs(actions) do
                             setShopStatus(string.format("Upgrading %d (cost %s)", a.idx, tostring(a.cost)))
                             if fireConveyorUpgrade(a.idx) then
-                                shopStatus.upgradesDone += 1
+                                shopStatus.upgradesDone = shopStatus.upgradesDone + 1
                                 purchasedUpgrades[a.idx] = true
                             end
-                            shopStatus.upgradesTried += 1
+                            shopStatus.upgradesTried = shopStatus.upgradesTried + 1
                             task.wait(0.2)
                         end
                     end
@@ -3728,10 +3957,10 @@ Tabs.ShopTab:Button({
         end
         for _, a in ipairs(actions) do
             if fireConveyorUpgrade(a.idx) then
-                shopStatus.upgradesDone += 1
+                shopStatus.upgradesDone = shopStatus.upgradesDone + 1
                 purchasedUpgrades[a.idx] = true
             end
-            shopStatus.upgradesTried += 1
+            shopStatus.upgradesTried = shopStatus.upgradesTried + 1
             task.wait(0.1)
         end
         setShopStatus("Upgraded " .. tostring(#actions) .. " items!")
@@ -4096,6 +4325,11 @@ local function registerUIElements()
     -- Register sliders/inputs
     registerIfExists("autoClaimDelaySlider", autoClaimDelaySlider)
     registerIfExists("autoDeleteSpeedSlider", autoDeleteSpeedSlider)
+    
+    -- Manually update slider value after registration
+    if autoClaimDelaySlider and autoClaimDelaySlider.SetValue then
+        autoClaimDelaySlider:SetValue(autoClaimDelayValue)
+    end
 
 end
 
@@ -4537,7 +4771,7 @@ task.spawn(function()
     -- Wait until settings load sequence either completed or shortly timed in
     local tries = 0
     while not (zebuxConfig and autoFeedToggle) and tries < 50 do
-        tries += 1
+        tries = tries + 1
         task.wait(0.05)
     end
     if zebuxConfig and autoFeedToggle then
@@ -4556,7 +4790,7 @@ task.spawn(function()
     -- Wait until settings load sequence either completed or shortly timed in
     local tries = 0
     while not (zebuxConfig and autoFishToggle) and tries < 50 do
-        tries += 1
+        tries = tries + 1
         task.wait(0.05)
     end
     if zebuxConfig and autoFishToggle then
