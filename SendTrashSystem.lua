@@ -456,9 +456,25 @@ local function processTrash()
     while trashEnabled do
         -- Get send mode setting
         local sendMode = "Both" -- Default
-        if sendModeDropdown and sendModeDropdown.GetValue then
-            local success, result = pcall(function() return sendModeDropdown:GetValue() end)
-            sendMode = success and result or "Both"
+        if sendModeDropdown then
+            local success, result = nil, nil
+            
+            -- Try different methods to get the value
+            if sendModeDropdown.GetValue then
+                success, result = pcall(function() return sendModeDropdown:GetValue() end)
+            elseif sendModeDropdown.Value then
+                success, result = pcall(function() return sendModeDropdown.Value end)
+            end
+            
+            if success and result then
+                sendMode = result
+                print("🎮 Dropdown returned send mode: " .. tostring(sendMode))
+            else
+                print("❌ Failed to get send mode from dropdown, using default: Both")
+                sendMode = "Both"
+            end
+        else
+            print("❌ Send mode dropdown not found, using default: Both")
         end
         
         local petInventory = {}
