@@ -538,6 +538,8 @@ local function processTrash()
         
         -- Send items to other players
         local sentAnyItem = false
+        local sentCount = 0
+        local maxBatchSize = 3
         
         -- Try to send pets first
         if sendMode == "Pets" or sendMode == "Both" then
@@ -546,23 +548,35 @@ local function processTrash()
                     print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(pet, targetPlayer, "pet")
                     sentAnyItem = true
-                    print("⏸️ Waiting 0.3 seconds before next action...")
+                    sentCount = sentCount + 1
+                    
+                    if sentCount >= maxBatchSize then
+                        print("📦 Sent batch of " .. sentCount .. " pets")
+                        break -- Send batch of 3
+                    end
+                    
+                    print("⏸️ Waiting 0.3 seconds before next item...")
                     wait(0.3)
-                    break -- Send one at a time
                 end
             end
         end
         
-        -- Try to send eggs if no pets were sent
-        if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
+        -- Try to send eggs if batch not full
+        if sentCount < maxBatchSize and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
                 if shouldSendItem(egg, excludeTypes, excludeMutations) and targetPlayer then
                     print("📦 About to send egg " .. egg.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
                     sentAnyItem = true
-                    print("⏸️ Waiting 0.3 seconds before next action...")
+                    sentCount = sentCount + 1
+                    
+                    if sentCount >= maxBatchSize then
+                        print("📦 Sent batch of " .. sentCount .. " items")
+                        break -- Send batch of 3
+                    end
+                    
+                    print("⏸️ Waiting 0.3 seconds before next item...")
                     wait(0.3)
-                    break -- Send one at a time
                 end
             end
         end
@@ -571,6 +585,7 @@ local function processTrash()
         if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
             local sellExcludeTypes = {}
             local sellExcludeMutations = {}
+            local soldCount = 0
             
             if sellPetTypeDropdown and sellPetTypeDropdown.GetValue then
                 local success, result = pcall(function() return sellPetTypeDropdown:GetValue() end)
@@ -585,8 +600,14 @@ local function processTrash()
             for _, pet in ipairs(petInventory) do
                 if shouldSendItem(pet, sellExcludeTypes, sellExcludeMutations) then
                     sellPet(pet)
+                    soldCount = soldCount + 1
+                    
+                    if soldCount >= maxBatchSize then
+                        print("💰 Sold batch of " .. soldCount .. " pets")
+                        break -- Sell batch of 3
+                    end
+                    
                     wait(0.3)
-                    break -- Sell one at a time
                 end
             end
         end
