@@ -1,29 +1,40 @@
--- Auto Place System.lua
--- Build A Zoo: Auto Placement System
--- Author: Zebux
--- Version: 1.0
+-- ============================================
+-- Auto Place System - Revamped & Optimized
+-- ============================================
+-- High-performance pet placement system with smart egg prioritization,
+-- ocean egg skipping, focus-first placement, and minimal lag design.
 
 local AutoPlaceSystem = {}
 
--- Services
+-- ============ Services & Dependencies ============
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local CollectionService = game:GetService("CollectionService")
 local LocalPlayer = Players.LocalPlayer
 
--- Module variables (will be initialized by main script)
-local WindUI = nil
-local Config = nil
+-- ============ External Dependencies ============
+local WindUI, Tabs, Config
+local selectedEggTypes = {}
+local selectedMutations = {}
 
--- Auto Place state variables
-local autoPlaceEnabled = false
-local availableEggs = {}
-local availableTiles = {}
-local placeConnections = {}
-local placingInProgress = false
+-- ============ Performance Cache System ============
+local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
+local tileCache = {
+    lastUpdate = 0,
+    regularTiles = {},
+    waterTiles = {},
+    regularAvailable = 0,
+    waterAvailable = 0
+}
 
--- Ocean egg categories for water farm placement
+local eggCache = {
+    lastUpdate = 0,
+    availableEggs = {},
+    oceanEggs = {},
+    regularEggs = {}
+}
+
+-- ============ Ocean Egg Detection ============
 local OCEAN_EGGS = {
     ["SeaweedEgg"] = true,
     ["ClownfishEgg"] = true,
@@ -34,588 +45,36 @@ local OCEAN_EGGS = {
     ["SeaDragonEgg"] = true
 }
 
--- Get egg container from player data
-local function getEggContainer()
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return nil end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return nil end
-    
-    return data:FindFirstChild("Egg")
-end
-
--- Check if an egg type requires water farm placement
 local function isOceanEgg(eggType)
     return OCEAN_EGGS[eggType] == true
 end
 
--- Helper function to get assigned island name
+-- ============ Utility Functions ============
 local function getAssignedIslandName()
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return nil end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return nil end
-    
-    local island = data:FindFirstChild("Island")
-    if not island then return nil end
-    
-    return island.Value
+    if not LocalPlayer then return nil end
+    return LocalPlayer:GetAttribute("AssignedIslandName")
 end
 
--- Helper function to extract island number from island name
 local function getIslandNumberFromName(islandName)
-    if not islandName or islandName == "" then return nil end
-    
-    -- Extract number from island name (e.g., "Island_1" -> 1)
-    local number = string.match(islandName, "%d+")
-    return tonumber(number)
+    if not islandName then return nil end
+    local match = string.match(islandName, "Island_(%d+)")
+    if match then
+        return tonumber(match)
+    end
+    match = string.match(islandName, "(%d+)")
+    if match then
+        return tonumber(match)
+    end
+    return nil
 end
 
--- Get locked tiles for auto unlock system
-local function getLockedTiles(islandNumber)
-    if not islandNumber then return {} end
-    local art = workspace:FindFirstChild("Art")
-    if not art then return {} end
-    
-    local islandName = "Island_" .. tostring(islandNumber)
-    local island = art:FindFirstChild(islandName)
-    if not island then return {} end
-    
-    local env = island:FindFirstChild("ENV")
-    if not env then return {} end
-    
-    local locksFolder = env:FindFirstChild("Locks")
-    if not locksFolder then return {} end
-    
-    local lockedTiles = {}
-    
-    -- Scan for locks that start with 'F' (like F20, F30, etc.)
-    for _, lockModel in ipairs(locksFolder:GetChildren()) do
-        if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
-            local farmPart = lockModel:FindFirstChild("Farm")
-            if farmPart and farmPart:IsA("BasePart") then
-                -- Check if this lock is active (transparency = 0 means locked)
-                if farmPart.Transparency == 0 then
-                    local lockCost = farmPart:GetAttribute("LockCost")
-                    table.insert(lockedTiles, {
-                        modelName = lockModel.Name,
-                        farmPart = farmPart,
-                        cost = lockCost or 0,
-                        model = lockModel
-                    })
-                end
-            end
-        end
-    end
-    
-    return lockedTiles
-end
-
--- Function to unlock a specific tile
-local function unlockTile(lockInfo)
-    if not lockInfo then 
-        warn("❌ unlockTile: No lock info provided")
-        return false 
-    end
-    
-    if not lockInfo.farmPart then
-        warn("❌ unlockTile: No farm part in lock info for " .. (lockInfo.modelName or "unknown"))
-        return false
-    end
-    
-    local args = {
-        "Unlock",
-        lockInfo.farmPart
-    }
-    
-    local success, errorMsg = pcall(function()
-        local remote = ReplicatedStorage:WaitForChild("Remote", 5)
-        if not remote then
-            error("Remote folder not found")
-        end
-        
-        local characterRE = remote:WaitForChild("CharacterRE", 5)
-        if not characterRE then
-            error("CharacterRE not found")
-        end
-        
-        characterRE:FireServer(unpack(args))
-    end)
-    
-    if not success then
-        warn("❌ Failed to unlock tile " .. (lockInfo.modelName or "unknown") .. ": " .. tostring(errorMsg))
-    end
-    
-    return success
-end
-
--- Function to auto unlock tiles when needed
-local function autoUnlockTilesIfNeeded(islandNumber, eggType)
-    -- Input validation
-    if not islandNumber then 
-        warn("autoUnlockTilesIfNeeded: No island number provided")
-        return false 
-    end
-    if not eggType then 
-        warn("autoUnlockTilesIfNeeded: No egg type provided")
-        return false 
-    end
-    
-    -- Check if we have available tiles first
-    local farmParts
-    local isOceanEggType = false
-    
-    -- Safe check for ocean egg type
-    local success, result = pcall(function()
-        return isOceanEgg(eggType)
-    end)
-    
-    if success then
-        isOceanEggType = result
-    else
-        warn("autoUnlockTilesIfNeeded: Error checking ocean egg type: " .. tostring(result))
-        isOceanEggType = false
-    end
-    
-    -- Get farm parts safely
-    local farmPartsSuccess, farmPartsResult = pcall(function()
-        if isOceanEggType then
-            return AutoPlaceSystem.getWaterFarmParts(islandNumber)
-        else
-            return AutoPlaceSystem.getFarmParts(islandNumber)
-        end
-    end)
-    
-    if farmPartsSuccess then
-        farmParts = farmPartsResult or {}
-    else
-        warn("autoUnlockTilesIfNeeded: Error getting farm parts: " .. tostring(farmPartsResult))
-        return false
-    end
-    
-    -- Count available (unlocked and unoccupied) tiles
-    local availableCount = 0
-    for _, part in ipairs(farmParts) do
-        local isOccupied = false
-        local checkSuccess, checkResult = pcall(function()
-            return AutoPlaceSystem.isFarmTileOccupied(part, 6)
-        end)
-        
-        if checkSuccess then
-            isOccupied = checkResult
-        else
-            warn("autoUnlockTilesIfNeeded: Error checking tile occupation: " .. tostring(checkResult))
-            isOccupied = true -- Assume occupied if we can't check
-        end
-        
-        if not isOccupied then
-            availableCount = availableCount + 1
-        end
-    end
-    
-    -- If we have less than 3 available tiles, try to unlock more
-    if availableCount < 3 then
-        local lockedTiles = {}
-        local lockedTilesSuccess, lockedTilesResult = pcall(function()
-            return getLockedTiles(islandNumber)
-        end)
-        
-        if lockedTilesSuccess then
-            lockedTiles = lockedTilesResult or {}
-        else
-            warn("autoUnlockTilesIfNeeded: Error getting locked tiles: " .. tostring(lockedTilesResult))
-            return false
-        end
-        
-        if #lockedTiles > 0 then
-            -- Sort by cost (cheapest first) with error handling
-            local sortSuccess, sortError = pcall(function()
-                table.sort(lockedTiles, function(a, b)
-                    return (a.cost or 0) < (b.cost or 0)
-                end)
-            end)
-            
-            if not sortSuccess then
-                warn("autoUnlockTilesIfNeeded: Error sorting locked tiles: " .. tostring(sortError))
-            end
-            
-            -- Try to unlock the cheapest tiles
-            local unlockedCount = 0
-            for _, lockInfo in ipairs(lockedTiles) do
-                if unlockedCount >= 2 then break end -- Don't unlock too many at once
-                
-                local unlockSuccess, unlockError = pcall(function()
-                    return unlockTile(lockInfo)
-                end)
-                
-                if unlockSuccess and unlockError then
-                    unlockedCount = unlockedCount + 1
-                    task.wait(0.5) -- Wait between unlocks
-                elseif not unlockSuccess then
-                    warn("autoUnlockTilesIfNeeded: Error unlocking tile: " .. tostring(unlockError))
-                end
-            end
-            
-            if unlockedCount > 0 then
-                task.wait(1) -- Wait for server to process unlocks
-                return true
-            end
-        end
-    end
-    
-    return false
-end
-
--- Get water farm parts for ocean eggs
-function AutoPlaceSystem.getWaterFarmParts(islandNumber)
-    if not islandNumber then return {} end
-    local art = workspace:FindFirstChild("Art")
-    if not art then return {} end
-    
-    local islandName = "Island_" .. tostring(islandNumber)
-    local island = art:FindFirstChild(islandName)
-    if not island then 
-        -- Try alternative naming patterns
-        for _, child in ipairs(art:GetChildren()) do
-            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
-                island = child
-                break
-            end
-        end
-        if not island then return {} end
-    end
-    
-    local waterFarmParts = {}
-    local function scanForWaterFarmParts(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            if child:IsA("BasePart") and child.Name == "WaterFarm_split_0_0_0" then
-                -- Additional validation: check if part is valid for placement
-                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                    table.insert(waterFarmParts, child)
-                end
-            end
-            scanForWaterFarmParts(child)
-        end
-    end
-    
-    scanForWaterFarmParts(island)
-    
-    -- Filter out locked water farm tiles by checking the Locks folder
-    local unlockedWaterFarmParts = {}
-    local env = island:FindFirstChild("ENV")
-    local locksFolder = env and env:FindFirstChild("Locks")
-    
-    if locksFolder then
-        -- Create a map of locked areas using position checking
-        local lockedAreas = {}
-        for _, lockModel in ipairs(locksFolder:GetChildren()) do
-            if lockModel:IsA("Model") and lockModel.Name:match("^F%d+") then
-                local farmPart = lockModel:FindFirstChild("Farm")
-                if farmPart and farmPart:IsA("BasePart") then
-                    -- Check if this lock is active (transparency = 0 means locked)
-                    if farmPart.Transparency == 0 then
-                        -- Store the lock's position and size for area checking
-                        table.insert(lockedAreas, {
-                            position = farmPart.Position,
-                            size = farmPart.Size
-                        })
-                    end
-                end
-            end
-        end
-        
-        -- Check each water farm part against locked areas
-        for i, waterFarmPart in ipairs(waterFarmParts) do
-            local isLocked = false
-            
-            for _, lockArea in ipairs(lockedAreas) do
-                -- Check if water farm part is within the lock area
-                local waterFarmPos = waterFarmPart.Position
-                local lockCenter = lockArea.position
-                local lockSize = lockArea.size
-                
-                -- Calculate the bounds of the lock area
-                local lockHalfSize = lockSize / 2
-                local lockMinX = lockCenter.X - lockHalfSize.X
-                local lockMaxX = lockCenter.X + lockHalfSize.X
-                local lockMinZ = lockCenter.Z - lockHalfSize.Z
-                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
-                
-                -- Check if water farm part is within the lock bounds
-                if waterFarmPos.X >= lockMinX and waterFarmPos.X <= lockMaxX and
-                   waterFarmPos.Z >= lockMinZ and waterFarmPos.Z <= lockMaxZ then
-                    isLocked = true
-                    break
-                end
-            end
-            
-            if not isLocked then
-                table.insert(unlockedWaterFarmParts, waterFarmPart)
-            end
-        end
-    else
-        -- If no locks folder found, assume all water farm tiles are unlocked
-        unlockedWaterFarmParts = waterFarmParts
-    end
-    
-    return unlockedWaterFarmParts
-end
-
--- Get regular farm parts
-function AutoPlaceSystem.getFarmParts(islandNumber)
-    if not islandNumber then return {} end
-    local art = workspace:FindFirstChild("Art")
-    if not art then return {} end
-    
-    local islandName = "Island_" .. tostring(islandNumber)
-    local island = art:FindFirstChild(islandName)
-    if not island then 
-        -- Try alternative naming patterns
-        for _, child in ipairs(art:GetChildren()) do
-            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
-                island = child
-                break
-            end
-        end
-        if not island then return {} end
-    end
-    
-    local farmParts = {}
-    local function scanForFarmParts(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            if child:IsA("BasePart") and child.Name:match("^Farm_split_%d+_%d+_%d+$") then
-                -- Additional validation: check if part is valid for placement
-                if child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
-                    table.insert(farmParts, child)
-                end
-            end
-            scanForFarmParts(child)
-        end
-    end
-    
-    scanForFarmParts(island)
-    
-    -- Filter out locked tiles by checking the Locks folder
-    local unlockedFarmParts = {}
-    local env = island:FindFirstChild("ENV")
-    local locksFolder = env and env:FindFirstChild("Locks")
-    
-    if locksFolder then
-        -- Create a map of locked areas using CFrame and size
-        local lockedAreas = {}
-        for _, lockModel in ipairs(locksFolder:GetChildren()) do
-            if lockModel:IsA("Model") then
-                local farmPart = lockModel:FindFirstChild("Farm")
-                if farmPart and farmPart:IsA("BasePart") then
-                    -- Check if this lock is active (transparency = 0 means locked)
-                    if farmPart.Transparency == 0 then
-                        -- Store the lock's CFrame and size for area checking
-                        table.insert(lockedAreas, {
-                            cframe = farmPart.CFrame,
-                            size = farmPart.Size,
-                            position = farmPart.Position
-                        })
-                    end
-                end
-            end
-        end
-        
-        -- Check each farm part against locked areas
-        for _, farmPart in ipairs(farmParts) do
-            local isLocked = false
-            
-            for _, lockArea in ipairs(lockedAreas) do
-                -- Check if farm part is within the lock area
-                local farmPartPos = farmPart.Position
-                local lockCenter = lockArea.position
-                local lockSize = lockArea.size
-                
-                -- Calculate the bounds of the lock area
-                local lockHalfSize = lockSize / 2
-                local lockMinX = lockCenter.X - lockHalfSize.X
-                local lockMaxX = lockCenter.X + lockHalfSize.X
-                local lockMinZ = lockCenter.Z - lockHalfSize.Z
-                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
-                
-                -- Check if farm part is within the lock bounds
-                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
-                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
-                    isLocked = true
-                    break
-                end
-            end
-            
-            if not isLocked then
-                table.insert(unlockedFarmParts, farmPart)
-            end
-        end
-    else
-        -- If no locks folder found, assume all tiles are unlocked
-        unlockedFarmParts = farmParts
-    end
-    
-    return unlockedFarmParts
-end
-
--- Helper functions for tile management
-local function getTileCenterPosition(farmPart)
-    if not farmPart or not farmPart.IsA or not farmPart:IsA("BasePart") then return nil end
-    -- Middle of the farm tile (parts are 8x8x8)
-    return farmPart.Position
-end
-
--- Check if a model looks like a pet
-local function isPetLikeModel(model)
-    if not model or not model:IsA("Model") then return false end
-    -- Common signals that a model is a pet or a placed unit
-    if model:FindFirstChildOfClass("Humanoid") then return true end
-    if model:FindFirstChild("AnimationController") then return true end
-    if model:GetAttribute("IsPet") or model:GetAttribute("PetType") or model:GetAttribute("T") then return true end
-    local lowerName = string.lower(model.Name)
-    if string.find(lowerName, "pet") or string.find(lowerName, "egg") then return true end
-    if CollectionService and (CollectionService:HasTag(model, "Pet") or CollectionService:HasTag(model, "IdleBigPet")) then
-        return true
-    end
-    return false
-end
-
--- Get pet models overlapping a tile
-local function getPetModelsOverlappingTile(farmPart)
-    if not farmPart or not farmPart:IsA("BasePart") then return {} end
-    local centerCF = farmPart.CFrame
-    -- Slightly taller box to capture pets above the tile
-    local regionSize = Vector3.new(8, 14, 8)
-    local params = OverlapParams.new()
-    params.RespectCanCollide = false
-    -- Search within whole workspace, we will filter to models
-    local parts = workspace:GetPartBoundsInBox(centerCF, regionSize, params)
-    local modelMap = {}
-    for _, part in ipairs(parts) do
-        if part ~= farmPart then
-            local model = part:FindFirstAncestorOfClass("Model")
-            if model and not modelMap[model] and isPetLikeModel(model) then
-                modelMap[model] = true
-            end
-        end
-    end
-    local models = {}
-    for model in pairs(modelMap) do table.insert(models, model) end
-    return models
-end
-
--- Get all player's pets that exist in workspace
-local function getPlayerPetsInWorkspace()
-    local petsInWorkspace = {}
-    local workspacePets = workspace:FindFirstChild("Pets")
-    
-    if not workspacePets then return petsInWorkspace end
-    
-    -- Get player's pet configurations
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return petsInWorkspace end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return petsInWorkspace end
-    
-    local petsFolder = data:FindFirstChild("Pets")
-    if not petsFolder then return petsInWorkspace end
-    
-    -- Get all pet configurations
-    for _, petConfig in ipairs(petsFolder:GetChildren()) do
-        if petConfig:IsA("Configuration") then
-            local petModel = workspacePets:FindFirstChild(petConfig.Name)
-            if petModel and petModel:IsA("Model") then
-                table.insert(petsInWorkspace, {
-                    name = petConfig.Name,
-                    model = petModel,
-                    position = petModel:GetPivot().Position
-                })
-            end
-        end
-    end
-    
-    return petsInWorkspace
-end
-
--- Helper function to get tile center position
-local function getTileCenterPosition(farmPart)
-    if not farmPart or not farmPart.Position then return nil end
-    return farmPart.Position
-end
-
--- Helper function to get pet models overlapping a tile
-local function getPetModelsOverlappingTile(farmPart)
-    local models = {}
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if not playerBuiltBlocks then return models end
-    
-    local farmCenter = getTileCenterPosition(farmPart)
-    if not farmCenter then return models end
-    
-    -- Check for overlapping models within a reasonable distance
-    for _, child in ipairs(playerBuiltBlocks:GetChildren()) do
-        if child:IsA("Model") and child:GetPivot then
-            local modelPos = child:GetPivot().Position
-            local distance = (modelPos - farmCenter).Magnitude
-            if distance <= 10 then -- Within tile area
-                table.insert(models, child)
-            end
-        end
-    end
-    
-    return models
-end
-
--- Check if a farm tile is occupied by pets or eggs
-function AutoPlaceSystem.isFarmTileOccupied(farmPart, minDistance)
-    minDistance = minDistance or 6
-    local center = getTileCenterPosition(farmPart)
-    if not center then return true end
-    
-    -- Calculate surface position (same as placement logic)
-    local surfacePosition = Vector3.new(
-        center.X,
-        center.Y + 12, -- Eggs float 12 studs above tile surface
-        center.Z
-    )
-    
-    -- Check for pets in PlayerBuiltBlocks (eggs/hatching pets)
-    local models = getPetModelsOverlappingTile(farmPart)
-    if #models > 0 then
-        for i, model in ipairs(models) do
-            local pivotPos = model:GetPivot().Position
-            local distance = (pivotPos - surfacePosition).Magnitude
-            -- Check distance to surface position instead of center
-            if distance <= minDistance then
-                return true
-            end
-        end
-    end
-    
-    -- Check for fully hatched pets in workspace.Pets
-    local playerPets = getPlayerPetsInWorkspace()
-    for i, petInfo in ipairs(playerPets) do
-        local petPos = petInfo.position
-        local distance = (petPos - surfacePosition).Magnitude
-        -- Check distance to surface position instead of center
-        if distance <= minDistance then
-            return true
-        end
-    end
-    
-    return false
-end
-
--- Get egg container
+-- ============ Smart Egg Management ============
 local function getEggContainer()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
     return data and data:FindFirstChild("Egg") or nil
 end
 
--- Function to read mutation from egg configuration
 local function getEggMutation(eggUID)
     local localPlayer = Players.LocalPlayer
     if not localPlayer then return nil end
@@ -629,262 +88,637 @@ local function getEggMutation(eggUID)
     local eggContainer = data:FindFirstChild("Egg")
     if not eggContainer then return nil end
     
-    local eggFolder = eggContainer:FindFirstChild(eggUID)
-    if not eggFolder then return nil end
+    local eggConfig = eggContainer:FindFirstChild(eggUID)
+    if not eggConfig then return nil end
     
-    local mutationValue = eggFolder:FindFirstChild("Mutation")
-    if mutationValue and mutationValue:IsA("StringValue") then
-        return mutationValue.Value
+    local mutation = eggConfig:GetAttribute("M")
+    if mutation == "Dino" then
+        mutation = "Jurassic"
     end
     
-    return nil
+    return mutation
 end
 
--- List available egg UIDs for auto placement
-local function listAvailableEggUIDs()
-    local eggs = {}
-    local eggContainer = getEggContainer()
-    if not eggContainer then return eggs end
-    
-    for _, child in ipairs(eggContainer:GetChildren()) do
-        if child:IsA("Folder") and #child:GetChildren() == 0 then -- No subfolder = available egg
-            local eggType = child:GetAttribute("T") or "Unknown"
-            local mutation = getEggMutation(child.Name)
-            
-            table.insert(eggs, {
-                uid = child.Name,
-                type = eggType,
-                mutation = mutation
-            })
-        end
+-- Enhanced egg collection with smart filtering
+local function updateAvailableEggs()
+    local currentTime = tick()
+    if currentTime - eggCache.lastUpdate < CACHE_DURATION then
+        return eggCache.availableEggs, eggCache.oceanEggs, eggCache.regularEggs
     end
     
-    return eggs
-end
-
--- Update available eggs list
-function AutoPlaceSystem.updateAvailableEggs(selectedEggTypes, selectedMutations)
-    local eggs = listAvailableEggUIDs()
-    availableEggs = {}
-    
-    selectedEggTypes = selectedEggTypes or {}
-    selectedMutations = selectedMutations or {}
-    
-    -- Smart egg prioritization and filtering logic
-    local islandName = getAssignedIslandName()
-    local islandNumber = getIslandNumberFromName(islandName)
-    
-    -- Check available space for different farm types
-    local regularFarmParts = AutoPlaceSystem.getFarmParts(islandNumber)
-    local waterFarmParts = AutoPlaceSystem.getWaterFarmParts(islandNumber)
-    
-    local availableRegularTiles = 0
-    local availableWaterTiles = 0
-    
-    -- Count available tiles
-    for _, part in ipairs(regularFarmParts) do
-        if not AutoPlaceSystem.isFarmTileOccupied(part, 6) then
-            availableRegularTiles = availableRegularTiles + 1
-        end
-    end
-    
-    for _, part in ipairs(waterFarmParts) do
-        if not AutoPlaceSystem.isFarmTileOccupied(part, 3) then
-            availableWaterTiles = availableWaterTiles + 1
-        end
-    end
-    
-    -- Prioritize eggs based on available space
-    local prioritizedEggs = {}
+    local eg = getEggContainer()
+    local allEggs = {}
     local oceanEggs = {}
     local regularEggs = {}
     
-    -- Separate eggs by type
-    for _, eggInfo in ipairs(eggs) do
-        if isOceanEgg(eggInfo.type) then
-            table.insert(oceanEggs, eggInfo)
-        else
-            table.insert(regularEggs, eggInfo)
+    if not eg then 
+        eggCache.availableEggs = {}
+        eggCache.oceanEggs = {}
+        eggCache.regularEggs = {}
+        return {}, {}, {}
+    end
+    
+    -- Create filter sets for faster lookup
+    local selectedTypeSet = {}
+    for _, type in ipairs(selectedEggTypes) do
+        -- Clean ocean emoji prefixes
+        local cleanType = type:gsub("🌊 ", "")
+        selectedTypeSet[cleanType] = true
+    end
+    
+    local selectedMutationSet = {}
+    for _, mutation in ipairs(selectedMutations) do
+        selectedMutationSet[mutation] = true
+    end
+    
+    for _, child in ipairs(eg:GetChildren()) do
+        if #child:GetChildren() == 0 then -- No subfolder = available
+            local eggType = child:GetAttribute("T")
+            if eggType then
+                local mutation = getEggMutation(child.Name)
+                
+                -- Apply filters
+                local passesTypeFilter = true
+                local passesMutationFilter = true
+                
+                if #selectedEggTypes > 0 then
+                    passesTypeFilter = selectedTypeSet[eggType] == true
+                end
+                
+                if #selectedMutations > 0 then
+                    if not mutation then
+                        passesMutationFilter = false
+                    else
+                        passesMutationFilter = selectedMutationSet[mutation] == true
+                    end
+                end
+                
+                if passesTypeFilter and passesMutationFilter then
+                    local eggInfo = { 
+                        uid = child.Name, 
+                        type = eggType,
+                        mutation = mutation,
+                        priority = mutation and 1000 or 100 -- Mutations get higher priority
+                    }
+                    
+                    table.insert(allEggs, eggInfo)
+                    
+                    if isOceanEgg(eggType) then
+                        table.insert(oceanEggs, eggInfo)
+                    else
+                        table.insert(regularEggs, eggInfo)
+                    end
+                end
+            end
         end
     end
     
-    -- Add regular eggs first, then ocean eggs
-    if availableRegularTiles > 0 then
-        for _, egg in ipairs(regularEggs) do
-            table.insert(prioritizedEggs, egg)
-        end
-    end
+    -- Sort by priority (mutations first)
+    table.sort(allEggs, function(a, b) 
+        return a.priority > b.priority 
+    end)
+    table.sort(oceanEggs, function(a, b) 
+        return a.priority > b.priority 
+    end)
+    table.sort(regularEggs, function(a, b) 
+        return a.priority > b.priority 
+    end)
     
-    if availableWaterTiles > 0 then
-        for _, egg in ipairs(oceanEggs) do
-            table.insert(prioritizedEggs, egg)
-        end
-    end
+    -- Update cache
+    eggCache.lastUpdate = currentTime
+    eggCache.availableEggs = allEggs
+    eggCache.oceanEggs = oceanEggs
+    eggCache.regularEggs = regularEggs
     
-    availableEggs = prioritizedEggs
-    return #prioritizedEggs
+    return allEggs, oceanEggs, regularEggs
 end
 
--- Main placement attempt function
-function AutoPlaceSystem.attemptPlacement()
-    -- First update available eggs with current selections
-    AutoPlaceSystem.updateAvailableEggs({}, {})
+-- ============ Smart Farm Tile Management ============
+local function getFarmParts(islandNumber, isWater)
+    if not islandNumber then return {} end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return {} end
     
-    if #availableEggs == 0 then 
-        return false -- No eggs available
+    local islandName = "Island_" .. tostring(islandNumber)
+    local island = art:FindFirstChild(islandName)
+    if not island then 
+        for _, child in ipairs(art:GetChildren()) do
+            if child.Name:match("^Island[_-]?" .. tostring(islandNumber) .. "$") then
+                island = child
+                break
+            end
+        end
+        if not island then return {} end
     end
-
-    -- Try to find a placeable egg (skip ocean eggs if no water farms available)
-    local eggToPlace = nil
-    local eggIndex = nil
     
-    for i, egg in ipairs(availableEggs) do
-        local canPlace = true
+    local farmParts = {}
+    local pattern = isWater and "WaterFarm_split_0_0_0" or "^Farm_split_%d+_%d+_%d+$"
+    
+    local function scanForFarmParts(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("BasePart") then
+                local matches = false
+                if isWater then
+                    matches = child.Name == pattern
+                else
+                    matches = child.Name:match(pattern)
+                end
+                
+                if matches and child.Size == Vector3.new(8, 8, 8) and child.CanCollide then
+                    table.insert(farmParts, child)
+                end
+            end
+            scanForFarmParts(child)
+        end
+    end
+    
+    scanForFarmParts(island)
+    
+    -- Filter out locked tiles
+    local unlockedFarmParts = {}
+    local env = island:FindFirstChild("ENV")
+    local locksFolder = env and env:FindFirstChild("Locks")
+    
+    if locksFolder then
+        local lockedAreas = {}
+        for _, lockModel in ipairs(locksFolder:GetChildren()) do
+            if lockModel:IsA("Model") then
+                local farmPart = lockModel:FindFirstChild("Farm")
+                if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
+                    table.insert(lockedAreas, {
+                        position = farmPart.Position,
+                        size = farmPart.Size
+                    })
+                end
+            end
+        end
         
-        -- Check if this is an ocean egg and if we have water farms available
-        if isOceanEgg(egg.type) then
-            local islandName = getAssignedIslandName()
-            local islandNumber = getIslandNumberFromName(islandName)
-            local waterFarmParts = AutoPlaceSystem.getWaterFarmParts(islandNumber)
-            
-            -- Count available water farm tiles (use smaller radius for water farms)
-            local availableWaterTiles = 0
-            for j, part in ipairs(waterFarmParts) do
-                local isOccupied = AutoPlaceSystem.isFarmTileOccupied(part, 3) -- Reduced from 6 to 3 studs
-                if not isOccupied then
-                    availableWaterTiles = availableWaterTiles + 1
+        for _, farmPart in ipairs(farmParts) do
+            local isLocked = false
+            for _, lockArea in ipairs(lockedAreas) do
+                local farmPartPos = farmPart.Position
+                local lockCenter = lockArea.position
+                local lockSize = lockArea.size
+                
+                local lockHalfSize = lockSize / 2
+                local lockMinX = lockCenter.X - lockHalfSize.X
+                local lockMaxX = lockCenter.X + lockHalfSize.X
+                local lockMinZ = lockCenter.Z - lockHalfSize.Z
+                local lockMaxZ = lockCenter.Z + lockHalfSize.Z
+                
+                if farmPartPos.X >= lockMinX and farmPartPos.X <= lockMaxX and
+                   farmPartPos.Z >= lockMinZ and farmPartPos.Z <= lockMaxZ then
+                    isLocked = true
+                    break
                 end
             end
             
-            -- If no water farm tiles available, skip this ocean egg
-            if availableWaterTiles == 0 then
-                canPlace = false
+            if not isLocked then
+                table.insert(unlockedFarmParts, farmPart)
             end
         end
-        
-        if canPlace then
-            eggToPlace = egg
-            eggIndex = i
-            break
+    else
+        unlockedFarmParts = farmParts
+    end
+    
+    return unlockedFarmParts
+end
+
+-- Optimized tile availability checking
+local function isTileOccupied(farmPart)
+    local center = farmPart.Position
+    local surfacePosition = Vector3.new(center.X, center.Y + 12, center.Z)
+    
+    -- Check PlayerBuiltBlocks
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local xzDistance = math.sqrt((modelPos.X - surfacePosition.X)^2 + (modelPos.Z - surfacePosition.Z)^2)
+                local yDistance = math.abs(modelPos.Y - surfacePosition.Y)
+                
+                if xzDistance < 4.0 and yDistance < 12.0 then
+                    return true
+                end
+            end
         end
     end
     
-    -- If no eggs can be placed (all are ocean eggs with no water farms), return false
-    if not eggToPlace then
-        return false
+    -- Check workspace.Pets
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        for _, pet in ipairs(workspacePets:GetChildren()) do
+            if pet:IsA("Model") then
+                local petPos = pet:GetPivot().Position
+                local xzDistance = math.sqrt((petPos.X - surfacePosition.X)^2 + (petPos.Z - surfacePosition.Z)^2)
+                local yDistance = math.abs(petPos.Y - surfacePosition.Y)
+                
+                if xzDistance < 4.0 and yDistance < 12.0 then
+                    return true
+                end
+            end
+        end
     end
     
-    -- Now try to actually place the egg
+    return false
+end
+
+-- Enhanced tile cache system
+local function updateTileCache()
+    local currentTime = tick()
+    if currentTime - tileCache.lastUpdate < CACHE_DURATION then
+        return tileCache.regularAvailable, tileCache.waterAvailable
+    end
+    
     local islandName = getAssignedIslandName()
     local islandNumber = getIslandNumberFromName(islandName)
     
-    -- Get appropriate farm parts based on egg type
-    local farmParts
-    if isOceanEgg(eggToPlace.type) then
-        farmParts = AutoPlaceSystem.getWaterFarmParts(islandNumber)
-    else
-        farmParts = AutoPlaceSystem.getFarmParts(islandNumber)
+    if not islandNumber then
+        tileCache.regularAvailable = 0
+        tileCache.waterAvailable = 0
+        return 0, 0
     end
     
-    -- Find an available tile
-    local targetTile = nil
-    local minDistance = isOceanEgg(eggToPlace.type) and 3 or 6
+    -- Get farm parts
+    local regularParts = getFarmParts(islandNumber, false)
+    local waterParts = getFarmParts(islandNumber, true)
     
-    for _, part in ipairs(farmParts) do
-        if not AutoPlaceSystem.isFarmTileOccupied(part, minDistance) then
-            targetTile = part
-            break
+    -- Count available tiles
+    local regularAvailable = 0
+    local waterAvailable = 0
+    local availableRegularTiles = {}
+    local availableWaterTiles = {}
+    
+    for _, part in ipairs(regularParts) do
+        if not isTileOccupied(part) then
+            regularAvailable = regularAvailable + 1
+            table.insert(availableRegularTiles, part)
         end
     end
     
-    if not targetTile then
-        return false -- No available tiles
+    for _, part in ipairs(waterParts) do
+        if not isTileOccupied(part) then
+            waterAvailable = waterAvailable + 1
+            table.insert(availableWaterTiles, part)
+        end
     end
     
-    -- Try to place the egg on the tile
-    local success = pcall(function()
-        local remote = ReplicatedStorage:WaitForChild("Remote", 5)
-        if not remote then
-            error("Remote folder not found")
-        end
-        
-        local characterRE = remote:WaitForChild("CharacterRE", 5)
-        if not characterRE then
-            error("CharacterRE not found")
-        end
-        
-        local args = {
-            "Place",
-            eggToPlace.uid,
-            targetTile
-        }
-        
-        characterRE:FireServer(unpack(args))
+    -- Update cache
+    tileCache.lastUpdate = currentTime
+    tileCache.regularTiles = availableRegularTiles
+    tileCache.waterTiles = availableWaterTiles
+    tileCache.regularAvailable = regularAvailable
+    tileCache.waterAvailable = waterAvailable
+    
+    return regularAvailable, waterAvailable
+end
+
+-- ============ Focus-First Placement System ============
+local function focusEgg(eggUID)
+    local args = { "Focus", eggUID }
+    local success, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     
-    if success then
-        -- Remove the placed egg from available eggs
-        if eggIndex then
-            table.remove(availableEggs, eggIndex)
+    if not success then
+        warn("Failed to focus egg " .. eggUID .. ": " .. tostring(err))
+    end
+    
+    return success
+end
+
+local function placePet(farmPart, petUID)
+    if not farmPart or not petUID then return false end
+    
+    -- Calculate surface position
+    local surfacePosition = Vector3.new(
+        farmPart.Position.X,
+        farmPart.Position.Y + (farmPart.Size.Y / 2),
+        farmPart.Position.Z
+    )
+    
+    -- Equip egg to Deploy S2
+    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+    if deploy then
+        local eggUID = "Egg_" .. petUID
+        deploy:SetAttribute("S2", eggUID)
+    end
+    
+    -- Hold egg (key 2)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    
+    -- Teleport to tile
+    local char = LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = CFrame.new(farmPart.Position)
+            task.wait(0.1)
         end
-        return true
-    else
+    end
+    
+    -- Place pet
+    local args = {
+        "Place",
+        {
+            DST = {X = surfacePosition.X, Y = surfacePosition.Y, Z = surfacePosition.Z},
+            ID = petUID
+        }
+    }
+    
+    local success, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    
+    if not success then
+        warn("Failed to place pet " .. petUID .. ": " .. tostring(err))
         return false
+    end
+    
+    -- Verify placement
+    task.wait(0.3)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") and model.Name == petUID then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+-- ============ Smart Egg Selection & Placement ============
+local function getNextBestEgg()
+    local allEggs, oceanEggs, regularEggs = updateAvailableEggs()
+    local regularAvailable, waterAvailable = updateTileCache()
+    
+    -- Smart prioritization: choose egg type based on available space
+    if waterAvailable > 0 and #oceanEggs > 0 then
+        -- Water farms available, prioritize ocean eggs
+        return oceanEggs[1], tileCache.waterTiles[1], "water"
+    elseif regularAvailable > 0 and #regularEggs > 0 then
+        -- Regular farms available, use regular eggs
+        return regularEggs[1], tileCache.regularTiles[1], "regular"
+    elseif regularAvailable > 0 and #oceanEggs > 0 then
+        -- Only regular farms available but we have ocean eggs - skip them
+        return nil, nil, "skip_ocean"
+    end
+    
+    return nil, nil, "no_space"
+end
+
+local function attemptPlacement()
+    local eggInfo, tileInfo, reason = getNextBestEgg()
+    
+    if not eggInfo or not tileInfo then
+        if reason == "skip_ocean" then
+            -- Ocean eggs skipped - this is normal behavior
+            return false, "Ocean eggs skipped (no water farms)"
+        elseif reason == "no_space" then
+            return false, "No available tiles for any eggs"
+        else
+            return false, "No suitable eggs found"
+        end
+    end
+    
+    -- Focus egg first (game requirement)
+    if not focusEgg(eggInfo.uid) then
+        return false, "Failed to focus egg " .. eggInfo.uid
+    end
+    
+    task.wait(0.2) -- Wait for focus to register
+    
+    -- Attempt placement
+    local success = placePet(tileInfo, eggInfo.uid)
+    
+    if success then
+        -- Invalidate cache after successful placement
+        tileCache.lastUpdate = 0
+        eggCache.lastUpdate = 0
+        
+        if eggInfo.mutation then
+            WindUI:Notify({ 
+                Title = "🏠 Auto Place", 
+                Content = "Placed " .. eggInfo.mutation .. " " .. eggInfo.type .. "!", 
+                Duration = 3 
+            })
+        end
+        
+        return true, "Successfully placed " .. eggInfo.type
+    else
+        return false, "Failed to place " .. eggInfo.type
     end
 end
 
--- Get available eggs list
-function AutoPlaceSystem.getAvailableEggs()
-    return availableEggs
+-- ============ Auto Place Main Logic ============
+local autoPlaceEnabled = false
+local autoPlaceThread = nil
+local placementStats = {
+    totalPlacements = 0,
+    mutationPlacements = 0,
+    lastPlacement = nil
+}
+
+local function runAutoPlace()
+    local consecutiveFailures = 0
+    local maxFailures = 5
+    
+    while autoPlaceEnabled do
+        local success, message = attemptPlacement()
+        
+        if success then
+            placementStats.totalPlacements = placementStats.totalPlacements + 1
+            placementStats.lastPlacement = os.time()
+            consecutiveFailures = 0
+            
+            -- Shorter wait after successful placement
+            task.wait(1.5)
+        else
+            consecutiveFailures = consecutiveFailures + 1
+            
+            -- Adaptive waiting based on failure reason
+            if message:find("skip") or message:find("no water") then
+                -- Ocean eggs skipped - wait longer
+                task.wait(5)
+            elseif message:find("No available tiles") then
+                -- No space - wait longer
+                task.wait(8)
+            elseif consecutiveFailures >= maxFailures then
+                -- Too many failures - longer wait
+                task.wait(10)
+                consecutiveFailures = 0
+            else
+                -- Normal failure - short wait
+                task.wait(2)
+            end
+        end
+    end
 end
 
--- Get available tiles list
-function AutoPlaceSystem.getAvailableTiles()
-    return availableTiles
+-- ============ Public API ============
+function AutoPlaceSystem.Init(dependencies)
+    WindUI = dependencies.WindUI
+    Tabs = dependencies.Tabs
+    Config = dependencies.Config
+    
+    -- Set up UI elements
+    AutoPlaceSystem.CreateUI()
+    
+    return AutoPlaceSystem
 end
 
--- Set auto place enabled state
-function AutoPlaceSystem.setEnabled(enabled)
-    autoPlaceEnabled = enabled
+function AutoPlaceSystem.CreateUI()
+    -- Egg selection dropdown
+    local placeEggDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "🥚 Pick Pet Types",
+        Desc = "Choose which pets to place (🌊 = ocean eggs, need water farm)",
+        Values = {
+            "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
+            "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
+            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg",
+            "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
+            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
+        },
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggTypes = selection
+            eggCache.lastUpdate = 0 -- Invalidate cache
+        end
+    })
+    
+    -- Mutation selection dropdown
+    local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "🧬 Pick Mutations",
+        Desc = "Choose which mutations to place (leave empty for all mutations)",
+        Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedMutations = selection
+            eggCache.lastUpdate = 0 -- Invalidate cache
+        end
+    })
+    
+    -- Statistics display
+    local statsLabel = Tabs.PlaceTab:Paragraph({
+        Title = "📊 Placement Statistics",
+        Desc = "Starting up...",
+        Image = "activity",
+        ImageSize = 16,
+    })
+    
+    local function updateStats()
+        if not statsLabel then return end
+        
+        local lastPlacementText = ""
+        if placementStats.lastPlacement then
+            local timeSince = os.time() - placementStats.lastPlacement
+            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
+            lastPlacementText = " | 🕒 Last: " .. timeText
+        end
+        
+        local statsText = string.format("✅ Placed: %d | 🦄 Mutations: %d%s", 
+            placementStats.totalPlacements, 
+            placementStats.mutationPlacements,
+            lastPlacementText)
+        
+        if statsLabel.SetDesc then
+            statsLabel:SetDesc(statsText)
+        end
+    end
+    
+    -- Main auto place toggle
+    local autoPlaceToggle = Tabs.PlaceTab:Toggle({
+        Title = "🏠 Auto Place Pets (Revamped)",
+        Desc = "Smart placement with ocean egg skipping and focus-first logic!",
+        Value = false,
+        Callback = function(state)
+            autoPlaceEnabled = state
+            
+            if state and not autoPlaceThread then
+                autoPlaceThread = task.spawn(function()
+                    runAutoPlace()
+                    autoPlaceThread = nil
+                end)
+                
+                -- Start stats update loop
+                task.spawn(function()
+                    while autoPlaceEnabled do
+                        updateStats()
+                        task.wait(3)
+                    end
+                end)
+                
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Revamped system started! 🎉", Duration = 3 })
+            elseif not state and autoPlaceThread then
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
+            end
+        end
+    })
+    
+    -- Manual placement button
+    Tabs.PlaceTab:Button({
+        Title = "🏠 Place One Pet Now",
+        Desc = "Manually place one pet right now",
+        Callback = function()
+            local success, message = attemptPlacement()
+            WindUI:Notify({ 
+                Title = success and "✅ Placement Success" or "❌ Placement Failed", 
+                Content = message, 
+                Duration = 3 
+            })
+        end
+    })
+    
+    -- Reset stats button
+    Tabs.PlaceTab:Button({
+        Title = "🔄 Reset Placement Stats",
+        Desc = "Reset placement statistics",
+        Callback = function()
+            placementStats = {
+                totalPlacements = 0,
+                mutationPlacements = 0,
+                lastPlacement = nil
+            }
+            updateStats()
+            WindUI:Notify({ Title = "📊 Stats Reset", Content = "Placement statistics reset!", Duration = 2 })
+        end
+    })
+    
+    -- Store references for external access
+    AutoPlaceSystem.Toggle = autoPlaceToggle
+    AutoPlaceSystem.EggDropdown = placeEggDropdown
+    AutoPlaceSystem.MutationDropdown = placeMutationDropdown
 end
 
--- Get auto place enabled state
-function AutoPlaceSystem.isEnabled()
+function AutoPlaceSystem.SetFilters(eggTypes, mutations)
+    selectedEggTypes = eggTypes or {}
+    selectedMutations = mutations or {}
+    eggCache.lastUpdate = 0 -- Invalidate cache
+end
+
+function AutoPlaceSystem.GetStats()
+    return placementStats
+end
+
+function AutoPlaceSystem.IsEnabled()
     return autoPlaceEnabled
 end
 
--- Cleanup function
-function AutoPlaceSystem.cleanup()
-    autoPlaceEnabled = false
-    availableEggs = {}
-    availableTiles = {}
-    
-    -- Cleanup connections
-    for _, conn in ipairs(placeConnections) do
-        pcall(function() conn:Disconnect() end)
+function AutoPlaceSystem.SetEnabled(enabled)
+    if AutoPlaceSystem.Toggle then
+        -- Trigger the toggle to update UI and start/stop system
+        AutoPlaceSystem.Toggle:SetValue(enabled)
     end
-    placeConnections = {}
-    
-    print("🧹 Auto Place System cleaned up successfully!")
-end
-
--- Initialization function
-function AutoPlaceSystem.Init(dependencies)
-    if not dependencies then
-        warn("AutoPlaceSystem.Init: No dependencies provided")
-        return false
-    end
-    
-    WindUI = dependencies.WindUI
-    Config = dependencies.Config
-    
-    if not WindUI then
-        warn("AutoPlaceSystem.Init: WindUI is required")
-        return false
-    end
-    
-    print("🎯 Auto Place System initialized successfully!")
-    return true
 end
 
 return AutoPlaceSystem
