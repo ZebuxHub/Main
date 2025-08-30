@@ -484,7 +484,8 @@ function AutoPlaceV2.SetupUI(Tabs, WindUI)
                     Dependencies.syncAutoPlaceFiltersFromUI()
                 end
                 
-                if AutoPlaceV2.Start() then
+                local success = AutoPlaceV2.Start()
+                if success then
                     WindUI:Notify({ 
                         Title = "🏠 Auto Place V2", 
                         Content = "Ultra-optimized system started! 🚀", 
