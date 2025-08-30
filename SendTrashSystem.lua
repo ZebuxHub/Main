@@ -38,6 +38,7 @@ local Window
 local Config
 local trashToggle
 local targetPlayerDropdown
+local sendModeDropdown
 local sendPetTypeDropdown
 local sendPetMutationDropdown
 local sellPetTypeDropdown
@@ -184,7 +185,8 @@ local function getPetInventory()
                 type = safeGetAttribute(petData, "Type", "Unknown"),
                 mutation = safeGetAttribute(petData, "Mutation", ""),
                 speed = safeGetAttribute(petData, "Speed", 0),
-                locked = safeGetAttribute(petData, "LK", 0) == 1
+                locked = safeGetAttribute(petData, "LK", 0) == 1,
+                placed = safeGetAttribute(petData, "D", nil) ~= nil -- Check if pet is placed
             }
             
             table.insert(pets, petInfo)
@@ -192,6 +194,36 @@ local function getPetInventory()
     end
     
     return pets
+end
+
+-- Get egg inventory
+local function getEggInventory()
+    local eggs = {}
+    
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return eggs
+    end
+    
+    local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+    if not eggsFolder then
+        return eggs
+    end
+    
+    for _, eggData in pairs(eggsFolder:GetChildren()) do
+        if eggData:IsA("Configuration") then
+            local eggInfo = {
+                uid = eggData.Name,
+                type = safeGetAttribute(eggData, "Type", "Unknown"),
+                mutation = safeGetAttribute(eggData, "Mutation", ""),
+                locked = safeGetAttribute(eggData, "LK", 0) == 1,
+                placed = safeGetAttribute(eggData, "D", nil) ~= nil -- Check if egg is placed
+            }
+            
+            table.insert(eggs, eggInfo)
+        end
+    end
+    
+    return eggs
 end
 
 -- Check if item should be sent/sold based on filters
@@ -222,26 +254,44 @@ local function shouldSendItem(item, excludeTypes, excludeMutations)
     return true
 end
 
--- Focus pet before sending/selling (exactly like manual method)
-local function focusPet(petUID)
-    print("🔍 Focusing pet: " .. tostring(petUID))
+-- Remove placed item from ground
+local function removeFromGround(itemUID)
+    print("🏗️ Removing item from ground: " .. tostring(itemUID))
     
     local success, err = pcall(function()
-        local args = {"Focus", petUID}
+        local args = {"Del", itemUID}
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
     
     if success then
-        print("🎯 Focus command sent successfully for pet " .. petUID)
+        print("✅ Item " .. itemUID .. " removed from ground")
     else
-        warn("❌ Failed to focus pet " .. petUID .. ": " .. tostring(err))
+        warn("❌ Failed to remove item " .. itemUID .. " from ground: " .. tostring(err))
     end
     
     return success
 end
 
--- Send pet to player
-local function sendPetToPlayer(petUID, playerName)
+-- Focus pet/egg before sending/selling (exactly like manual method)
+local function focusItem(itemUID)
+    print("🔍 Focusing item: " .. tostring(itemUID))
+    
+    local success, err = pcall(function()
+        local args = {"Focus", itemUID}
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    
+    if success then
+        print("🎯 Focus command sent successfully for item " .. itemUID)
+    else
+        warn("❌ Failed to focus item " .. itemUID .. ": " .. tostring(err))
+    end
+    
+    return success
+end
+
+-- Send item (pet or egg) to player
+local function sendItemToPlayer(item, playerName, itemType)
     if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
         WindUI:Notify({
             Title = "⚠️ Send Limit",
@@ -251,9 +301,18 @@ local function sendPetToPlayer(petUID, playerName)
         return false
     end
     
-    -- Focus the pet first (REQUIRED before sending)
-    print("🚀 Starting send process for pet " .. petUID .. " to " .. playerName)
-    focusPet(petUID)
+    local itemUID = item.uid
+    print("🚀 Starting send process for " .. itemType .. " " .. itemUID .. " to " .. playerName)
+    
+    -- If item is placed on ground, remove it first
+    if item.placed then
+        print("🏗️ Item is placed on ground, removing first...")
+        removeFromGround(itemUID)
+        wait(0.5) -- Brief wait after removal
+    end
+    
+    -- Focus the item first (REQUIRED before sending)
+    focusItem(itemUID)
     print("⏳ Waiting 1 second for focus to process...")
     wait(1) -- Wait for focus to process
     
@@ -273,16 +332,16 @@ local function sendPetToPlayer(petUID, playerName)
     if success then
         sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
         actionCounter = actionCounter + 1
-        print("✅ Sent pet " .. petUID .. " to " .. playerName)
+        print("✅ Sent " .. itemType .. " " .. itemUID .. " to " .. playerName)
     else
-        warn("Failed to send pet " .. petUID .. " to " .. playerName .. ": " .. tostring(err))
+        warn("Failed to send " .. itemType .. " " .. itemUID .. " to " .. playerName .. ": " .. tostring(err))
     end
     
     return success
 end
 
--- Sell pet
-local function sellPet(petUID)
+-- Sell pet (only pets, no eggs)
+local function sellPet(pet)
     if sessionLimits.sellPetCount >= sessionLimits.maxSellPet then
         WindUI:Notify({
             Title = "⚠️ Sell Limit",
@@ -292,8 +351,18 @@ local function sellPet(petUID)
         return false
     end
     
+    local petUID = pet.uid
+    print("💰 Starting sell process for pet " .. petUID)
+    
+    -- If pet is placed on ground, remove it first
+    if pet.placed then
+        print("🏗️ Pet is placed on ground, removing first...")
+        removeFromGround(petUID)
+        wait(0.5) -- Brief wait after removal
+    end
+    
     -- Focus the pet first
-    focusPet(petUID)
+    focusItem(petUID)
     wait(0.5) -- Small delay to ensure focus is processed
     
     local success, err = pcall(function()
@@ -363,13 +432,16 @@ local function updateStatus()
     if not statusParagraph then return end
     
     local petInventory = getPetInventory()
+    local eggInventory = getEggInventory()
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
-        "📤 Pets sent this session: %d/%d\n" ..
+        "🥚 Eggs in inventory: %d\n" ..
+        "📤 Items sent this session: %d/%d\n" ..
         "💰 Pets sold this session: %d/%d\n" ..
         "⚡ Auto-delete speed threshold: %s\n" ..
         "🔄 Actions performed: %d",
         #petInventory,
+        #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         sessionLimits.sellPetCount, sessionLimits.maxSellPet,
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
@@ -382,9 +454,25 @@ end
 -- Main trash processing function
 local function processTrash()
     while trashEnabled do
-        local petInventory = getPetInventory()
+        -- Get send mode setting
+        local sendMode = "Both" -- Default
+        if sendModeDropdown and sendModeDropdown.GetValue then
+            local success, result = pcall(function() return sendModeDropdown:GetValue() end)
+            sendMode = success and result or "Both"
+        end
         
-        if #petInventory == 0 then
+        local petInventory = {}
+        local eggInventory = {}
+        
+        -- Get inventories based on send mode
+        if sendMode == "Pets" or sendMode == "Both" then
+            petInventory = getPetInventory()
+        end
+        if sendMode == "Eggs" or sendMode == "Both" then
+            eggInventory = getEggInventory()
+        end
+        
+        if #petInventory == 0 and #eggInventory == 0 then
             wait(5)
             continue
         end
@@ -403,7 +491,7 @@ local function processTrash()
             excludeMutations = success and result or {}
         end
         
-        -- Process pets for sending
+        -- Get target player
         local targetPlayer = nil
         print("🔍 Checking target player selection...")
         
@@ -430,22 +518,41 @@ local function processTrash()
         end
         
         print("✅ Final target player for this cycle: " .. tostring(targetPlayer))
+        print("🎮 Send mode: " .. sendMode)
         
-        -- Send pets to other players
-        local sentAnyPet = false
-        for _, pet in ipairs(petInventory) do
-            if shouldSendItem(pet, excludeTypes, excludeMutations) and targetPlayer then
-                print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
-                sendPetToPlayer(pet.uid, targetPlayer)
-                sentAnyPet = true
-                print("⏸️ Waiting 1 second before next action...")
-                wait(1) -- Normal delay between sends
-                break -- Send one at a time
+        -- Send items to other players
+        local sentAnyItem = false
+        
+        -- Try to send pets first
+        if sendMode == "Pets" or sendMode == "Both" then
+            for _, pet in ipairs(petInventory) do
+                if shouldSendItem(pet, excludeTypes, excludeMutations) and targetPlayer then
+                    print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
+                    sendItemToPlayer(pet, targetPlayer, "pet")
+                    sentAnyItem = true
+                    print("⏸️ Waiting 1 second before next action...")
+                    wait(1)
+                    break -- Send one at a time
+                end
             end
         end
         
-        -- If no pets were sent, try selling
-        if not sentAnyPet then
+        -- Try to send eggs if no pets were sent
+        if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
+            for _, egg in ipairs(eggInventory) do
+                if shouldSendItem(egg, excludeTypes, excludeMutations) and targetPlayer then
+                    print("📦 About to send egg " .. egg.uid .. " to target: " .. tostring(targetPlayer))
+                    sendItemToPlayer(egg, targetPlayer, "egg")
+                    sentAnyItem = true
+                    print("⏸️ Waiting 1 second before next action...")
+                    wait(1)
+                    break -- Send one at a time
+                end
+            end
+        end
+        
+        -- If no items were sent, try selling pets (only pets, no eggs)
+        if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
             local sellExcludeTypes = {}
             local sellExcludeMutations = {}
             
@@ -461,15 +568,15 @@ local function processTrash()
             
             for _, pet in ipairs(petInventory) do
                 if shouldSendItem(pet, sellExcludeTypes, sellExcludeMutations) then
-                    sellPet(pet.uid)
+                    sellPet(pet)
                     wait(1)
                     break -- Sell one at a time
                 end
             end
         end
         
-        -- Auto-delete slow pets if enabled
-        if autoDeleteMinSpeed > 0 then
+        -- Auto-delete slow pets if enabled (only for pets, not eggs)
+        if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
             autoDeleteSlowPets(autoDeleteMinSpeed)
         end
         
@@ -536,10 +643,19 @@ function SendTrashSystem.Init(dependencies)
     
     TrashTab:Section({ Title = "🎯 Target Settings", Icon = "target" })
     
+    -- Send mode dropdown
+    sendModeDropdown = TrashTab:Dropdown({
+        Title = "📦 Send Type",
+        Desc = "Choose what to send: Pets only, Eggs only, or Both",
+        Values = {"Pets", "Eggs", "Both"},
+        Value = "Both",
+        Callback = function(selection) end
+    })
+    
     -- Target player dropdown
     targetPlayerDropdown = TrashTab:Dropdown({
         Title = "🎯 Target Player (for sending)",
-        Desc = "Select player to send pets to (Random = different player each time)",
+        Desc = "Select player to send items to (Random = different player each time)",
         Values = refreshPlayerList(),
         Value = "Random Player",
         Callback = function(selection) end
@@ -664,6 +780,7 @@ function SendTrashSystem.Init(dependencies)
     -- Register UI elements with config
     if Config then
         Config:Register("trashEnabled", trashToggle)
+        Config:Register("sendMode", sendModeDropdown)
         Config:Register("targetPlayer", targetPlayerDropdown)
         Config:Register("sendPetTypeFilter", sendPetTypeDropdown)
         Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
