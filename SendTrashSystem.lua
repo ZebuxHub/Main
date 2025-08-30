@@ -472,13 +472,11 @@ local function updateStatus()
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
-        "💰 Pets sold this session: %d/%d\n" ..
         "⚡ Auto-delete speed threshold: %s\n" ..
         "🔄 Actions performed: %d",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
-        sessionLimits.sellPetCount, sessionLimits.maxSellPet,
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
         actionCounter
     )
@@ -912,7 +910,6 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Reset send/sell counters for this session",
         Callback = function()
             sessionLimits.sendPetCount = 0
-            sessionLimits.sellPetCount = 0
             sessionLimits.limitReachedNotified = false -- Reset notification
             actionCounter = 0
             updateStatus()
