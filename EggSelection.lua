@@ -747,13 +747,10 @@ end
 -- Update ScrollingFrame canvas size based on content
 local function updateCanvasSize(scrollFrame)
     local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
-    if not gridLayout then 
-        print("🚫 No gridLayout found in scrollFrame")
-        return 
-    end
+    if not gridLayout then return end
     
     -- Wait for layout to update
-    task.wait(0.2) -- Increased wait time
+    task.wait(0.2)
     
     -- Calculate content size based on grid layout
     local itemCount = 0
@@ -762,8 +759,6 @@ local function updateCanvasSize(scrollFrame)
             itemCount = itemCount + 1
         end
     end
-    
-    print(string.format("📊 Canvas update - Page: %s, Items: %d", currentPage, itemCount))
     
     if itemCount > 0 then
         -- Calculate rows needed (3 items per row)
@@ -776,17 +771,11 @@ local function updateCanvasSize(scrollFrame)
         -- More accurate calculation including all padding
         local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
         
-        print(string.format("📏 Calculated height: %d (rows: %d)", totalHeight, rows))
-        
         -- Always update canvas size to ensure proper scrolling
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
         
         -- Also force a canvas position reset to ensure scrollability
         scrollFrame.CanvasPosition = Vector2.new(0, 0)
-        
-        print(string.format("✅ Canvas size updated to: %d", totalHeight))
-    else
-        print("⚠️ No items found for canvas size calculation")
     end
 end
 
@@ -857,7 +846,6 @@ function EggSelection.RefreshContent()
                 local rows = math.ceil(itemCount / 3)
                 local totalHeight = 8 + (rows * 120) + ((rows - 1) * 8) + 50
                 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-                print(string.format("🔄 Real-time canvas update - Items: %d, Height: %d", itemCount, totalHeight))
             end
             
             -- Disconnect after first successful update
@@ -958,21 +946,6 @@ function EggSelection.UpdateSelections(eggs, mutations)
     end
 end
 
--- Debug function to test scrolling
-function EggSelection.TestScrolling()
-    if ScreenGui then
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-        if scrollFrame then
-            print(string.format("🔍 ScrollFrame Size: %s", tostring(scrollFrame.Size)))
-            print(string.format("🔍 CanvasSize: %s", tostring(scrollFrame.CanvasSize)))
-            print(string.format("🔍 Current Page: %s", currentPage))
-            
-            -- Force scroll to bottom to test
-            local maxScroll = math.max(0, scrollFrame.CanvasSize.Y.Offset - scrollFrame.AbsoluteSize.Y)
-            scrollFrame.CanvasPosition = Vector2.new(0, maxScroll)
-            print(string.format("🔽 Forced scroll to bottom: %d", maxScroll))
-        end
-    end
-end
+
 
 return EggSelection
