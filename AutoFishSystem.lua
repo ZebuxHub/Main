@@ -25,6 +25,8 @@ local FishingConfig = {
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
     FishingRange = 5, -- Fish within 5 studs of player
+    PlayerAnchored = false, -- Track if player is anchored
+    SafePosition = nil, -- Store safe position to prevent falling
     -- Position placement history
     PlacedPositions = {},
     CurrentPositionIndex = 1,
@@ -63,11 +65,11 @@ local function loadFishingBaitConfig()
             end
         end
         table.sort(AvailableBaits)
-        -- Fishing baits loaded successfully"
+        print("🎣 Loaded " .. #AvailableBaits .. " fishing baits")
     else
         -- Fallback baits
         AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
-        -- Using fallback fishing baits
+        print("⚠️ Failed to load fishing bait config, using fallback baits")
     end
 end
 
@@ -288,7 +290,57 @@ local function getMouseWorldPosition()
     end
 end
 
+-- Enhanced Player Anchoring System with Fall Prevention
+local function anchorPlayer()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        
+        -- Store original position for safety
+        FishingConfig.SafePosition = rootPart.CFrame
+        
+        -- Anchor the player
+        rootPart.Anchored = true
+        
+        -- Set platform stand to prevent falling
+        if humanoid then
+            humanoid.PlatformStand = true
+            humanoid.Sit = false
+        end
+        
+        FishingConfig.PlayerAnchored = true
+        print("📍 Player anchored for fishing with fall protection")
+    end
+end
 
+local function unanchorPlayer()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        
+        -- Check if player fell or is in bad position
+        if FishingConfig.SafePosition then
+            local currentY = rootPart.Position.Y
+            local safeY = FishingConfig.SafePosition.Position.Y
+            
+            -- If player fell significantly, restore to safe position
+            if currentY < safeY - 20 then
+                print("🚨 Player fell! Restoring to safe position...")
+                rootPart.CFrame = FishingConfig.SafePosition
+                task.wait(0.1)
+            end
+        end
+        
+        -- Restore normal movement
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
+        
+        rootPart.Anchored = false
+        FishingConfig.PlayerAnchored = false
+        print("🔓 Player unanchored with fall protection")
+    end
+end
 
 -- Auto Position System
 local function getRandomFishingPosition()
@@ -308,7 +360,7 @@ end
 
 local function updateFishingPosition()
     FishingConfig.FishingPosition = getRandomFishingPosition()
-    -- Fishing position updated
+    print("🎣 Fishing position updated to:", FishingConfig.FishingPosition)
 end
 local function savePositionToHistory(position, method)
     local timestamp = os.time()
@@ -558,10 +610,7 @@ local function enableFlagDragging()
     FlagSystem.UserInputConnection = UserInputService.InputBegan:Connect(function(input)
         if input.KeyCode == Enum.KeyCode.Escape and FlagSystem.Active then
             -- Cancel flag placement and remove the pin
-            if FlagSystem.FlagPart then
-                FlagSystem.FlagPart:Destroy()
-                FlagSystem.FlagPart = nil
-            end
+            removeFishingFlag()
             stopFlagPlacement()
             WindUI:Notify({ 
                 Title = "❌ Pin Placement Cancelled", 
@@ -653,6 +702,9 @@ local function startFishing()
     -- Update fishing position to random spot around player
     updateFishingPosition()
     
+    -- Anchor player to prevent jumping and spinning
+    anchorPlayer()
+    
     -- First fire Focus + FishRob
     local args = {
         "Focus",
@@ -664,13 +716,16 @@ local function startFishing()
     end)
     
     if not success then
-        -- Failed to focus fishing
+        warn("Failed to focus fishing: " .. tostring(err))
+        unanchorPlayer() -- Unanchor if failed
         return false
     end
     
     -- Wait time for better accuracy
     task.wait(1)
     
+    -- Debug print to verify position is being used
+    print("🎣 Using fishing position:", FishingConfig.FishingPosition)
     
     local throwArgs = {
         "Throw",
@@ -685,23 +740,13 @@ local function startFishing()
     end)
     
     if not throwSuccess then
-        -- Failed to throw fishing line
+        warn("Failed to throw fishing line: " .. tostring(throwErr))
+        unanchorPlayer() -- Unanchor if failed
         return false
     end
     
     FishingConfig.Stats.TotalCasts = FishingConfig.Stats.TotalCasts + 1
     return true
-end
-
--- Helper function to get current player's model in workspace
-local function getCurrentPlayerModel()
-    local playerName = LocalPlayer.Name
-    local playerModel = workspace:FindFirstChild(playerName)
-    if not playerModel then
-        -- Player model not found in workspace
-        return nil
-    end
-    return playerModel
 end
 
 -- Enhanced fish collection system
@@ -732,7 +777,7 @@ local function collectNearbyFish()
                         
                         if success then
                             collected = collected + 1
-                            -- Fish collected
+                            print("🐟 Collected fish: " .. child.Name)
                         end
                     end
                 end
@@ -749,7 +794,9 @@ local function collectNearbyFish()
     local art = workspace:FindFirstChild("Art")
     if art then searchForFish(art) end
     
-    -- Fish collection completed
+    if collected > 0 then
+        print(string.format("🎣 Auto-collected %d fish!", collected))
+    end
     
     return collected > 0
 end
@@ -767,7 +814,8 @@ local function pullFish()
     end)
     
     if not success then
-        -- Failed to pull fish
+        warn("Failed to pull fish: " .. tostring(err))
+        unanchorPlayer() -- Unanchor if failed
         return false
     end
     
@@ -777,7 +825,12 @@ local function pullFish()
     -- Auto-collect fish
     local collectSuccess = collectNearbyFish()
     
-    -- Fishing attempt completed
+    -- Unanchor player after fishing attempt
+    if unanchorPlayer then
+        pcall(unanchorPlayer)
+    else
+        warn("unanchorPlayer function is nil!")
+    end
     
     FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
     FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
@@ -788,30 +841,116 @@ end
 
 
 
+-- Enhanced function to find the player's fishing object dynamically
+local function findPlayerFishingObject()
+    if not LocalPlayer then return nil end
+    
+    -- Method 1: Look for object with player's name
+    local playerName = LocalPlayer.Name
+    local playerObj = workspace:FindFirstChild(playerName)
+    if playerObj then
+        return playerObj
+    end
+    
+    -- Method 2: Look for object with player's DisplayName
+    if LocalPlayer.DisplayName and LocalPlayer.DisplayName ~= playerName then
+        local displayObj = workspace:FindFirstChild(LocalPlayer.DisplayName)
+        if displayObj then
+            return displayObj
+        end
+    end
+    
+    -- Method 3: Look for object with player's UserId pattern
+    local userId = LocalPlayer.UserId
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:GetAttribute("UserId") == userId then
+            return obj
+        end
+    end
+    
+    -- Method 4: Search for objects that might be fishing-related and belong to player
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") then
+            local name = obj.Name:lower()
+            -- Check if it contains fishing-related keywords and player identifier
+            if (name:find("fish") or name:find("rod") or name:find("bait")) and 
+               (name:find(playerName:lower()) or name:find(tostring(userId))) then
+                return obj
+            end
+        end
+    end
+    
+    -- Method 5: Look for any object that has AnimFish attribute (fishing objects)
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:GetAttribute("AnimFish") then
+            -- Additional check: see if it's related to the current player
+            local objUserId = obj:GetAttribute("UserId")
+            if objUserId == userId then
+                return obj
+            end
+        end
+    end
+    
+    return nil
+end
+
 local function waitForFishPull()
-    -- Get current player's model dynamically
-    local playerModel = getCurrentPlayerModel()
-    if not playerModel then
+    -- Try to find the player's fishing object dynamically
+    local fishingObj = findPlayerFishingObject()
+    
+    if not fishingObj then
+        -- Fallback: try common patterns
+        local commonPatterns = {
+            LocalPlayer.Name,
+            LocalPlayer.DisplayName,
+            "zif_" .. string.format("%03d", LocalPlayer.UserId % 1000),
+            "player_" .. LocalPlayer.UserId,
+            "fishing_" .. LocalPlayer.Name
+        }
+        
+        for _, pattern in ipairs(commonPatterns) do
+            if pattern then
+                local obj = workspace:FindFirstChild(pattern)
+                if obj then
+                    fishingObj = obj
+                    break
+                end
+            end
+        end
+    end
+    
+    if not fishingObj then
+        warn("⚠️ Could not find fishing object for player: " .. LocalPlayer.Name)
+        print("🔍 Available objects in workspace:")
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") then
+                print("  - " .. obj.Name .. (obj:GetAttribute("AnimFish") and " (has AnimFish)" or ""))
+            end
+        end
         return false
     end
+    
+    print("🎣 Using fishing object: " .. fishingObj.Name)
     
     local timeout = 30 -- Increased timeout for better accuracy
     local startTime = tick()
     
     -- Wait for AnimFish attribute to be "Pull" with slower checking for accuracy
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
-        local animFish = playerModel:GetAttribute("AnimFish")
+        local animFish = fishingObj:GetAttribute("AnimFish")
         if animFish == "Pull" then
+            print("🎯 Fish ready to pull! AnimFish = " .. tostring(animFish))
             return true
         end
         task.wait(0.2) -- Slower checking interval for better accuracy
     end
     
+    warn("⏰ Fishing timeout reached or AnimFish never became 'Pull'")
     return false
 end
 
 local function runAutoFish()
-    -- Starting auto fish loop
+    print("🎣 Starting auto fish loop...")
     while FishingConfig.AutoFishEnabled do
         print("🎣 Beginning new fishing cycle...")
         local castStartTime = tick()
