@@ -26,6 +26,7 @@ local FishingConfig = {
     DelayBetweenCasts = 2,
     FishingRange = 5, -- Fish within 5 studs of player
     PlayerAnchored = false, -- Track if player is anchored
+    SafePosition = nil, -- Store safe position to prevent falling
     -- Position placement history
     PlacedPositions = {},
     CurrentPositionIndex = 1,
@@ -289,20 +290,55 @@ local function getMouseWorldPosition()
     end
 end
 
--- Player Anchoring System
+-- Enhanced Player Anchoring System with Fall Prevention
 local function anchorPlayer()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        LocalPlayer.Character.HumanoidRootPart.Anchored = true
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        
+        -- Store original position for safety
+        FishingConfig.SafePosition = rootPart.CFrame
+        
+        -- Anchor the player
+        rootPart.Anchored = true
+        
+        -- Set platform stand to prevent falling
+        if humanoid then
+            humanoid.PlatformStand = true
+            humanoid.Sit = false
+        end
+        
         FishingConfig.PlayerAnchored = true
-        print("📍 Player anchored for fishing")
+        print("📍 Player anchored for fishing with fall protection")
     end
 end
 
 local function unanchorPlayer()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        LocalPlayer.Character.HumanoidRootPart.Anchored = false
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        
+        -- Check if player fell or is in bad position
+        if FishingConfig.SafePosition then
+            local currentY = rootPart.Position.Y
+            local safeY = FishingConfig.SafePosition.Position.Y
+            
+            -- If player fell significantly, restore to safe position
+            if currentY < safeY - 20 then
+                print("🚨 Player fell! Restoring to safe position...")
+                rootPart.CFrame = FishingConfig.SafePosition
+                task.wait(0.1)
+            end
+        end
+        
+        -- Restore normal movement
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
+        
+        rootPart.Anchored = false
         FishingConfig.PlayerAnchored = false
-        print("🔓 Player unanchored")
+        print("🔓 Player unanchored with fall protection")
     end
 end
 
@@ -725,19 +761,78 @@ local function pullFish()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
     end)
     
-    -- Unanchor player after fishing attempt
-    unanchorPlayer()
-    
     if not success then
         warn("Failed to pull fish: " .. tostring(err))
+        unanchorPlayer() -- Unanchor if failed
         return false
     end
+    
+    -- Wait a moment for fish to be caught before collecting
+    task.wait(0.5)
+    
+    -- Auto-collect fish
+    local collectSuccess = collectNearbyFish()
+    
+    -- Unanchor player after fishing attempt
+    unanchorPlayer()
     
     FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
     FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
     FishingConfig.Stats.LastCatchTime = os.time()
     
     return true
+end
+
+-- Enhanced fish collection system
+local function collectNearbyFish()
+    local playerRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not playerRootPart then return false end
+    
+    local playerPosition = playerRootPart.Position
+    local collected = 0
+    
+    -- Look for fish models in workspace
+    local function searchForFish(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("Model") and child.Name:lower():find("fish") then
+                -- Check if fish belongs to player
+                local userId = child:GetAttribute("UserId")
+                if userId and tonumber(userId) == LocalPlayer.UserId then
+                    -- Check distance
+                    local fishPosition = child:GetPivot().Position
+                    local distance = (fishPosition - playerPosition).Magnitude
+                    
+                    if distance <= FishingConfig.FishingRange * 2 then -- Larger collection range
+                        -- Try to collect fish
+                        local collectArgs = {"Collect", child.Name}
+                        local success = pcall(function()
+                            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(collectArgs))
+                        end)
+                        
+                        if success then
+                            collected = collected + 1
+                            print("🐟 Collected fish: " .. child.Name)
+                        end
+                    end
+                end
+            end
+            -- Recursively search children
+            if child:IsA("Folder") or child:IsA("Model") then
+                searchForFish(child)
+            end
+        end
+    end
+    
+    -- Search in multiple locations where fish might spawn
+    searchForFish(workspace)
+    local art = workspace:FindFirstChild("Art")
+    if art then searchForFish(art) end
+    
+    if collected > 0 then
+        print(string.format("🎣 Auto-collected %d fish!", collected))
+    end
+    
+    return collected > 0
 end
 
 local function waitForFishPull()
