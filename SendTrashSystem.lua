@@ -53,7 +53,7 @@ local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- legacy single cache (kept for backward compatibility)
-local selectedTargets = {} -- new: multi-target list (names)
+local selectedTargets = { "Random Player" } -- new: multi-target list (names)
 local selectedTargetIdx = 0
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
@@ -334,6 +334,21 @@ local function getRandomPlayer()
     end
     
     return nil
+end
+
+-- Safely update target dropdown values and keep current selections when possible
+local function updateTargetPlayerDropdown()
+    if not targetPlayerDropdown or not targetPlayerDropdown.SetValues then return end
+    local newValues = refreshPlayerList()
+    pcall(function() targetPlayerDropdown:SetValues(newValues) end)
+    -- Preserve previous selections that still exist
+    local existSet = {}
+    for _, v in ipairs(newValues) do existSet[v] = true end
+    local kept = {}
+    for _, v in ipairs(selectedTargets or {}) do if existSet[v] then table.insert(kept, v) end end
+    if #kept == 0 then kept = { "Random Player" } end
+    -- Select kept selections if API provides Select (WindUI supports :Select for elements)
+    if targetPlayerDropdown.Select then pcall(function() targetPlayerDropdown:Select(kept) end) end
 end
 
 -- Convert dropdown selection into a plain string list
@@ -901,6 +916,14 @@ function SendTrashSystem.Init(dependencies)
             if #selectedTargets == 1 then selectedTargetName = selectedTargets[1] end
         end
     })
+    -- Initial refresh/selection, and periodic refresh to keep list updated
+    task.defer(updateTargetPlayerDropdown)
+    task.spawn(function()
+        while true do
+            task.wait(5)
+            updateTargetPlayerDropdown()
+        end
+    end)
     
     TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
     
