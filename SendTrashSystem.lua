@@ -52,9 +52,7 @@ local statusParagraph
 local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
-local selectedTargetName = "Random Player" -- legacy single cache (kept for backward compatibility)
-local selectedTargets = { "Random Player" } -- new: multi-target list (names)
-local selectedTargetIdx = 0
+local selectedTargetName = "Random Player"
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 
@@ -340,20 +338,8 @@ end
 local function updateTargetPlayerDropdown()
     if not targetPlayerDropdown or not targetPlayerDropdown.SetValues then return end
     local newValues = refreshPlayerList()
-    -- Prefer WindUI :Refresh if available (matches example usage)
-    if targetPlayerDropdown.Refresh then
-        pcall(function() targetPlayerDropdown:Refresh(newValues) end)
-    else
-        pcall(function() targetPlayerDropdown:SetValues(newValues) end)
-    end
-    -- Preserve previous selections that still exist
-    local existSet = {}
-    for _, v in ipairs(newValues) do existSet[v] = true end
-    local kept = {}
-    for _, v in ipairs(selectedTargets or {}) do if existSet[v] then table.insert(kept, v) end end
-    if #kept == 0 then kept = { "Random Player" } end
-    -- Select kept selections if API provides Select (WindUI supports :Select for elements)
-    if targetPlayerDropdown.Select then pcall(function() targetPlayerDropdown:Select(kept) end) end
+    pcall(function() targetPlayerDropdown:SetValues(newValues) end)
+    if targetPlayerDropdown.Select then pcall(function() targetPlayerDropdown:Select(selectedTargetName) end) end
 end
 
 -- Convert dropdown selection into a plain string list
@@ -758,21 +744,13 @@ local function processTrash()
         end
         
         -- Get target player (robust): prefer cached selection, resolve actual Player
-        -- Resolve target: rotate through multi-target list; if "Random Player" present, pick random each time
+        -- Resolve single target or random
         local targetPlayerObj = nil
-        local useRandom = false
-        for _, name in ipairs(selectedTargets or {}) do
-            if name == "Random Player" then useRandom = true break end
-        end
-        if useRandom or not selectedTargets or #selectedTargets == 0 then
-            targetPlayerObj = getRandomPlayer()
+        if selectedTargetName and selectedTargetName ~= "Random Player" then
+            targetPlayerObj = resolveTargetPlayerByName(selectedTargetName)
+            if not targetPlayerObj then targetPlayerObj = getRandomPlayer() end
         else
-            selectedTargetIdx = (selectedTargetIdx % #selectedTargets) + 1
-            local pick = selectedTargets[selectedTargetIdx]
-            targetPlayerObj = resolveTargetPlayerByName(pick)
-            if not targetPlayerObj then
-                targetPlayerObj = getRandomPlayer()
-            end
+            targetPlayerObj = getRandomPlayer()
         end
         local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
         lastReceiverName = targetPlayer
@@ -910,25 +888,15 @@ function SendTrashSystem.Init(dependencies)
     
     -- Target player dropdown
     targetPlayerDropdown = TrashTab:Dropdown({
-        Title = "🎯 Target Player(s)",
-        Desc = "Select one or more targets (include 'Random Player' to randomize)",
+        Title = "🎯 Target Player",
+        Desc = "Select player to send items to (Random = different player each time)",
         Values = refreshPlayerList(),
-        Value = { "Random Player" },
-        Multi = true,
-        AllowNone = false,
+        Value = "Random Player",
         Callback = function(selection)
-            selectedTargets = selectionToList(selection)
-            if #selectedTargets == 1 then selectedTargetName = selectedTargets[1] end
+            selectedTargetName = selection or "Random Player"
         end
     })
-    -- Initial refresh/selection, and periodic refresh to keep list updated
     task.defer(updateTargetPlayerDropdown)
-    task.spawn(function()
-        while true do
-            task.wait(5)
-            updateTargetPlayerDropdown()
-        end
-    end)
     
     TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
     
