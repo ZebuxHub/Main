@@ -52,7 +52,9 @@ local statusParagraph
 local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
-local selectedTargetName = "Random Player" -- cache target selection
+local selectedTargetName = "Random Player" -- legacy single cache (kept for backward compatibility)
+local selectedTargets = {} -- new: multi-target list (names)
+local selectedTargetIdx = 0
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 
@@ -736,16 +738,21 @@ local function processTrash()
         end
         
         -- Get target player (robust): prefer cached selection, resolve actual Player
-        local targetPlayerName = selectedTargetName
+        -- Resolve target: rotate through multi-target list; if "Random Player" present, pick random each time
         local targetPlayerObj = nil
-        if targetPlayerName and targetPlayerName ~= "Random Player" then
-            targetPlayerObj = resolveTargetPlayerByName(targetPlayerName)
+        local useRandom = false
+        for _, name in ipairs(selectedTargets or {}) do
+            if name == "Random Player" then useRandom = true break end
+        end
+        if useRandom or not selectedTargets or #selectedTargets == 0 then
+            targetPlayerObj = getRandomPlayer()
+        else
+            selectedTargetIdx = (selectedTargetIdx % #selectedTargets) + 1
+            local pick = selectedTargets[selectedTargetIdx]
+            targetPlayerObj = resolveTargetPlayerByName(pick)
             if not targetPlayerObj then
-                print("⚠️ Selected player not found, falling back to random")
                 targetPlayerObj = getRandomPlayer()
             end
-        else
-            targetPlayerObj = getRandomPlayer()
         end
         local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
         lastReceiverName = targetPlayer
@@ -923,12 +930,15 @@ function SendTrashSystem.Init(dependencies)
     
     -- Target player dropdown
     targetPlayerDropdown = TrashTab:Dropdown({
-        Title = "🎯 Target Player (for sending)",
-        Desc = "Select player to send items to (Random = different player each time)",
+        Title = "🎯 Target Player(s)",
+        Desc = "Select one or more targets (include 'Random Player' to randomize)",
         Values = refreshPlayerList(),
-        Value = "Random Player",
+        Value = { "Random Player" },
+        Multi = true,
+        AllowNone = false,
         Callback = function(selection)
-            selectedTargetName = selection or "Random Player"
+            selectedTargets = selectionToList(selection)
+            if #selectedTargets == 1 then selectedTargetName = selectedTargets[1] end
         end
     })
     
