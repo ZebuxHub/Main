@@ -300,8 +300,8 @@ local function getEggInventory()
         if eggData:IsA("Configuration") then
             local eggInfo = {
                 uid = eggData.Name,
-                -- Prefer explicit ID for eggs, then T/Type
-                type = safeGetAttribute(eggData, "ID", safeGetAttribute(eggData, "T", safeGetAttribute(eggData, "Type", "Unknown"))),
+                -- Match by T for eggs (fallback to Type)
+                type = safeGetAttribute(eggData, "T", safeGetAttribute(eggData, "Type", "Unknown")),
                 mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "")),
                 locked = safeGetAttribute(eggData, "LK", 0) == 1,
                 placed = safeGetAttribute(eggData, "D", nil) ~= nil -- Check if egg is placed
@@ -323,11 +323,7 @@ local function refreshItemFromData(uid, isEgg, into)
     local conf = folder:FindFirstChild(uid)
     if conf and conf:IsA("Configuration") then
         local tVal
-        if isEgg then
-            tVal = safeGetAttribute(conf, "ID", nil) or safeGetAttribute(conf, "T", nil) or safeGetAttribute(conf, "Type", nil)
-        else
-            tVal = safeGetAttribute(conf, "T", nil) or safeGetAttribute(conf, "Type", nil)
-        end
+        tVal = safeGetAttribute(conf, "T", nil) or safeGetAttribute(conf, "Type", nil)
         local mVal = safeGetAttribute(conf, "M", nil) or safeGetAttribute(conf, "Mutation", "")
         local locked = safeGetAttribute(conf, "LK", 0) == 1
         local placed = safeGetAttribute(conf, "D", nil) ~= nil
