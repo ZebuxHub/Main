@@ -312,6 +312,31 @@ local function getEggInventory()
     return eggs
 end
 
+-- Refresh live attributes (T/M/locked/placed) for a given uid directly from PlayerGui.Data
+local function refreshItemFromData(uid, isEgg, into)
+    local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
+    if not dataRoot then return into end
+    local folder = dataRoot:FindFirstChild(isEgg and "Egg" or "Pets")
+    if not folder then return into end
+    local conf = folder:FindFirstChild(uid)
+    if conf and conf:IsA("Configuration") then
+        local tVal = safeGetAttribute(conf, "T", nil) or safeGetAttribute(conf, "Type", nil)
+        local mVal = safeGetAttribute(conf, "M", nil) or safeGetAttribute(conf, "Mutation", "")
+        local locked = safeGetAttribute(conf, "LK", 0) == 1
+        local placed = safeGetAttribute(conf, "D", nil) ~= nil
+        if into then
+            into.type = tVal or into.type
+            into.mutation = mVal or into.mutation
+            into.locked = locked
+            into.placed = placed
+            return into
+        else
+            return { uid = uid, type = tVal, mutation = mVal, locked = locked, placed = placed }
+        end
+    end
+    return into
+end
+
 -- Check if item should be sent/sold based on filters
 local function shouldSendItem(item, includeTypes, includeMutations)
     -- Don't send locked items
@@ -613,6 +638,8 @@ local function processTrash()
         -- Try to send pets first (respect T/M before any action)
         if sendMode == "Pets" or sendMode == "Both" then
             for _, pet in ipairs(petInventory) do
+                -- Re-read attributes live before deciding
+                pet = refreshItemFromData(pet.uid, false, pet)
                 if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
                     local petName = pet.type or pet.uid
                     print("📦 About to send pet " .. petName .. " to target: " .. tostring(targetPlayer))
@@ -627,6 +654,7 @@ local function processTrash()
         -- Try to send eggs if no pets were sent (respect T/M before any action)
         if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
+                egg = refreshItemFromData(egg.uid, true, egg)
                 if shouldSendItem(egg, includeEggTypes, includeEggMutations) and targetPlayer then
                     local eggName = egg.type or egg.uid
                     print("📦 About to send egg " .. eggName .. " to target: " .. tostring(targetPlayer))
