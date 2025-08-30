@@ -221,6 +221,36 @@ local function getRandomPlayer()
     return nil
 end
 
+-- Convert dropdown selection into a plain string list
+local function selectionToList(selection)
+    local result = {}
+    if type(selection) == "table" then
+        -- Handle either array-style or set-style tables
+        local hasIndexed = false
+        for k, v in pairs(selection) do
+            if type(k) == "number" then
+                hasIndexed = true
+                break
+            end
+        end
+        if hasIndexed then
+            for _, v in ipairs(selection) do
+                v = tostring(v)
+                if v ~= "" and v ~= "--" then table.insert(result, v) end
+            end
+        else
+            for k, v in pairs(selection) do
+                if v == true and type(k) == "string" and k ~= "--" and k ~= "" then
+                    table.insert(result, k)
+                end
+            end
+        end
+    elseif type(selection) == "string" then
+        if selection ~= "" and selection ~= "--" then table.insert(result, selection) end
+    end
+    return result
+end
+
 -- Get pet inventory
 local function getPetInventory()
     local pets = {}
@@ -539,12 +569,12 @@ local function processTrash()
         
         if sendPetTypeDropdown and sendPetTypeDropdown.GetValue then
             local success, result = pcall(function() return sendPetTypeDropdown:GetValue() end)
-            includePetTypes = success and result or {}
+            includePetTypes = success and selectionToList(result) or {}
         end
         
         if sendPetMutationDropdown and sendPetMutationDropdown.GetValue then
             local success, result = pcall(function() return sendPetMutationDropdown:GetValue() end)
-            includePetMutations = success and result or {}
+            includePetMutations = success and selectionToList(result) or {}
         end
         
         -- Get selector settings for eggs (include-only)
@@ -553,12 +583,12 @@ local function processTrash()
         
         if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
             local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
-            includeEggTypes = success and result or {}
+            includeEggTypes = success and selectionToList(result) or {}
         end
         
         if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
             local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
-            includeEggMutations = success and result or {}
+            includeEggMutations = success and selectionToList(result) or {}
         end
         
         -- Get target player (robust): prefer cached selection, resolve actual Player
