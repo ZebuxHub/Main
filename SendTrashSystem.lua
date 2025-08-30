@@ -254,8 +254,14 @@ local function sendPetToPlayer(petUID, playerName)
     wait(0.5) -- Small delay to ensure focus is processed
     
     local success, err = pcall(function()
-        local args = {"Send", petUID, playerName}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
+        -- Find the target player object
+        local targetPlayer = Players:FindFirstChild(playerName)
+        if not targetPlayer then
+            error("Player " .. playerName .. " not found")
+        end
+        
+        local args = {targetPlayer}
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
     end)
     
     if success then
