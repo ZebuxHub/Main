@@ -222,6 +222,22 @@ local function shouldSendItem(item, excludeTypes, excludeMutations)
     return true
 end
 
+-- Focus pet before sending/selling
+local function focusPet(petUID)
+    local success, err = pcall(function()
+        local args = {"Focus", petUID}
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
+    end)
+    
+    if success then
+        print("🎯 Focused pet " .. petUID)
+    else
+        warn("Failed to focus pet " .. petUID .. ": " .. tostring(err))
+    end
+    
+    return success
+end
+
 -- Send pet to player
 local function sendPetToPlayer(petUID, playerName)
     if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
@@ -232,6 +248,10 @@ local function sendPetToPlayer(petUID, playerName)
         })
         return false
     end
+    
+    -- Focus the pet first
+    focusPet(petUID)
+    wait(0.5) -- Small delay to ensure focus is processed
     
     local success, err = pcall(function()
         local args = {"Send", petUID, playerName}
@@ -259,6 +279,10 @@ local function sellPet(petUID)
         })
         return false
     end
+    
+    -- Focus the pet first
+    focusPet(petUID)
+    wait(0.5) -- Small delay to ensure focus is processed
     
     local success, err = pcall(function()
         local args = {"Sell", petUID}
