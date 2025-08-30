@@ -30,6 +30,7 @@ local HardcodedMutations = {
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 -- UI Variables
@@ -53,6 +54,11 @@ local statusParagraph
 local trashEnabled = false
 local autoDeleteMinSpeed = 0
 local actionCounter = 0
+
+-- Webhook/session reporting
+local webhookUrl = ""
+local sessionLogs = {}
+local webhookSent = false
 
 -- Session limits
 local sessionLimits = {
@@ -265,28 +271,33 @@ local function getEggInventory()
 end
 
 -- Check if item should be sent/sold based on filters
-local function shouldSendItem(item, excludeTypes, excludeMutations)
+local function shouldSendItem(item, includeTypes, includeMutations)
     -- Don't send/sell locked items
     if item.locked then
         return false
     end
     
-    -- Check type exclusions
-    if excludeTypes then
-        for _, excludeType in ipairs(excludeTypes) do
-            if item.type == excludeType then
-                return false
+    -- Include-only filtering: if user selected any, item MUST match one
+    if includeTypes and #includeTypes > 0 then
+        local typeAllowed = false
+        for _, t in ipairs(includeTypes) do
+            if item.type == t then
+                typeAllowed = true
+                break
             end
         end
+        if not typeAllowed then return false end
     end
     
-    -- Check mutation exclusions
-    if excludeMutations then
-        for _, excludeMutation in ipairs(excludeMutations) do
-            if item.mutation == excludeMutation then
-                return false
+    if includeMutations and #includeMutations > 0 then
+        local mutAllowed = false
+        for _, m in ipairs(includeMutations) do
+            if item.mutation == m then
+                mutAllowed = true
+                break
             end
         end
+        if not mutAllowed then return false end
     end
     
     return true
@@ -374,6 +385,14 @@ local function sendItemToPlayer(item, playerName, itemType)
         sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
         actionCounter = actionCounter + 1
         print("✅ Sent " .. itemType .. " " .. itemUID .. " to " .. playerName)
+        -- Log for webhook
+        table.insert(sessionLogs, {
+            kind = itemType,
+            uid = itemUID,
+            type = item.type,
+            mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
+            receiver = playerName,
+        })
     else
         warn("Failed to send " .. itemType .. " " .. itemUID .. " to " .. playerName .. ": " .. tostring(err))
     end
@@ -537,32 +556,32 @@ local function processTrash()
             continue
         end
         
-        -- Get filter settings for pets
-        local excludePetTypes = {}
-        local excludePetMutations = {}
+        -- Get selector settings for pets (include-only)
+        local includePetTypes = {}
+        local includePetMutations = {}
         
         if sendPetTypeDropdown and sendPetTypeDropdown.GetValue then
             local success, result = pcall(function() return sendPetTypeDropdown:GetValue() end)
-            excludePetTypes = success and result or {}
+            includePetTypes = success and result or {}
         end
         
         if sendPetMutationDropdown and sendPetMutationDropdown.GetValue then
             local success, result = pcall(function() return sendPetMutationDropdown:GetValue() end)
-            excludePetMutations = success and result or {}
+            includePetMutations = success and result or {}
         end
         
-        -- Get filter settings for eggs
-        local excludeEggTypes = {}
-        local excludeEggMutations = {}
+        -- Get selector settings for eggs (include-only)
+        local includeEggTypes = {}
+        local includeEggMutations = {}
         
         if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
             local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
-            excludeEggTypes = success and result or {}
+            includeEggTypes = success and result or {}
         end
         
         if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
             local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
-            excludeEggMutations = success and result or {}
+            includeEggMutations = success and result or {}
         end
         
         -- Get target player
@@ -600,7 +619,7 @@ local function processTrash()
         -- Try to send pets first
         if sendMode == "Pets" or sendMode == "Both" then
             for _, pet in ipairs(petInventory) do
-                if shouldSendItem(pet, excludePetTypes, excludePetMutations) and targetPlayer then
+                if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
                     print("📦 About to send pet " .. pet.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(pet, targetPlayer, "pet")
                     sentAnyItem = true
@@ -613,7 +632,7 @@ local function processTrash()
         -- Try to send eggs if no pets were sent
         if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
             for _, egg in ipairs(eggInventory) do
-                if shouldSendItem(egg, excludeEggTypes, excludeEggMutations) and targetPlayer then
+                if shouldSendItem(egg, includeEggTypes, includeEggMutations) and targetPlayer then
                     print("📦 About to send egg " .. egg.uid .. " to target: " .. tostring(targetPlayer))
                     sendItemToPlayer(egg, targetPlayer, "egg")
                     sentAnyItem = true
@@ -726,6 +745,50 @@ function SendTrashSystem.Init(dependencies)
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
             else
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
+                -- Send webhook once per session when turned off
+                if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+                    task.spawn(function()
+                        local success, err = pcall(function()
+                            local totalSent = sessionLimits.sendPetCount
+                            local totalSold = sessionLimits.sellPetCount
+                            local fields = {}
+                            table.insert(fields, { name = "Items Sent", value = tostring(totalSent), inline = true })
+                            table.insert(fields, { name = "Pets Sold", value = tostring(totalSold), inline = true })
+                            
+                            -- Build concise description list (last 10 items)
+                            local details = ""
+                            local startIdx = math.max(1, #sessionLogs - 9)
+                            for i = startIdx, #sessionLogs do
+                                local it = sessionLogs[i]
+                                details = details .. string.format("%s • %s [%s] → %s\n", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
+                            end
+                            
+                            local payload = {
+                                embeds = {
+                                    {
+                                        title = "Send Trash Session Summary",
+                                        description = details ~= "" and details or "No items were sent.",
+                                        color = 5814783,
+                                        fields = fields,
+                                        footer = { text = "Build A Zoo" },
+                                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                                    }
+                                }
+                            }
+                            local json = HttpService:JSONEncode(payload)
+                            http_request = http_request or request or (syn and syn.request)
+                            if http_request then
+                                http_request({
+                                    Url = webhookUrl,
+                                    Method = "POST",
+                                    Headers = { ["Content-Type"] = "application/json" },
+                                    Body = json,
+                                })
+                            end
+                        end)
+                        if success then webhookSent = true end
+                    end)
+                end
             end
         end
     })
@@ -750,12 +813,12 @@ function SendTrashSystem.Init(dependencies)
         Callback = function(selection) end
     })
     
-    TrashTab:Section({ Title = "📤 Send Pet Filters", Icon = "mail" })
+    TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
     
-    -- Send pet type filter
+    -- Send pet type filter (now include-only)
     sendPetTypeDropdown = TrashTab:Dropdown({
-        Title = "🚫 Exclude Pet Types (from sending)",
-        Desc = "Select pet types to NOT send (empty = send all types)",
+        Title = "✅ Pet Types to Send",
+        Desc = "Select pet types to send (empty = allow all)",
         Values = getAllPetTypes(),
         Value = {},
         Multi = true,
@@ -763,10 +826,10 @@ function SendTrashSystem.Init(dependencies)
         Callback = function(selection) end
     })
     
-    -- Send pet mutation filter
+    -- Send pet mutation filter (now include-only)
     sendPetMutationDropdown = TrashTab:Dropdown({
-        Title = "🚫 Exclude Pet Mutations (from sending)", 
-        Desc = "Select mutations to NOT send (empty = send all mutations)",
+        Title = "✅ Pet Mutations to Send", 
+        Desc = "Select mutations to send (empty = allow all)",
         Values = getAllMutations(),
         Value = {},
         Multi = true,
@@ -774,12 +837,12 @@ function SendTrashSystem.Init(dependencies)
         Callback = function(selection) end
     })
     
-    TrashTab:Section({ Title = "🥚 Send Egg Filters", Icon = "mail" })
+    TrashTab:Section({ Title = "🥚 Send Egg Selectors", Icon = "mail" })
     
-    -- Send egg type filter
+    -- Send egg type filter (now include-only)
     sendEggTypeDropdown = TrashTab:Dropdown({
-        Title = "🚫 Exclude Egg Types (from sending)",
-        Desc = "Select egg types to NOT send (empty = send all types)",
+        Title = "✅ Egg Types to Send",
+        Desc = "Select egg types to send (empty = allow all)",
         Values = getAllEggTypes(),
         Value = {},
         Multi = true,
@@ -787,10 +850,10 @@ function SendTrashSystem.Init(dependencies)
         Callback = function(selection) end
     })
     
-    -- Send egg mutation filter
+    -- Send egg mutation filter (now include-only)
     sendEggMutationDropdown = TrashTab:Dropdown({
-        Title = "🚫 Exclude Egg Mutations (from sending)", 
-        Desc = "Select mutations to NOT send (empty = send all mutations)",
+        Title = "✅ Egg Mutations to Send", 
+        Desc = "Select mutations to send (empty = allow all)",
         Values = getAllMutations(),
         Value = {},
         Multi = true,
@@ -823,6 +886,19 @@ function SendTrashSystem.Init(dependencies)
     })
     
     TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
+    
+    -- Webhook input (optional)
+    TrashTab:Input({
+        Title = "Webhook URL (optional)",
+        Desc = "Discord webhook to receive session summary",
+        Default = webhookUrl,
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            webhookUrl = tostring(value or "")
+            webhookSent = false
+        end,
+    })
     
     -- Manual refresh button
     TrashTab:Button({
