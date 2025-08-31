@@ -644,7 +644,7 @@ local function sendItemToPlayer(item, playerName, itemType)
     if item.placed then
         local removeSuccess = removeFromGround(itemUID)
         if removeSuccess then
-            task.wait(0.3) -- Slower wait after removal
+            task.wait(0.05) -- Optimized wait after removal
             -- Re-verify after removal
             if not verifyItemExists(itemUID, isEgg) then
                 sendInProgress[itemUID] = nil
@@ -656,7 +656,7 @@ local function sendItemToPlayer(item, playerName, itemType)
     -- Focus the item first (REQUIRED before sending)
     local focusSuccess = focusItem(itemUID)
     if focusSuccess then
-        task.wait(0.5) -- Slower wait for focus to process
+        task.wait(0.1) -- Optimized wait for focus to process
     end
     
     -- Verify player is still online
@@ -674,19 +674,40 @@ local function sendItemToPlayer(item, playerName, itemType)
     end)
     
     if sendSuccess then
-        -- Trust that the remote call worked, no inventory re-check needed
-        success = true
-        sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-        actionCounter = actionCounter + 1
+        -- Wait a moment then verify item was actually sent by checking PlayerGui.Data
+        task.wait(0.3) -- Slightly longer wait for server update
+        local itemStillExists = false
         
-        -- Log for webhook
-        table.insert(sessionLogs, {
-            kind = itemType,
-            uid = itemUID,
-            type = item.type,
-            mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
-            receiver = playerName,
-        })
+        -- Check directly in PlayerGui.Data folders
+        if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+            if isEgg then
+                local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+                if eggsFolder then
+                    itemStillExists = eggsFolder:FindFirstChild(itemUID) ~= nil
+                end
+            else
+                local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+                if petsFolder then
+                    itemStillExists = petsFolder:FindFirstChild(itemUID) ~= nil
+                end
+            end
+        end
+        
+        if not itemStillExists then
+            -- Item successfully sent (no longer in PlayerGui.Data)
+            success = true
+            sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
+            actionCounter = actionCounter + 1
+            
+            -- Log for webhook
+            table.insert(sessionLogs, {
+                kind = itemType,
+                uid = itemUID,
+                type = item.type,
+                mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
+                receiver = playerName,
+            })
+        end
     end
     
     -- Clean up
@@ -887,7 +908,7 @@ local function processTrash()
                     local sendSuccess = sendItemToPlayer(pet, targetPlayer, "pet")
                     if sendSuccess then
                         sentAnyItem = true
-                        task.wait(0.5) -- Slower wait between successful sends
+                        task.wait(0.1) -- Optimized wait between successful sends
                         break -- Send one at a time
                     end
                 end
@@ -905,7 +926,7 @@ local function processTrash()
                     local sendSuccess = sendItemToPlayer(egg, targetPlayer, "egg")
                     if sendSuccess then
                         sentAnyItem = true
-                        task.wait(0.5) -- Slower wait between successful sends
+                        task.wait(0.1) -- Optimized wait between successful sends
                         break -- Send one at a time
                     end
                 end
@@ -932,7 +953,7 @@ local function processTrash()
         -- Update status
         updateStatus()
         
-        task.wait(1.0) -- Slower wait before next cycle
+        task.wait(0.3) -- Optimized wait before next cycle
     end
 end
 
