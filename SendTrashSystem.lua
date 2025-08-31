@@ -67,7 +67,6 @@ local inventoryCache = {
 
 -- Send operation tracking
 local sendInProgress = {}
-local sendRetryLimit = 3
 local sendTimeoutSeconds = 5
 
 -- Webhook/session reporting
@@ -615,78 +614,60 @@ local function sendItemToPlayer(item, playerName, itemType)
         return false -- Item no longer exists
     end
     
-    local retryCount = 0
     local success = false
     
-    while retryCount < sendRetryLimit and not success do
-        retryCount = retryCount + 1
-        
-        -- Re-verify item exists before each attempt
-        if not verifyItemExists(itemUID, isEgg) then
-            break -- Item was removed during retry
-        end
-        
-        -- If item is placed on ground, remove it first
-        if item.placed then
-            local removeSuccess = removeFromGround(itemUID)
-            if removeSuccess then
-                task.wait(0.05) -- Optimized wait after removal
-                -- Re-verify after removal
-                if not verifyItemExists(itemUID, isEgg) then
-                    break -- Item removed during ground removal
-                end
+    -- If item is placed on ground, remove it first
+    if item.placed then
+        local removeSuccess = removeFromGround(itemUID)
+        if removeSuccess then
+            task.wait(0.05) -- Optimized wait after removal
+            -- Re-verify after removal
+            if not verifyItemExists(itemUID, isEgg) then
+                sendInProgress[itemUID] = nil
+                return false -- Item removed during ground removal
             end
         end
+    end
+    
+    -- Focus the item first (REQUIRED before sending)
+    local focusSuccess = focusItem(itemUID)
+    if focusSuccess then
+        task.wait(0.1) -- Optimized wait for focus to process
+    end
+    
+    -- Verify player is still online
+    local targetPlayer = resolveTargetPlayerByName(playerName)
+    if not targetPlayer then
+        warn("Target player " .. playerName .. " not found online")
+        sendInProgress[itemUID] = nil
+        return false
+    end
+    
+    -- Attempt to send
+    local sendSuccess, err = pcall(function()
+        local args = {targetPlayer}
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
+    end)
+    
+    if sendSuccess then
+        -- Wait a moment then verify item was actually sent
+        task.wait(0.2)
+        local itemStillExists = verifyItemExists(itemUID, isEgg)
         
-        -- Focus the item first (REQUIRED before sending)
-        local focusSuccess = focusItem(itemUID)
-        if focusSuccess then
-            task.wait(0.1) -- Optimized wait for focus to process
-        end
-        
-        -- Verify player is still online
-        local targetPlayer = resolveTargetPlayerByName(playerName)
-        if not targetPlayer then
-            warn("Target player " .. playerName .. " not found online")
-            break
-        end
-        
-        -- Attempt to send
-        local sendSuccess, err = pcall(function()
-            local args = {targetPlayer}
-            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
-        end)
-        
-        if sendSuccess then
-            -- Wait a moment then verify item was actually sent
-            task.wait(0.2)
-            local itemStillExists = verifyItemExists(itemUID, isEgg)
+        if not itemStillExists then
+            -- Item successfully sent (no longer in inventory)
+            success = true
+            sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
+            actionCounter = actionCounter + 1
             
-            if not itemStillExists then
-                -- Item successfully sent (no longer in inventory)
-                success = true
-                sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-                actionCounter = actionCounter + 1
-                
-                -- Log for webhook
-                table.insert(sessionLogs, {
-                    kind = itemType,
-                    uid = itemUID,
-                    type = item.type,
-                    mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
-                    receiver = playerName,
-                })
-                break
-            else
-                -- Item still exists, send may have failed
-                if retryCount < sendRetryLimit then
-                    task.wait(0.2) -- Wait before retry
-                end
-            end
-        else
-            if retryCount < sendRetryLimit then
-                task.wait(0.2) -- Wait before retry
-            end
+            -- Log for webhook
+            table.insert(sessionLogs, {
+                kind = itemType,
+                uid = itemUID,
+                type = item.type,
+                mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
+                receiver = playerName,
+            })
         end
     end
     
@@ -702,7 +683,7 @@ local function sendItemToPlayer(item, playerName, itemType)
     else
         WindUI:Notify({
             Title = "❌ Send Failed",
-            Content = "Failed to send " .. itemType .. " after " .. retryCount .. " attempts",
+            Content = "Failed to send " .. itemType,
             Duration = 3
         })
     end
