@@ -522,6 +522,12 @@ end
 
 --- Send current inventory webhook
 local function sendCurrentInventoryWebhook()
+    WindUI:Notify({
+        Title = "🔄 Starting",
+        Content = "Gathering inventory data...",
+        Duration = 2
+    })
+    
     if webhookUrl == "" then
         WindUI:Notify({
             Title = "⚠️ No Webhook",
@@ -537,18 +543,35 @@ local function sendCurrentInventoryWebhook()
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
     
+    local petCount = petInventory and #petInventory or 0
+    local eggCount = eggInventory and #eggInventory or 0
+    
+    WindUI:Notify({
+        Title = "📊 Data Collected",
+        Content = string.format("Found %d pets, %d eggs", petCount, eggCount),
+        Duration = 2
+    })
+    
     -- Build pets section
     local petsByType = {}
-    for _, pet in ipairs(petInventory) do
-        local key = (pet.type or "Unknown") .. "|" .. (pet.mutation or "None")
-        petsByType[key] = (petsByType[key] or 0) + 1
+    if petInventory then
+        for _, pet in ipairs(petInventory) do
+            if pet then
+                local key = (pet.type or "Unknown") .. "|" .. (pet.mutation or "None")
+                petsByType[key] = (petsByType[key] or 0) + 1
+            end
+        end
     end
     
     -- Build eggs section
     local eggsByType = {}
-    for _, egg in ipairs(eggInventory) do
-        local key = (egg.type or "Unknown") .. "|" .. (egg.mutation or "None")
-        eggsByType[key] = (eggsByType[key] or 0) + 1
+    if eggInventory then
+        for _, egg in ipairs(eggInventory) do
+            if egg then
+                local key = (egg.type or "Unknown") .. "|" .. (egg.mutation or "None")
+                eggsByType[key] = (eggsByType[key] or 0) + 1
+            end
+        end
     end
     
     -- Create description
@@ -557,8 +580,8 @@ local function sendCurrentInventoryWebhook()
     table.insert(lines, "")
     
     -- Pets section
-    table.insert(lines, "🐾 **Pets (" .. #petInventory .. " total):**")
-    if #petInventory > 0 then
+    table.insert(lines, "🐾 **Pets (" .. petCount .. " total):**")
+    if petCount > 0 then
         for key, count in pairs(petsByType) do
             local type, mutation = key:match("([^|]+)|([^|]+)")
             local emoji = "🐾"
@@ -571,8 +594,8 @@ local function sendCurrentInventoryWebhook()
     table.insert(lines, "")
     
     -- Eggs section
-    table.insert(lines, "🥚 **Eggs (" .. #eggInventory .. " total):**")
-    if #eggInventory > 0 then
+    table.insert(lines, "🥚 **Eggs (" .. eggCount .. " total):**")
+    if eggCount > 0 then
         for key, count in pairs(eggsByType) do
             local type, mutation = key:match("([^|]+)|([^|]+)")
             local emoji = EggEmojiMap[type] or "🥚"
@@ -595,9 +618,9 @@ local function sendCurrentInventoryWebhook()
                 description = description,
                 color = 3066993, -- Green color
                 fields = {
-                    { name = "Total Pets", value = tostring(#petInventory), inline = true },
-                    { name = "Total Eggs", value = tostring(#eggInventory), inline = true },
-                    { name = "Combined", value = tostring(#petInventory + #eggInventory), inline = true }
+                    { name = "Total Pets", value = tostring(petCount), inline = true },
+                    { name = "Total Eggs", value = tostring(eggCount), inline = true },
+                    { name = "Combined", value = tostring(petCount + eggCount), inline = true }
                 },
                 author = authorName and { name = authorName, icon_url = authorIcon } or nil,
                 footer = { text = "Build A Zoo - Current Inventory" },
