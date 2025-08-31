@@ -951,13 +951,11 @@ local function processTrash()
             
             if success and result then
                 sendMode = result
-                print("🎮 Dropdown returned send mode: " .. tostring(sendMode))
             else
-                print("❌ Failed to get send mode from dropdown, using default: Both")
                 sendMode = "Both"
             end
         else
-            print("❌ Send mode dropdown not found, using default: Both")
+            sendMode = "Both"
         end
         
         local petInventory = {}
