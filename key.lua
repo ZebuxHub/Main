@@ -1,16 +1,31 @@
 local KeyGuardLibrary = loadstring(game:HttpGet("https://cdn.keyguardian.org/library/v1.0.0.lua"))()
-local trueData = "5deff8e5966a4de0b2d08c93c926208e"
-local falseData = "a5525b56c8d34282818a4fdcc09462e8"
+
+-- Normal user data
+local normalTrueData = "5deff8e5966a4de0b2d08c93c926208e"
+local normalFalseData = "a5525b56c8d34282818a4fdcc09462e8"
+
+-- Premium user data  
+local premiumTrueData = "1b330b041411408fafa547fd07c7d2e1"
+local premiumFalseData = "8b630b18a9c7448fb00c180ad1d61002"
 
 KeyGuardLibrary.Set({
 	publicToken = "8336ddf50c0746359b04047ff8e226f7",
 	privateToken = "5e4a1fecc29844db815b7e1740ed2279",
-	trueData = trueData,
-	falseData = falseData,
+	trueData = normalTrueData, -- Default to normal
+	falseData = normalFalseData,
 })
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local key = ""
+local normalKey = ""
+local premiumKey = ""
+
+-- Track current user type
+local userType = "normal" -- "normal" or "premium"
+
+-- Rejoin game function for free users
+local function rejoinGame()
+    game:GetService("TeleportService"):Teleport(game.PlaceId, game.Players.LocalPlayer)
+end
 
 -- Load saved key from file
 local function loadSavedKey()
@@ -18,37 +33,56 @@ local function loadSavedKey()
         return readfile("BuildAZoo_Key.txt")
     end)
     if success and result and result ~= "" then
-        -- Parse saved data (key|timestamp)
+        -- Parse saved data (key|timestamp|usertype)
         local parts = result:split("|")
-        if #parts == 2 then
+        if #parts == 3 then
             local savedKey = parts[1]
             local savedTimestamp = tonumber(parts[2])
+            local savedUserType = parts[3]
             
-            -- Check if key has expired (12 hours = 43200 seconds)
+            -- Different behavior based on user type
             local currentTime = os.time()
             local timeDiff = currentTime - savedTimestamp
-            local expirationTime = 12 * 60 * 60 -- 12 hours in seconds
             
-            if timeDiff < expirationTime then
-                print("Saved key is still valid (expires in " .. math.floor((expirationTime - timeDiff) / 3600) .. " hours)")
-                return savedKey
+            if savedUserType == "premium" then
+                -- Premium users never expire
+                print("Premium user detected - unlimited access")
+                userType = savedUserType
+                return savedKey, savedUserType
             else
-                print("Saved key has expired")
-                -- Clear expired key
-                pcall(function()
-                    delfile("BuildAZoo_Key.txt")
-                end)
-                return ""
+                -- Normal users rejoin every 8 hours
+                local rejoinTime = 8 * 60 * 60 -- 8 hours for normal users
+                
+                if timeDiff < rejoinTime then
+                    local remainingTime = rejoinTime - timeDiff
+                    local remainingHours = math.floor(remainingTime / 3600)
+                    print("Normal user - rejoining in " .. remainingHours .. " hours")
+                    userType = savedUserType
+                    return savedKey, savedUserType
+                else
+                    print("Normal user 8-hour period expired - rejoining game...")
+                    -- Clear key and rejoin
+                    pcall(function()
+                        delfile("BuildAZoo_Key.txt")
+                    end)
+                    
+                    spawn(function()
+                        wait(2) -- Give time for message to show
+                        rejoinGame()
+                    end)
+                    
+                    return "", "normal"
+                end
             end
         end
     end
-    return ""
+    return "", "normal"
 end
 
--- Save key to file with timestamp
-local function saveKey(keyToSave)
+-- Save key to file with timestamp and user type
+local function saveKey(keyToSave, keyUserType)
     local currentTime = os.time()
-    local dataToSave = keyToSave .. "|" .. tostring(currentTime)
+    local dataToSave = keyToSave .. "|" .. tostring(currentTime) .. "|" .. keyUserType
     
     local success = pcall(function()
         writefile("BuildAZoo_Key.txt", dataToSave)
@@ -57,10 +91,36 @@ local function saveKey(keyToSave)
 end
 
 -- Function to handle key validation and auto-execution
-local function validateAndExecuteKey(keyToValidate, windowToDestroy)
-    local response = KeyGuardLibrary.validateDefaultKey(keyToValidate)
-    if response == trueData then
-        print("✅ Key is valid - executing script...")
+local function validateAndExecuteKey(keyToValidate, keyType, windowToDestroy)
+    local response
+    local validData
+    
+    if keyType == "premium" then
+        -- Set premium data temporarily
+        KeyGuardLibrary.Set({
+            publicToken = "8336ddf50c0746359b04047ff8e226f7",
+            privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+            trueData = premiumTrueData,
+            falseData = premiumFalseData,
+        })
+        response = KeyGuardLibrary.validatePremiumKey(keyToValidate)
+        validData = premiumTrueData
+    else
+        -- Set normal data temporarily
+        KeyGuardLibrary.Set({
+            publicToken = "8336ddf50c0746359b04047ff8e226f7",
+            privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+            trueData = normalTrueData,
+            falseData = normalFalseData,
+        })
+        response = KeyGuardLibrary.validateDefaultKey(keyToValidate)
+        validData = normalTrueData
+    end
+    
+    if response == validData then
+        print("✅ " .. keyType:upper() .. " key is valid - executing script...")
+        
+        userType = keyType
         
         -- Destroy the UI if window is provided
         if windowToDestroy then
@@ -69,22 +129,25 @@ local function validateAndExecuteKey(keyToValidate, windowToDestroy)
         end
         
         -- Build A Zoo: Auto Buy Egg using WindUI
-        loadstring(game:HttpGet("https://cdn.authguard.org/virtual-file/8145641cf9214441b2ed99599d1e8839"))()
-
+        loadstring(game:HttpGet("https://cdn.authguard.org/virtual-file/2da65111c4804eb79ca995b361b5c396"))()
         
         return true
     else
-        print("❌ Key is invalid")
+        print("❌ " .. keyType:upper() .. " key is invalid")
         return false
     end
 end
 
 -- Auto-load and validate saved key
-local savedKey = loadSavedKey()
+local savedKey, savedUserType = loadSavedKey()
 if savedKey ~= "" then
     -- Auto-validate the saved key
-    if validateAndExecuteKey(savedKey) then
-        key = savedKey
+    if validateAndExecuteKey(savedKey, savedUserType) then
+        if savedUserType == "premium" then
+            premiumKey = savedKey
+        else
+            normalKey = savedKey
+        end
         -- Start Place Here
 
         -- End Place Here
@@ -95,46 +158,50 @@ if savedKey ~= "" then
         pcall(function()
             delfile("BuildAZoo_Key.txt")
         end)
-        key = ""
+        normalKey = ""
+        premiumKey = ""
     end
 else
-    key = ""
+    normalKey = ""
+    premiumKey = ""
 end
 
 local Window = Fluent:CreateWindow({
-		Title = "Key System",
-		SubTitle = "Zebux",
+		Title = "Key System - Zebux",
+		SubTitle = "Normal & Premium Access",
 		TabWidth = 160,
-		Size = UDim2.fromOffset(580, 340),
+		Size = UDim2.fromOffset(580, 400),
 		Acrylic = false,
 		Theme = "Dark",
 		MinimizeKey = Enum.KeyCode.LeftControl
 })
 
 local Tabs = {
-		KeySys = Window:AddTab({ Title = "Key System", Icon = "key" }),
+		Normal = Window:AddTab({ Title = "Normal User", Icon = "key" }),
+		Premium = Window:AddTab({ Title = "Premium User", Icon = "crown" }),
 }
 
-local Entkey = Tabs.KeySys:AddInput("Input", {
-		Title = "Enter Key",
-		Description = "Enter Key Here",
-		Default = key, -- Auto-load saved key
-		Placeholder = "Enter key…",
+-- Normal User Tab
+local NormalEntkey = Tabs.Normal:AddInput("NormalInput", {
+		Title = "Enter Normal Key",
+		Description = "8 hour sessions - Free (auto-rejoin)",
+		Default = normalKey,
+		Placeholder = "Enter normal key…",
 		Numeric = false,
 		Finished = false,
 		Callback = function(Value)
-				key = Value
+				normalKey = Value
 		end
 })
 
-local Checkkey = Tabs.KeySys:AddButton({
-		Title = "Check Key",
-		Description = "Enter Key before pressing this button",
+local NormalCheckkey = Tabs.Normal:AddButton({
+		Title = "✅ Check Normal Key",
+		Description = "Validate your normal key (8 hour sessions)",
 		Callback = function()
-				if validateAndExecuteKey(key, Window) then
+				if validateAndExecuteKey(normalKey, "normal", Window) then
 					-- Save the valid key with timestamp
-					if saveKey(key) then
-						print("Key saved successfully! (Expires in 12 hours)")
+					if saveKey(normalKey, "normal") then
+						print("Normal key saved successfully! (8 hour sessions)")
 					else
 						print("Failed to save key")
 					end
@@ -142,12 +209,75 @@ local Checkkey = Tabs.KeySys:AddButton({
 		end
 })
 
-local Getkey = Tabs.KeySys:AddButton({
-		Title = "Get Key",
-		Description = "Get Key here",
+local NormalGetkey = Tabs.Normal:AddButton({
+		Title = "🔗 Get Normal Key",
+		Description = "Get free normal key (8 hour sessions)",
 		Callback = function()
+				-- Set to normal data for link generation
+				KeyGuardLibrary.Set({
+					publicToken = "8336ddf50c0746359b04047ff8e226f7",
+					privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+					trueData = normalTrueData,
+					falseData = normalFalseData,
+				})
 				setclipboard(KeyGuardLibrary.getLink())
+				print("Normal key link copied to clipboard!")
 		end
+})
+
+-- Premium User Tab
+local PremiumEntkey = Tabs.Premium:AddInput("PremiumInput", {
+		Title = "Enter Premium Key",
+		Description = "Unlimited access - Premium features",
+		Default = premiumKey,
+		Placeholder = "Enter premium key…",
+		Numeric = false,
+		Finished = false,
+		Callback = function(Value)
+				premiumKey = Value
+		end
+})
+
+local PremiumCheckkey = Tabs.Premium:AddButton({
+		Title = "👑 Check Premium Key",
+		Description = "Validate your premium key (unlimited)",
+		Callback = function()
+				if validateAndExecuteKey(premiumKey, "premium", Window) then
+					-- Save the valid key with timestamp
+					if saveKey(premiumKey, "premium") then
+						print("Premium key saved successfully! (Unlimited access)")
+					else
+						print("Failed to save key")
+					end
+				end
+		end
+})
+
+local PremiumGetkey = Tabs.Premium:AddButton({
+		Title = "💎 Get Premium Key",
+		Description = "Purchase premium key (unlimited access)",
+		Callback = function()
+				-- Set to premium data for link generation
+				KeyGuardLibrary.Set({
+					publicToken = "8336ddf50c0746359b04047ff8e226f7",
+					privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+					trueData = premiumTrueData,
+					falseData = premiumFalseData,
+				})
+				setclipboard(KeyGuardLibrary.getLink())
+				print("Premium key link copied to clipboard!")
+		end
+})
+
+-- Info sections
+Tabs.Normal:AddParagraph({
+    Title = "ℹ️ Normal Access",
+    Content = "• 8 hour sessions\n• Free to use\n• Auto-rejoin every 8 hours"
+})
+
+Tabs.Premium:AddParagraph({
+    Title = "👑 Premium Access", 
+    Content = "• Priority support\n• No time restrictions\n• Never expires"
 })
 
 Window:SelectTab(1)
