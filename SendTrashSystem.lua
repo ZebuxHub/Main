@@ -128,23 +128,40 @@ end
 local function getAllItems()
     local pets, eggs = {}, {}
     
-    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-        local function safeGetAttribute(obj, attrName, default)
-            if not obj then return default end
-            local success, result = pcall(function()
-                return obj:GetAttribute(attrName)
-            end)
-            return success and result or default
-        end
-        
-        -- Get pets
-        local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-        if petsFolder then
-            for _, petData in pairs(petsFolder:GetChildren()) do
-                if petData:IsA("Configuration") then
+    if not LocalPlayer then
+        warn("LocalPlayer not found")
+        return pets, eggs
+    end
+    
+    if not LocalPlayer.PlayerGui then
+        warn("PlayerGui not found")
+        return pets, eggs
+    end
+    
+    local dataFolder = LocalPlayer.PlayerGui:FindFirstChild("Data")
+    if not dataFolder then
+        warn("Data folder not found in PlayerGui")
+        return pets, eggs
+    end
+    
+    local function safeGetAttribute(obj, attrName, default)
+        if not obj then return default end
+        local success, result = pcall(function()
+            return obj:GetAttribute(attrName)
+        end)
+        return success and result or default
+    end
+    
+    -- Get pets
+    local petsFolder = dataFolder:FindFirstChild("Pets")
+    if petsFolder then
+        for _, petData in pairs(petsFolder:GetChildren()) do
+            if petData:IsA("Configuration") then
+                local petType = safeGetAttribute(petData, "T", nil) or safeGetAttribute(petData, "Type", nil)
+                if petType then
                     table.insert(pets, {
                         uid = petData.Name,
-                        type = safeGetAttribute(petData, "T", safeGetAttribute(petData, "Type", "Unknown")),
+                        type = petType,
                         mutation = safeGetAttribute(petData, "M", safeGetAttribute(petData, "Mutation", "None")),
                         locked = safeGetAttribute(petData, "LK", 0) == 1,
                         placed = safeGetAttribute(petData, "D", nil) ~= nil
@@ -152,15 +169,20 @@ local function getAllItems()
                 end
             end
         end
-        
-        -- Get eggs
-        local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
-        if eggsFolder then
-            for _, eggData in pairs(eggsFolder:GetChildren()) do
-                if eggData:IsA("Configuration") then
+    else
+        warn("Pets folder not found")
+    end
+    
+    -- Get eggs
+    local eggsFolder = dataFolder:FindFirstChild("Egg")
+    if eggsFolder then
+        for _, eggData in pairs(eggsFolder:GetChildren()) do
+            if eggData:IsA("Configuration") then
+                local eggType = safeGetAttribute(eggData, "T", nil) or safeGetAttribute(eggData, "Type", nil) or safeGetAttribute(eggData, "ID", nil)
+                if eggType then
                     table.insert(eggs, {
                         uid = eggData.Name,
-                        type = safeGetAttribute(eggData, "T", safeGetAttribute(eggData, "Type", "Unknown")),
+                        type = eggType,
                         mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "None")),
                         locked = safeGetAttribute(eggData, "LK", 0) == 1,
                         placed = safeGetAttribute(eggData, "D", nil) ~= nil
@@ -168,8 +190,11 @@ local function getAllItems()
                 end
             end
         end
+    else
+        warn("Egg folder not found")
     end
     
+    print("Found " .. #pets .. " pets and " .. #eggs .. " eggs")
     return pets, eggs
 end
 
@@ -228,28 +253,15 @@ local function createExternalUI()
     -- Title
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Size = UDim2.new(0.5, -20, 1, 0)
+    title.Size = UDim2.new(1, -70, 1, 0)
     title.Position = UDim2.new(0, 20, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "TARGET ROBLOX CHARACTER"
+    title.Text = "Trade"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
     title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = topBar
-    
-    -- Thai title (คลังใข่)
-    local thaiTitle = Instance.new("TextLabel")
-    thaiTitle.Name = "ThaiTitle"
-    thaiTitle.Size = UDim2.new(0.5, -20, 1, 0)
-    thaiTitle.Position = UDim2.new(0.5, 0, 0, 0)
-    thaiTitle.BackgroundTransparency = 1
-    thaiTitle.Text = "คลังใข่"
-    thaiTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    thaiTitle.TextScaled = true
-    thaiTitle.Font = Enum.Font.GothamBold
-    thaiTitle.TextXAlignment = Enum.TextXAlignment.Right
-    thaiTitle.Parent = topBar
     
     -- Close button
     local closeButton = Instance.new("TextButton")
@@ -383,51 +395,39 @@ local function createExternalUI()
     amountCorner.CornerRadius = UDim.new(0, 4)
     amountCorner.Parent = amountInput
     
-    -- Mutation dropdown
-    local mutationLabel = Instance.new("TextLabel")
-    mutationLabel.Name = "MutationLabel"
-    mutationLabel.Size = UDim2.new(1, 0, 0, 30)
-    mutationLabel.Position = UDim2.new(0, 0, 0, 40)
-    mutationLabel.BackgroundTransparency = 1
-    mutationLabel.Text = "Mutation"
-    mutationLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    mutationLabel.TextScaled = true
-    mutationLabel.Font = Enum.Font.Gotham
-    mutationLabel.TextXAlignment = Enum.TextXAlignment.Left
-    mutationLabel.Parent = controlsFrame
+    -- Refresh button
+    local refreshButton = Instance.new("TextButton")
+    refreshButton.Name = "RefreshButton"
+    refreshButton.Size = UDim2.new(1, 0, 0, 40)
+    refreshButton.Position = UDim2.new(0, 0, 0, 40)
+    refreshButton.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
+    refreshButton.Text = "🔄 REFRESH"
+    refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    refreshButton.TextScaled = true
+    refreshButton.Font = Enum.Font.GothamBold
+    refreshButton.BorderSizePixel = 0
+    refreshButton.Parent = controlsFrame
     
-    local mutationDropdown = Instance.new("TextButton")
-    mutationDropdown.Name = "MutationDropdown"
-    mutationDropdown.Size = UDim2.new(1, 0, 0, 30)
-    mutationDropdown.Position = UDim2.new(0, 0, 0, 70)
-    mutationDropdown.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
-    mutationDropdown.Text = "None ▼"
-    mutationDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-    mutationDropdown.TextScaled = true
-    mutationDropdown.Font = Enum.Font.Gotham
-    mutationDropdown.BorderSizePixel = 0
-    mutationDropdown.Parent = controlsFrame
+    local refreshCorner = Instance.new("UICorner")
+    refreshCorner.CornerRadius = UDim.new(0, 6)
+    refreshCorner.Parent = refreshButton
     
-    local mutationCorner = Instance.new("UICorner")
-    mutationCorner.CornerRadius = UDim.new(0, 4)
-    mutationCorner.Parent = mutationDropdown
+    -- Send All button
+    local sendAllButton = Instance.new("TextButton")
+    sendAllButton.Name = "SendAllButton"
+    sendAllButton.Size = UDim2.new(1, 0, 0, 40)
+    sendAllButton.Position = UDim2.new(0, 0, 0, 90)
+    sendAllButton.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+    sendAllButton.Text = "📤 SEND ALL"
+    sendAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sendAllButton.TextScaled = true
+    sendAllButton.Font = Enum.Font.GothamBold
+    sendAllButton.BorderSizePixel = 0
+    sendAllButton.Parent = controlsFrame
     
-    -- Choose button
-    local chooseButton = Instance.new("TextButton")
-    chooseButton.Name = "ChooseButton"
-    chooseButton.Size = UDim2.new(1, 0, 0, 40)
-    chooseButton.Position = UDim2.new(0, 0, 0, 110)
-    chooseButton.BackgroundColor3 = Color3.fromRGB(52, 58, 235)
-    chooseButton.Text = "CHOOSE"
-    chooseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    chooseButton.TextScaled = true
-    chooseButton.Font = Enum.Font.GothamBold
-    chooseButton.BorderSizePixel = 0
-    chooseButton.Parent = controlsFrame
-    
-    local chooseCorner = Instance.new("UICorner")
-    chooseCorner.CornerRadius = UDim.new(0, 6)
-    chooseCorner.Parent = chooseButton
+    local sendAllCorner = Instance.new("UICorner")
+    sendAllCorner.CornerRadius = UDim.new(0, 6)
+    sendAllCorner.Parent = sendAllButton
     
     -- Search box in right panel
     local rightSearchBox = Instance.new("TextBox")
@@ -458,8 +458,8 @@ local function createExternalUI()
     itemsGrid.Parent = rightPanel
     
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0, 120, 0, 140)
-    gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    gridLayout.CellSize = UDim2.new(0, 140, 0, 160)
+    gridLayout.CellPadding = UDim2.new(0, 15, 0, 15)
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
     gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -483,7 +483,6 @@ local function createExternalUI()
     
     -- Variables for tracking
     local selectedPlayer = nil
-    local selectedMutation = "None"
     
     -- Update players list
     local function updatePlayersList()
@@ -589,52 +588,37 @@ local function createExternalUI()
         local pets, eggs = getAllItems()
         local allItems = {}
         
-        -- Group items by type and mutation
-        local itemCounts = {}
-        
-        -- Add pets
+        -- Add all individual pets
         for _, pet in ipairs(pets) do
             if not pet.locked then
-                local key = pet.type .. "|" .. (pet.mutation or "None") .. "|pet"
-                if not itemCounts[key] then
-                    itemCounts[key] = {
-                        type = "pet",
-                        displayName = pet.type,
-                        mutation = pet.mutation or "None",
-                        count = 0,
-                        items = {}
-                    }
-                end
-                itemCounts[key].count = itemCounts[key].count + 1
-                table.insert(itemCounts[key].items, pet)
+                table.insert(allItems, {
+                    type = "pet",
+                    displayName = pet.type,
+                    mutation = pet.mutation or "None",
+                    uid = pet.uid,
+                    data = pet
+                })
             end
         end
         
-        -- Add eggs
+        -- Add all individual eggs
         for _, egg in ipairs(eggs) do
             if not egg.locked then
-                local key = egg.type .. "|" .. (egg.mutation or "None") .. "|egg"
-                if not itemCounts[key] then
-                    itemCounts[key] = {
-                        type = "egg",
-                        displayName = egg.type,
-                        mutation = egg.mutation or "None",
-                        count = 0,
-                        items = {}
-                    }
-                end
-                itemCounts[key].count = itemCounts[key].count + 1
-                table.insert(itemCounts[key].items, egg)
+                table.insert(allItems, {
+                    type = "egg",
+                    displayName = egg.type,
+                    mutation = egg.mutation or "None",
+                    uid = egg.uid,
+                    data = egg
+                })
             end
         end
         
-        -- Convert to array
-        for _, item in pairs(itemCounts) do
-            table.insert(allItems, item)
-        end
-        
-        -- Sort items
+        -- Sort items by type then name
         table.sort(allItems, function(a, b)
+            if a.type ~= b.type then
+                return a.type < b.type -- eggs before pets
+            end
             return a.displayName < b.displayName
         end)
         
@@ -642,7 +626,7 @@ local function createExternalUI()
         for i, item in ipairs(allItems) do
             local itemFrame = Instance.new("Frame")
             itemFrame.Name = "Item" .. i
-            itemFrame.Size = UDim2.new(0, 120, 0, 140)
+            itemFrame.Size = UDim2.new(0, 140, 0, 160)
             itemFrame.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
             itemFrame.BorderSizePixel = 0
             itemFrame.LayoutOrder = i
@@ -652,22 +636,22 @@ local function createExternalUI()
             itemCorner.CornerRadius = UDim.new(0, 8)
             itemCorner.Parent = itemFrame
             
-            -- Count label
-            local countLabel = Instance.new("TextLabel")
-            countLabel.Name = "CountLabel"
-            countLabel.Size = UDim2.new(0, 30, 0, 20)
-            countLabel.Position = UDim2.new(1, -35, 0, 5)
-            countLabel.BackgroundColor3 = Color3.fromRGB(60, 65, 80)
-            countLabel.Text = tostring(item.count)
-            countLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            countLabel.TextScaled = true
-            countLabel.Font = Enum.Font.GothamBold
-            countLabel.BorderSizePixel = 0
-            countLabel.Parent = itemFrame
+            -- Type indicator label
+            local typeIndicatorLabel = Instance.new("TextLabel")
+            typeIndicatorLabel.Name = "TypeIndicatorLabel"
+            typeIndicatorLabel.Size = UDim2.new(0, 30, 0, 20)
+            typeIndicatorLabel.Position = UDim2.new(1, -35, 0, 5)
+            typeIndicatorLabel.BackgroundColor3 = item.type == "egg" and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(100, 150, 200)
+            typeIndicatorLabel.Text = item.type == "egg" and "E" or "P"
+            typeIndicatorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            typeIndicatorLabel.TextScaled = true
+            typeIndicatorLabel.Font = Enum.Font.GothamBold
+            typeIndicatorLabel.BorderSizePixel = 0
+            typeIndicatorLabel.Parent = itemFrame
             
-            local countCorner = Instance.new("UICorner")
-            countCorner.CornerRadius = UDim.new(0, 10)
-            countCorner.Parent = countLabel
+            local typeCorner = Instance.new("UICorner")
+            typeCorner.CornerRadius = UDim.new(0, 10)
+            typeCorner.Parent = typeIndicatorLabel
             
             -- Item icon
             local iconFrame = Instance.new("Frame")
@@ -737,36 +721,25 @@ local function createExternalUI()
                     return
                 end
                 
-                -- Send items based on amount
-                local amount = tonumber(amountInput.Text) or 1
-                local sent = 0
+                -- Send this individual item
+                local success, message = sendItemReliably(item.uid, selectedPlayer.name, item.type)
                 
-                for _, itemData in ipairs(item.items) do
-                    if sent >= amount then break end
+                if success then
+                    WindUI:Notify({
+                        Title = "✅ Success", 
+                        Content = "Sent " .. item.displayName .. " to " .. selectedPlayer.name, 
+                        Duration = 2
+                    })
                     
-                    local success, message = sendItemReliably(itemData.uid, selectedPlayer.name, item.type)
-                    
-                    if success then
-                        sent = sent + 1
-                        WindUI:Notify({
-                            Title = "✅ Success", 
-                            Content = "Sent " .. item.displayName .. " to " .. selectedPlayer.name, 
-                            Duration = 2
-                        })
-                    else
-                        WindUI:Notify({
-                            Title = "❌ Failed", 
-                            Content = "Failed: " .. message, 
-                            Duration = 3
-                        })
-                    end
-                    
-                    task.wait(0.5) -- Wait between sends
+                    -- Remove this item from the grid
+                    itemFrame:Destroy()
+                else
+                    WindUI:Notify({
+                        Title = "❌ Failed", 
+                        Content = "Failed: " .. message, 
+                        Duration = 3
+                    })
                 end
-                
-                -- Refresh grid after sending
-                task.wait(1)
-                updateItemsGrid()
             end)
         end
         
@@ -833,6 +806,77 @@ local function createExternalUI()
     closeButton.MouseButton1Click:Connect(function()
         screenGui:Destroy()
         customUI = nil
+    end)
+    
+    -- Refresh button functionality
+    refreshButton.MouseButton1Click:Connect(function()
+        updateItemsGrid()
+        updatePlayersList()
+        WindUI:Notify({
+            Title = "🔄 Refreshed", 
+            Content = "Items and players list updated!", 
+            Duration = 2
+        })
+    end)
+    
+    -- Send All button functionality
+    sendAllButton.MouseButton1Click:Connect(function()
+        if not selectedPlayer then
+            WindUI:Notify({Title = "❌ Error", Content = "Please select a player first!", Duration = 3})
+            return
+        end
+        
+        local pets, eggs = getAllItems()
+        local allItems = {}
+        
+        -- Add all unlocked pets
+        for _, pet in ipairs(pets) do
+            if not pet.locked then
+                table.insert(allItems, {data = pet, type = "pet"})
+            end
+        end
+        
+        -- Add all unlocked eggs
+        for _, egg in ipairs(eggs) do
+            if not egg.locked then
+                table.insert(allItems, {data = egg, type = "egg"})
+            end
+        end
+        
+        if #allItems == 0 then
+            WindUI:Notify({Title = "❌ Error", Content = "No items to send!", Duration = 3})
+            return
+        end
+        
+        -- Send all items
+        task.spawn(function()
+            local sent = 0
+            for _, item in ipairs(allItems) do
+                local success, message = sendItemReliably(item.data.uid, selectedPlayer.name, item.type)
+                
+                if success then
+                    sent = sent + 1
+                else
+                    WindUI:Notify({
+                        Title = "❌ Failed", 
+                        Content = "Failed: " .. message, 
+                        Duration = 2
+                    })
+                end
+                
+                task.wait(0.5) -- Wait between sends
+            end
+            
+            WindUI:Notify({
+                Title = "✅ Complete", 
+                Content = "Sent " .. sent .. " items to " .. selectedPlayer.name, 
+                Duration = 3
+            })
+            
+            -- Refresh after sending
+            task.wait(1)
+            updateItemsGrid()
+        end)
     end)
     
     -- Store references
