@@ -473,6 +473,30 @@ local function clearSendProgress()
     sendInProgress = {}
 end
 
+--- Save webhook URL to config
+local function saveWebhookUrl(url)
+    if Config and Config.SaveSetting then
+        Config:SaveSetting("SendTrash_WebhookUrl", url)
+        if WindUI then
+            WindUI:Notify({
+                Title = "💾 Webhook Saved",
+                Content = url ~= "" and "Webhook URL saved successfully!" or "Webhook URL cleared",
+                Duration = 2
+            })
+        end
+    end
+end
+
+--- Load webhook URL from config
+local function loadWebhookUrl()
+    if Config and Config.GetSetting then
+        local savedUrl = Config:GetSetting("SendTrash_WebhookUrl")
+        if savedUrl and savedUrl ~= "" then
+            webhookUrl = savedUrl
+        end
+    end
+end
+
 --- Get pet inventory (uses cache for better performance)
 local function getPetInventory()
     updateInventoryCache()
@@ -924,6 +948,9 @@ function SendTrashSystem.Init(dependencies)
     Window = dependencies.Window
     Config = dependencies.Config
     
+    -- Load saved webhook URL from config
+    loadWebhookUrl()
+    
     -- Create the Send Trash tab
     local TrashTab = Window:Tab({ Title = "🗑️ | Send Trash"})
     
@@ -1097,17 +1124,24 @@ function SendTrashSystem.Init(dependencies)
     TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
     
     -- Webhook input (optional)
-    TrashTab:Input({
+    local webhookInput = TrashTab:Input({
         Title = "Webhook URL (optional)",
-        Desc = "Discord webhook to receive session summary",
+        Desc = "Discord webhook to receive session summary (auto-saved)",
         Default = webhookUrl,
         Numeric = false,
         Finished = true,
         Callback = function(value)
             webhookUrl = tostring(value or "")
             webhookSent = false
+            -- Save webhook URL to config
+            saveWebhookUrl(webhookUrl)
         end,
     })
+    
+    -- Set the loaded webhook URL in the input field
+    if webhookUrl ~= "" then
+        webhookInput:SetValue(webhookUrl)
+    end
     
     -- Manual refresh button
     TrashTab:Button({
