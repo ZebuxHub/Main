@@ -193,16 +193,17 @@ local function sendWebhookSummary()
     local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
     local authorIcon = Players.LocalPlayer and getAvatarUrl(Players.LocalPlayer.UserId) or nil
 
+    -- Use the improved embed format
     local payload = {
         embeds = {
             {
-                title = "Trade Summary",
+                title = "Send Trash Session Summary",
                 description = description,
                 color = 5814783,
                 fields = { { name = "Total Sent", value = tostring(totalSent), inline = true } },
                 thumbnail = thumb and { url = thumb } or nil,
                 author = authorName and { name = authorName, icon_url = authorIcon } or nil,
-                footer = { text = "Send Trash" },
+                footer = { text = "Build A Zoo" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
         }
@@ -214,6 +215,8 @@ local function sendWebhookSummary()
         webhookSent = true
     end
 end
+
+
 
 -- Helper function to safely get attribute
 local function safeGetAttribute(obj, attrName, default)
@@ -515,6 +518,116 @@ local function getEggInventory()
         table.insert(eggs, egg)
     end
     return eggs
+end
+
+--- Send current inventory webhook
+local function sendCurrentInventoryWebhook()
+    if webhookUrl == "" then
+        WindUI:Notify({
+            Title = "⚠️ No Webhook",
+            Content = "Please set a webhook URL first",
+            Duration = 3
+        })
+        return
+    end
+    
+    -- Force refresh inventory cache
+    forceRefreshCache()
+    
+    local petInventory = getPetInventory()
+    local eggInventory = getEggInventory()
+    
+    -- Build pets section
+    local petsByType = {}
+    for _, pet in ipairs(petInventory) do
+        local key = (pet.type or "Unknown") .. "|" .. (pet.mutation or "None")
+        petsByType[key] = (petsByType[key] or 0) + 1
+    end
+    
+    -- Build eggs section
+    local eggsByType = {}
+    for _, egg in ipairs(eggInventory) do
+        local key = (egg.type or "Unknown") .. "|" .. (egg.mutation or "None")
+        eggsByType[key] = (eggsByType[key] or 0) + 1
+    end
+    
+    -- Create description
+    local lines = {}
+    table.insert(lines, "👤 **Player:** " .. (Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"))
+    table.insert(lines, "")
+    
+    -- Pets section
+    table.insert(lines, "🐾 **Pets (" .. #petInventory .. " total):**")
+    if #petInventory > 0 then
+        for key, count in pairs(petsByType) do
+            local type, mutation = key:match("([^|]+)|([^|]+)")
+            local emoji = "🐾"
+            table.insert(lines, string.format("%s %s [%s] - %d", emoji, type, mutation, count))
+        end
+    else
+        table.insert(lines, "No pets found")
+    end
+    
+    table.insert(lines, "")
+    
+    -- Eggs section
+    table.insert(lines, "🥚 **Eggs (" .. #eggInventory .. " total):**")
+    if #eggInventory > 0 then
+        for key, count in pairs(eggsByType) do
+            local type, mutation = key:match("([^|]+)|([^|]+)")
+            local emoji = EggEmojiMap[type] or "🥚"
+            table.insert(lines, string.format("%s %s [%s] - %d", emoji, type, mutation, count))
+        end
+    else
+        table.insert(lines, "No eggs found")
+    end
+    
+    local description = table.concat(lines, "\n")
+    
+    -- Create webhook payload
+    local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
+    local authorIcon = Players.LocalPlayer and getAvatarUrl(Players.LocalPlayer.UserId) or nil
+    
+    local payload = {
+        embeds = {
+            {
+                title = "🎒 Current Inventory",
+                description = description,
+                color = 3066993, -- Green color
+                fields = {
+                    { name = "Total Pets", value = tostring(#petInventory), inline = true },
+                    { name = "Total Eggs", value = tostring(#eggInventory), inline = true },
+                    { name = "Combined", value = tostring(#petInventory + #eggInventory), inline = true }
+                },
+                author = authorName and { name = authorName, icon_url = authorIcon } or nil,
+                footer = { text = "Build A Zoo - Current Inventory" },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }
+        }
+    }
+    
+    local json = HttpService:JSONEncode(payload)
+    http_request = http_request or request or (syn and syn.request)
+    if http_request then
+        http_request({ 
+            Url = webhookUrl, 
+            Method = "POST", 
+            Headers = { ["Content-Type"] = "application/json" }, 
+            Body = json 
+        })
+        
+        WindUI:Notify({
+            Title = "📤 Inventory Sent",
+            Content = "Current inventory sent to Discord!",
+            Duration = 3
+        })
+    else
+        WindUI:Notify({
+            Title = "❌ Webhook Failed",
+            Content = "HTTP request function not available",
+            Duration = 3
+        })
+    end
 end
 
 -- Refresh live attributes (T/M/locked/placed) for a given uid directly from PlayerGui.Data
@@ -1011,46 +1124,7 @@ function SendTrashSystem.Init(dependencies)
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
                 -- Send webhook once per session when turned off
                 if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                    task.spawn(function()
-                        local success, err = pcall(function()
-                            local totalSent = sessionLimits.sendPetCount
-                            local totalSold = sessionLimits.sellPetCount
-                            local fields = {}
-                            table.insert(fields, { name = "Items Sent", value = tostring(totalSent), inline = true })
-                            
-                            -- Build concise description list (last 10 items)
-                            local details = ""
-                            local startIdx = math.max(1, #sessionLogs - 9)
-                            for i = startIdx, #sessionLogs do
-                                local it = sessionLogs[i]
-                                details = details .. string.format("%s • %s [%s] → %s\n", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
-                            end
-                            
-                            local payload = {
-                                embeds = {
-                                    {
-                                        title = "Send Trash Session Summary",
-                                        description = details ~= "" and details or "No items were sent.",
-                                        color = 5814783,
-                                        fields = fields,
-                                        footer = { text = "Build A Zoo" },
-                                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                                    }
-                                }
-                            }
-                            local json = HttpService:JSONEncode(payload)
-                            http_request = http_request or request or (syn and syn.request)
-                            if http_request then
-                                http_request({
-                                    Url = webhookUrl,
-                                    Method = "POST",
-                                    Headers = { ["Content-Type"] = "application/json" },
-                                    Body = json,
-                                })
-                            end
-                        end)
-                        if success then webhookSent = true end
-                    end)
+                    task.spawn(sendWebhookSummary)
                 end
             end
         end
@@ -1204,6 +1278,15 @@ function SendTrashSystem.Init(dependencies)
                 Content = "Inventory cache and send progress cleared!",
                 Duration = 3
             })
+        end
+    })
+    
+    -- Send current inventory webhook button
+    TrashTab:Button({
+        Title = "📤 Send Inventory",
+        Desc = "Send current pets/eggs inventory to Discord webhook",
+        Callback = function()
+            task.spawn(sendCurrentInventoryWebhook)
         end
     })
     
