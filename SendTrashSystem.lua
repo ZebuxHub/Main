@@ -149,8 +149,10 @@ local EggEmojiMap = {
 }
 
 local function getAvatarUrl(userId)
-    if not userId then return nil end
-    return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(userId) .. "&width=180&height=180&format=png"
+    if not userId or userId == "" then return nil end
+    local userIdStr = tostring(userId)
+    if userIdStr == "nil" then return nil end
+    return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userIdStr .. "&width=180&height=180&format=png"
 end
 
 local function sendWebhookSummary()
@@ -599,9 +601,17 @@ local function sendCurrentInventoryWebhook()
     
     local description = table.concat(lines, "\n")
     
+    -- Safety check for description
+    if not description or description == "" then
+        description = "No inventory data available"
+    end
+    
     -- Create webhook payload
     local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
-    local authorIcon = Players.LocalPlayer and getAvatarUrl(Players.LocalPlayer.UserId) or nil
+    local authorIcon = nil
+    if Players.LocalPlayer and Players.LocalPlayer.UserId then
+        authorIcon = getAvatarUrl(Players.LocalPlayer.UserId)
+    end
     
     local payload = {
         embeds = {
