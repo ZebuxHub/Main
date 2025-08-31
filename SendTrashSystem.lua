@@ -522,12 +522,6 @@ end
 
 --- Send current inventory webhook
 local function sendCurrentInventoryWebhook()
-    WindUI:Notify({
-        Title = "🔄 Starting",
-        Content = "Gathering inventory data...",
-        Duration = 2
-    })
-    
     if webhookUrl == "" then
         WindUI:Notify({
             Title = "⚠️ No Webhook",
@@ -545,12 +539,6 @@ local function sendCurrentInventoryWebhook()
     
     local petCount = petInventory and #petInventory or 0
     local eggCount = eggInventory and #eggInventory or 0
-    
-    WindUI:Notify({
-        Title = "📊 Data Collected",
-        Content = string.format("Found %d pets, %d eggs", petCount, eggCount),
-        Duration = 2
-    })
     
     -- Build pets section
     local petsByType = {}
@@ -600,6 +588,8 @@ local function sendCurrentInventoryWebhook()
     if eggCount > 0 then
         for key, count in pairs(eggsByType) do
             local type, mutation = key:match("([^|]+)|([^|]+)")
+            type = type or "Unknown"
+            mutation = mutation or "None"
             local emoji = EggEmojiMap[type] or "🥚"
             table.insert(lines, string.format("%s %s [%s] - %d", emoji, type, mutation, count))
         end
