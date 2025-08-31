@@ -644,7 +644,7 @@ local function sendItemToPlayer(item, playerName, itemType)
     if item.placed then
         local removeSuccess = removeFromGround(itemUID)
         if removeSuccess then
-            task.wait(0.05) -- Optimized wait after removal
+            task.wait(0.3) -- Slower wait after removal
             -- Re-verify after removal
             if not verifyItemExists(itemUID, isEgg) then
                 sendInProgress[itemUID] = nil
@@ -656,7 +656,7 @@ local function sendItemToPlayer(item, playerName, itemType)
     -- Focus the item first (REQUIRED before sending)
     local focusSuccess = focusItem(itemUID)
     if focusSuccess then
-        task.wait(0.1) -- Optimized wait for focus to process
+        task.wait(0.5) -- Slower wait for focus to process
     end
     
     -- Verify player is still online
@@ -887,7 +887,7 @@ local function processTrash()
                     local sendSuccess = sendItemToPlayer(pet, targetPlayer, "pet")
                     if sendSuccess then
                         sentAnyItem = true
-                        task.wait(0.1) -- Optimized wait between successful sends
+                        task.wait(0.5) -- Slower wait between successful sends
                         break -- Send one at a time
                     end
                 end
@@ -905,7 +905,7 @@ local function processTrash()
                     local sendSuccess = sendItemToPlayer(egg, targetPlayer, "egg")
                     if sendSuccess then
                         sentAnyItem = true
-                        task.wait(0.1) -- Optimized wait between successful sends
+                        task.wait(0.5) -- Slower wait between successful sends
                         break -- Send one at a time
                     end
                 end
@@ -932,7 +932,7 @@ local function processTrash()
         -- Update status
         updateStatus()
         
-        task.wait(0.3) -- Optimized wait before next cycle
+        task.wait(1.0) -- Slower wait before next cycle
     end
 end
 
