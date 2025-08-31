@@ -608,10 +608,6 @@ local function sendCurrentInventoryWebhook()
     
     -- Create webhook payload
     local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
-    local authorIcon = nil
-    if Players.LocalPlayer and Players.LocalPlayer.UserId then
-        authorIcon = getAvatarUrl(Players.LocalPlayer.UserId)
-    end
     
     local payload = {
         embeds = {
@@ -624,7 +620,7 @@ local function sendCurrentInventoryWebhook()
                     { name = "Total Eggs", value = tostring(eggCount), inline = true },
                     { name = "Combined", value = tostring(petCount + eggCount), inline = true }
                 },
-                author = authorName and { name = authorName, icon_url = authorIcon } or nil,
+                author = authorName and { name = authorName } or nil,
                 footer = { text = "Build A Zoo - Current Inventory" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
