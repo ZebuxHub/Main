@@ -48,7 +48,7 @@ local function loadSavedKey()
                 -- Premium users never expire
                 print("Premium user detected - unlimited access")
                 userType = savedUserType
-                return savedKey, savedUserType
+                return savedKey, savedUserType, savedTimestamp
             else
                 -- Normal users rejoin every 8 hours
                 local rejoinTime = 8 * 60 * 60 -- 8 hours for normal users
@@ -58,7 +58,7 @@ local function loadSavedKey()
                     local remainingHours = math.floor(remainingTime / 3600)
                     print("Normal user - rejoining in " .. remainingHours .. " hours")
                     userType = savedUserType
-                    return savedKey, savedUserType
+                    return savedKey, savedUserType, savedTimestamp
                 else
                     print("Normal user 8-hour period expired - rejoining game...")
                     -- Clear key and rejoin
@@ -71,12 +71,12 @@ local function loadSavedKey()
                         rejoinGame()
                     end)
                     
-                    return "", "normal"
+                    return "", "normal", nil
                 end
             end
         end
     end
-    return "", "normal"
+    return "", "normal", nil
 end
 
 -- Save key to file with timestamp and user type
@@ -88,6 +88,94 @@ local function saveKey(keyToSave, keyUserType)
         writefile("BuildAZoo_Key.txt", dataToSave)
     end)
     return success
+end
+
+-- Time tracking variables
+local timeTrackingActive = false
+local sessionStartTime = 0
+local sessionDuration = 0
+local warningShown = false
+
+-- Function to start time tracking
+local function startTimeTracking(keyType, savedTimestamp)
+    if keyType == "premium" then
+        print("👑 Premium user - no time restrictions")
+        return
+    end
+    
+    timeTrackingActive = true
+    sessionStartTime = savedTimestamp or os.time()
+    sessionDuration = 8 * 60 * 60 -- 8 hours for normal users
+    warningShown = false
+    
+    local currentTime = os.time()
+    local elapsedTime = currentTime - sessionStartTime
+    local remainingTime = sessionDuration - elapsedTime
+    local remainingHours = math.floor(remainingTime / 3600)
+    local remainingMinutes = math.floor((remainingTime % 3600) / 60)
+    
+    print("⏰ Time tracking started - " .. remainingHours .. "h " .. remainingMinutes .. "m remaining")
+    
+    -- Start the monitoring coroutine
+    spawn(function()
+        while timeTrackingActive do
+            local currentTime = os.time()
+            local elapsedTime = currentTime - sessionStartTime
+            local remainingTime = sessionDuration - elapsedTime
+            
+            -- Check if session expired
+            if remainingTime <= 0 then
+                print("⏰ Session expired - rejoining game...")
+                
+                -- Clear saved key
+                pcall(function()
+                    delfile("BuildAZoo_Key.txt")
+                end)
+                
+                -- Show expiration notification
+                if game:GetService("StarterGui") then
+                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                        Title = "⏰ Session Expired";
+                        Text = "8-hour session ended. Rejoining game...";
+                        Duration = 3;
+                    })
+                end
+                
+                wait(2)
+                rejoinGame()
+                break
+            end
+            
+            -- Show 10-second warning
+            if remainingTime <= 10 and not warningShown then
+                warningShown = true
+                print("⚠️ WARNING: Session expires in 10 seconds!")
+                
+                -- Show warning notification
+                if game:GetService("StarterGui") then
+                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                        Title = "⚠️ Session Expiring";
+                        Text = "Your session will expire in 10 seconds!";
+                        Duration = 10;
+                    })
+                end
+                
+                -- Countdown from 10 to 1
+                for i = 10, 1, -1 do
+                    print("⏰ Session expires in " .. i .. " seconds...")
+                    wait(1)
+                end
+            end
+            
+            wait(1) -- Check every second
+        end
+    end)
+end
+
+-- Function to stop time tracking
+local function stopTimeTracking()
+    timeTrackingActive = false
+    print("⏰ Time tracking stopped")
 end
 
 -- Function to handle key validation and auto-execution
@@ -122,6 +210,9 @@ local function validateAndExecuteKey(keyToValidate, keyType, windowToDestroy)
         
         userType = keyType
         
+        -- Start time tracking for normal users
+        startTimeTracking(keyType)
+        
         -- Destroy the UI if window is provided
         if windowToDestroy then
             windowToDestroy:Destroy()
@@ -138,11 +229,56 @@ local function validateAndExecuteKey(keyToValidate, keyType, windowToDestroy)
     end
 end
 
+-- Function to handle saved key validation and auto-execution with timestamp
+local function validateAndExecuteSavedKey(keyToValidate, keyType, savedTimestamp)
+    local response
+    local validData
+    
+    if keyType == "premium" then
+        -- Set premium data temporarily
+        KeyGuardLibrary.Set({
+            publicToken = "8336ddf50c0746359b04047ff8e226f7",
+            privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+            trueData = premiumTrueData,
+            falseData = premiumFalseData,
+        })
+        response = KeyGuardLibrary.validatePremiumKey(keyToValidate)
+        validData = premiumTrueData
+    else
+        -- Set normal data temporarily
+        KeyGuardLibrary.Set({
+            publicToken = "8336ddf50c0746359b04047ff8e226f7",
+            privateToken = "5e4a1fecc29844db815b7e1740ed2279",
+            trueData = normalTrueData,
+            falseData = normalFalseData,
+        })
+        response = KeyGuardLibrary.validateDefaultKey(keyToValidate)
+        validData = normalTrueData
+    end
+    
+    if response == validData then
+        print("✅ " .. keyType:upper() .. " saved key is valid - executing script...")
+        
+        userType = keyType
+        
+        -- Start time tracking for normal users with saved timestamp
+        startTimeTracking(keyType, savedTimestamp)
+        
+        -- Build A Zoo: Auto Buy Egg using WindUI
+        loadstring(game:HttpGet("https://cdn.authguard.org/virtual-file/2da65111c4804eb79ca995b361b5c396"))()
+        
+        return true
+    else
+        print("❌ " .. keyType:upper() .. " saved key is invalid")
+        return false
+    end
+end
+
 -- Auto-load and validate saved key
-local savedKey, savedUserType = loadSavedKey()
+local savedKey, savedUserType, savedTimestamp = loadSavedKey()
 if savedKey ~= "" then
-    -- Auto-validate the saved key
-    if validateAndExecuteKey(savedKey, savedUserType) then
+    -- Auto-validate the saved key with timestamp
+    if validateAndExecuteSavedKey(savedKey, savedUserType, savedTimestamp) then
         if savedUserType == "premium" then
             premiumKey = savedKey
         else
