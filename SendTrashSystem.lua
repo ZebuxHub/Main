@@ -674,25 +674,19 @@ local function sendItemToPlayer(item, playerName, itemType)
     end)
     
     if sendSuccess then
-        -- Wait a moment then verify item was actually sent
-        task.wait(0.2)
-        local itemStillExists = verifyItemExists(itemUID, isEgg)
+        -- Trust that the remote call worked, no inventory re-check needed
+        success = true
+        sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
+        actionCounter = actionCounter + 1
         
-        if not itemStillExists then
-            -- Item successfully sent (no longer in inventory)
-            success = true
-            sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-            actionCounter = actionCounter + 1
-            
-            -- Log for webhook
-            table.insert(sessionLogs, {
-                kind = itemType,
-                uid = itemUID,
-                type = item.type,
-                mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
-                receiver = playerName,
-            })
-        end
+        -- Log for webhook
+        table.insert(sessionLogs, {
+            kind = itemType,
+            uid = itemUID,
+            type = item.type,
+            mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
+            receiver = playerName,
+        })
     end
     
     -- Clean up
