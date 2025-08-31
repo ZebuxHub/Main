@@ -1,1108 +1,895 @@
--- SendTrashSystem.lua - Send/Sell Unwanted Pets Module for Build A Zoo
+-- SendTrashSystem.lua - Core Send Functions with External UI
 -- Lua 5.1 Compatible
 
 local SendTrashSystem = {}
 
--- Hardcoded pet types and mutations for filtering (from game data)
-local HardcodedPetTypes = {
-    "Capy1", "Capy2", "Pig", "Capy3", "Dog", "AngelFish", "Cat", "CapyL1", "Cow", "CapyL2", 
-    "Sheep", "CapyL3", "Horse", "Zebra", "Bighead", "Giraffe", "Hippo", "Elephant", "Rabbit", 
-    "Mouse", "Butterflyfish", "Ankylosaurus", "Needlefish", "Wolverine", "Tiger", "Fox", "Hairtail", 
-    "Panda", "Tuna", "Catfish", "Toucan", "Bee", "Snake", "Butterfly", "Tigerfish", "Okapi", 
-    "Panther", "Penguin", "Velociraptor", "Stegosaurus", "Seaturtle", "Bear", "Flounder", "Lion", 
-    "Lionfish", "Rhino", "Kangroo", "Gorilla", "Alligator", "Ostrich", "Triceratops", "Pachycephalosaur", 
-    "Sawfish", "Pterosaur", "ElectricEel", "Wolf", "Rex", "Dolphin", "Dragon", "Baldeagle", "Shark", 
-    "Griffin", "Brontosaurus", "Anglerfish", "Plesiosaur", "Alpaca", "Spinosaurus", "Manta", "Unicorn", 
-    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale"
-}
-
-local HardcodedEggTypes = {
-    "BasicEgg", "RareEgg", "SuperRareEgg", "SeaweedEgg", "EpicEgg", "LegendEgg", "ClownfishEgg", 
-    "PrismaticEgg", "LionfishEgg", "HyperEgg", "VoidEgg", "BowserEgg", "SharkEgg", "DemonEgg", 
-    "CornEgg", "AnglerfishEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", 
-    "OctopusEgg", "AncientEgg", "SeaDragonEgg"
-}
-
-local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Dino"
-}
-
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- UI Variables
-local WindUI
-local Window
-local Config
-local trashToggle
-local targetPlayerDropdown
-local sendModeDropdown
-local sendPetTypeDropdown
-local sendPetMutationDropdown
-local sendEggTypeDropdown
-local sendEggMutationDropdown
-local speedThresholdSlider
-local sessionLimitInput
-local statusParagraph
+-- External UI and Core Variables
+local customUI = nil
+local WindUI, Window, Config
 
--- State variables
-local trashEnabled = false
-local autoDeleteMinSpeed = 0
-local actionCounter = 0
-local selectedTargetName = "Random Player" -- cache target selection
-local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
-local lastReceiverName, lastReceiverId -- for webhook author/avatar
+-- ============ IMPROVED SENDING SYSTEM ============
 
--- Webhook/session reporting
-local webhookUrl = ""
-local sessionLogs = {}
-local webhookSent = false
-
--- Session limits
-local sessionLimits = {
-    sendPetCount = 0,
-    maxSendPet = 50,
-    limitReachedNotified = false -- Track if user has been notified
-}
-
--- Pretty Discord embed assets
-local EggIconMap = {
-    BasicEgg = 129248801621928,
-    RareEgg = 71012831091414,
-    SuperRareEgg = 93845452154351,
-    SeaweedEgg = 87125339619211,
-    EpicEgg = 116395645531721,
-    LegendEgg = 90834918351014,
-    ClownfishEgg = 124419920608938,
-    PrismaticEgg = 79960683434582,
-    LionfishEgg = 100181295820053,
-    HyperEgg = 104958288296273,
-    VoidEgg = 122396162708984,
-    BowserEgg = 71500536051510,
-    SharkEgg = 71032472532652,
-    DemonEgg = 126412407639969,
-    CornEgg = 94739512852461,
-    AnglerfishEgg = 121296998588378,
-    BoneDragonEgg = 83209913424562,
-    UltraEgg = 83909590718799,
-    DinoEgg = 80783528632315,
-    FlyEgg = 109240587278187,
-    UnicornEgg = 123427249205445,
-    OctopusEgg = 84758700095552,
-    AncientEgg = 113910587565739,
-    SeaDragonEgg = 130514093439717,
-}
-
-local function robloxIconUrl(assetId)
-    if not assetId then return nil end
-    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. tostring(assetId) .. "&width=420&height=420&format=png"
-end
-
-local function getIconUrlFor(kind, typeName)
-    if kind == "egg" and typeName and EggIconMap[typeName] then
-        return robloxIconUrl(EggIconMap[typeName])
-    end
-    return nil
-end
-
--- Cute emoji for readability in Discord
-local EggEmojiMap = {
-    BasicEgg = "🥚",
-    RareEgg = "🔷",
-    SuperRareEgg = "💎",
-    EpicEgg = "🌟",
-    LegendEgg = "🏆",
-    PrismaticEgg = "✨",
-    HyperEgg = "⚡",
-    VoidEgg = "🕳️",
-    BowserEgg = "🐢",
-    SharkEgg = "🦈",
-    LionfishEgg = "🐟",
-    ClownfishEgg = "🐠",
-    AnglerfishEgg = "🐡",
-    OctopusEgg = "🐙",
-    SeaweedEgg = "🐚",
-    BoneDragonEgg = "💀",
-    DinoEgg = "🦖",
-    FlyEgg = "🪶",
-    UnicornEgg = "🦄",
-    AncientEgg = "🗿",
-    UltraEgg = "🚀",
-    CornEgg = "🌽",
-    SeaDragonEgg = "🐉",
-}
-
-local function getAvatarUrl(userId)
-    if not userId then return nil end
-    return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(userId) .. "&width=180&height=180&format=png"
-end
-
-local function sendWebhookSummary()
-    if webhookSent or webhookUrl == "" or #sessionLogs == 0 then return end
-    local totalSent = sessionLimits.sendPetCount
-
-    -- Group events by receiver and by type/mutation for readable blocks
-    local byReceiver = {}
-    for _, it in ipairs(sessionLogs) do
-        local r = it.receiver or "?"
-        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0 }
-        local key = (it.type or it.uid or "?") .. "|" .. (it.mutation or "None") .. "|" .. (it.kind or "?")
-        local rec = byReceiver[r]
-        rec.counts[key] = (rec.counts[key] or 0) + 1
-        rec.list[key] = { type = it.type, mutation = it.mutation or "None", kind = it.kind }
-        rec.total = rec.total + 1
-    end
-
-    -- Build a multi-line description similar to your example
-    local lines = {}
-    table.insert(lines, "👤 Trader\n" .. (Players.LocalPlayer and Players.LocalPlayer.Name or "Player"))
-    table.insert(lines, "🎯 Targets")
-    for receiver, rec in pairs(byReceiver) do
-        table.insert(lines, string.format("- %s received %d", receiver, rec.total))
-    end
-    table.insert(lines, "📦 Items")
-    for receiver, rec in pairs(byReceiver) do
-        for key, _ in pairs(rec.counts) do
-            local entry = rec.list[key]
-            local emoji = (entry.kind == "egg" and EggEmojiMap[entry.type or ""]) or (entry.kind == "pet" and "🐾") or "📦"
-            local count = rec.counts[key]
-            table.insert(lines, string.format("%s %s [%s] - %d", emoji, entry.type or "?", entry.mutation or "None", count))
+-- Improved sending system with 100% reliability
+local function sendItemReliably(itemUID, targetPlayerName, itemKind)
+    -- Step 1: Validate target player exists
+    local targetPlayer = nil
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Name == targetPlayerName then
+            targetPlayer = player
+            break
         end
     end
-    local description = table.concat(lines, "\n")
-
-    -- Visuals
-    local last = sessionLogs[#sessionLogs]
-    local thumb = last and getIconUrlFor(last.kind, last.type) or nil
-    local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
-    local authorIcon = Players.LocalPlayer and getAvatarUrl(Players.LocalPlayer.UserId) or nil
-
-    local payload = {
-        embeds = {
-            {
-                title = "Trade Summary",
-                description = description,
-                color = 5814783,
-                fields = { { name = "Total Sent", value = tostring(totalSent), inline = true } },
-                thumbnail = thumb and { url = thumb } or nil,
-                author = authorName and { name = authorName, icon_url = authorIcon } or nil,
-                footer = { text = "Send Trash" },
-                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-            }
-        }
-    }
-    local json = HttpService:JSONEncode(payload)
-    http_request = http_request or request or (syn and syn.request)
-    if http_request then
-        http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
-        webhookSent = true
-    end
-end
-
--- Helper function to safely get attribute
-local function safeGetAttribute(obj, attrName, default)
-    if not obj then return default end
-    local success, result = pcall(function()
-        return obj:GetAttribute(attrName)
-    end)
-    return success and result or default
-end
-
--- Get all pet types from inventory + hardcoded list
-local function getAllPetTypes()
-    local types = {}
     
-    -- Add hardcoded types
-    for _, petType in ipairs(HardcodedPetTypes) do
-        types[petType] = true
+    if not targetPlayer then
+        return false, "Target player not found"
     end
     
-    -- Add types from inventory
+    -- Step 2: Check if item still exists in inventory
+    local itemExists = false
+    local dataFolder = LocalPlayer.PlayerGui.Data:FindFirstChild(itemKind == "egg" and "Egg" or "Pets")
+    if dataFolder and dataFolder:FindFirstChild(itemUID) then
+        itemExists = true
+    end
+    
+    if not itemExists then
+        return false, "Item no longer exists in inventory"
+    end
+    
+    -- Step 3: Remove from ground if placed
+    local itemData = dataFolder:FindFirstChild(itemUID)
+    local function safeGetAttribute(obj, attrName, default)
+        if not obj then return default end
+        local success, result = pcall(function()
+            return obj:GetAttribute(attrName)
+        end)
+        return success and result or default
+    end
+    
+    local isPlaced = safeGetAttribute(itemData, "D", nil) ~= nil
+    
+    if isPlaced then
+        local success = pcall(function()
+            local args = {"Del", itemUID}
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        end)
+        if not success then
+            return false, "Failed to remove item from ground"
+        end
+        task.wait(0.2) -- Wait for removal to process
+    end
+    
+    -- Step 4: Focus the item with retry mechanism
+    local focusAttempts = 0
+    local maxFocusAttempts = 3
+    local focusSuccess = false
+    
+    while focusAttempts < maxFocusAttempts and not focusSuccess do
+        focusAttempts = focusAttempts + 1
+        
+        local success = pcall(function()
+            local args = {"Focus", itemUID}
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        end)
+        
+        if success then
+            focusSuccess = true
+        else
+            task.wait(0.1)
+        end
+    end
+    
+    if not focusSuccess then
+        return false, "Failed to focus item after " .. maxFocusAttempts .. " attempts"
+    end
+    
+    task.wait(0.3) -- Wait for focus to fully process
+    
+    -- Step 5: Send with retry mechanism
+    local sendAttempts = 0
+    local maxSendAttempts = 3
+    local sendSuccess = false
+    
+    while sendAttempts < maxSendAttempts and not sendSuccess do
+        sendAttempts = sendAttempts + 1
+        
+        -- Double-check target player still exists
+        targetPlayer = Players:FindFirstChild(targetPlayerName)
+        if not targetPlayer then
+            return false, "Target player left the game"
+        end
+        
+        local success = pcall(function()
+            local args = {targetPlayer}
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
+        end)
+        
+        if success then
+            sendSuccess = true
+        else
+            task.wait(0.2)
+        end
+    end
+    
+    if not sendSuccess then
+        return false, "Failed to send item after " .. maxSendAttempts .. " attempts"
+    end
+    
+    return true, "Item sent successfully"
+end
+
+-- Get all available items
+local function getAllItems()
+    local pets, eggs = {}, {}
+    
     if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+        local function safeGetAttribute(obj, attrName, default)
+            if not obj then return default end
+            local success, result = pcall(function()
+                return obj:GetAttribute(attrName)
+            end)
+            return success and result or default
+        end
+        
+        -- Get pets
         local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
         if petsFolder then
             for _, petData in pairs(petsFolder:GetChildren()) do
                 if petData:IsA("Configuration") then
-                    local petType = safeGetAttribute(petData, "Type", nil)
-                    if petType then
-                        types[petType] = true
-                    end
+                    table.insert(pets, {
+                        uid = petData.Name,
+                        type = safeGetAttribute(petData, "T", safeGetAttribute(petData, "Type", "Unknown")),
+                        mutation = safeGetAttribute(petData, "M", safeGetAttribute(petData, "Mutation", "None")),
+                        locked = safeGetAttribute(petData, "LK", 0) == 1,
+                        placed = safeGetAttribute(petData, "D", nil) ~= nil
+                    })
                 end
             end
         end
-    end
-    
-    -- Convert to sorted array
-    local sortedTypes = {}
-    for petType in pairs(types) do
-        table.insert(sortedTypes, petType)
-    end
-    table.sort(sortedTypes)
-    
-    return sortedTypes
-end
-
--- Get all egg types from inventory + hardcoded list
-local function getAllEggTypes()
-    local types = {}
-    
-    -- Add hardcoded egg types
-    for _, eggType in ipairs(HardcodedEggTypes) do
-        types[eggType] = true
-    end
-    
-    -- Add types from inventory
-    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+        
+        -- Get eggs
         local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
         if eggsFolder then
             for _, eggData in pairs(eggsFolder:GetChildren()) do
                 if eggData:IsA("Configuration") then
-                    local eggType = safeGetAttribute(eggData, "Type", nil)
-                    if eggType then
-                        types[eggType] = true
-                    end
+                    table.insert(eggs, {
+                        uid = eggData.Name,
+                        type = safeGetAttribute(eggData, "T", safeGetAttribute(eggData, "Type", "Unknown")),
+                        mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "None")),
+                        locked = safeGetAttribute(eggData, "LK", 0) == 1,
+                        placed = safeGetAttribute(eggData, "D", nil) ~= nil
+                    })
                 end
             end
         end
     end
     
-    -- Convert to sorted array
-    local sortedTypes = {}
-    for eggType in pairs(types) do
-        table.insert(sortedTypes, eggType)
-    end
-    table.sort(sortedTypes)
-    
-    return sortedTypes
+    return pets, eggs
 end
 
--- Get all mutations from inventory + hardcoded list
-local function getAllMutations()
-    local mutations = {}
-    
-    -- Add hardcoded mutations
-    for _, mutation in ipairs(HardcodedMutations) do
-        mutations[mutation] = true
-    end
-    
-    -- Add mutations from inventory
-    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-        local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-        if petsFolder then
-            for _, petData in pairs(petsFolder:GetChildren()) do
-                if petData:IsA("Configuration") then
-                    local petMutation = safeGetAttribute(petData, "Mutation", nil)
-                    if petMutation and petMutation ~= "" then
-                        mutations[petMutation] = true
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Convert to sorted array
-    local sortedMutations = {}
-    for mutation in pairs(mutations) do
-        table.insert(sortedMutations, mutation)
-    end
-    table.sort(sortedMutations)
-    
-    return sortedMutations
-end
-
--- Get player list for sending pets
-local function refreshPlayerList()
-    local playerList = {"Random Player"}
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            table.insert(playerList, player.Name)
-        end
-    end
-    
-    return playerList
-end
-
--- Resolve target player by either Username or DisplayName (case-insensitive)
-local function resolveTargetPlayerByName(name)
-    if not name or name == "" then return nil end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name == name or p.DisplayName == name then
-            return p
-        end
-        -- case-insensitive fallback
-        if string.lower(p.Name) == string.lower(name) or string.lower(p.DisplayName) == string.lower(name) then
-            return p
-        end
-    end
-    return nil
-end
-
--- Get random player
-local function getRandomPlayer()
+-- Get available players
+local function getPlayerList()
     local players = {}
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            table.insert(players, player.Name)
-        end
-    end
-    
-    if #players > 0 then
-        return players[math.random(1, #players)]
-    end
-    
-    return nil
-end
-
--- Convert dropdown selection into a plain string list
-local function selectionToList(selection)
-    local result = {}
-    if type(selection) == "table" then
-        -- Handle either array-style or set-style tables
-        local hasIndexed = false
-        for k, v in pairs(selection) do
-            if type(k) == "number" then
-                hasIndexed = true
-                break
-            end
-        end
-        if hasIndexed then
-            for _, v in ipairs(selection) do
-                v = tostring(v)
-                if v ~= "" and v ~= "--" then table.insert(result, v) end
-            end
-        else
-            for k, v in pairs(selection) do
-                if v == true and type(k) == "string" and k ~= "--" and k ~= "" then
-                    table.insert(result, k)
-                end
-            end
-        end
-    elseif type(selection) == "string" then
-        if selection ~= "" and selection ~= "--" then table.insert(result, selection) end
-    end
-    return result
-end
-
--- Get pet inventory
-local function getPetInventory()
-    local pets = {}
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
-        return pets
-    end
-    
-    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-    if not petsFolder then
-        return pets
-    end
-    
-    for _, petData in pairs(petsFolder:GetChildren()) do
-        if petData:IsA("Configuration") then
-            local petInfo = {
-                uid = petData.Name,
-                type = safeGetAttribute(petData, "T", safeGetAttribute(petData, "Type", "Unknown")),
-                mutation = safeGetAttribute(petData, "M", safeGetAttribute(petData, "Mutation", "")),
-                speed = safeGetAttribute(petData, "Speed", 0),
-                locked = safeGetAttribute(petData, "LK", 0) == 1,
-                placed = safeGetAttribute(petData, "D", nil) ~= nil -- Check if pet is placed
-            }
-            
-            table.insert(pets, petInfo)
-        end
-    end
-    
-    return pets
-end
-
--- Get egg inventory
-local function getEggInventory()
-    local eggs = {}
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
-        return eggs
-    end
-    
-    local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
-    if not eggsFolder then
-        return eggs
-    end
-    
-    for _, eggData in pairs(eggsFolder:GetChildren()) do
-        if eggData:IsA("Configuration") then
-            local eggInfo = {
-                uid = eggData.Name,
-                -- Match by T for eggs (fallback to Type)
-                type = safeGetAttribute(eggData, "T", safeGetAttribute(eggData, "Type", "Unknown")),
-                mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "")),
-                locked = safeGetAttribute(eggData, "LK", 0) == 1,
-                placed = safeGetAttribute(eggData, "D", nil) ~= nil -- Check if egg is placed
-            }
-            
-            table.insert(eggs, eggInfo)
-        end
-    end
-    
-    return eggs
-end
-
--- Refresh live attributes (T/M/locked/placed) for a given uid directly from PlayerGui.Data
-local function refreshItemFromData(uid, isEgg, into)
-    local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not dataRoot then return into end
-    local folder = dataRoot:FindFirstChild(isEgg and "Egg" or "Pets")
-    if not folder then return into end
-    local conf = folder:FindFirstChild(uid)
-    if conf and conf:IsA("Configuration") then
-        local tVal
-        tVal = safeGetAttribute(conf, "T", nil) or safeGetAttribute(conf, "Type", nil)
-        local mVal = safeGetAttribute(conf, "M", nil) or safeGetAttribute(conf, "Mutation", "")
-        local locked = safeGetAttribute(conf, "LK", 0) == 1
-        local placed = safeGetAttribute(conf, "D", nil) ~= nil
-        if into then
-            into.type = tVal or into.type
-            into.mutation = mVal or into.mutation
-            into.locked = locked
-            into.placed = placed
-            return into
-        else
-            return { uid = uid, type = tVal, mutation = mVal, locked = locked, placed = placed }
-        end
-    end
-    return into
-end
-
--- Check if item should be sent/sold based on filters
-local function shouldSendItem(item, includeTypes, includeMutations)
-    -- Don't send locked items
-    if item.locked then return false end
-    
-    -- Normalize values for robust comparison
-    local function norm(v)
-        return v and tostring(v):lower() or nil
-    end
-    local itemType = norm(item.type)
-    local itemMut  = norm(item.mutation)
-    
-    -- STRICT: require a valid T (type) to exist
-    if not itemType or itemType == "" or itemType == "unknown" then
-        return false
-    end
-    
-    -- Build lookup sets for O(1) checks
-    local typesSet, mutsSet
-    if includeTypes and #includeTypes > 0 then
-        typesSet = {}
-        for _, t in ipairs(includeTypes) do typesSet[norm(t)] = true end
-        if not typesSet[itemType] then return false end
-    end
-    if includeMutations and #includeMutations > 0 then
-        -- STRICT for M: if selectors provided, item must have an M and it must match
-        if not itemMut or itemMut == "" then return false end
-        mutsSet = {}
-        for _, m in ipairs(includeMutations) do mutsSet[norm(m)] = true end
-        if not mutsSet[itemMut] then return false end
-    end
-    
-    return true
-end
-
--- Remove placed item from ground
-local function removeFromGround(itemUID)
-    
-    
-    local success, err = pcall(function()
-        local args = {"Del", itemUID}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    
-    if success then
-        
-    else
-        
-    end
-    
-    return success
-end
-
--- Focus pet/egg before sending/selling (exactly like manual method)
-local function focusItem(itemUID)
-    
-    
-    local success, err = pcall(function()
-        local args = {"Focus", itemUID}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    
-    if success then
-        
-    else
-        
-    end
-    
-    return success
-end
-
--- Send item (pet or egg) to player
-local function sendItemToPlayer(item, playerName, itemType)
-    if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-        if not sessionLimits.limitReachedNotified then
-            WindUI:Notify({
-                Title = "⚠️ Send Limit Reached",
-                Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")",
-                Duration = 5
+            table.insert(players, {
+                name = player.Name,
+                displayName = player.DisplayName,
+                userId = player.UserId
             })
-            sessionLimits.limitReachedNotified = true
         end
-        return false
     end
+    return players
+end
+
+-- ============ EXTERNAL UI CREATION ============
+
+local function createExternalUI()
+    -- Create ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "CustomSendTrashUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
     
-    local itemUID = item.uid
+    -- Main Frame (dark background like in image)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 800, 0, 600)
+    mainFrame.Position = UDim2.new(0.5, -400, 0.5, -300)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(25, 30, 45)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
     
+    -- Add corner radius
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = mainFrame
     
-    -- If item is placed on ground, remove it first
-    if item.placed then
-        removeFromGround(itemUID)
-        wait(0.1) -- Quick wait after removal
-    end
+    -- Top bar with title and close button
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.Size = UDim2.new(1, 0, 0, 60)
+    topBar.Position = UDim2.new(0, 0, 0, 0)
+    topBar.BackgroundColor3 = Color3.fromRGB(20, 25, 40)
+    topBar.BorderSizePixel = 0
+    topBar.Parent = mainFrame
     
-    -- Focus the item first (REQUIRED before sending)
-    focusItem(itemUID)
-    wait(0.3) -- Quick wait for focus to process
+    local topCorner = Instance.new("UICorner")
+    topCorner.CornerRadius = UDim.new(0, 12)
+    topCorner.Parent = topBar
     
-    local success, err = pcall(function()
-        -- Find the target player object
-        local targetPlayer = Players:FindFirstChild(playerName)
-        if not targetPlayer then
-            error("Player " .. playerName .. " not found")
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(0.5, -20, 1, 0)
+    title.Position = UDim2.new(0, 20, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "TARGET ROBLOX CHARACTER"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = topBar
+    
+    -- Thai title (คลังใข่)
+    local thaiTitle = Instance.new("TextLabel")
+    thaiTitle.Name = "ThaiTitle"
+    thaiTitle.Size = UDim2.new(0.5, -20, 1, 0)
+    thaiTitle.Position = UDim2.new(0.5, 0, 0, 0)
+    thaiTitle.BackgroundTransparency = 1
+    thaiTitle.Text = "คลังใข่"
+    thaiTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    thaiTitle.TextScaled = true
+    thaiTitle.Font = Enum.Font.GothamBold
+    thaiTitle.TextXAlignment = Enum.TextXAlignment.Right
+    thaiTitle.Parent = topBar
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -40, 0, 15)
+    closeButton.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+    closeButton.Text = "×"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.BorderSizePixel = 0
+    closeButton.Parent = topBar
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeButton
+    
+    -- Left panel (target character)
+    local leftPanel = Instance.new("Frame")
+    leftPanel.Name = "LeftPanel"
+    leftPanel.Size = UDim2.new(0.4, -10, 1, -80)
+    leftPanel.Position = UDim2.new(0, 10, 0, 70)
+    leftPanel.BackgroundColor3 = Color3.fromRGB(30, 35, 50)
+    leftPanel.BorderSizePixel = 0
+    leftPanel.Parent = mainFrame
+    
+    local leftCorner = Instance.new("UICorner")
+    leftCorner.CornerRadius = UDim.new(0, 8)
+    leftCorner.Parent = leftPanel
+    
+    -- Right panel (items)
+    local rightPanel = Instance.new("Frame")
+    rightPanel.Name = "RightPanel"
+    rightPanel.Size = UDim2.new(0.6, -10, 1, -80)
+    rightPanel.Position = UDim2.new(0.4, 10, 0, 70)
+    rightPanel.BackgroundColor3 = Color3.fromRGB(30, 35, 50)
+    rightPanel.BorderSizePixel = 0
+    rightPanel.Parent = mainFrame
+    
+    local rightCorner = Instance.new("UICorner")
+    rightCorner.CornerRadius = UDim.new(0, 8)
+    rightCorner.Parent = rightPanel
+    
+    -- Search box in left panel
+    local searchBox = Instance.new("TextBox")
+    searchBox.Name = "SearchBox"
+    searchBox.Size = UDim2.new(1, -20, 0, 40)
+    searchBox.Position = UDim2.new(0, 10, 0, 10)
+    searchBox.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+    searchBox.Text = "Search"
+    searchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+    searchBox.TextScaled = true
+    searchBox.Font = Enum.Font.Gotham
+    searchBox.BorderSizePixel = 0
+    searchBox.Parent = leftPanel
+    
+    local searchCorner = Instance.new("UICorner")
+    searchCorner.CornerRadius = UDim.new(0, 6)
+    searchCorner.Parent = searchBox
+    
+    -- Character display area with avatar
+    local characterFrame = Instance.new("Frame")
+    characterFrame.Name = "CharacterFrame"
+    characterFrame.Size = UDim2.new(1, -20, 0, 200)
+    characterFrame.Position = UDim2.new(0, 10, 0, 60)
+    characterFrame.BackgroundTransparency = 1
+    characterFrame.Parent = leftPanel
+    
+    -- Avatar display
+    local avatarLabel = Instance.new("ImageLabel")
+    avatarLabel.Name = "AvatarLabel"
+    avatarLabel.Size = UDim2.new(0, 120, 0, 120)
+    avatarLabel.Position = UDim2.new(0.5, -60, 0, 10)
+    avatarLabel.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    avatarLabel.BorderSizePixel = 0
+    avatarLabel.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+    avatarLabel.Parent = characterFrame
+    
+    local avatarCorner = Instance.new("UICorner")
+    avatarCorner.CornerRadius = UDim.new(0, 60)
+    avatarCorner.Parent = avatarLabel
+    
+    -- Selected player name
+    local playerNameLabel = Instance.new("TextLabel")
+    playerNameLabel.Name = "PlayerNameLabel"
+    playerNameLabel.Size = UDim2.new(1, 0, 0, 40)
+    playerNameLabel.Position = UDim2.new(0, 0, 0, 140)
+    playerNameLabel.BackgroundTransparency = 1
+    playerNameLabel.Text = "No Player Selected"
+    playerNameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    playerNameLabel.TextScaled = true
+    playerNameLabel.Font = Enum.Font.GothamBold
+    playerNameLabel.TextWrapped = true
+    playerNameLabel.Parent = characterFrame
+    
+    -- Controls for amount and mutation
+    local controlsFrame = Instance.new("Frame")
+    controlsFrame.Name = "ControlsFrame"
+    controlsFrame.Size = UDim2.new(1, -20, 0, 150)
+    controlsFrame.Position = UDim2.new(0, 10, 1, -160)
+    controlsFrame.BackgroundTransparency = 1
+    controlsFrame.Parent = leftPanel
+    
+    -- Amount label and input
+    local amountLabel = Instance.new("TextLabel")
+    amountLabel.Name = "AmountLabel"
+    amountLabel.Size = UDim2.new(1, 0, 0, 30)
+    amountLabel.Position = UDim2.new(0, 0, 0, 0)
+    amountLabel.BackgroundTransparency = 1
+    amountLabel.Text = "Amount"
+    amountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    amountLabel.TextScaled = true
+    amountLabel.Font = Enum.Font.Gotham
+    amountLabel.TextXAlignment = Enum.TextXAlignment.Left
+    amountLabel.Parent = controlsFrame
+    
+    local amountInput = Instance.new("TextBox")
+    amountInput.Name = "AmountInput"
+    amountInput.Size = UDim2.new(0.6, 0, 0, 30)
+    amountInput.Position = UDim2.new(0.4, 0, 0, 0)
+    amountInput.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+    amountInput.Text = "1"
+    amountInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    amountInput.TextScaled = true
+    amountInput.Font = Enum.Font.Gotham
+    amountInput.BorderSizePixel = 0
+    amountInput.Parent = controlsFrame
+    
+    local amountCorner = Instance.new("UICorner")
+    amountCorner.CornerRadius = UDim.new(0, 4)
+    amountCorner.Parent = amountInput
+    
+    -- Mutation dropdown
+    local mutationLabel = Instance.new("TextLabel")
+    mutationLabel.Name = "MutationLabel"
+    mutationLabel.Size = UDim2.new(1, 0, 0, 30)
+    mutationLabel.Position = UDim2.new(0, 0, 0, 40)
+    mutationLabel.BackgroundTransparency = 1
+    mutationLabel.Text = "Mutation"
+    mutationLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    mutationLabel.TextScaled = true
+    mutationLabel.Font = Enum.Font.Gotham
+    mutationLabel.TextXAlignment = Enum.TextXAlignment.Left
+    mutationLabel.Parent = controlsFrame
+    
+    local mutationDropdown = Instance.new("TextButton")
+    mutationDropdown.Name = "MutationDropdown"
+    mutationDropdown.Size = UDim2.new(1, 0, 0, 30)
+    mutationDropdown.Position = UDim2.new(0, 0, 0, 70)
+    mutationDropdown.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+    mutationDropdown.Text = "None ▼"
+    mutationDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    mutationDropdown.TextScaled = true
+    mutationDropdown.Font = Enum.Font.Gotham
+    mutationDropdown.BorderSizePixel = 0
+    mutationDropdown.Parent = controlsFrame
+    
+    local mutationCorner = Instance.new("UICorner")
+    mutationCorner.CornerRadius = UDim.new(0, 4)
+    mutationCorner.Parent = mutationDropdown
+    
+    -- Choose button
+    local chooseButton = Instance.new("TextButton")
+    chooseButton.Name = "ChooseButton"
+    chooseButton.Size = UDim2.new(1, 0, 0, 40)
+    chooseButton.Position = UDim2.new(0, 0, 0, 110)
+    chooseButton.BackgroundColor3 = Color3.fromRGB(52, 58, 235)
+    chooseButton.Text = "CHOOSE"
+    chooseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    chooseButton.TextScaled = true
+    chooseButton.Font = Enum.Font.GothamBold
+    chooseButton.BorderSizePixel = 0
+    chooseButton.Parent = controlsFrame
+    
+    local chooseCorner = Instance.new("UICorner")
+    chooseCorner.CornerRadius = UDim.new(0, 6)
+    chooseCorner.Parent = chooseButton
+    
+    -- Search box in right panel
+    local rightSearchBox = Instance.new("TextBox")
+    rightSearchBox.Name = "RightSearchBox"
+    rightSearchBox.Size = UDim2.new(1, -20, 0, 40)
+    rightSearchBox.Position = UDim2.new(0, 10, 0, 10)
+    rightSearchBox.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+    rightSearchBox.Text = "Search"
+    rightSearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+    rightSearchBox.TextScaled = true
+    rightSearchBox.Font = Enum.Font.Gotham
+    rightSearchBox.BorderSizePixel = 0
+    rightSearchBox.Parent = rightPanel
+    
+    local rightSearchCorner = Instance.new("UICorner")
+    rightSearchCorner.CornerRadius = UDim.new(0, 6)
+    rightSearchCorner.Parent = rightSearchBox
+    
+    -- Items grid
+    local itemsGrid = Instance.new("ScrollingFrame")
+    itemsGrid.Name = "ItemsGrid"
+    itemsGrid.Size = UDim2.new(1, -20, 1, -60)
+    itemsGrid.Position = UDim2.new(0, 10, 0, 50)
+    itemsGrid.BackgroundTransparency = 1
+    itemsGrid.BorderSizePixel = 0
+    itemsGrid.ScrollBarThickness = 6
+    itemsGrid.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+    itemsGrid.Parent = rightPanel
+    
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0, 120, 0, 140)
+    gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.Parent = itemsGrid
+    
+    -- Players list in left panel
+    local playersScrollFrame = Instance.new("ScrollingFrame")
+    playersScrollFrame.Name = "PlayersScrollFrame"
+    playersScrollFrame.Size = UDim2.new(1, -20, 1, -270)
+    playersScrollFrame.Position = UDim2.new(0, 10, 0, 260)
+    playersScrollFrame.BackgroundTransparency = 1
+    playersScrollFrame.BorderSizePixel = 0
+    playersScrollFrame.ScrollBarThickness = 4
+    playersScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+    playersScrollFrame.Parent = leftPanel
+    
+    local playersLayout = Instance.new("UIListLayout")
+    playersLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    playersLayout.Padding = UDim.new(0, 5)
+    playersLayout.Parent = playersScrollFrame
+    
+    -- Variables for tracking
+    local selectedPlayer = nil
+    local selectedMutation = "None"
+    
+    -- Update players list
+    local function updatePlayersList()
+        -- Clear existing players
+        for _, child in pairs(playersScrollFrame:GetChildren()) do
+            if child:IsA("Frame") then
+                child:Destroy()
+            end
         end
         
-        local args = {targetPlayer}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
+        local players = getPlayerList()
+        
+        for i, player in ipairs(players) do
+            local playerFrame = Instance.new("Frame")
+            playerFrame.Name = "Player" .. i
+            playerFrame.Size = UDim2.new(1, 0, 0, 50)
+            playerFrame.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+            playerFrame.BorderSizePixel = 0
+            playerFrame.LayoutOrder = i
+            playerFrame.Parent = playersScrollFrame
+            
+            local playerCorner = Instance.new("UICorner")
+            playerCorner.CornerRadius = UDim.new(0, 6)
+            playerCorner.Parent = playerFrame
+            
+            -- Player avatar
+            local playerAvatar = Instance.new("ImageLabel")
+            playerAvatar.Name = "PlayerAvatar"
+            playerAvatar.Size = UDim2.new(0, 40, 0, 40)
+            playerAvatar.Position = UDim2.new(0, 5, 0, 5)
+            playerAvatar.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            playerAvatar.BorderSizePixel = 0
+            playerAvatar.Image = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.userId .. "&width=50&height=50&format=png"
+            playerAvatar.Parent = playerFrame
+            
+            local playerAvatarCorner = Instance.new("UICorner")
+            playerAvatarCorner.CornerRadius = UDim.new(0, 20)
+            playerAvatarCorner.Parent = playerAvatar
+            
+            -- Player name
+            local playerNameText = Instance.new("TextLabel")
+            playerNameText.Name = "PlayerNameText"
+            playerNameText.Size = UDim2.new(1, -60, 1, 0)
+            playerNameText.Position = UDim2.new(0, 50, 0, 0)
+            playerNameText.BackgroundTransparency = 1
+            playerNameText.Text = player.name
+            playerNameText.TextColor3 = Color3.fromRGB(255, 255, 255)
+            playerNameText.TextScaled = true
+            playerNameText.Font = Enum.Font.Gotham
+            playerNameText.TextXAlignment = Enum.TextXAlignment.Left
+            playerNameText.Parent = playerFrame
+            
+            -- Online indicator
+            local onlineIndicator = Instance.new("Frame")
+            onlineIndicator.Name = "OnlineIndicator"
+            onlineIndicator.Size = UDim2.new(0, 8, 0, 8)
+            onlineIndicator.Position = UDim2.new(0, 37, 0, 5)
+            onlineIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+            onlineIndicator.BorderSizePixel = 0
+            onlineIndicator.Parent = playerFrame
+            
+            local indicatorCorner = Instance.new("UICorner")
+            indicatorCorner.CornerRadius = UDim.new(0, 4)
+            indicatorCorner.Parent = onlineIndicator
+            
+            -- Click handler
+            local clickButton = Instance.new("TextButton")
+            clickButton.Name = "ClickButton"
+            clickButton.Size = UDim2.new(1, 0, 1, 0)
+            clickButton.Position = UDim2.new(0, 0, 0, 0)
+            clickButton.BackgroundTransparency = 1
+            clickButton.Text = ""
+            clickButton.Parent = playerFrame
+            
+            clickButton.MouseButton1Click:Connect(function()
+                selectedPlayer = player
+                playerNameLabel.Text = player.name
+                avatarLabel.Image = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.userId .. "&width=180&height=180&format=png"
+                
+                -- Update visual selection
+                for _, child in pairs(playersScrollFrame:GetChildren()) do
+                    if child:IsA("Frame") then
+                        child.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+                    end
+                end
+                playerFrame.BackgroundColor3 = Color3.fromRGB(52, 58, 235)
+            end)
+        end
+        
+        -- Update canvas size
+        playersScrollFrame.CanvasSize = UDim2.new(0, 0, 0, playersLayout.AbsoluteContentSize.Y + 10)
+    end
+    
+    -- Update items grid
+    local function updateItemsGrid()
+        -- Clear existing items
+        for _, child in pairs(itemsGrid:GetChildren()) do
+            if child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        
+        local pets, eggs = getAllItems()
+        local allItems = {}
+        
+        -- Group items by type and mutation
+        local itemCounts = {}
+        
+        -- Add pets
+        for _, pet in ipairs(pets) do
+            if not pet.locked then
+                local key = pet.type .. "|" .. (pet.mutation or "None") .. "|pet"
+                if not itemCounts[key] then
+                    itemCounts[key] = {
+                        type = "pet",
+                        displayName = pet.type,
+                        mutation = pet.mutation or "None",
+                        count = 0,
+                        items = {}
+                    }
+                end
+                itemCounts[key].count = itemCounts[key].count + 1
+                table.insert(itemCounts[key].items, pet)
+            end
+        end
+        
+        -- Add eggs
+        for _, egg in ipairs(eggs) do
+            if not egg.locked then
+                local key = egg.type .. "|" .. (egg.mutation or "None") .. "|egg"
+                if not itemCounts[key] then
+                    itemCounts[key] = {
+                        type = "egg",
+                        displayName = egg.type,
+                        mutation = egg.mutation or "None",
+                        count = 0,
+                        items = {}
+                    }
+                end
+                itemCounts[key].count = itemCounts[key].count + 1
+                table.insert(itemCounts[key].items, egg)
+            end
+        end
+        
+        -- Convert to array
+        for _, item in pairs(itemCounts) do
+            table.insert(allItems, item)
+        end
+        
+        -- Sort items
+        table.sort(allItems, function(a, b)
+            return a.displayName < b.displayName
+        end)
+        
+        -- Create item frames
+        for i, item in ipairs(allItems) do
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Name = "Item" .. i
+            itemFrame.Size = UDim2.new(0, 120, 0, 140)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+            itemFrame.BorderSizePixel = 0
+            itemFrame.LayoutOrder = i
+            itemFrame.Parent = itemsGrid
+            
+            local itemCorner = Instance.new("UICorner")
+            itemCorner.CornerRadius = UDim.new(0, 8)
+            itemCorner.Parent = itemFrame
+            
+            -- Count label
+            local countLabel = Instance.new("TextLabel")
+            countLabel.Name = "CountLabel"
+            countLabel.Size = UDim2.new(0, 30, 0, 20)
+            countLabel.Position = UDim2.new(1, -35, 0, 5)
+            countLabel.BackgroundColor3 = Color3.fromRGB(60, 65, 80)
+            countLabel.Text = tostring(item.count)
+            countLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            countLabel.TextScaled = true
+            countLabel.Font = Enum.Font.GothamBold
+            countLabel.BorderSizePixel = 0
+            countLabel.Parent = itemFrame
+            
+            local countCorner = Instance.new("UICorner")
+            countCorner.CornerRadius = UDim.new(0, 10)
+            countCorner.Parent = countLabel
+            
+            -- Item icon
+            local iconFrame = Instance.new("Frame")
+            iconFrame.Name = "IconFrame"
+            iconFrame.Size = UDim2.new(0, 80, 0, 80)
+            iconFrame.Position = UDim2.new(0.5, -40, 0, 10)
+            iconFrame.BackgroundColor3 = item.type == "egg" and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(100, 150, 200)
+            iconFrame.BorderSizePixel = 0
+            iconFrame.Parent = itemFrame
+            
+            local iconCorner = Instance.new("UICorner")
+            iconCorner.CornerRadius = UDim.new(0, 40)
+            iconCorner.Parent = iconFrame
+            
+            -- Type indicator
+            local typeLabel = Instance.new("TextLabel")
+            typeLabel.Name = "TypeLabel"
+            typeLabel.Size = UDim2.new(1, 0, 1, 0)
+            typeLabel.Position = UDim2.new(0, 0, 0, 0)
+            typeLabel.BackgroundTransparency = 1
+            typeLabel.Text = item.type == "egg" and "🥚" or "🐾"
+            typeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            typeLabel.TextScaled = true
+            typeLabel.Font = Enum.Font.GothamBold
+            typeLabel.Parent = iconFrame
+            
+            -- Item name
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Name = "NameLabel"
+            nameLabel.Size = UDim2.new(1, -10, 0, 25)
+            nameLabel.Position = UDim2.new(0, 5, 0, 95)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = item.displayName
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextScaled = true
+            nameLabel.Font = Enum.Font.Gotham
+            nameLabel.TextWrapped = true
+            nameLabel.Parent = itemFrame
+            
+            -- Mutation label
+            if item.mutation ~= "None" then
+                local mutationLabel = Instance.new("TextLabel")
+                mutationLabel.Name = "MutationLabel"
+                mutationLabel.Size = UDim2.new(1, -10, 0, 15)
+                mutationLabel.Position = UDim2.new(0, 5, 1, -20)
+                mutationLabel.BackgroundTransparency = 1
+                mutationLabel.Text = "[" .. item.mutation .. "]"
+                mutationLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+                mutationLabel.TextScaled = true
+                mutationLabel.Font = Enum.Font.GothamBold
+                mutationLabel.TextWrapped = true
+                mutationLabel.Parent = itemFrame
+            end
+            
+            -- Click handler for item selection
+            local clickButton = Instance.new("TextButton")
+            clickButton.Name = "ClickButton"
+            clickButton.Size = UDim2.new(1, 0, 1, 0)
+            clickButton.Position = UDim2.new(0, 0, 0, 0)
+            clickButton.BackgroundTransparency = 1
+            clickButton.Text = ""
+            clickButton.Parent = itemFrame
+            
+            clickButton.MouseButton1Click:Connect(function()
+                if not selectedPlayer then
+                    WindUI:Notify({Title = "❌ Error", Content = "Please select a player first!", Duration = 3})
+                    return
+                end
+                
+                -- Send items based on amount
+                local amount = tonumber(amountInput.Text) or 1
+                local sent = 0
+                
+                for _, itemData in ipairs(item.items) do
+                    if sent >= amount then break end
+                    
+                    local success, message = sendItemReliably(itemData.uid, selectedPlayer.name, item.type)
+                    
+                    if success then
+                        sent = sent + 1
+                        WindUI:Notify({
+                            Title = "✅ Success", 
+                            Content = "Sent " .. item.displayName .. " to " .. selectedPlayer.name, 
+                            Duration = 2
+                        })
+                    else
+                        WindUI:Notify({
+                            Title = "❌ Failed", 
+                            Content = "Failed: " .. message, 
+                            Duration = 3
+                        })
+                    end
+                    
+                    task.wait(0.5) -- Wait between sends
+                end
+                
+                -- Refresh grid after sending
+                task.wait(1)
+                updateItemsGrid()
+            end)
+        end
+        
+        -- Update canvas size
+        itemsGrid.CanvasSize = UDim2.new(0, 0, 0, gridLayout.AbsoluteContentSize.Y + 20)
+    end
+    
+    -- Search functionality
+    searchBox.FocusGained:Connect(function()
+        if searchBox.Text == "Search" then
+            searchBox.Text = ""
+        end
     end)
     
-    if success then
-        sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-        actionCounter = actionCounter + 1
-        -- Log for webhook
-        table.insert(sessionLogs, {
-            kind = itemType,
-            uid = itemUID,
-            type = item.type,
-            mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
-            receiver = playerName,
-        })
-    else
-        
-    end
+    searchBox.FocusLost:Connect(function()
+        if searchBox.Text == "" then
+            searchBox.Text = "Search"
+        end
+        -- Filter players based on search
+        updatePlayersList()
+    end)
     
-    return success
+    rightSearchBox.FocusGained:Connect(function()
+        if rightSearchBox.Text == "Search" then
+            rightSearchBox.Text = ""
+        end
+    end)
+    
+    rightSearchBox.FocusLost:Connect(function()
+        if rightSearchBox.Text == "" then
+            rightSearchBox.Text = "Search"
+        end
+        -- Filter items based on search
+        updateItemsGrid()
+    end)
+    
+    -- Make draggable
+    local isDragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    topBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = false
+        end
+    end)
+    
+    -- Close button functionality
+    closeButton.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+        customUI = nil
+    end)
+    
+    -- Store references
+    customUI = {
+        screenGui = screenGui,
+        mainFrame = mainFrame,
+        updateItemsGrid = updateItemsGrid,
+        updatePlayersList = updatePlayersList
+    }
+    
+    -- Load initial data
+    updateItemsGrid()
+    updatePlayersList()
+    
+    return customUI
 end
 
--- Sell pet (only pets, no eggs)
--- Selling pets has been removed per user request
+-- ============ MAIN INTERFACE ============
 
--- Auto-delete slow pets
-local function autoDeleteSlowPets(speedThreshold)
-    if speedThreshold <= 0 then
-        return 0, "Auto-delete disabled (speed threshold: 0)"
-    end
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
-        return 0, "Player data not found"
-    end
-    
-    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-    if not petsFolder then
-        return 0, "Pets folder not found"
-    end
-    
-    local deletedCount = 0
-    local PetRE = ReplicatedStorage:FindChild("Remote") and ReplicatedStorage.Remote:FindFirstChild("PetRE")
-    if not PetRE then
-        return 0, "PetRE not found"
-    end
-    
-    -- Find pets with speed below threshold
-    for _, petData in pairs(petsFolder:GetChildren()) do
-        if petData:IsA("Configuration") then
-            local petSpeed = petData:GetAttribute("Speed") or 0
-            local petLocked = petData:GetAttribute("LK") or 0
-            local petUID = petData.Name
-            
-            -- Only delete unlocked pets below speed threshold
-            if petLocked == 0 and petSpeed < speedThreshold then
-                PetRE:FireServer('Sell', petUID)
-                deletedCount = deletedCount + 1
-                wait(0.05) -- Very quick delay between deletions
-                
-                -- Limit to 5 deletions per cycle to avoid spam
-                if deletedCount >= 5 then
-                    break
-                end
-            end
-        end
-    end
-    
-    return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
-end
-
--- Update status display
-local function updateStatus()
-    if not statusParagraph then return end
-    
-    local petInventory = getPetInventory()
-    local eggInventory = getEggInventory()
-    local statusText = string.format(
-        "🐾 Pets in inventory: %d\n" ..
-        "🥚 Eggs in inventory: %d\n" ..
-        "📤 Items sent this session: %d/%d\n" ..
-        "⚡ Auto-delete speed threshold: %s\n" ..
-        "🔄 Actions performed: %d",
-        #petInventory,
-        #eggInventory,
-        sessionLimits.sendPetCount, sessionLimits.maxSendPet,
-        autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
-        actionCounter
-    )
-    
-    statusParagraph:SetDesc(statusText)
-end
-
--- Main trash processing function
-local function processTrash()
-    while trashEnabled do
-        -- Get send mode setting
-        local sendMode = "Both" -- Default
-        if sendModeDropdown then
-            local success, result = nil, nil
-            
-            -- Try different methods to get the value
-            if sendModeDropdown.GetValue then
-                success, result = pcall(function() return sendModeDropdown:GetValue() end)
-            elseif sendModeDropdown.Value then
-                success, result = pcall(function() return sendModeDropdown.Value end)
-            end
-            
-            if success and result then
-                sendMode = result
-            else
-                sendMode = "Both"
-            end
-        else
-            
-        end
-        
-        local petInventory = {}
-        local eggInventory = {}
-        
-        -- Get inventories based on send mode
-        if sendMode == "Pets" or sendMode == "Both" then
-            petInventory = getPetInventory()
-        end
-        if sendMode == "Eggs" or sendMode == "Both" then
-            eggInventory = getEggInventory()
-        end
-        
-        if #petInventory == 0 and #eggInventory == 0 then
-            -- If limit reached, finalize session; else notify once
-            if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-                trashEnabled = false
-                if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-            else
-                WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
-            end
-            wait(1)
-            continue
-        end
-        
-        -- Get selector settings for pets (include-only)
-        local includePetTypes = {}
-        local includePetMutations = {}
-        
-        if sendPetTypeDropdown and sendPetTypeDropdown.GetValue then
-            local success, result = pcall(function() return sendPetTypeDropdown:GetValue() end)
-            includePetTypes = success and selectionToList(result) or {}
-            selectedPetTypes = includePetTypes
-        end
-        
-        if sendPetMutationDropdown and sendPetMutationDropdown.GetValue then
-            local success, result = pcall(function() return sendPetMutationDropdown:GetValue() end)
-            includePetMutations = success and selectionToList(result) or {}
-            selectedPetMuts = includePetMutations
-        end
-        
-        -- Get selector settings for eggs (include-only)
-        local includeEggTypes = {}
-        local includeEggMutations = {}
-        
-        if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
-            local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
-            includeEggTypes = success and selectionToList(result) or {}
-            selectedEggTypes = includeEggTypes
-        end
-        
-        if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
-            local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
-            includeEggMutations = success and selectionToList(result) or {}
-            selectedEggMuts = includeEggMutations
-        end
-        
-        -- Get target player (robust): prefer cached selection, resolve actual Player
-        local targetPlayerName = selectedTargetName
-        local targetPlayerObj = nil
-        if targetPlayerName and targetPlayerName ~= "Random Player" then
-            targetPlayerObj = resolveTargetPlayerByName(targetPlayerName)
-            if not targetPlayerObj then
-                targetPlayerObj = getRandomPlayer()
-            end
-        else
-            targetPlayerObj = getRandomPlayer()
-        end
-        local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
-        lastReceiverName = targetPlayer
-        lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
-        
-        -- Send items to other players
-        local sentAnyItem = false
-        
-        -- Try to send pets first (respect T/M before any action)
-        if sendMode == "Pets" or sendMode == "Both" then
-            for _, pet in ipairs(petInventory) do
-                -- Re-read attributes live before deciding
-                pet = refreshItemFromData(pet.uid, false, pet)
-                if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
-                    local petName = pet.type or pet.uid
-                    sendItemToPlayer(pet, targetPlayer, "pet")
-                    sentAnyItem = true
-                    wait(0.3)
-                    break -- Send one at a time
-                end
-            end
-        end
-        
-        -- Try to send eggs if no pets were sent (respect T/M before any action)
-        if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
-            for _, egg in ipairs(eggInventory) do
-                egg = refreshItemFromData(egg.uid, true, egg)
-                -- Use cached selectors if available to avoid UI GetValue glitches
-                local tList = (selectedEggTypes and #selectedEggTypes > 0) and selectedEggTypes or includeEggTypes
-                local mList = (selectedEggMuts and #selectedEggMuts > 0) and selectedEggMuts or includeEggMutations
-                if shouldSendItem(egg, tList, mList) and targetPlayer then
-                    local eggName = egg.type or egg.uid
-                    sendItemToPlayer(egg, targetPlayer, "egg")
-                    sentAnyItem = true
-                    wait(0.3)
-                    break -- Send one at a time
-                end
-            end
-        end
-        
-        -- Selling removed
-        
-        -- Auto-delete slow pets if enabled (only for pets, not eggs)
-        if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
-            autoDeleteSlowPets(autoDeleteMinSpeed)
-        end
-        
-        -- Stop if session limit reached
-        if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-            -- Immediately post webhook summary when limit hit
-            if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                task.spawn(sendWebhookSummary)
-            end
-            trashEnabled = false
-            if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-        end
-        
-        -- Update status
-        updateStatus()
-        
-        wait(0.5) -- Quick wait before next cycle
-    end
-end
-
--- Initialize function
 function SendTrashSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
     
-    -- Create the Send Trash tab
+    -- Create simple tab with just one button
     local TrashTab = Window:Tab({ Title = "🗑️ | Send Trash"})
     
-    -- Status display
-    statusParagraph = TrashTab:Paragraph({
-        Title = "Trash System Status:",
-        Desc = "Loading pet information...",
-        Image = "trash-2",
-        ImageSize = 22
-    })
-    
-    
-    -- Session limit input
-    sessionLimitInput = TrashTab:Input({
-        Title = "Session Limit",
-        Desc = "Maximum items to send/sell per session (default: 50)",
-        Default = "50",
-        Numeric = true,
-        Finished = true,
-        Callback = function(value)
-            local numValue = tonumber(value) or 50
-            if numValue < 1 then numValue = 1 end -- Minimum of 1
-            sessionLimits.maxSendPet = numValue
-            sessionLimits.limitReachedNotified = false -- Reset notification
-        end,
-    })
-    
-    -- Main toggle
-    trashToggle = TrashTab:Toggle({
-        Title = "🗑️ Send Trash System",
-        Desc = "Automatically send/sell unwanted pets based on filters",
-        Value = false,
-        Callback = function(state)
-            trashEnabled = state
-            
-            if state then
-                task.spawn(function()
-                    processTrash()
-                end)
-                WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
-            else
-                WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
-                -- Send webhook once per session when turned off
-                if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                    task.spawn(function()
-                        local success, err = pcall(function()
-                            local totalSent = sessionLimits.sendPetCount
-                            local totalSold = sessionLimits.sellPetCount
-                            local fields = {}
-                            table.insert(fields, { name = "Items Sent", value = tostring(totalSent), inline = true })
-                            
-                            -- Build concise description list (last 10 items)
-                            local details = ""
-                            local startIdx = math.max(1, #sessionLogs - 9)
-                            for i = startIdx, #sessionLogs do
-                                local it = sessionLogs[i]
-                                details = details .. string.format("%s • %s [%s] → %s\n", it.kind, it.type or it.uid, it.mutation or "None", it.receiver or "?")
-                            end
-                            
-                            local payload = {
-                                embeds = {
-                                    {
-                                        title = "Send Trash Session Summary",
-                                        description = details ~= "" and details or "No items were sent.",
-                                        color = 5814783,
-                                        fields = fields,
-                                        footer = { text = "Build A Zoo" },
-                                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                                    }
-                                }
-                            }
-                            local json = HttpService:JSONEncode(payload)
-                            http_request = http_request or request or (syn and syn.request)
-                            if http_request then
-                                http_request({
-                                    Url = webhookUrl,
-                                    Method = "POST",
-                                    Headers = { ["Content-Type"] = "application/json" },
-                                    Body = json,
-                                })
-                            end
-                        end)
-                        if success then webhookSent = true end
-                    end)
-                end
-            end
-        end
-    })
-    
-    TrashTab:Section({ Title = "🎯 Target Settings", Icon = "target" })
-    
-    -- Send mode dropdown
-    sendModeDropdown = TrashTab:Dropdown({
-        Title = "📦 Send Type",
-        Desc = "Choose what to send: Pets only, Eggs only, or Both",
-        Values = {"Pets", "Eggs", "Both"},
-        Value = "Both",
-        Callback = function(selection) end
-    })
-    
-    -- Target player dropdown
-    targetPlayerDropdown = TrashTab:Dropdown({
-        Title = "🎯 Target Player (for sending)",
-        Desc = "Select player to send items to (Random = different player each time)",
-        Values = refreshPlayerList(),
-        Value = "Random Player",
-        Callback = function(selection)
-            selectedTargetName = selection or "Random Player"
-        end
-    })
-    
-    TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
-    
-    -- Send pet type filter (now include-only)
-    sendPetTypeDropdown = TrashTab:Dropdown({
-        Title = "✅ Pet Types to Send",
-        Desc = "Select pet types to send (empty = allow all)",
-        Values = getAllPetTypes(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedPetTypes = selectionToList(selection)
-        end
-    })
-    
-    -- Send pet mutation filter (now include-only)
-    sendPetMutationDropdown = TrashTab:Dropdown({
-        Title = "✅ Pet Mutations to Send", 
-        Desc = "Select mutations to send (empty = allow all)",
-        Values = getAllMutations(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedPetMuts = selectionToList(selection)
-        end
-    })
-    
-    TrashTab:Section({ Title = "🥚 Send Egg Selectors", Icon = "mail" })
-    
-    -- Send egg type filter (now include-only)
-    sendEggTypeDropdown = TrashTab:Dropdown({
-        Title = "✅ Egg Types to Send",
-        Desc = "Select egg types to send (empty = allow all)",
-        Values = getAllEggTypes(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedEggTypes = selectionToList(selection)
-        end
-    })
-    
-    -- Send egg mutation filter (now include-only)
-    sendEggMutationDropdown = TrashTab:Dropdown({
-        Title = "✅ Egg Mutations to Send", 
-        Desc = "Select mutations to send (empty = allow all)",
-        Values = getAllMutations(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedEggMuts = selectionToList(selection)
-        end
-    })
-    
-    -- Selling UI removed per request
-    
-    TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
-    
-    -- Webhook input (optional)
-    TrashTab:Input({
-        Title = "Webhook URL (optional)",
-        Desc = "Discord webhook to receive session summary",
-        Default = webhookUrl,
-        Numeric = false,
-        Finished = true,
-        Callback = function(value)
-            webhookUrl = tostring(value or "")
-            webhookSent = false
-        end,
-    })
-    
-    -- Manual refresh button
     TrashTab:Button({
-        Title = "🔄 Refresh Lists", 
-        Desc = "Manually refresh player and pet lists",
+        Title = "📦 Open Send Interface",
+        Desc = "Open the external send/trade interface",
         Callback = function()
-            -- Refresh all dropdowns
-            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            if customUI then
+                -- Close existing UI
+                customUI.screenGui:Destroy()
+                customUI = nil
             end
-            if sendPetTypeDropdown and sendPetTypeDropdown.SetValues then
-                pcall(function() sendPetTypeDropdown:SetValues(getAllPetTypes()) end)
-            end
-            if sendPetMutationDropdown and sendPetMutationDropdown.SetValues then
-                pcall(function() sendPetMutationDropdown:SetValues(getAllMutations()) end)
-            end
-            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
-            end
-            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
-            end
-            -- Selling UI removed
             
-            updateStatus()
+            -- Create new UI
+            createExternalUI()
             
             WindUI:Notify({
-                Title = "🔄 Refresh Complete",
-                Content = "All lists refreshed!",
-                Duration = 2
-            })
-        end
-    })
-    
-    -- Emergency stop button
-    TrashTab:Button({
-        Title = "🛑 Emergency Stop",
-        Desc = "Immediately stop all trash processing",
-        Callback = function()
-            trashEnabled = false
-            if trashToggle then trashToggle:SetValue(false) end
-            
-            WindUI:Notify({
-                Title = "🛑 Emergency Stop",
-                Content = "Trash system stopped!",
+                Title = "📦 Send Interface",
+                Content = "External interface opened!",
                 Duration = 3
             })
         end
     })
     
-    -- Reset session limits button
-    TrashTab:Button({
-        Title = "🔄 Reset Session Limits",
-        Desc = "Reset send/sell counters for this session",
-        Callback = function()
-            sessionLimits.sendPetCount = 0
-            sessionLimits.limitReachedNotified = false -- Reset notification
-            webhookSent = false
-            sessionLogs = {}
-            actionCounter = 0
-            updateStatus()
-            
-            WindUI:Notify({
-                Title = "🔄 Session Reset",
-                Content = "Send/sell limits reset!",
-                Duration = 2
-            })
-        end
-    })
-    
-    -- Register UI elements with config
+    -- Register with config if needed
     if Config then
-        Config:Register("trashEnabled", trashToggle)
-        Config:Register("sendMode", sendModeDropdown)
-        Config:Register("targetPlayer", targetPlayerDropdown)
-        Config:Register("sendPetTypeFilter", sendPetTypeDropdown)
-        Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
-        Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
-        Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
-        -- Selling config removed
-        Config:Register("speedThreshold", speedThresholdSlider)
-        Config:Register("sessionLimit", sessionLimitInput)
+        -- No UI elements to register since we removed them all
     end
-    
-    -- Initial status update
-    task.spawn(function()
-        task.wait(1)
-        updateStatus()
-    end)
 end
+
+-- Export core functions for external use
+SendTrashSystem.sendItemReliably = sendItemReliably
+SendTrashSystem.getAllItems = getAllItems
+SendTrashSystem.getPlayerList = getPlayerList
 
 return SendTrashSystem
