@@ -24,7 +24,7 @@ local HardcodedEggTypes = {
 }
 
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Dino"
+    "Golden", "Diamond", "Electirc", "Fire", "Dino"
 }
 
 -- Services
