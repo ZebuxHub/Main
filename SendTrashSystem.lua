@@ -584,6 +584,8 @@ local function sendCurrentInventoryWebhook()
     if petCount > 0 then
         for key, count in pairs(petsByType) do
             local type, mutation = key:match("([^|]+)|([^|]+)")
+            type = type or "Unknown"
+            mutation = mutation or "None"
             local emoji = "🐾"
             table.insert(lines, string.format("%s %s [%s] - %d", emoji, type, mutation, count))
         end
