@@ -727,7 +727,10 @@ local function getNextBestPet()
     if regularAvailable > 0 then
         for _, cand in ipairs(candidates) do
             if not cand.isOcean then
-                return cand, getRandomFromList(tileCache.regularTiles), "regular"
+                -- Double-check not already placed before returning
+                if not isPetAlreadyPlacedByUid(cand.uid) then
+                    return cand, getRandomFromList(tileCache.regularTiles), "regular"
+                end
             end
         end
         -- If only ocean pets exist but no water, skip
@@ -767,6 +770,8 @@ local function attemptPlacement()
             local dAttr = petNode:GetAttribute("D")
             if dAttr ~= nil and tostring(dAttr) ~= "" then
                 placementStats.lastReason = "Pet already placed"
+                -- Invalidate pet cache so next iteration picks a different pet
+                petCache.lastUpdate = 0
                 return false, placementStats.lastReason
             end
         end
@@ -881,6 +886,9 @@ local function runAutoPlace()
             elseif message:find("No available tiles") then
                 -- No space - wait longer
                 waitJitter(8)
+            elseif message:find("already placed") then
+                -- Candidate was already placed; rescan quickly
+                waitJitter(0.25)
             elseif consecutiveFailures >= maxFailures then
                 -- Too many failures - longer wait
                 waitJitter(10)
@@ -907,10 +915,18 @@ function AutoPlaceSystem.Init(dependencies)
 end
 
 function AutoPlaceSystem.CreateUI()
+    -- Egg filters section
+    Tabs.PlaceTab:Paragraph({
+        Title = "🥚 Egg filters",
+        Desc = "Select which egg types and mutations to place when not using pet mode.",
+        Image = "filter",
+        ImageSize = 14,
+    })
+
     -- Egg selection dropdown
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🥚 Pick Pet Types",
-        Desc = "Choose which pets to place (🌊 = ocean eggs, need water farm)",
+        Title = "🥚 Pick Egg Types",
+        Desc = "Choose which eggs to place (🌊 ocean eggs require water farm)",
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
             "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
@@ -949,10 +965,18 @@ function AutoPlaceSystem.CreateUI()
         ImageSize = 16,
     })
 
+    -- Mode & behavior section
+    Tabs.PlaceTab:Paragraph({
+        Title = "🧭 Mode & behavior",
+        Desc = "Choose pet/egg mode and global behavior.",
+        Image = "settings",
+        ImageSize = 14,
+    })
+
     -- Behavior toggle: fallback to regular eggs when no water farms
     Tabs.PlaceTab:Toggle({
         Title = "Fallback to regular eggs when no water farms",
-        Desc = "If only ocean eggs are selected but no water tiles, place any regular egg.",
+        Desc = "Egg mode only: if only ocean eggs are selected but water=0, place any regular egg.",
         Value = true,
         Callback = function(state)
             fallbackToRegularWhenNoWater = state
@@ -962,12 +986,20 @@ function AutoPlaceSystem.CreateUI()
     -- Pet placement mode and filters
     Tabs.PlaceTab:Toggle({
         Title = "Place Pets (use inventory pets instead of eggs)",
-        Desc = "Rank pets by production rate and place the best match.",
+        Desc = "ON = use pets; OFF = use eggs.",
         Value = false,
         Callback = function(state)
             usePetPlacementMode = state
             petCache.lastUpdate = 0
         end
+    })
+
+    -- Pet settings section
+    Tabs.PlaceTab:Paragraph({
+        Title = "🐾 Pet placement settings",
+        Desc = "These settings are used only when pet mode is ON.",
+        Image = "sliders-horizontal",
+        ImageSize = 14,
     })
 
     Tabs.PlaceTab:Toggle({
@@ -981,11 +1013,11 @@ function AutoPlaceSystem.CreateUI()
     })
 
     Tabs.PlaceTab:Slider({
-        Title = "Pets: Min produce rate",
+        Title = "Pets: Min Speed",
         Desc = "Filter pets below this effective production rate.",
         Value = {
             Min = 0,
-            Max = 50,
+            Max = 50000,
             Default = 0,
         },
         Step = 1,
@@ -1007,6 +1039,14 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
+    -- Run section
+    Tabs.PlaceTab:Paragraph({
+        Title = "▶️ Run",
+        Desc = "Start or stop the auto placement loop.",
+        Image = "play",
+        ImageSize = 14,
+    })
+
     local function updateStats()
         if not statsLabel then return end
         
