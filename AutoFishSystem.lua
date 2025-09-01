@@ -17,6 +17,12 @@ local Camera = workspace.CurrentCamera
 local WindUI = nil
 local Tabs = nil
 local Config = nil
+local currentPosLabel = nil
+
+-- Forward declarations for functions referenced earlier
+local updateCurrentPositionDisplay
+local stopFlagPlacement
+local removeFishingFlag
 
 -- Configuration
 local FishingConfig = {
@@ -27,6 +33,12 @@ local FishingConfig = {
     FishingRange = 5, -- Fish within 5 studs of player
     PlayerAnchored = false, -- Track if player is anchored
     SafePosition = nil, -- Store safe position to prevent falling
+    Original = {
+        WalkSpeed = nil,
+        JumpPower = nil,
+        AutoRotate = nil
+    },
+    FreezeConn = nil,
     -- Position placement history
     PlacedPositions = {},
     CurrentPositionIndex = 1,
@@ -299,14 +311,49 @@ local function anchorPlayer()
         -- Store original position for safety
         FishingConfig.SafePosition = rootPart.CFrame
         
-        -- Anchor the player
-        rootPart.Anchored = true
-        
-        -- Set platform stand to prevent falling
+        -- Save movement state and freeze movement without ragdolling
         if humanoid then
-            humanoid.PlatformStand = true
+            if FishingConfig.Original.WalkSpeed == nil then
+                FishingConfig.Original.WalkSpeed = humanoid.WalkSpeed
+            end
+            if FishingConfig.Original.JumpPower == nil then
+                FishingConfig.Original.JumpPower = humanoid.JumpPower
+            end
+            if FishingConfig.Original.AutoRotate == nil then
+                FishingConfig.Original.AutoRotate = humanoid.AutoRotate
+            end
+            humanoid.AutoRotate = false
+            humanoid.WalkSpeed = 0
+            humanoid.JumpPower = 0
             humanoid.Sit = false
+            humanoid.PlatformStand = false
         end
+
+        -- Anchor the root so external forces/animations can’t drag us
+        rootPart.Anchored = true
+        rootPart.AssemblyLinearVelocity = Vector3.zero
+        rootPart.AssemblyAngularVelocity = Vector3.zero
+
+        -- Hard freeze: keep restoring position if any server animation tries to move us
+        if FishingConfig.FreezeConn then
+            FishingConfig.FreezeConn:Disconnect()
+            FishingConfig.FreezeConn = nil
+        end
+        FishingConfig.FreezeConn = RunService.Heartbeat:Connect(function()
+            if not FishingConfig.PlayerAnchored then return end
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local target = FishingConfig.SafePosition
+            if not target then return end
+            local posDelta = (hrp.Position - target.Position).Magnitude
+            if posDelta > 0.15 or math.abs((hrp.CFrame - target).Position.Magnitude) > 0.15 then
+                hrp.CFrame = target
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
         
         FishingConfig.PlayerAnchored = true
         print("📍 Player anchored for fishing with fall protection")
@@ -333,9 +380,18 @@ local function unanchorPlayer()
         
         -- Restore normal movement
         if humanoid then
+            humanoid.AutoRotate = FishingConfig.Original.AutoRotate ~= nil and FishingConfig.Original.AutoRotate or true
+            humanoid.WalkSpeed = FishingConfig.Original.WalkSpeed ~= nil and FishingConfig.Original.WalkSpeed or 16
+            humanoid.JumpPower = FishingConfig.Original.JumpPower ~= nil and FishingConfig.Original.JumpPower or 50
             humanoid.PlatformStand = false
         end
-        
+
+        -- Stop freeze loop
+        if FishingConfig.FreezeConn then
+            FishingConfig.FreezeConn:Disconnect()
+            FishingConfig.FreezeConn = nil
+        end
+
         rootPart.Anchored = false
         FishingConfig.PlayerAnchored = false
         print("🔓 Player unanchored with fall protection")
@@ -633,7 +689,7 @@ local function startFlagPlacement()
     -- Note: Notification is now handled in the button callback for better clarity
 end
 
-local function stopFlagPlacement()
+function stopFlagPlacement()
     -- Immediately set active to false to stop all tracking
     FlagSystem.Active = false
     
@@ -680,7 +736,7 @@ local function stopFlagPlacement()
     print("📍 Pin placement stopped. Position locked at:", FishingConfig.FishingPosition)
 end
 
-local function removeFishingFlag()
+function removeFishingFlag()
     if FlagSystem.FlagPart then
         FlagSystem.FlagPart:Destroy()
         FlagSystem.FlagPart = nil
@@ -705,7 +761,7 @@ local function startFishing()
     -- Anchor player to prevent jumping and spinning
     anchorPlayer()
     
-    -- First fire Focus + FishRob
+    -- First fire Focus + FishRob (don’t move player)
     local args = {
         "Focus",
         "FishRob"
@@ -721,8 +777,8 @@ local function startFishing()
         return false
     end
     
-    -- Wait time for better accuracy
-    task.wait(1)
+    -- Wait time for better accuracy (short)
+    task.wait(0.3)
     
     -- Debug print to verify position is being used
     print("🎣 Using fishing position:", FishingConfig.FishingPosition)
@@ -731,7 +787,8 @@ local function startFishing()
         "Throw",
         {
             Bait = FishingConfig.SelectedBait,
-            Pos = FishingConfig.FishingPosition
+            Pos = FishingConfig.FishingPosition,
+            NoMove = true -- hint for server, if supported
         }
     }
     
@@ -805,7 +862,8 @@ local function pullFish()
     local args = {
         "POUT",
         {
-            SUC = 1
+            SUC = 1,
+            NoMove = true
         }
     }
     
@@ -1045,7 +1103,7 @@ local statsLabel = nil
 local currentPosLabel = nil
 
 -- Function to update the current position display
-local function updateCurrentPositionDisplay()
+function updateCurrentPositionDisplay()
     if currentPosLabel then
         currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
             FishingConfig.FishingPosition.X, 
