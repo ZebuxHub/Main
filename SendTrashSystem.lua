@@ -73,6 +73,111 @@ local unknownResolver = {
     active = false
 }
 
+-- Live data watchers (event-driven cache updates)
+local dataWatch = {
+    petConns = {},
+    eggConns = {},
+    rootConns = {}
+}
+
+local function disconnectConn(conn)
+    if conn then pcall(function() conn:Disconnect() end) end
+end
+
+local function clearConnSet(set)
+    if not set then return end
+    for _, c in pairs(set) do disconnectConn(c) end
+end
+
+local function upsertFromConf(conf, isEgg)
+    if not conf or not conf:IsA("Configuration") then return end
+    local okT, tVal = pcall(function() return conf:GetAttribute("T") end)
+    if not okT or not tVal or tVal == "" then return end
+    local okM, mVal = pcall(function() return conf:GetAttribute("M") end)
+    local okS, speedVal = pcall(function() return conf:GetAttribute("Speed") end)
+    local okLK, lkVal = pcall(function() return conf:GetAttribute("LK") end)
+    local okD, dVal = pcall(function() return conf:GetAttribute("D") end)
+    local record = {
+        uid = conf.Name,
+        type = tVal,
+        mutation = (okM and mVal) or "",
+        locked = (okLK and lkVal == 1) or false,
+        placed = (okD and dVal ~= nil) or false
+    }
+    if not isEgg then
+        record.speed = (okS and speedVal) or 0
+    end
+    if isEgg then
+        inventoryCache.eggs[conf.Name] = record
+        unknownResolver.eggs[conf.Name] = nil
+    else
+        inventoryCache.pets[conf.Name] = record
+        unknownResolver.pets[conf.Name] = nil
+    end
+end
+
+local function watchConf(conf, isEgg)
+    if not conf or not conf:IsA("Configuration") then return end
+    -- Initial attempt
+    upsertFromConf(conf, isEgg)
+    -- Attribute watchers
+    local tConn = conf:GetAttributeChangedSignal("T"):Connect(function()
+        upsertFromConf(conf, isEgg)
+    end)
+    local mConn = conf:GetAttributeChangedSignal("M"):Connect(function()
+        upsertFromConf(conf, isEgg)
+    end)
+    local set = isEgg and dataWatch.eggConns or dataWatch.petConns
+    set[conf] = { tConn, mConn }
+end
+
+local function startDataWatchers()
+    -- Avoid duplicates
+    if dataWatch.rootConns.started then return end
+    local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
+    if not dataRoot then return end
+    local petsFolder = dataRoot:FindFirstChild("Pets")
+    local eggsFolder = dataRoot:FindFirstChild("Egg")
+    if petsFolder then
+        for _, ch in ipairs(petsFolder:GetChildren()) do
+            watchConf(ch, false)
+        end
+        local addConn = petsFolder.ChildAdded:Connect(function(ch) watchConf(ch, false) end)
+        local remConn = petsFolder.ChildRemoved:Connect(function(ch)
+            local conns = dataWatch.petConns[ch]
+            if conns then for _, c in ipairs(conns) do disconnectConn(c) end end
+            dataWatch.petConns[ch] = nil
+            inventoryCache.pets[ch.Name] = nil
+        end)
+        table.insert(dataWatch.rootConns, addConn)
+        table.insert(dataWatch.rootConns, remConn)
+    end
+    if eggsFolder then
+        for _, ch in ipairs(eggsFolder:GetChildren()) do
+            watchConf(ch, true)
+        end
+        local addConn = eggsFolder.ChildAdded:Connect(function(ch) watchConf(ch, true) end)
+        local remConn = eggsFolder.ChildRemoved:Connect(function(ch)
+            local conns = dataWatch.eggConns[ch]
+            if conns then for _, c in ipairs(conns) do disconnectConn(c) end end
+            dataWatch.eggConns[ch] = nil
+            inventoryCache.eggs[ch.Name] = nil
+        end)
+        table.insert(dataWatch.rootConns, addConn)
+        table.insert(dataWatch.rootConns, remConn)
+    end
+    dataWatch.rootConns.started = true
+end
+
+local function stopDataWatchers()
+    clearConnSet(dataWatch.rootConns)
+    for conf, conns in pairs(dataWatch.petConns) do for _, c in ipairs(conns) do disconnectConn(c) end end
+    for conf, conns in pairs(dataWatch.eggConns) do for _, c in ipairs(conns) do disconnectConn(c) end end
+    dataWatch.petConns = {}
+    dataWatch.eggConns = {}
+    dataWatch.rootConns = {}
+end
+
 local function trackUnknown(uid, isEgg)
     if not uid or uid == "" then return end
     local bucket = isEgg and unknownResolver.eggs or unknownResolver.pets
@@ -1362,6 +1467,9 @@ function SendTrashSystem.Init(dependencies)
             Duration = 2
         })
     end
+    
+    -- Start precise event-driven watchers for T/M replication
+    startDataWatchers()
     
     -- Create the Send Trash tab
     local TrashTab = Window:Tab({ Title = "🗑️ | Send Trash"})
