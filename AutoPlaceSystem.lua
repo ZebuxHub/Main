@@ -327,24 +327,22 @@ local function updateAvailablePets()
     local out = {}
     if container then
         for _, child in ipairs(container:GetChildren()) do
-            if #child:GetChildren() == 0 then
-                local petType = child:GetAttribute("T")
-                local mutation = child:GetAttribute("M")
-                if mutation == "Dino" then
-                    mutation = "Jurassic"
-                end
-                if petType then
-                    if not mutationsOnlyPet or (mutation ~= nil and mutation ~= "") then
-                        local rate = computeEffectiveRate(petType, mutation)
-                        if rate >= (minPetRateFilter or 0) then
-                            table.insert(out, {
-                                uid = child.Name,
-                                type = petType,
-                                mutation = mutation,
-                                effectiveRate = rate,
-                                isOcean = isOceanPet(petType)
-                            })
-                        end
+            local petType = child:GetAttribute("T")
+            local mutation = child:GetAttribute("M")
+            if mutation == "Dino" then
+                mutation = "Jurassic"
+            end
+            if petType then
+                if not mutationsOnlyPet or (mutation ~= nil and mutation ~= "") then
+                    local rate = computeEffectiveRate(petType, mutation)
+                    if rate >= (minPetRateFilter or 0) then
+                        table.insert(out, {
+                            uid = child.Name,
+                            type = petType,
+                            mutation = mutation,
+                            effectiveRate = rate,
+                            isOcean = isOceanPet(petType)
+                        })
                     end
                 end
             end
