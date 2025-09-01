@@ -20,7 +20,6 @@ local fallbackToRegularWhenNoWater = true
 local usePetPlacementMode = false
 local mutationsOnlyPet = false
 local minPetRateFilter = 0
-local excludeBigPets = true
 local petAscendingOrder = true
 
 -- ============ Remote Cache ============
@@ -91,7 +90,7 @@ end
 local function isBigPet(petType)
     local base = getPetBaseData(petType)
     if not base then return false end
-    -- Heuristics based on common config fields
+    -- Heuristics from config to identify big pets
     if base.MaxSize and tonumber(base.MaxSize) and tonumber(base.MaxSize) >= 2 then
         return true
     end
@@ -101,10 +100,11 @@ local function isBigPet(petType)
     if base.PetIndex and tostring(base.PetIndex) == "Big" then
         return true
     end
+    if base.Category and tostring(base.Category):lower():find("big") then
+        return true
+    end
     return false
 end
-
--- (removed) was unused
 
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
@@ -353,7 +353,7 @@ local function updateAvailablePets()
                 mutation = "Jurassic"
             end
             if petType then
-                if (not excludeBigPets or not isBigPet(petType)) and (not mutationsOnlyPet or (mutation ~= nil and mutation ~= "")) then
+                if (not isBigPet(petType)) and (not mutationsOnlyPet or (mutation ~= nil and mutation ~= "")) then
                     local rate = computeEffectiveRate(petType, mutation)
                     if rate >= (minPetRateFilter or 0) then
                         table.insert(out, {
@@ -369,7 +369,11 @@ local function updateAvailablePets()
         end
     end
     table.sort(out, function(a, b)
-        return a.effectiveRate > b.effectiveRate
+        if petAscendingOrder then
+            return a.effectiveRate < b.effectiveRate
+        else
+            return a.effectiveRate > b.effectiveRate
+        end
     end)
     petCache.lastUpdate = currentTime
     petCache.candidates = out
@@ -653,21 +657,20 @@ local function placePet(farmPart, eggUID)
         return false
     end
     
-    -- Verify placement
-    waitJitter(0.25)
-    -- Prefer re-checking occupancy at the intended tile center
+    -- Verify placement: check that pet attributes now include D (placed marker)
+    waitJitter(0.4)
+    local petContainer = getPetContainer()
+    local petNode = petContainer and petContainer:FindFirstChild(eggUID)
+    if petNode then
+        local dAttr = petNode:GetAttribute("D")
+        if dAttr ~= nil and tostring(dAttr) ~= "" then
+            return true
+        end
+    end
+    -- Fallback: occupancy check
     if isTileOccupied(farmPart) then
         return true
     end
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") and model.Name == eggUID then
-                return true
-            end
-        end
-    end
-    
     return false
 end
 
@@ -704,31 +707,19 @@ local function getNextBestPet()
     if #candidates == 0 then
         return nil, nil, "no_pets"
     end
-    local function pickCandidate(filterFn)
-        if petAscendingOrder then
-            for i = #candidates, 1, -1 do
-                local cand = candidates[i]
-                if filterFn(cand) then return cand end
-            end
-        else
-            for i = 1, #candidates do
-                local cand = candidates[i]
-                if filterFn(cand) then return cand end
+    -- Try water first if any ocean candidate exists and water is available
+    if waterAvailable > 0 then
+        for _, cand in ipairs(candidates) do
+            if cand.isOcean then
+                return cand, getRandomFromList(tileCache.waterTiles), "water"
             end
         end
     end
-    -- Try water first if any ocean candidate exists and water is available
-    if waterAvailable > 0 then
-        local oc = pickCandidate(function(c) return c.isOcean end)
-        if oc then return oc, getRandomFromList(tileCache.waterTiles), "water" end
-    end
     -- Otherwise pick best non-ocean if regular available
     if regularAvailable > 0 then
-        local rc = pickCandidate(function(c) return not c.isOcean end)
-        if rc then
-            -- Hard guard: prevent Big pet on regular tile
-            if excludeBigPets or not isBigPet(rc.type) then
-                return rc, getRandomFromList(tileCache.regularTiles), "regular"
+        for _, cand in ipairs(candidates) do
+            if not cand.isOcean then
+                return cand, getRandomFromList(tileCache.regularTiles), "regular"
             end
         end
         -- If only ocean pets exist but no water, skip
@@ -759,6 +750,17 @@ local function attemptPlacement()
         if petInfo.isOcean and tileInfo and tileInfo.Name ~= "WaterFarm_split_0_0_0" then
             placementStats.lastReason = "Blocked ocean pet on regular tile"
             return false, placementStats.lastReason
+        end
+
+        -- Skip if already placed (D attribute present)
+        local petContainer = getPetContainer()
+        local petNode = petContainer and petContainer:FindFirstChild(petInfo.uid)
+        if petNode then
+            local dAttr = petNode:GetAttribute("D")
+            if dAttr ~= nil and tostring(dAttr) ~= "" then
+                placementStats.lastReason = "Pet already placed"
+                return false, placementStats.lastReason
+            end
         end
 
         if not focusEgg(petInfo.uid) then
@@ -973,26 +975,20 @@ function AutoPlaceSystem.CreateUI()
     Tabs.PlaceTab:Slider({
         Title = "Pets: Min produce rate",
         Desc = "Filter pets below this effective production rate.",
-        Default = 0,
-        Min = 0,
-        Max = 50,
-        Rounding = 0,
+        Value = {
+            Min = 0,
+            Max = 50,
+            Default = 0,
+        },
+        Step = 1,
         Callback = function(val)
             minPetRateFilter = tonumber(val) or 0
             petCache.lastUpdate = 0
         end
     })
-
-    Tabs.PlaceTab:Toggle({
-        Title = "Pets: Exclude Big pets",
-        Desc = "Skip Big pets when selecting which pet to place.",
-        Value = true,
-        Callback = function(state)
-            excludeBigPets = state
-            petCache.lastUpdate = 0
-        end
-    })
-
+    
+    -- Excluding Big pets is enforced automatically in selection (no UI toggle)
+    
     Tabs.PlaceTab:Toggle({
         Title = "Pets: Ascending order (low → high)",
         Desc = "Place lower produce rates first. Turn off for highest first.",
