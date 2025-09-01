@@ -171,22 +171,67 @@ local function sendWebhookSummary()
         rec.total = rec.total + 1
     end
 
-    -- Build a multi-line description similar to your example
+    -- Build organized description for better readability
     local lines = {}
-    table.insert(lines, "👤 Trader\n" .. (Players.LocalPlayer and Players.LocalPlayer.Name or "Player"))
-    table.insert(lines, "🎯 Targets")
+    local playerName = Players.LocalPlayer and Players.LocalPlayer.Name or "Player"
+    
+    -- Header section
+    table.insert(lines, "## 🎁 " .. playerName .. "'s Send Session")
+    table.insert(lines, "")
+    
+    -- Summary section
+    local totalReceivers = 0
+    for _ in pairs(byReceiver) do totalReceivers = totalReceivers + 1 end
+    
+    table.insert(lines, "📊 **Session Summary:**")
+    table.insert(lines, string.format("• Total items sent: **%d**", totalSent))
+    table.insert(lines, string.format("• Players helped: **%d**", totalReceivers))
+    table.insert(lines, "")
+    
+    -- Detailed breakdown by receiver
+    table.insert(lines, "🎯 **Recipients & Items:**")
+    
+    -- Sort receivers for consistent display
+    local sortedReceivers = {}
     for receiver, rec in pairs(byReceiver) do
-        table.insert(lines, string.format("- %s received %d", receiver, rec.total))
+        table.insert(sortedReceivers, {name = receiver, data = rec})
     end
-    table.insert(lines, "📦 Items")
-    for receiver, rec in pairs(byReceiver) do
-        for key, _ in pairs(rec.counts) do
+    table.sort(sortedReceivers, function(a, b) return a.data.total > b.data.total end)
+    
+    for _, receiverInfo in ipairs(sortedReceivers) do
+        local receiver = receiverInfo.name
+        local rec = receiverInfo.data
+        
+        table.insert(lines, "")
+        table.insert(lines, string.format("**👤 %s** (%d items)", receiver, rec.total))
+        
+        -- Sort items by type and count for better organization
+        local sortedItems = {}
+        for key, count in pairs(rec.counts) do
             local entry = rec.list[key]
-            local emoji = (entry.kind == "egg" and EggEmojiMap[entry.type or ""]) or (entry.kind == "pet" and "🐾") or "📦"
-            local count = rec.counts[key]
-            table.insert(lines, string.format("%s %s [%s] - %d", emoji, entry.type or "?", entry.mutation or "None", count))
+            table.insert(sortedItems, {
+                key = key,
+                entry = entry,
+                count = count,
+                sortOrder = (entry.kind == "pet" and "1" or "2") .. entry.type .. (entry.mutation or "")
+            })
+        end
+        table.sort(sortedItems, function(a, b) 
+            if a.count ~= b.count then return a.count > b.count end
+            return a.sortOrder < b.sortOrder
+        end)
+        
+        for _, item in ipairs(sortedItems) do
+            local entry = item.entry
+            local count = item.count
+            local emoji = (entry.kind == "egg" and EggEmojiMap[entry.type or ""]) or 
+                         (entry.kind == "pet" and "🐾") or "📦"
+            local mutationText = (entry.mutation and entry.mutation ~= "None" and entry.mutation ~= "") 
+                               and (" [" .. entry.mutation .. "]") or ""
+            table.insert(lines, string.format("  %s %s%s × %d", emoji, entry.type or "Unknown", mutationText, count))
         end
     end
+    
     local description = table.concat(lines, "\n")
 
     -- Visuals
@@ -426,9 +471,18 @@ local function updateInventoryCache()
     if petsFolder then
         for _, petData in pairs(petsFolder:GetChildren()) do
             if petData:IsA("Configuration") then
+                -- Try multiple attributes and wait for data to load
+                local petType = safeGetAttribute(petData, "T", nil) or 
+                               safeGetAttribute(petData, "Type", nil)
+                
+                -- Skip items without proper type data (not fully loaded yet)
+                if not petType or petType == "" or petType == "Unknown" then
+                    continue -- Skip this pet until it loads properly
+                end
+                
                 local petInfo = {
                     uid = petData.Name,
-                    type = safeGetAttribute(petData, "T", safeGetAttribute(petData, "Type", "Unknown")),
+                    type = petType,
                     mutation = safeGetAttribute(petData, "M", safeGetAttribute(petData, "Mutation", "")),
                     speed = safeGetAttribute(petData, "Speed", 0),
                     locked = safeGetAttribute(petData, "LK", 0) == 1,
@@ -444,9 +498,19 @@ local function updateInventoryCache()
     if eggsFolder then
         for _, eggData in pairs(eggsFolder:GetChildren()) do
             if eggData:IsA("Configuration") then
+                -- Try multiple attributes and wait for data to load
+                local eggType = safeGetAttribute(eggData, "ID", nil) or 
+                               safeGetAttribute(eggData, "T", nil) or 
+                               safeGetAttribute(eggData, "Type", nil)
+                
+                -- Skip items without proper type data (not fully loaded yet)
+                if not eggType or eggType == "" or eggType == "Unknown" then
+                    continue -- Skip this egg until it loads properly
+                end
+                
                 local eggInfo = {
                     uid = eggData.Name,
-                    type = safeGetAttribute(eggData, "ID", safeGetAttribute(eggData, "T", "Unknown")), -- Prioritize ID for eggs
+                    type = eggType,
                     mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "")),
                     locked = safeGetAttribute(eggData, "LK", 0) == 1,
                     placed = safeGetAttribute(eggData, "D", nil) ~= nil
@@ -607,39 +671,57 @@ local function sendCurrentInventoryWebhook()
         end
     end
     
-    -- Create description
+    -- Create organized description
     local lines = {}
-    table.insert(lines, "👤 **Player:** " .. (Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"))
+    local playerName = Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"
+    
+    table.insert(lines, "## 🎒 " .. playerName .. "'s Inventory")
+    table.insert(lines, "")
+    table.insert(lines, "📊 **Summary:**")
+    table.insert(lines, string.format("• 🐾 Total Pets: **%d**", petCount))
+    table.insert(lines, string.format("• 🥚 Total Eggs: **%d**", eggCount))
+    table.insert(lines, string.format("• 📦 Combined: **%d**", petCount + eggCount))
     table.insert(lines, "")
     
-    -- Pets section
-    table.insert(lines, "🐾 **Pets (" .. petCount .. " total):**")
+    -- Pets section with better organization
     if petCount > 0 then
+        table.insert(lines, "🐾 **Available Pets:**")
+        local petEntries = {}
         for key, count in pairs(petsByType) do
             local type, mutation = key:match("([^|]+)|([^|]+)")
             type = type or "Unknown"
-            mutation = mutation or "None"
-            local emoji = "🐾"
-            table.insert(lines, string.format("%s %s [%s] - %d", emoji, type, mutation, count))
+            mutation = (mutation and mutation ~= "None" and mutation ~= "") and mutation or nil
+            local displayName = mutation and (type .. " [" .. mutation .. "]") or type
+            table.insert(petEntries, { name = displayName, count = count })
+        end
+        table.sort(petEntries, function(a, b) return a.count > b.count end)
+        for _, entry in ipairs(petEntries) do
+            table.insert(lines, string.format("  🐾 %s × %d", entry.name, entry.count))
         end
     else
-        table.insert(lines, "No pets found")
+        table.insert(lines, "🐾 **Available Pets:** None")
     end
     
     table.insert(lines, "")
     
-    -- Eggs section
-    table.insert(lines, "🥚 **Eggs (" .. eggCount .. " total):**")
+    -- Eggs section with better organization
     if eggCount > 0 then
+        table.insert(lines, "🥚 **Available Eggs:**")
+        local eggEntries = {}
         for key, count in pairs(eggsByType) do
             local type, mutation = key:match("([^|]+)|([^|]+)")
             type = type or "Unknown"
-            mutation = mutation or "None"
+            mutation = (mutation and mutation ~= "None" and mutation ~= "") and mutation or nil
+            local displayName = mutation and (type .. " [" .. mutation .. "]") or type
             local emoji = EggEmojiMap[type] or "🥚"
-            table.insert(lines, string.format("%s %s [%s] - %d", emoji, type, mutation, count))
+            table.insert(eggEntries, { name = displayName, emoji = emoji, count = count })
+        end
+        table.sort(eggEntries, function(a, b) return a.count > b.count end)
+        for _, entry in ipairs(eggEntries) do
+            table.insert(lines, string.format("  %s %s × %d", entry.emoji, entry.name, entry.count))
         end
     else
-        table.insert(lines, "No eggs found")
+        table.insert(lines, "🥚 **Available Eggs:** None")
     end
     
     local description = table.concat(lines, "\n")
@@ -702,13 +784,28 @@ local function refreshItemFromData(uid, isEgg, into)
     if not folder then return into end
     local conf = folder:FindFirstChild(uid)
     if conf and conf:IsA("Configuration") then
+        -- Try multiple attributes for better type detection
         local tVal
-        tVal = safeGetAttribute(conf, "T", nil) or safeGetAttribute(conf, "Type", nil)
+        if isEgg then
+            tVal = safeGetAttribute(conf, "ID", nil) or 
+                   safeGetAttribute(conf, "T", nil) or 
+                   safeGetAttribute(conf, "Type", nil)
+        else
+            tVal = safeGetAttribute(conf, "T", nil) or 
+                   safeGetAttribute(conf, "Type", nil)
+        end
+        
         local mVal = safeGetAttribute(conf, "M", nil) or safeGetAttribute(conf, "Mutation", "")
         local locked = safeGetAttribute(conf, "LK", 0) == 1
         local placed = safeGetAttribute(conf, "D", nil) ~= nil
+        
+        -- Skip items that haven't loaded type data yet
+        if not tVal or tVal == "" or tVal == "Unknown" then
+            return into -- Return unchanged if data isn't ready yet
+        end
+        
         if into then
-            into.type = tVal or into.type
+            into.type = tVal
             into.mutation = mVal or into.mutation
             into.locked = locked
             into.placed = placed
