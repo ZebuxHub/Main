@@ -16,11 +16,11 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
-local fallbackToRegularWhenNoWater = true
+local fallbackToRegularWhenNoWater = false
 local usePetPlacementMode = false
 local mutationsOnlyPet = false
 local minPetRateFilter = 0
-local petAscendingOrder = true
+local petAscendingOrder = false
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
