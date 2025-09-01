@@ -17,6 +17,9 @@ local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
 local fallbackToRegularWhenNoWater = true
+local usePetPlacementMode = false
+local mutationsOnlyPet = false
+local minPetRateFilter = 0
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -30,6 +33,58 @@ local placementStats = {
     lastPlacement = nil,
     lastReason = nil
 }
+
+-- ============ Config Cache (ResPet / ResMutate) ============
+local resPetById = nil
+local resMutateById = nil
+
+local function loadConfigModule(moduleScript)
+    if not moduleScript then return nil end
+    local ok, data = pcall(function()
+        return require(moduleScript)
+    end)
+    if ok and type(data) == "table" then
+        return data
+    end
+    return nil
+end
+
+local function ensureConfigCached()
+    if resPetById and resMutateById then return end
+    local cfg = ReplicatedStorage:FindFirstChild("Config")
+    if not cfg then return end
+    resPetById = resPetById or loadConfigModule(cfg:FindFirstChild("ResPet")) or {}
+    resMutateById = resMutateById or loadConfigModule(cfg:FindFirstChild("ResMutate")) or {}
+end
+
+local function getPetBaseData(petType)
+    ensureConfigCached()
+    return resPetById and resPetById[petType] or nil
+end
+
+local function getMutationData(mutation)
+    ensureConfigCached()
+    return resMutateById and resMutateById[mutation] or nil
+end
+
+local function isOceanPet(petType)
+    local base = getPetBaseData(petType)
+    local category = base and base.Category
+    if typeof(category) == "string" then
+        local c = string.lower(category)
+        if string.find(c, "ocean") or string.find(c, "water") or string.find(c, "sea") then
+            return true
+        end
+    end
+    -- Fallback heuristic on type name
+    if typeof(petType) == "string" then
+        local t = string.lower(petType)
+        if string.find(t, "fish") or string.find(t, "shark") or string.find(t, "octopus") or string.find(t, "sea") or string.find(t, "angler") then
+            return true
+        end
+    end
+    return false
+end
 
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
@@ -87,6 +142,12 @@ local function getEggContainer()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
     return data and data:FindFirstChild("Egg") or nil
+end
+
+local function getPetContainer()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Pets") or nil
 end
 
 local function getEggMutation(eggUID)
@@ -232,6 +293,66 @@ local function findAnyAvailableRegularEgg()
         end
     end
     return bestEgg
+end
+
+-- Build a ranked pet candidate list from PlayerGui.Data.Pets
+local petCache = {
+    lastUpdate = 0,
+    candidates = {}
+}
+
+local function computeEffectiveRate(petType, mutation)
+    local base = getPetBaseData(petType)
+    if not base then return 0 end
+    local rate = tonumber(base.ProduceRate) or 0
+    if mutation then
+        local m = getMutationData(mutation)
+        if m then
+            -- Heuristic: prefer ProduceRate multiplier if present; else SellRate; else 1
+            local mul = tonumber(m.ProduceRate) or tonumber(m.SellRate) or 1
+            if mul and mul > 0 then
+                rate = rate * mul
+            end
+        end
+    end
+    return rate
+end
+
+local function updateAvailablePets()
+    local currentTime = time()
+    if currentTime - petCache.lastUpdate < CACHE_DURATION then
+        return petCache.candidates
+    end
+    local container = getPetContainer()
+    local out = {}
+    if container then
+        for _, child in ipairs(container:GetChildren()) do
+            if #child:GetChildren() == 0 then
+                local petType = child:GetAttribute("T")
+                local mutation = child:GetAttribute("M")
+                if petType then
+                    if not mutationsOnlyPet or (mutation ~= nil and mutation ~= "") then
+                        local rate = computeEffectiveRate(petType, mutation)
+                        if rate >= (minPetRateFilter or 0) then
+                            table.insert(out, {
+                                uid = child.Name,
+                                type = petType,
+                                mutation = mutation,
+                                effectiveRate = rate,
+                                isOcean = isOceanPet(petType)
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        return a.effectiveRate > b.effectiveRate
+    end)
+    petCache.lastUpdate = currentTime
+    petCache.candidates = out
+    return out
 end
 
 -- ============ Smart Farm Tile Management ============
@@ -555,7 +676,83 @@ local function getNextBestEgg()
     return nil, nil, "no_space"
 end
 
+-- Select best pet candidate and appropriate tile
+local function getNextBestPet()
+    local candidates = updateAvailablePets()
+    local regularAvailable, waterAvailable = updateTileCache()
+    if #candidates == 0 then
+        return nil, nil, "no_pets"
+    end
+    -- Try water first if any ocean candidate exists and water is available
+    if waterAvailable > 0 then
+        for _, cand in ipairs(candidates) do
+            if cand.isOcean then
+                return cand, getRandomFromList(tileCache.waterTiles), "water"
+            end
+        end
+    end
+    -- Otherwise pick best non-ocean if regular available
+    if regularAvailable > 0 then
+        for _, cand in ipairs(candidates) do
+            if not cand.isOcean then
+                return cand, getRandomFromList(tileCache.regularTiles), "regular"
+            end
+        end
+        -- If only ocean pets exist but no water, skip
+        return nil, nil, "skip_ocean"
+    end
+    return nil, nil, "no_space"
+end
+
 local function attemptPlacement()
+    if usePetPlacementMode then
+        local petInfo, tileInfo, reason = getNextBestPet()
+        if not petInfo or not tileInfo then
+            if reason == "skip_ocean" then
+                placementStats.lastReason = "Ocean pets skipped (no water farms)"
+                return false, placementStats.lastReason
+            elseif reason == "no_space" then
+                placementStats.lastReason = "No available tiles for pets"
+                return false, placementStats.lastReason
+            elseif reason == "no_pets" then
+                placementStats.lastReason = "No pets pass filters"
+                return false, placementStats.lastReason
+            else
+                placementStats.lastReason = "No suitable pets found"
+                return false, placementStats.lastReason
+            end
+        end
+
+        if petInfo.isOcean and tileInfo and tileInfo.Name ~= "WaterFarm_split_0_0_0" then
+            placementStats.lastReason = "Blocked ocean pet on regular tile"
+            return false, placementStats.lastReason
+        end
+
+        if not focusEgg(petInfo.uid) then
+            placementStats.lastReason = "Failed to focus pet " .. petInfo.uid
+            return false, placementStats.lastReason
+        end
+        waitJitter(0.2)
+        local success = placePet(tileInfo, petInfo.uid)
+        if success then
+            tileCache.lastUpdate = 0
+            petCache.lastUpdate = 0
+            placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type
+            if petInfo.mutation then
+                placementStats.mutationPlacements = placementStats.mutationPlacements + 1
+            end
+            WindUI:Notify({
+                Title = "🏠 Auto Place",
+                Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. "!",
+                Duration = 2
+            })
+            return true, "Successfully placed pet"
+        else
+            placementStats.lastReason = "Failed to place pet " .. petInfo.type
+            return false, placementStats.lastReason
+        end
+    end
+
     local eggInfo, tileInfo, reason = getNextBestEgg()
     
     if not eggInfo or not tileInfo then
@@ -716,6 +913,40 @@ function AutoPlaceSystem.CreateUI()
         Value = true,
         Callback = function(state)
             fallbackToRegularWhenNoWater = state
+        end
+    })
+
+    -- Pet placement mode and filters
+    Tabs.PlaceTab:Toggle({
+        Title = "Place Pets (use inventory pets instead of eggs)",
+        Desc = "Rank pets by production rate and place the best match.",
+        Value = false,
+        Callback = function(state)
+            usePetPlacementMode = state
+            petCache.lastUpdate = 0
+        end
+    })
+
+    Tabs.PlaceTab:Toggle({
+        Title = "Pets: Mutations only",
+        Desc = "Only place pets that have a mutation.",
+        Value = false,
+        Callback = function(state)
+            mutationsOnlyPet = state
+            petCache.lastUpdate = 0
+        end
+    })
+
+    Tabs.PlaceTab:Slider({
+        Title = "Pets: Min produce rate",
+        Desc = "Filter pets below this effective production rate.",
+        Default = 0,
+        Min = 0,
+        Max = 50,
+        Rounding = 0,
+        Callback = function(val)
+            minPetRateFilter = tonumber(val) or 0
+            petCache.lastUpdate = 0
         end
     })
     
