@@ -769,6 +769,102 @@ local function forceDataReload()
     return loadedPets, loadedEggs
 end
 
+-- Actively focus unresolved items to force replication of T/M
+local function forceResolveAllNames()
+    local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
+    if not dataRoot then return 0, 0 end
+    local petsFolder = dataRoot:FindFirstChild("Pets")
+    local eggsFolder = dataRoot:FindFirstChild("Egg")
+    if not petsFolder and not eggsFolder then return 0, 0 end
+
+    local unresolvedPets, unresolvedEggs = {}, {}
+
+    if petsFolder then
+        for _, conf in ipairs(petsFolder:GetChildren()) do
+            if conf:IsA("Configuration") then
+                local tVal = conf:GetAttribute("T")
+                if not tVal or tVal == "" then
+                    table.insert(unresolvedPets, conf)
+                end
+            end
+        end
+    end
+    if eggsFolder then
+        for _, conf in ipairs(eggsFolder:GetChildren()) do
+            if conf:IsA("Configuration") then
+                local tVal = conf:GetAttribute("T")
+                if not tVal or tVal == "" then
+                    table.insert(unresolvedEggs, conf)
+                end
+            end
+        end
+    end
+
+    local function resolveBatch(list, isEgg)
+        local resolved = 0
+        local idx = 1
+        local maxConcurrency = 25
+        local active = {}
+
+        local function launch(conf)
+            local uid = conf.Name
+            active[uid] = true
+            task.spawn(function()
+                -- Nudge server to send attributes
+                pcall(function()
+                    local args = {"Focus", uid}
+                    ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+                end)
+                -- Wait up to 1.5s for T to appear
+                local tVal = conf:GetAttribute("T")
+                local start = tick()
+                while (not tVal or tVal == "") and (tick() - start) < 1.5 do
+                    conf:GetAttributeChangedSignal("T"):Wait()
+                    tVal = conf:GetAttribute("T")
+                end
+                if tVal and tVal ~= "" then
+                    upsertFromConf(conf, isEgg)
+                    resolved = resolved + 1
+                else
+                    -- Track for background resolver if still missing
+                    trackUnknown(uid, isEgg)
+                end
+                active[uid] = nil
+            end)
+        end
+
+        while idx <= #list do
+            local slots = maxConcurrency - (function() local c=0 for _ in pairs(active) do c=c+1 end return c end)()
+            while slots > 0 and idx <= #list do
+                launch(list[idx])
+                idx = idx + 1
+                slots = slots - 1
+            end
+            task.wait(0.1)
+        end
+        -- Wait for stragglers
+        while true do
+            local remaining = 0
+            for _ in pairs(active) do remaining = remaining + 1 end
+            if remaining == 0 then break end
+            task.wait(0.05)
+        end
+        return resolved
+    end
+
+    local petResolved = resolveBatch(unresolvedPets, false)
+    local eggResolved = resolveBatch(unresolvedEggs, true)
+
+    -- Start watchers/resolver to mop up any leftovers
+    startDataWatchers()
+    if (petResolved + eggResolved) > 0 then
+        inventoryCache.lastUpdateTime = 0
+        updateInventoryCache()
+    end
+
+    return petResolved, eggResolved
+end
+
 --- Clear send operation tracking
 local function clearSendProgress()
     sendInProgress = {}
@@ -1694,6 +1790,44 @@ function SendTrashSystem.Init(dependencies)
                 WindUI:Notify({
                     Title = "✅ Data Reloaded",
                     Content = string.format("Loaded %d pets and %d eggs successfully!", loadedPets, loadedEggs),
+                    Duration = 4
+                })
+            end)
+        end
+    })
+
+    -- Aggressive resolver to guarantee names (uses Focus)
+    TrashTab:Button({
+        Title = "🛠️ Force Resolve Names",
+        Desc = "Actively focus all unresolved items to force names to load",
+        Callback = function()
+            WindUI:Notify({ Title = "🛠️ Resolving", Content = "Forcing names to load...", Duration = 2 })
+            task.spawn(function()
+                local p, e = forceResolveAllNames()
+                updateStatus()
+                WindUI:Notify({ Title = "✅ Done", Content = string.format("Resolved %d pets, %d eggs", p, e), Duration = 4 })
+            end)
+        end
+    })
+    
+    -- Force resolve all names button
+    TrashTab:Button({
+        Title = "🔄 Force Resolve All Names",
+        Desc = "Focus all items to force replication of T/M attributes (can take a while)",
+        Callback = function()
+            WindUI:Notify({
+                Title = "🔄 Resolving Names",
+                Content = "Please wait... forcing name resolution",
+                Duration = 2
+            })
+            
+            task.spawn(function()
+                local petResolved, eggResolved = forceResolveAllNames()
+                updateStatus()
+                
+                WindUI:Notify({
+                    Title = "✅ Names Resolved",
+                    Content = string.format("Resolved %d pet names and %d egg names.", petResolved, eggResolved),
                     Duration = 4
                 })
             end)
