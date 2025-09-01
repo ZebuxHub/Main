@@ -35,6 +35,9 @@ local placementStats = {
     lastReason = nil
 }
 
+-- ============ Pet Blacklist System ============
+local petBlacklist = {} -- UIDs that failed speed verification and should never be placed again
+
 -- ============ Config Cache (ResPet / ResMutate) ============
 local resPetById = nil
 local resMutateById = nil
@@ -429,7 +432,7 @@ local function updateAvailablePets()
             if mutation == "Dino" then
                 mutation = "Jurassic"
             end
-            if petType and not isPetAlreadyPlacedByUid(child.Name) then
+            if petType and not isPetAlreadyPlacedByUid(child.Name) and not petBlacklist[child.Name] then
                 if (not isBigPet(petType)) and (not mutationsOnlyPet or (mutation ~= nil and mutation ~= "")) then
                     local rate = computeEffectiveRate(petType, mutation, child)
                     if rate >= (minPetRateFilter or 0) then
@@ -674,14 +677,14 @@ local function getRandomFromList(list)
 end
 local function focusEgg(eggUID)
     if not CharacterRE then
-        warn("CharacterRE remote missing; cannot focus egg " .. tostring(eggUID))
+        -- CharacterRE remote missing; cannot focus egg
         return false
     end
     local success, err = pcall(function()
         CharacterRE:FireServer("Focus", eggUID)
     end)
     if not success then
-        warn("Failed to focus egg " .. tostring(eggUID) .. ": " .. tostring(err))
+        -- Failed to focus egg
     end
     return success
 end
@@ -733,7 +736,7 @@ local function placePet(farmPart, eggUID)
     }
 
     if not CharacterRE then
-        warn("CharacterRE remote missing; cannot place egg " .. tostring(eggUID))
+        -- CharacterRE remote missing; cannot place egg
         return false
     end
 
@@ -742,7 +745,7 @@ local function placePet(farmPart, eggUID)
     end)
     
     if not success then
-        warn("Failed to place egg " .. tostring(eggUID) .. ": " .. tostring(err))
+        -- Failed to place egg
         return false
     end
     
@@ -761,6 +764,103 @@ local function placePet(farmPart, eggUID)
         return true
     end
     return false
+end
+
+-- ============ Pet Speed Verification & Auto-Delete ============
+local function getActualPetSpeedFromWorkspace(petUID)
+    -- Look for the placed pet in workspace.Pets
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if not workspacePets then return nil end
+    
+    for _, pet in ipairs(workspacePets:GetChildren()) do
+        if pet:IsA("Model") and pet.Name == petUID then
+            -- Look for speed display in the pet model
+            local function findSpeedInModel(model)
+                for _, child in ipairs(model:GetDescendants()) do
+                    if child:IsA("TextLabel") or child:IsA("SurfaceGui") then
+                        local text = child.Text or ""
+                        -- Look for speed patterns like "Speed: 123" or "🏃 123"
+                        local speedMatch = text:match("Speed:%s*(%d+)") or 
+                                         text:match("🏃%s*(%d+)") or
+                                         text:match("(%d+)%s*/s") or
+                                         text:match("Production:%s*(%d+)")
+                        if speedMatch then
+                            return tonumber(speedMatch)
+                        end
+                    end
+                end
+                return nil
+            end
+            
+            local actualSpeed = findSpeedInModel(pet)
+            if actualSpeed then
+                return actualSpeed
+            end
+        end
+    end
+    return nil
+end
+
+local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed)
+    -- Wait a moment for pet to fully appear in workspace
+    task.wait(1.0)
+    
+    local actualSpeed = getActualPetSpeedFromWorkspace(petUID)
+    if not actualSpeed then
+        -- Could not find speed text, assume it's correct for now
+        return true
+    end
+    
+    -- Check if actual speed meets minimum requirement
+    if actualSpeed < (minPetRateFilter or 0) then
+        -- Speed too low! Auto-delete this pet
+        WindUI:Notify({
+            Title = "🗑️ Auto Delete",
+            Content = "Pet speed " .. actualSpeed .. " < " .. (minPetRateFilter or 0) .. ". Deleting pet " .. petUID,
+            Duration = 3
+        })
+        
+        -- Add to blacklist first
+        petBlacklist[petUID] = true
+        
+        -- Try to delete the pet using the same method as auto-delete system
+        local success = pcall(function()
+            if CharacterRE then
+                CharacterRE:FireServer("DeletePet", petUID)
+            end
+        end)
+        
+        if success then
+            -- Clear caches to update lists
+            petCache.lastUpdate = 0
+            tileCache.lastUpdate = 0
+            
+            WindUI:Notify({
+                Title = "🗑️ Auto Delete", 
+                Content = "✅ Deleted pet " .. petUID .. " (speed too low)", 
+                Duration = 2
+            })
+            return false -- Pet was deleted
+        else
+            WindUI:Notify({
+                Title = "🗑️ Auto Delete", 
+                Content = "❌ Failed to delete pet " .. petUID, 
+                Duration = 2
+            })
+        end
+    end
+    
+    return true -- Pet is valid and kept
+end
+
+local function clearPetBlacklist()
+    petBlacklist = {}
+    petCache.lastUpdate = 0 -- Force refresh
+    WindUI:Notify({
+        Title = "🔄 Blacklist Cleared",
+        Content = "All blacklisted pets can now be placed again",
+        Duration = 2
+    })
 end
 
 -- ============ Smart Egg Selection & Placement ============
@@ -916,16 +1016,25 @@ local function attemptPlacement()
         if success then
             tileCache.lastUpdate = 0
             petCache.lastUpdate = 0
-            placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
-            if petInfo.mutation then
-                placementStats.mutationPlacements = placementStats.mutationPlacements + 1
+            
+            -- Verify pet speed and auto-delete if needed
+            local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate)
+            
+            if isValidPet then
+                placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
+                if petInfo.mutation then
+                    placementStats.mutationPlacements = placementStats.mutationPlacements + 1
+                end
+                WindUI:Notify({
+                    Title = "🏠 Auto Place",
+                    Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")!",
+                    Duration = 2
+                })
+                return true, "Successfully placed pet"
+            else
+                placementStats.lastReason = "Pet " .. petInfo.type .. " deleted (speed verification failed)"
+                return false, placementStats.lastReason
             end
-            WindUI:Notify({
-                Title = "🏠 Auto Place",
-                Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")!",
-                Duration = 2
-            })
-            return true, "Successfully placed pet"
         else
             placementStats.lastReason = "Failed to place pet " .. petInfo.type
             return false, placementStats.lastReason
@@ -1167,6 +1276,15 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(state)
             petAscendingOrder = state
             petCache.lastUpdate = 0
+        end
+    })
+    
+    -- Blacklist management
+    Tabs.PlaceTab:Button({
+        Title = "🗑️ Clear Pet Blacklist",
+        Desc = "Remove all pets from blacklist (pets that failed speed verification)",
+        Callback = function()
+            clearPetBlacklist()
         end
     })
     
