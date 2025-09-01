@@ -170,6 +170,14 @@ local function getPetContainer()
     return data and data:FindFirstChild("Pets") or nil
 end
 
+local function isPetAlreadyPlacedByUid(petUID)
+    local container = getPetContainer()
+    local node = container and container:FindFirstChild(petUID)
+    if not node then return false end
+    local dAttr = node:GetAttribute("D")
+    return dAttr ~= nil and tostring(dAttr) ~= ""
+end
+
 local function getEggMutation(eggUID)
     local localPlayer = Players.LocalPlayer
     if not localPlayer then return nil end
@@ -352,7 +360,7 @@ local function updateAvailablePets()
             if mutation == "Dino" then
                 mutation = "Jurassic"
             end
-            if petType then
+            if petType and not isPetAlreadyPlacedByUid(child.Name) then
                 if (not isBigPet(petType)) and (not mutationsOnlyPet or (mutation ~= nil and mutation ~= "")) then
                     local rate = computeEffectiveRate(petType, mutation)
                     if rate >= (minPetRateFilter or 0) then
