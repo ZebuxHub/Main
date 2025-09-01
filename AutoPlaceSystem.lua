@@ -16,6 +16,7 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
+local fallbackToRegularWhenNoWater = true
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -204,6 +205,33 @@ local function updateAvailableEggs()
     eggCache.regularEggs = regularEggs
     
     return allEggs, oceanEggs, regularEggs
+end
+
+-- Find any regular (non-ocean) egg ignoring current selection filters
+local function findAnyAvailableRegularEgg()
+    local eg = getEggContainer()
+    if not eg then return nil end
+    local bestEgg = nil
+    local bestPriority = -1
+    for _, child in ipairs(eg:GetChildren()) do
+        if #child:GetChildren() == 0 then
+            local eggType = child:GetAttribute("T")
+            if eggType and not isOceanEgg(eggType) then
+                local mutation = getEggMutation(child.Name)
+                local priority = mutation and 1000 or 100
+                if priority > bestPriority then
+                    bestPriority = priority
+                    bestEgg = {
+                        uid = child.Name,
+                        type = eggType,
+                        mutation = mutation,
+                        priority = priority,
+                    }
+                end
+            end
+        end
+    end
+    return bestEgg
 end
 
 -- ============ Smart Farm Tile Management ============
@@ -507,14 +535,20 @@ local function getNextBestEgg()
     local regularAvailable, waterAvailable = updateTileCache()
     
     -- Smart prioritization: choose egg type based on available space
-    if waterAvailable > 0 and #oceanEggs > 0 then
-        -- Water farms available, prioritize ocean eggs
-        return oceanEggs[1], getRandomFromList(tileCache.waterTiles), "water"
-    elseif regularAvailable > 0 and #regularEggs > 0 then
+    if regularAvailable > 0 and #regularEggs > 0 then
         -- Regular farms available, use regular eggs
         return regularEggs[1], getRandomFromList(tileCache.regularTiles), "regular"
+    elseif waterAvailable > 0 and #oceanEggs > 0 then
+        -- Water farms available, prioritize ocean eggs
+        return oceanEggs[1], getRandomFromList(tileCache.waterTiles), "water"
     elseif regularAvailable > 0 and #oceanEggs > 0 then
-        -- Only regular farms available but we have ocean eggs - skip them
+        -- Only regular farms available but we have ocean eggs - optionally fallback
+        if fallbackToRegularWhenNoWater then
+            local anyRegular = findAnyAvailableRegularEgg()
+            if anyRegular and tileCache.regularTiles and #tileCache.regularTiles > 0 then
+                return anyRegular, getRandomFromList(tileCache.regularTiles), "fallback_regular"
+            end
+        end
         return nil, nil, "skip_ocean"
     end
     
@@ -673,6 +707,16 @@ function AutoPlaceSystem.CreateUI()
         Desc = "Starting up...",
         Image = "activity",
         ImageSize = 16,
+    })
+
+    -- Behavior toggle: fallback to regular eggs when no water farms
+    Tabs.PlaceTab:Toggle({
+        Title = "Fallback to regular eggs when no water farms",
+        Desc = "If only ocean eggs are selected but no water tiles, place any regular egg.",
+        Value = true,
+        Callback = function(state)
+            fallbackToRegularWhenNoWater = state
+        end
     })
     
     local function updateStats()
