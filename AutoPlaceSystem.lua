@@ -17,6 +17,15 @@ local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
 
+-- ============ Pet Rate Placement (new) ============
+local petConfig = {}
+local mutateConfig = {}
+local targetProduceRate = 0
+local rateCalcMode = "multiply" -- "multiply" or "override"
+local onlyPlaceMutated = false
+local autoPlacePetsByRateEnabled = false
+local autoPlacePetsByRateThread = nil
+
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
 local tileCache = {
@@ -33,6 +42,31 @@ local eggCache = {
     oceanEggs = {},
     regularEggs = {}
 }
+
+-- ============ Config Loaders (ResPet / ResMutate) ============
+local function loadPetAndMutateConfigs()
+    local okPet, cfgPet = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResPet")
+        return require(module)
+    end)
+    if okPet and type(cfgPet) == "table" then
+        petConfig = cfgPet
+    else
+        petConfig = {}
+    end
+
+    local okMut, cfgMut = pcall(function()
+        local cfgFolder = ReplicatedStorage:WaitForChild("Config")
+        local module = cfgFolder:WaitForChild("ResMutate")
+        return require(module)
+    end)
+    if okMut and type(cfgMut) == "table" then
+        mutateConfig = cfgMut
+    else
+        mutateConfig = {}
+    end
+end
 
 -- ============ Ocean Egg Detection ============
 local OCEAN_EGGS = {
@@ -73,6 +107,161 @@ local function getEggContainer()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
     return data and data:FindFirstChild("Egg") or nil
+end
+
+-- ============ Pets-by-Rate Placement ============
+local function getNextPetByRate()
+    local regularAvailable, waterAvailable = updateTileCache()
+    if (regularAvailable + waterAvailable) == 0 then
+        return nil, nil, "no_space"
+    end
+
+    local matches = getAvailablePetsByRate(targetProduceRate)
+    if #matches == 0 then
+        return nil, nil, "no_match"
+    end
+
+    local tile = tileCache.regularTiles[1] or tileCache.waterTiles[1]
+    if not tile then
+        return nil, nil, "no_space"
+    end
+    return matches[1], tile, "ok"
+end
+
+local function attemptPlacementByRate()
+    local petInfo, tileInfo, reason = getNextPetByRate()
+    if not petInfo or not tileInfo then
+        if reason == "no_space" then
+            return false, "No available tiles"
+        elseif reason == "no_match" then
+            return false, "No pets match rate"
+        end
+        return false, "No pet to place"
+    end
+
+    if not focusEgg(petInfo.uid) then
+        return false, "Failed to focus pet " .. tostring(petInfo.uid)
+    end
+    task.wait(0.2)
+
+    local ok = placePet(tileInfo, petInfo.uid)
+    if ok then
+        tileCache.lastUpdate = 0
+        eggCache.lastUpdate = 0
+        placementStats.totalPlacements = placementStats.totalPlacements + 1
+        if petInfo.mutateName and petInfo.mutateName ~= "" then
+            placementStats.mutationPlacements = placementStats.mutationPlacements + 1
+        end
+        placementStats.lastPlacement = os.time()
+
+        WindUI:Notify({
+            Title = "Auto Place",
+            Content = string.format("Placed %s%s (Rate %s)",
+                petInfo.mutateName and (petInfo.mutateName .. " ") or "",
+                tostring(petInfo.petName or petInfo.uid),
+                tostring(petInfo.rate)
+            ),
+            Duration = 2
+        })
+        return true, "Placed"
+    end
+    return false, "Place failed"
+end
+
+-- ============ Pet Rate Helpers ============
+local function getPetConfigEntryByName(name)
+    if not name then return nil end
+    local direct = petConfig[name]
+    if direct then return direct end
+    for _, entry in pairs(petConfig) do
+        if type(entry) == "table" then
+            if tostring(entry.ID or entry.Id or entry.Name) == tostring(name) then
+                return entry
+            end
+        end
+    end
+    return nil
+end
+
+local function getMutateEntryByName(name)
+    if not name then return nil end
+    local direct = mutateConfig[name]
+    if direct then return direct end
+    for _, entry in pairs(mutateConfig) do
+        if type(entry) == "table" then
+            if tostring(entry.ID or entry.Id or entry.Name) == tostring(name) then
+                return entry
+            end
+        end
+    end
+    return nil
+end
+
+local function computeEffectiveProduceRate(petName, mutateName)
+    local base = 0
+    local petEntry = getPetConfigEntryByName(petName)
+    if petEntry and tonumber(petEntry.ProduceRate) then
+        base = tonumber(petEntry.ProduceRate)
+    end
+
+    if not mutateName or mutateName == "" then
+        return base
+    end
+
+    local mutEntry = getMutateEntryByName(mutateName)
+    if not mutEntry then
+        return base
+    end
+
+    local mutRate = tonumber(mutEntry.ProduceRate) or 0
+    if rateCalcMode == "override" then
+        return mutRate
+    else
+        if mutRate == 0 then return base end
+        return base * mutRate
+    end
+end
+
+local function getAvailablePetsByRate(targetRate)
+    local petsFolder = getPetsContainer()
+    if not petsFolder or targetRate == nil then return {} end
+
+    local matches = {}
+    for _, cfg in ipairs(petsFolder:GetChildren()) do
+        if cfg:IsA("Configuration") then
+            local petName = cfg:GetAttribute("T")
+            local mutateName = cfg:GetAttribute("M")
+            if onlyPlaceMutated and (not mutateName or mutateName == "") then
+                -- skip non-mutated when toggle is on
+            else
+                if mutateName == "Dino" then mutateName = "Jurassic" end
+                local rate = computeEffectiveProduceRate(petName, mutateName)
+                if tonumber(rate) and tonumber(rate) == tonumber(targetRate) then
+                    table.insert(matches, {
+                        uid = cfg.Name,
+                        petName = petName,
+                        mutateName = mutateName,
+                        rate = rate
+                    })
+                end
+            end
+        end
+    end
+
+    table.sort(matches, function(a,b)
+        local ap = a.mutateName and a.mutateName ~= "" and 1 or 0
+        local bp = b.mutateName and b.mutateName ~= "" and 1 or 0
+        if ap ~= bp then return ap > bp end
+        return tostring(a.petName) < tostring(b.petName)
+    end)
+
+    return matches
+end
+
+local function getPetsContainer()
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    return data and data:FindFirstChild("Pets") or nil
 end
 
 local function getEggMutation(eggUID)
@@ -411,11 +600,12 @@ local function placePet(farmPart, petUID)
         math.floor(tileCenter.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
     )
     
-    -- Equip egg to Deploy S2
+    -- Equip item to Deploy S2 (use Pet_ when placing pets-by-rate)
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
     if deploy then
-        local eggUID = "Egg_" .. petUID
-        deploy:SetAttribute("S2", eggUID)
+        local prefix = autoPlacePetsByRateEnabled and "Pet_" or "Egg_"
+        local holdId = prefix .. petUID
+        deploy:SetAttribute("S2", holdId)
     end
     
     -- Hold egg (key 2)
@@ -630,6 +820,43 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
+    -- Pets-by-Rate controls
+    loadPetAndMutateConfigs()
+
+    local rateModeDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "Rate Calc Mode",
+        Desc = "Mutation rate handling",
+        Values = {"multiply", "override"},
+        Value = rateCalcMode,
+        Multi = false,
+        AllowNone = false,
+        Callback = function(val)
+            if type(val) == "table" then val = val[1] end
+            rateCalcMode = (val == "override") and "override" or "multiply"
+        end
+    })
+
+    local onlyMutToggle = Tabs.PlaceTab:Toggle({
+        Title = "Only Mutated Pets",
+        Desc = "Skip non-mutated when matching rate",
+        Value = false,
+        Callback = function(state)
+            onlyPlaceMutated = state
+        end
+    })
+
+    local rateInput = Tabs.PlaceTab:Input({
+        Title = "Target ProduceRate",
+        Desc = "Place pets matching this effective rate",
+        Value = tostring(targetProduceRate),
+        Callback = function(val)
+            local n = tonumber(val)
+            if n and n >= 0 then
+                targetProduceRate = n
+            end
+        end
+    })
+    
     -- Statistics display
     local statsLabel = Tabs.PlaceTab:Paragraph({
         Title = "📊 Placement Statistics",
@@ -687,10 +914,43 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
+    -- Auto place pets by produce rate
+    local autoPlaceByRateToggle = Tabs.PlaceTab:Toggle({
+        Title = "Auto Place Pets by Rate",
+        Desc = "Reads Data.Pets (T/M), matches ProduceRate, then places",
+        Value = false,
+        Callback = function(state)
+            autoPlacePetsByRateEnabled = state
+            if state and not autoPlacePetsByRateThread then
+                autoPlacePetsByRateThread = task.spawn(function()
+                    while autoPlacePetsByRateEnabled do
+                        local ok, msg = attemptPlacementByRate()
+                        if ok then
+                            task.wait(1.5)
+                        else
+                            if msg:find("No available tiles") then
+                                task.wait(8)
+                            elseif msg:find("No pets match") then
+                                task.wait(5)
+                            else
+                                task.wait(2)
+                            end
+                        end
+                    end
+                    autoPlacePetsByRateThread = nil
+                end)
+                WindUI:Notify({ Title = "Auto Place", Content = "Pets-by-rate started", Duration = 3 })
+            elseif not state and autoPlacePetsByRateThread then
+                WindUI:Notify({ Title = "Auto Place", Content = "Pets-by-rate stopped", Duration = 2 })
+            end
+        end
+    })
+    
     -- Store references for external access
     AutoPlaceSystem.Toggle = autoPlaceToggle
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
+    AutoPlaceSystem.RateToggle = autoPlaceByRateToggle
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
