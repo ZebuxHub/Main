@@ -12,10 +12,37 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
+-- Optional config modules for computing pet speed
+local ConfigFolder = ReplicatedStorage:FindFirstChild("Config")
+local ResPet, ResMutate
+do
+    local ok1, mod1 = pcall(function()
+        local m = ConfigFolder and ConfigFolder:FindFirstChild("ResPet")
+        return m and require(m) or nil
+    end)
+    if ok1 then ResPet = mod1 end
+
+    local ok2, mod2 = pcall(function()
+        local m = ConfigFolder and ConfigFolder:FindFirstChild("ResMutate")
+        return m and require(m) or nil
+    end)
+    if ok2 then ResMutate = mod2 end
+end
+
 -- ============ External Dependencies ============
 local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
+
+-- ============ Runtime State ============
+-- Declare early so all functions capture these locals (not globals)
+local autoPlaceEnabled = false
+local autoPlaceThread = nil
+local placementStats = {
+    totalPlacements = 0,
+    mutationPlacements = 0,
+    lastPlacement = nil
+}
 
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
@@ -154,11 +181,36 @@ local function updateAvailableEggs()
                 end
                 
                 if passesTypeFilter and passesMutationFilter then
+                    -- Compute speed from ResPet/ResMutate (if available)
+                    local speed = 0
+                    do
+                        local base = 0
+                        if ResPet then
+                            local raw = ResPet[eggType]
+                            if type(raw) == "number" then
+                                base = raw
+                            elseif type(raw) == "table" then
+                                base = raw.producerate or raw.produceRate or raw.rate or raw.speed or raw.Speed or 0
+                            end
+                        end
+                        local mult = 1
+                        if mutation and ResMutate then
+                            local mraw = ResMutate[mutation]
+                            if type(mraw) == "number" then
+                                mult = mraw
+                            elseif type(mraw) == "table" then
+                                mult = mraw.multiplier or mraw.producerate or mraw.produceRate or mraw.rate or mraw.speed or mraw.Speed or 1
+                            end
+                        end
+                        speed = (tonumber(base) or 0) * (tonumber(mult) or 1)
+                    end
+
                     local eggInfo = { 
                         uid = child.Name, 
                         type = eggType,
                         mutation = mutation,
-                        priority = mutation and 1000 or 100 -- Mutations get higher priority
+                        priority = mutation and 1000 or 100, -- Mutations get higher priority (fallback)
+                        speed = speed
                     }
                     
                     table.insert(allEggs, eggInfo)
@@ -173,16 +225,18 @@ local function updateAvailableEggs()
         end
     end
     
-    -- Sort by priority (mutations first)
-    table.sort(allEggs, function(a, b) 
-        return a.priority > b.priority 
-    end)
-    table.sort(oceanEggs, function(a, b) 
-        return a.priority > b.priority 
-    end)
-    table.sort(regularEggs, function(a, b) 
-        return a.priority > b.priority 
-    end)
+    -- Sort by computed speed (desc); fallback to mutation priority
+    local function sortBySpeed(a, b)
+        local as, bs = tonumber(a.speed) or -1, tonumber(b.speed) or -1
+        if as ~= bs then return as > bs end
+        local ap, bp = (a.priority or 0), (b.priority or 0)
+        if ap ~= bp then return ap > bp end
+        return tostring(a.type) < tostring(b.type)
+    end
+
+    table.sort(allEggs, sortBySpeed)
+    table.sort(oceanEggs, sortBySpeed)
+    table.sort(regularEggs, sortBySpeed)
     
     -- Update cache
     eggCache.lastUpdate = currentTime
@@ -519,15 +573,16 @@ local function attemptPlacement()
         eggCache.lastUpdate = 0
         
         if eggInfo.mutation then
+            placementStats.mutationPlacements = (placementStats.mutationPlacements or 0) + 1
             WindUI:Notify({ 
                 Title = "🏠 Auto Place", 
-                Content = "Placed " .. eggInfo.mutation .. " " .. eggInfo.type .. " on 8x8 tile!", 
+                Content = string.format("Placed %s %s (Speed: %s) on 8x8 tile!", eggInfo.mutation, eggInfo.type, tostring(eggInfo.speed or "?")), 
                 Duration = 3 
             })
         else
             WindUI:Notify({ 
                 Title = "🏠 Auto Place", 
-                Content = "Placed " .. eggInfo.type .. " on 8x8 tile!", 
+                Content = string.format("Placed %s (Speed: %s) on 8x8 tile!", eggInfo.type, tostring(eggInfo.speed or "?")), 
                 Duration = 2 
             })
         end
@@ -537,15 +592,6 @@ local function attemptPlacement()
         return false, "Failed to place " .. eggInfo.type
     end
 end
-
--- ============ Auto Place Main Logic ============
-local autoPlaceEnabled = false
-local autoPlaceThread = nil
-local placementStats = {
-    totalPlacements = 0,
-    mutationPlacements = 0,
-    lastPlacement = nil
-}
 
 local function runAutoPlace()
     local consecutiveFailures = 0
