@@ -115,6 +115,71 @@ local function isWaterPart(part)
     return false
 end
 
+-- Player NetWorth helper (money)
+local function getPlayerNetWorth()
+	local player = LocalPlayer
+	if not player then return 0 end
+	local attr = player:GetAttribute("NetWorth")
+	if type(attr) == "number" then return attr end
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats then
+		local nw = leaderstats:FindFirstChild("NetWorth")
+		if nw and type(nw.Value) == "number" then return nw.Value end
+	end
+	return 0
+end
+
+local function toNumberLoose(v)
+	if type(v) == "number" then return v end
+	if type(v) == "string" then
+		local cleaned = v:gsub("[^%d%.]", "")
+		local n = tonumber(cleaned)
+		if n then return n end
+	end
+	return nil
+end
+
+local function getBaitPrice(baitId)
+	if not FishingBaitConfig or not baitId then return 0 end
+	local cfg = FishingBaitConfig[baitId]
+	if type(cfg) ~= "table" then return 0 end
+	-- Try multiple common fields
+	return toNumberLoose(cfg.Price) or toNumberLoose(cfg.BuyRate) or toNumberLoose(cfg.Cost) or 0
+end
+
+local function chooseAffordableBait(selectedId)
+	-- Build a price-sorted list
+	local items = {}
+	for _, id in ipairs(AvailableBaits) do
+		local price = getBaitPrice(id) or 0
+		table.insert(items, { id = id, price = price })
+	end
+	table.sort(items, function(a, b)
+		return (a.price or 0) < (b.price or 0)
+	end)
+	-- Find selected index in this sorted list
+	local selIndex = 1
+	for i, it in ipairs(items) do
+		if it.id == selectedId then selIndex = i break end
+	end
+	local net = getPlayerNetWorth()
+	local sel = items[selIndex]
+	if not sel then return selectedId, false end
+	if net >= (sel.price or 0) then
+		return selectedId, false
+	end
+	-- Step down to the nearest cheaper affordable option (one step at a time)
+	local fallbackIndex = math.max(selIndex - 1, 1)
+	-- If one step down still too expensive, keep stepping until affordable or reach cheapest
+	for i = fallbackIndex, 1, -1 do
+		if net >= (items[i].price or 0) then
+			return items[i].id, true
+		end
+	end
+	-- If nothing is affordable, return the cheapest anyway
+	return items[1].id, true
+end
+
 local function findNearestWater()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         return nil
@@ -348,7 +413,7 @@ local function anchorPlayer()
             local target = FishingConfig.SafePosition
             if not target then return end
             local posDelta = (hrp.Position - target.Position).Magnitude
-            if posDelta > 0.15 or math.abs((hrp.CFrame - target).Position.Magnitude) > 0.15 then
+            if posDelta > 0.15 then
                 hrp.CFrame = target
                 hrp.AssemblyLinearVelocity = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
@@ -786,7 +851,12 @@ local function startFishing()
     local throwArgs = {
         "Throw",
         {
-            Bait = FishingConfig.SelectedBait,
+            -- Ensure affordable bait at cast time as well
+            Bait = (function()
+                local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
+                if type(chosen) == "table" then chosen = chosen[1] end
+                return chosen or FishingConfig.SelectedBait
+            end)(),
             Pos = FishingConfig.FishingPosition,
             NoMove = true -- hint for server, if supported
         }
@@ -1162,16 +1232,26 @@ function AutoFishSystem.Init(dependencies)
     task.wait(1) -- Wait for config to load
     baitDropdown = Tabs.FishTab:Dropdown({
         Title = "🎣 Select Bait",
-        Desc = "Choose fishing bait from available options",
+        Desc = "Choose fishing bait. If too expensive, we’ll fallback one step cheaper.",
         Values = #AvailableBaits > 0 and AvailableBaits or {"FishingBait1", "FishingBait2", "FishingBait3"},
         Default = FishingConfig.SelectedBait,
         Callback = function(selected)
-            FishingConfig.SelectedBait = selected
-            WindUI:Notify({ 
-                Title = "🎣 Bait Selected", 
-                Content = "Selected: " .. tostring(selected), 
-                Duration = 2 
-            })
+            local chosen, downgraded = chooseAffordableBait(selected)
+            FishingConfig.SelectedBait = chosen
+            if downgraded and chosen ~= selected then
+                WindUI:Notify({
+                    Title = "🎣 Bait Adjusted",
+                    Content = "Not enough money. Using cheaper bait: " .. tostring(chosen),
+                    Duration = 3
+                })
+                pcall(function() baitDropdown:Select(chosen) end)
+            else
+                WindUI:Notify({ 
+                    Title = "🎣 Bait Selected", 
+                    Content = "Selected: " .. tostring(chosen), 
+                    Duration = 2 
+                })
+            end
         end
     })
     
