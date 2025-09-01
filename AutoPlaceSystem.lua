@@ -21,7 +21,6 @@ local usePetPlacementMode = false
 local mutationsOnlyPet = false
 local minPetRateFilter = 0
 local petAscendingOrder = true
-local benefitMaxOverride = nil
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -390,7 +389,7 @@ local function computeEffectiveRate(petType, mutation, petNode)
     end
     -- Size/V scaling: V is an integer scaled by 1e-4, exponent 2.24, scaled by (BenfitMax - 1)
     local vAttr = petNode and petNode:GetAttribute("V")
-    local benefitMax = benefitMaxOverride or script:GetAttribute("BenfitMax") or 1
+    local benefitMax = script:GetAttribute("BenfitMax") or 1
     if vAttr and benefitMax then
         local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0
         rate = rate * (((benefitMax - 1) * (vScaled ^ 2.24)) + 1)
@@ -1072,7 +1071,7 @@ function AutoPlaceSystem.CreateUI()
     })
 
     Tabs.PlaceTab:Slider({
-        Title = "Pets: Min produce rate",
+        Title = "Pets: Min Speed",
         Desc = "Filter pets below this effective production rate.",
         Value = {
             Min = 0,
@@ -1082,22 +1081,6 @@ function AutoPlaceSystem.CreateUI()
         Step = 1,
         Callback = function(val)
             minPetRateFilter = tonumber(val) or 0
-            petCache.lastUpdate = 0
-        end
-    })
-
-    Tabs.PlaceTab:Slider({
-        Title = "Pets: BenfitMax override",
-        Desc = "If some pets lack V/BenfitMax context, set BenfitMax here (0=auto).",
-        Value = {
-            Min = 0,
-            Max = 5,
-            Default = 0,
-        },
-        Step = 1,
-        Callback = function(val)
-            local n = tonumber(val) or 0
-            benefitMaxOverride = (n > 0) and n or nil
             petCache.lastUpdate = 0
         end
     })
@@ -1122,24 +1105,7 @@ function AutoPlaceSystem.CreateUI()
         ImageSize = 14,
     })
 
-    -- Debug: compute produce rate by Pet UID
-    Tabs.PlaceTab:Input({
-        Title = "Debug: Pet UID → Produce",
-        Placeholder = "Enter pet UID (from PlayerGui.Data.Pets)",
-        Callback = function(uid)
-            local container = getPetContainer()
-            local node = container and container:FindFirstChild(uid)
-            if not node then
-                WindUI:Notify({Title = "Debug", Content = "UID not found: " .. tostring(uid), Duration = 3})
-                return
-            end
-            local petType = node:GetAttribute("T")
-            local mutation = node:GetAttribute("M")
-            if mutation == "Dino" then mutation = "Jurassic" end
-            local rate = computeEffectiveRate(petType, mutation, node)
-            WindUI:Notify({Title = "Produce", Content = uid .. " → " .. tostring(rate), Duration = 4})
-        end
-    })
+    -- (Debug input removed by user request)
 
     local function updateStats()
         if not statsLabel then return end
