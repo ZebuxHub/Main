@@ -77,11 +77,11 @@ local function loadFishingBaitConfig()
             end
         end
         table.sort(AvailableBaits)
-        print("🎣 Loaded " .. #AvailableBaits .. " fishing baits")
+        -- Loaded " .. #AvailableBaits .. " fishing baits
     else
         -- Fallback baits
         AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
-        print("⚠️ Failed to load fishing bait config, using fallback baits")
+        -- Failed to load fishing bait config, using fallback baits
     end
 end
 
@@ -421,7 +421,7 @@ local function anchorPlayer()
         end)
         
         FishingConfig.PlayerAnchored = true
-        print("📍 Player anchored for fishing with fall protection")
+        -- Player anchored for fishing with fall protection
     end
 end
 
@@ -437,7 +437,7 @@ local function unanchorPlayer()
             
             -- If player fell significantly, restore to safe position
             if currentY < safeY - 20 then
-                print("🚨 Player fell! Restoring to safe position...")
+                -- Player fell! Restoring to safe position...
                 rootPart.CFrame = FishingConfig.SafePosition
                 task.wait(0.1)
             end
@@ -459,7 +459,7 @@ local function unanchorPlayer()
 
         rootPart.Anchored = false
         FishingConfig.PlayerAnchored = false
-        print("🔓 Player unanchored with fall protection")
+        -- Player unanchored with fall protection
     end
 end
 
@@ -481,7 +481,7 @@ end
 
 local function updateFishingPosition()
     FishingConfig.FishingPosition = getRandomFishingPosition()
-    print("🎣 Fishing position updated to:", FishingConfig.FishingPosition)
+    -- Fishing position updated
 end
 local function savePositionToHistory(position, method)
     local timestamp = os.time()
@@ -504,7 +504,7 @@ local function savePositionToHistory(position, method)
     end
     
     FishingConfig.CurrentPositionIndex = #FishingConfig.PlacedPositions
-    print("📍 Position saved to history:", position, "Method:", method)
+    -- Position saved to history
 end
 
 local function getPositionHistoryText()
@@ -797,8 +797,7 @@ function stopFlagPlacement()
         end
     end)
     
-    -- Debug print
-    print("📍 Pin placement stopped. Position locked at:", FishingConfig.FishingPosition)
+    -- Pin placement stopped
 end
 
 function removeFishingFlag()
@@ -837,7 +836,7 @@ local function startFishing()
     end)
     
     if not success then
-        warn("Failed to focus fishing: " .. tostring(err))
+        -- Failed to focus fishing
         unanchorPlayer() -- Unanchor if failed
         return false
     end
@@ -845,8 +844,7 @@ local function startFishing()
     -- Wait time for better accuracy (short)
     task.wait(0.3)
     
-    -- Debug print to verify position is being used
-    print("🎣 Using fishing position:", FishingConfig.FishingPosition)
+    -- Using fishing position
     
     local throwArgs = {
         "Throw",
@@ -867,7 +865,7 @@ local function startFishing()
     end)
     
     if not throwSuccess then
-        warn("Failed to throw fishing line: " .. tostring(throwErr))
+        -- Failed to throw fishing line
         unanchorPlayer() -- Unanchor if failed
         return false
     end
@@ -904,7 +902,7 @@ local function collectNearbyFish()
                         
                         if success then
                             collected = collected + 1
-                            print("🐟 Collected fish: " .. child.Name)
+                            -- Collected fish
                         end
                     end
                 end
@@ -922,7 +920,7 @@ local function collectNearbyFish()
     if art then searchForFish(art) end
     
     if collected > 0 then
-        print(string.format("🎣 Auto-collected %d fish!", collected))
+        -- Auto-collected fish
     end
     
     return collected > 0
@@ -942,7 +940,7 @@ local function pullFish()
     end)
     
     if not success then
-        warn("Failed to pull fish: " .. tostring(err))
+        -- Failed to pull fish
         unanchorPlayer() -- Unanchor if failed
         return false
     end
@@ -956,8 +954,7 @@ local function pullFish()
     -- Unanchor player after fishing attempt
     if unanchorPlayer then
         pcall(unanchorPlayer)
-    else
-        warn("unanchorPlayer function is nil!")
+    -- else unanchorPlayer is nil
     end
     
     FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
@@ -1048,17 +1045,11 @@ local function waitForFishPull()
     end
     
     if not fishingObj then
-        warn("⚠️ Could not find fishing object for player: " .. LocalPlayer.Name)
-        print("🔍 Available objects in workspace:")
-        for _, obj in ipairs(workspace:GetChildren()) do
-            if obj:IsA("Model") then
-                print("  - " .. obj.Name .. (obj:GetAttribute("AnimFish") and " (has AnimFish)" or ""))
-            end
-        end
+        -- Could not find fishing object for player
         return false
     end
     
-    print("🎣 Using fishing object: " .. fishingObj.Name)
+    -- Using fishing object
     
     local timeout = 30 -- Increased timeout for better accuracy
     local startTime = tick()
@@ -1067,23 +1058,23 @@ local function waitForFishPull()
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
         local animFish = fishingObj:GetAttribute("AnimFish")
         if animFish == "Pull" then
-            print("🎯 Fish ready to pull! AnimFish = " .. tostring(animFish))
+            -- Fish ready to pull
             return true
         end
         task.wait(0.2) -- Slower checking interval for better accuracy
     end
     
-    warn("⏰ Fishing timeout reached or AnimFish never became 'Pull'")
+    -- Fishing timeout reached
     return false
 end
 
 local function runAutoFish()
-    print("🎣 Starting auto fish loop...")
+    -- Starting auto fish loop
     while FishingConfig.AutoFishEnabled do
-        print("🎣 Beginning new fishing cycle...")
+        -- Beginning new fishing cycle
         local castStartTime = tick()
         local success = startFishing()
-        print("🎣 Start fishing result:", success)
+        -- Start fishing result
         
         if success then
             -- Wait for the fish to be ready to pull with error handling
@@ -1203,7 +1194,7 @@ end
 function AutoFishSystem.Init(dependencies)
     -- Validate required dependencies
     if not dependencies then
-        warn("AutoFishSystem.Init: No dependencies provided")
+        -- No dependencies provided
         return
     end
     
@@ -1213,12 +1204,12 @@ function AutoFishSystem.Init(dependencies)
     
     -- Validate critical dependencies
     if not WindUI then
-        warn("AutoFishSystem.Init: WindUI is required but not provided")
+        -- WindUI is required but not provided
         return
     end
     
     if not Tabs or not Tabs.FishTab then
-        warn("AutoFishSystem.Init: Tabs.FishTab is required but not provided")
+        -- Tabs.FishTab is required but not provided
         return
     end
     
@@ -1370,14 +1361,14 @@ function AutoFishSystem.Init(dependencies)
             -- Try to register with autoSystemsConfig if available, fallback to main config
             if dependencies.autoSystemsConfig then
                 dependencies.autoSystemsConfig:Register("autoFishEnabled", autoFishToggle)
-                print("✅ Auto Fish: Registered with AutoSystems config")
+                -- Registered with AutoSystems config
             else
                 Config:Register("autoFishEnabled", autoFishToggle)
-                print("✅ Auto Fish: Registered with main config")
+                -- Registered with main config
             end
         end)
     elseif not Config then
-        print("⚠️ Auto Fish: Config system not available, settings won't be saved")
+        -- Config system not available, settings won't be saved
     end
     
     -- Start stats update loop
@@ -1388,7 +1379,7 @@ function AutoFishSystem.Init(dependencies)
         end
     end)
     
-    print("🎣 Auto Fish System initialized successfully!")
+    -- Auto Fish System initialized successfully
 end
 
 -- Cleanup function
@@ -1398,7 +1389,7 @@ function AutoFishSystem.Cleanup()
     -- Make sure player is unanchored
     unanchorPlayer()
     
-    print("🧿 Auto Fish System cleaned up successfully!")
+    -- Auto Fish System cleaned up successfully
 end
 
 return AutoFishSystem
