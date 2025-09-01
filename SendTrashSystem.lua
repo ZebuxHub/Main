@@ -480,13 +480,22 @@ end
 
 --- Save webhook URL to config
 local function saveWebhookUrl(url)
+    webhookUrl = tostring(url or "")
     if Config and Config.SaveSetting then
-        Config:SaveSetting("SendTrash_WebhookUrl", url)
+        Config:SaveSetting("SendTrash_WebhookUrl", webhookUrl)
         if WindUI then
             WindUI:Notify({
                 Title = "💾 Webhook Saved",
-                Content = url ~= "" and "Webhook URL saved successfully!" or "Webhook URL cleared",
+                Content = webhookUrl ~= "" and "Webhook URL saved successfully!" or "Webhook URL cleared",
                 Duration = 2
+            })
+        end
+    else
+        if WindUI then
+            WindUI:Notify({
+                Title = "⚠️ Config System",
+                Content = "Config system not available - webhook won't persist",
+                Duration = 3
             })
         end
     end
@@ -497,9 +506,11 @@ local function loadWebhookUrl()
     if Config and Config.GetSetting then
         local savedUrl = Config:GetSetting("SendTrash_WebhookUrl")
         if savedUrl and savedUrl ~= "" then
-            webhookUrl = savedUrl
+            webhookUrl = tostring(savedUrl)
+            return true -- Successfully loaded
         end
     end
+    return false -- No saved URL or config unavailable
 end
 
 --- Get pet inventory (uses cache for better performance)
@@ -1128,7 +1139,14 @@ function SendTrashSystem.Init(dependencies)
     Config = dependencies.Config
     
     -- Load saved webhook URL from config
-    loadWebhookUrl()
+    local loadedWebhook = loadWebhookUrl()
+    if loadedWebhook and WindUI then
+        WindUI:Notify({
+            Title = "📥 Webhook Loaded",
+            Content = "Saved webhook URL loaded from config",
+            Duration = 2
+        })
+    end
     
     -- Create the Send Trash tab
     local TrashTab = Window:Tab({ Title = "🗑️ | Send Trash"})
@@ -1263,23 +1281,25 @@ function SendTrashSystem.Init(dependencies)
     
     TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
     
-    -- Webhook input (optional)
+    -- Webhook input (optional) - Auto-saves to config
     local webhookInput = TrashTab:Input({
-        Title = "Webhook URL (optional)",
-        Desc = "Discord webhook to receive session summary (auto-saved)",
+        Title = "📡 Webhook URL (auto-saved)",
+        Desc = "Discord webhook to receive session summary - automatically saved to config",
         Default = webhookUrl,
         Numeric = false,
         Finished = true,
         Callback = function(value)
-            webhookUrl = tostring(value or "")
-            webhookSent = false
-            -- Save webhook URL to config
-            saveWebhookUrl(webhookUrl)
+            local newUrl = tostring(value or "")
+            -- Only save if the URL actually changed
+            if newUrl ~= webhookUrl then
+                saveWebhookUrl(newUrl)
+                webhookSent = false -- Reset webhook sent flag for new URL
+            end
         end,
     })
     
-    -- Set the loaded webhook URL in the input field
-    if webhookUrl ~= "" then
+    -- Ensure the loaded webhook URL is displayed in the input field
+    if webhookUrl and webhookUrl ~= "" then
         webhookInput:SetValue(webhookUrl)
     end
     
@@ -1387,6 +1407,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
+        Config:Register("webhookInput", webhookInput)
         -- Selling config removed
         Config:Register("speedThreshold", speedThresholdSlider)
         Config:Register("sessionLimit", sessionLimitInput)
