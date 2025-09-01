@@ -16,11 +16,11 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
-local fallbackToRegularWhenNoWater = false
+local fallbackToRegularWhenNoWater = true
 local usePetPlacementMode = false
 local mutationsOnlyPet = false
 local minPetRateFilter = 0
-local petAscendingOrder = false
+local petAscendingOrder = true
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -38,6 +38,7 @@ local placementStats = {
 -- ============ Config Cache (ResPet / ResMutate) ============
 local resPetById = nil
 local resMutateById = nil
+local resBigPetScale = nil
 
 local function loadConfigModule(moduleScript)
     if not moduleScript then return nil end
@@ -51,11 +52,12 @@ local function loadConfigModule(moduleScript)
 end
 
 local function ensureConfigCached()
-    if resPetById and resMutateById then return end
+    if resPetById and resMutateById and resBigPetScale then return end
     local cfg = ReplicatedStorage:FindFirstChild("Config")
     if not cfg then return end
     resPetById = resPetById or loadConfigModule(cfg:FindFirstChild("ResPet")) or {}
     resMutateById = resMutateById or loadConfigModule(cfg:FindFirstChild("ResMutate")) or {}
+    resBigPetScale = resBigPetScale or loadConfigModule(cfg:FindFirstChild("ResBigPetScale")) or {}
 end
 
 local function getPetBaseData(petType)
@@ -66,6 +68,32 @@ end
 local function getMutationData(mutation)
     ensureConfigCached()
     return resMutateById and resMutateById[mutation] or nil
+end
+
+local function getBigLevelDefFromExp(totalExp)
+    ensureConfigCached()
+    if type(resBigPetScale) ~= "table" then return nil end
+    local entries = {}
+    for key, def in pairs(resBigPetScale) do
+        if type(def) == "table" and def.EXP ~= nil then
+            table.insert(entries, { level = key, def = def })
+        end
+    end
+    table.sort(entries, function(a, b)
+        local ax = tonumber(a.def.EXP) or 0
+        local bx = tonumber(b.def.EXP) or 0
+        return ax < bx
+    end)
+    local best = nil
+    for _, item in ipairs(entries) do
+        local req = tonumber(item.def.EXP) or 0
+        if req <= (tonumber(totalExp) or 0) then
+            best = item.def
+        else
+            break
+        end
+    end
+    return best
 end
 
 local function isOceanPet(petType)
@@ -329,21 +357,51 @@ local petCache = {
     candidates = {}
 }
 
-local function computeEffectiveRate(petType, mutation)
+local function computeEffectiveRate(petType, mutation, petNode)
     local base = getPetBaseData(petType)
     if not base then return 0 end
+    -- Base produce
     local rate = tonumber(base.ProduceRate) or 0
-    if mutation then
-        local m = getMutationData(mutation)
-        if m then
-            -- Only count ProduceRate with mutation multiplier; ignore SellRate entirely
-            local mul = tonumber(m.ProduceRate) or 1
-            if mul and mul > 0 then
-                rate = rate * mul
+    -- BPV path (big pet exp) overrides base with levelDef.Produce and BigRate
+    local bpv = petNode and petNode:GetAttribute("BPV")
+    if bpv then
+        local levelDef = getBigLevelDefFromExp(bpv)
+        if levelDef and levelDef.Produce then
+            rate = tonumber(levelDef.Produce) or rate
+            -- Scan dynamic MT_* attributes for BigRate max
+            local maxBigRate = 1
+            local ok, attrs = pcall(function()
+                return petNode:GetAttributes()
+            end)
+            if ok and type(attrs) == "table" then
+                for key, _ in pairs(attrs) do
+                    if type(key) == "string" and key:sub(1,3) == "MT_" then
+                        local mutName = key:sub(4)
+                        local mdef = getMutationData(mutName)
+                        if mdef and tonumber(mdef.BigRate) then
+                            maxBigRate = math.max(maxBigRate, tonumber(mdef.BigRate))
+                        end
+                    end
+                end
             end
+            return rate * maxBigRate
         end
     end
-    return rate
+    -- Size/V scaling: V is an integer scaled by 1e-4, exponent 2.24, scaled by (BenfitMax - 1)
+    local vAttr = petNode and petNode:GetAttribute("V")
+    local benefitMax = script:GetAttribute("BenfitMax") or 1
+    if vAttr and benefitMax then
+        local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0
+        rate = rate * (((benefitMax - 1) * (vScaled ^ 2.24)) + 1)
+    end
+    -- Base mutation multiplier (ProduceRate)
+    if mutation then
+        local m = getMutationData(mutation)
+        if m and tonumber(m.ProduceRate) then
+            rate = rate * tonumber(m.ProduceRate)
+        end
+    end
+    return math.floor(rate)
 end
 
 local function updateAvailablePets()
@@ -362,7 +420,7 @@ local function updateAvailablePets()
             end
             if petType and not isPetAlreadyPlacedByUid(child.Name) then
                 if (not isBigPet(petType)) and (not mutationsOnlyPet or (mutation ~= nil and mutation ~= "")) then
-                    local rate = computeEffectiveRate(petType, mutation)
+                    local rate = computeEffectiveRate(petType, mutation, child)
                     if rate >= (minPetRateFilter or 0) then
                         table.insert(out, {
                             uid = child.Name,
@@ -1045,6 +1103,25 @@ function AutoPlaceSystem.CreateUI()
         Desc = "Start or stop the auto placement loop.",
         Image = "play",
         ImageSize = 14,
+    })
+
+    -- Debug: compute produce rate by Pet UID
+    Tabs.PlaceTab:Input({
+        Title = "Debug: Pet UID → Produce",
+        Placeholder = "Enter pet UID (from PlayerGui.Data.Pets)",
+        Callback = function(uid)
+            local container = getPetContainer()
+            local node = container and container:FindFirstChild(uid)
+            if not node then
+                WindUI:Notify({Title = "Debug", Content = "UID not found: " .. tostring(uid), Duration = 3})
+                return
+            end
+            local petType = node:GetAttribute("T")
+            local mutation = node:GetAttribute("M")
+            if mutation == "Dino" then mutation = "Jurassic" end
+            local rate = computeEffectiveRate(petType, mutation, node)
+            WindUI:Notify({Title = "Produce", Content = uid .. " → " .. tostring(rate), Duration = 4})
+        end
     })
 
     local function updateStats()
