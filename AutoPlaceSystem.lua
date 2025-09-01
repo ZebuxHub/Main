@@ -308,8 +308,8 @@ local function computeEffectiveRate(petType, mutation)
     if mutation then
         local m = getMutationData(mutation)
         if m then
-            -- Heuristic: prefer ProduceRate multiplier if present; else SellRate; else 1
-            local mul = tonumber(m.ProduceRate) or tonumber(m.SellRate) or 1
+            -- Only count ProduceRate with mutation multiplier; ignore SellRate entirely
+            local mul = tonumber(m.ProduceRate) or 1
             if mul and mul > 0 then
                 rate = rate * mul
             end
@@ -330,6 +330,9 @@ local function updateAvailablePets()
             if #child:GetChildren() == 0 then
                 local petType = child:GetAttribute("T")
                 local mutation = child:GetAttribute("M")
+                if mutation == "Dino" then
+                    mutation = "Jurassic"
+                end
                 if petType then
                     if not mutationsOnlyPet or (mutation ~= nil and mutation ~= "") then
                         local rate = computeEffectiveRate(petType, mutation)
