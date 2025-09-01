@@ -135,6 +135,17 @@ local function getNextPetByRate()
     return matches[1], tile, "ok"
 end
 
+local function focusForPlacement(rawUID)
+    local args = { "Focus", (autoPlacePetsByRateEnabled and ("Pet_" .. rawUID)) or ("Egg_" .. rawUID) }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+    end)
+    if not ok then
+        warn("Failed to focus placement item: " .. tostring(err))
+    end
+    return ok
+end
+
 local function attemptPlacementByRate()
     local petInfo, tileInfo, reason = getNextPetByRate()
     if not petInfo or not tileInfo then
@@ -146,7 +157,8 @@ local function attemptPlacementByRate()
         return false, "No pet to place"
     end
 
-    if not focusEgg(petInfo.uid) then
+    -- Focus the pet before placing
+    if not focusForPlacement(petInfo.uid) then
         return false, "Failed to focus pet " .. tostring(petInfo.uid)
     end
     task.wait(0.2)
@@ -919,6 +931,11 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(state)
             autoPlacePetsByRateEnabled = state
             if state and not autoPlacePetsByRateThread then
+                if not targetProduceRate or targetProduceRate <= 0 then
+                    WindUI:Notify({ Title = "Auto Place", Content = "Set Target ProduceRate first", Duration = 3 })
+                    autoPlacePetsByRateEnabled = false
+                    return
+                end
                 autoPlacePetsByRateThread = task.spawn(function()
                     while autoPlacePetsByRateEnabled do
                         local ok, msg = attemptPlacementByRate()
