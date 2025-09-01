@@ -20,6 +20,8 @@ local fallbackToRegularWhenNoWater = true
 local usePetPlacementMode = false
 local mutationsOnlyPet = false
 local minPetRateFilter = 0
+local excludeBigPets = true
+local petAscendingOrder = true
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -85,6 +87,24 @@ local function isOceanPet(petType)
     end
     return false
 end
+
+local function isBigPet(petType)
+    local base = getPetBaseData(petType)
+    if not base then return false end
+    -- Heuristics based on common config fields
+    if base.MaxSize and tonumber(base.MaxSize) and tonumber(base.MaxSize) >= 2 then
+        return true
+    end
+    if base.BigRate and tonumber(base.BigRate) and tonumber(base.BigRate) > 0 then
+        return true
+    end
+    if base.PetIndex and tostring(base.PetIndex) == "Big" then
+        return true
+    end
+    return false
+end
+
+-- (removed) was unused
 
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
@@ -333,7 +353,7 @@ local function updateAvailablePets()
                 mutation = "Jurassic"
             end
             if petType then
-                if not mutationsOnlyPet or (mutation ~= nil and mutation ~= "") then
+                if (not excludeBigPets or not isBigPet(petType)) and (not mutationsOnlyPet or (mutation ~= nil and mutation ~= "")) then
                     local rate = computeEffectiveRate(petType, mutation)
                     if rate >= (minPetRateFilter or 0) then
                         table.insert(out, {
@@ -684,19 +704,31 @@ local function getNextBestPet()
     if #candidates == 0 then
         return nil, nil, "no_pets"
     end
-    -- Try water first if any ocean candidate exists and water is available
-    if waterAvailable > 0 then
-        for _, cand in ipairs(candidates) do
-            if cand.isOcean then
-                return cand, getRandomFromList(tileCache.waterTiles), "water"
+    local function pickCandidate(filterFn)
+        if petAscendingOrder then
+            for i = #candidates, 1, -1 do
+                local cand = candidates[i]
+                if filterFn(cand) then return cand end
+            end
+        else
+            for i = 1, #candidates do
+                local cand = candidates[i]
+                if filterFn(cand) then return cand end
             end
         end
     end
+    -- Try water first if any ocean candidate exists and water is available
+    if waterAvailable > 0 then
+        local oc = pickCandidate(function(c) return c.isOcean end)
+        if oc then return oc, getRandomFromList(tileCache.waterTiles), "water" end
+    end
     -- Otherwise pick best non-ocean if regular available
     if regularAvailable > 0 then
-        for _, cand in ipairs(candidates) do
-            if not cand.isOcean then
-                return cand, getRandomFromList(tileCache.regularTiles), "regular"
+        local rc = pickCandidate(function(c) return not c.isOcean end)
+        if rc then
+            -- Hard guard: prevent Big pet on regular tile
+            if excludeBigPets or not isBigPet(rc.type) then
+                return rc, getRandomFromList(tileCache.regularTiles), "regular"
             end
         end
         -- If only ocean pets exist but no water, skip
@@ -947,6 +979,26 @@ function AutoPlaceSystem.CreateUI()
         Rounding = 0,
         Callback = function(val)
             minPetRateFilter = tonumber(val) or 0
+            petCache.lastUpdate = 0
+        end
+    })
+
+    Tabs.PlaceTab:Toggle({
+        Title = "Pets: Exclude Big pets",
+        Desc = "Skip Big pets when selecting which pet to place.",
+        Value = true,
+        Callback = function(state)
+            excludeBigPets = state
+            petCache.lastUpdate = 0
+        end
+    })
+
+    Tabs.PlaceTab:Toggle({
+        Title = "Pets: Ascending order (low → high)",
+        Desc = "Place lower produce rates first. Turn off for highest first.",
+        Value = true,
+        Callback = function(state)
+            petAscendingOrder = state
             petCache.lastUpdate = 0
         end
     })
