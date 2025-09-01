@@ -26,6 +26,13 @@ local onlyPlaceMutated = false
 local autoPlacePetsByRateEnabled = false
 local autoPlacePetsByRateThread = nil
 
+-- Forward declarations for cross-references
+local updateTileCache
+local getAvailablePetsByRate
+local getPetsContainer
+local focusEgg
+local placePet
+
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
 local tileCache = {
@@ -222,7 +229,7 @@ local function computeEffectiveProduceRate(petName, mutateName)
     end
 end
 
-local function getAvailablePetsByRate(targetRate)
+function getAvailablePetsByRate(targetRate)
     local petsFolder = getPetsContainer()
     if not petsFolder or targetRate == nil then return {} end
 
@@ -258,7 +265,7 @@ local function getAvailablePetsByRate(targetRate)
     return matches
 end
 
-local function getPetsContainer()
+function getPetsContainer()
     local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = pg and pg:FindFirstChild("Data")
     return data and data:FindFirstChild("Pets") or nil
@@ -525,7 +532,7 @@ local function isTileOccupied(farmPart)
 end
 
 -- Enhanced tile cache system
-local function updateTileCache()
+function updateTileCache()
     local currentTime = tick()
     if currentTime - tileCache.lastUpdate < CACHE_DURATION then
         return tileCache.regularAvailable, tileCache.waterAvailable
@@ -575,7 +582,7 @@ local function updateTileCache()
 end
 
 -- ============ Focus-First Placement System ============
-local function focusEgg(eggUID)
+function focusEgg(eggUID)
     local args = { "Focus", eggUID }
     local success, err = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
@@ -588,7 +595,7 @@ local function focusEgg(eggUID)
     return success
 end
 
-local function placePet(farmPart, petUID)
+function placePet(farmPart, petUID)
     if not farmPart or not petUID then return false end
     
     -- Enhanced surface position calculation for 8x8 tiles
@@ -823,18 +830,8 @@ function AutoPlaceSystem.CreateUI()
     -- Pets-by-Rate controls
     loadPetAndMutateConfigs()
 
-    local rateModeDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "Rate Calc Mode",
-        Desc = "Mutation rate handling",
-        Values = {"multiply", "override"},
-        Value = rateCalcMode,
-        Multi = false,
-        AllowNone = false,
-        Callback = function(val)
-            if type(val) == "table" then val = val[1] end
-            rateCalcMode = (val == "override") and "override" or "multiply"
-        end
-    })
+    -- Rate calc mode is fixed to "multiply" per user request
+    rateCalcMode = "multiply"
 
     local onlyMutToggle = Tabs.PlaceTab:Toggle({
         Title = "Only Mutated Pets",
