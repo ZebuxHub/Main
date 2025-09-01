@@ -62,7 +62,8 @@ local inventoryCache = {
     pets = {},
     eggs = {},
     lastUpdateTime = 0,
-    updateInterval = 0.5 -- Update every 0.5 seconds
+    updateInterval = 0.5, -- Update every 0.5 seconds
+    unknownCount = 0 -- Track items that couldn't load properly
 }
 
 -- Send operation tracking
@@ -461,6 +462,7 @@ local function updateInventoryCache()
     inventoryCache.lastUpdateTime = currentTime
     inventoryCache.pets = {}
     inventoryCache.eggs = {}
+    inventoryCache.unknownCount = 0
     
     if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
         return
@@ -477,6 +479,7 @@ local function updateInventoryCache()
                 
                 -- Skip items without proper type data (not fully loaded yet)
                 if not petType or petType == "" or petType == "Unknown" then
+                    inventoryCache.unknownCount = inventoryCache.unknownCount + 1
                     continue -- Skip this pet until it loads properly
                 end
                 
@@ -505,6 +508,7 @@ local function updateInventoryCache()
                 
                 -- Skip items without proper type data (not fully loaded yet)
                 if not eggType or eggType == "" or eggType == "Unknown" then
+                    inventoryCache.unknownCount = inventoryCache.unknownCount + 1
                     continue -- Skip this egg until it loads properly
                 end
                 
@@ -535,6 +539,39 @@ end
 local function forceRefreshCache()
     inventoryCache.lastUpdateTime = 0
     updateInventoryCache()
+end
+
+--- Force refresh with data reload (for "Unknown" items)
+local function forceDataReload()
+    -- Clear cache completely
+    inventoryCache.lastUpdateTime = 0
+    inventoryCache.pets = {}
+    inventoryCache.eggs = {}
+    
+    -- Wait a moment for game data to settle
+    task.wait(0.5)
+    
+    -- Force multiple cache updates to catch data as it loads
+    for i = 1, 3 do
+        updateInventoryCache()
+        task.wait(0.2)
+    end
+    
+    -- Count items that loaded successfully
+    local loadedPets = 0
+    local loadedEggs = 0
+    for _, pet in pairs(inventoryCache.pets) do
+        if pet.type and pet.type ~= "" and pet.type ~= "Unknown" then
+            loadedPets = loadedPets + 1
+        end
+    end
+    for _, egg in pairs(inventoryCache.eggs) do
+        if egg.type and egg.type ~= "" and egg.type ~= "Unknown" then
+            loadedEggs = loadedEggs + 1
+        end
+    end
+    
+    return loadedPets, loadedEggs
 end
 
 --- Clear send operation tracking
@@ -1058,17 +1095,19 @@ local function updateStatus()
     
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
+    
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
         "⚡ Auto-delete speed threshold: %s\n" ..
-        "🔄 Actions performed: %d",
+        "🔄 Actions performed: %d%s",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
-        actionCounter
+        actionCounter,
+        inventoryCache.unknownCount > 0 and ("\n⚠️ Unknown items: " .. inventoryCache.unknownCount .. " (click Fix Unknown Items)") or ""
     )
     
     statusParagraph:SetDesc(statusText)
@@ -1440,12 +1479,37 @@ function SendTrashSystem.Init(dependencies)
         Callback = function()
             forceRefreshCache()
             clearSendProgress()
+            updateStatus()
             
             WindUI:Notify({
                 Title = "🔄 Cache Refreshed",
                 Content = "Inventory cache and send progress cleared!",
                 Duration = 3
             })
+        end
+    })
+    
+    -- Data reload button for "Unknown" items
+    TrashTab:Button({
+        Title = "🔄 Fix Unknown Items",
+        Desc = "Force reload data to fix 'Unknown' pets/eggs (takes a few seconds)",
+        Callback = function()
+            WindUI:Notify({
+                Title = "🔄 Reloading Data",
+                Content = "Please wait... fixing Unknown items",
+                Duration = 2
+            })
+            
+            task.spawn(function()
+                local loadedPets, loadedEggs = forceDataReload()
+                updateStatus()
+                
+                WindUI:Notify({
+                    Title = "✅ Data Reloaded",
+                    Content = string.format("Loaded %d pets and %d eggs successfully!", loadedPets, loadedEggs),
+                    Duration = 4
+                })
+            end)
         end
     })
     
