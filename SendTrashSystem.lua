@@ -66,6 +66,93 @@ local inventoryCache = {
     unknownCount = 0 -- Track items that couldn't load properly
 }
 
+-- Unknown resolver that retries resolving names for large inventories without blocking UI
+local unknownResolver = {
+    pets = {},
+    eggs = {},
+    active = false
+}
+
+local function trackUnknown(uid, isEgg)
+    if not uid or uid == "" then return end
+    local bucket = isEgg and unknownResolver.eggs or unknownResolver.pets
+    bucket[uid] = bucket[uid] or { attempts = 0 }
+end
+
+local function startUnknownResolver()
+    if unknownResolver.active then return end
+    unknownResolver.active = true
+    task.spawn(function()
+        while unknownResolver.active do
+            local processed = 0
+            local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
+            if dataRoot then
+                local petsFolder = dataRoot:FindFirstChild("Pets")
+                if petsFolder then
+                    for uid, meta in pairs(unknownResolver.pets) do
+                        if processed >= 250 then break end
+                        local conf = petsFolder:FindFirstChild(uid)
+                        if conf then
+                            local okT, tVal = pcall(function() return conf:GetAttribute("T") end)
+                            if okT and tVal and tVal ~= "" then
+                                local okM, mVal = pcall(function() return conf:GetAttribute("M") end)
+                                local okS, speedVal = pcall(function() return conf:GetAttribute("Speed") end)
+                                local okLK, lkVal = pcall(function() return conf:GetAttribute("LK") end)
+                                local okD, dVal = pcall(function() return conf:GetAttribute("D") end)
+                                inventoryCache.pets[uid] = {
+                                    uid = uid,
+                                    type = tVal,
+                                    mutation = (okM and mVal) or "",
+                                    speed = (okS and speedVal) or 0,
+                                    locked = (okLK and lkVal == 1) or false,
+                                    placed = (okD and dVal ~= nil) or false
+                                }
+                                unknownResolver.pets[uid] = nil
+                            else
+                                meta.attempts = (meta.attempts or 0) + 1
+                                if meta.attempts >= 10 then unknownResolver.pets[uid] = nil end
+                            end
+                        else
+                            unknownResolver.pets[uid] = nil
+                        end
+                        processed = processed + 1
+                    end
+                end
+                local eggsFolder = dataRoot:FindFirstChild("Egg")
+                if eggsFolder then
+                    for uid, meta in pairs(unknownResolver.eggs) do
+                        if processed >= 500 then break end
+                        local conf = eggsFolder:FindFirstChild(uid)
+                        if conf then
+                            local okT, tVal = pcall(function() return conf:GetAttribute("T") end)
+                            if okT and tVal and tVal ~= "" then
+                                local okM, mVal = pcall(function() return conf:GetAttribute("M") end)
+                                local okLK, lkVal = pcall(function() return conf:GetAttribute("LK") end)
+                                local okD, dVal = pcall(function() return conf:GetAttribute("D") end)
+                                inventoryCache.eggs[uid] = {
+                                    uid = uid,
+                                    type = tVal,
+                                    mutation = (okM and mVal) or "",
+                                    locked = (okLK and lkVal == 1) or false,
+                                    placed = (okD and dVal ~= nil) or false
+                                }
+                                unknownResolver.eggs[uid] = nil
+                            else
+                                meta.attempts = (meta.attempts or 0) + 1
+                                if meta.attempts >= 10 then unknownResolver.eggs[uid] = nil end
+                            end
+                        else
+                            unknownResolver.eggs[uid] = nil
+                        end
+                        processed = processed + 1
+                    end
+                end
+            end
+            task.wait(processed > 0 and 0.1 or 0.5)
+        end
+    end)
+end
+
 -- Send operation tracking
 local sendInProgress = {}
 local sendTimeoutSeconds = 5
@@ -238,19 +325,18 @@ local function sendWebhookSummary()
     -- Visuals
     local last = sessionLogs[#sessionLogs]
     local thumb = last and getIconUrlFor(last.kind, last.type) or nil
-    local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
-    local authorIcon = Players.LocalPlayer and getAvatarUrl(Players.LocalPlayer.UserId) or nil
+    -- remove author info from embed
 
     -- Use the improved embed format
     local payload = {
         embeds = {
             {
-                title = "Send Trash Session Summary",
+                title = "ZEBUX | https://discord.gg/yXPpRCgTQY",
                 description = description,
                 color = 5814783,
                 fields = { { name = "Total Sent", value = tostring(totalSent), inline = true } },
                 thumbnail = thumb and { url = thumb } or nil,
-                author = authorName and { name = authorName, icon_url = authorIcon } or nil,
+                author = nil,
                 footer = { text = "Build A Zoo" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
@@ -290,7 +376,7 @@ local function getAllPetTypes()
         if petsFolder then
             for _, petData in pairs(petsFolder:GetChildren()) do
                 if petData:IsA("Configuration") then
-                    local petType = safeGetAttribute(petData, "Type", nil)
+                    local petType = safeGetAttribute(petData, "T", nil)
                     if petType then
                         types[petType] = true
                     end
@@ -324,7 +410,7 @@ local function getAllEggTypes()
         if eggsFolder then
             for _, eggData in pairs(eggsFolder:GetChildren()) do
                 if eggData:IsA("Configuration") then
-                    local eggType = safeGetAttribute(eggData, "Type", nil)
+                    local eggType = safeGetAttribute(eggData, "T", nil)
                     if eggType then
                         types[eggType] = true
                     end
@@ -358,7 +444,7 @@ local function getAllMutations()
         if petsFolder then
             for _, petData in pairs(petsFolder:GetChildren()) do
                 if petData:IsA("Configuration") then
-                    local petMutation = safeGetAttribute(petData, "Mutation", nil)
+                    local petMutation = safeGetAttribute(petData, "M", nil)
                     if petMutation and petMutation ~= "" then
                         mutations[petMutation] = true
                     end
@@ -474,19 +560,19 @@ local function updateInventoryCache()
         for _, petData in pairs(petsFolder:GetChildren()) do
             if petData:IsA("Configuration") then
                 -- Try multiple attributes and wait for data to load
-                local petType = safeGetAttribute(petData, "T", nil) or 
-                               safeGetAttribute(petData, "Type", nil)
+                local petType = safeGetAttribute(petData, "T", nil)
                 
                 -- Skip items without proper type data (not fully loaded yet)
                 if not petType or petType == "" or petType == "Unknown" then
                     inventoryCache.unknownCount = inventoryCache.unknownCount + 1
+                    trackUnknown(petData.Name, false)
                     continue -- Skip this pet until it loads properly
                 end
                 
                 local petInfo = {
                     uid = petData.Name,
                     type = petType,
-                    mutation = safeGetAttribute(petData, "M", safeGetAttribute(petData, "Mutation", "")),
+                    mutation = safeGetAttribute(petData, "M", ""),
                     speed = safeGetAttribute(petData, "Speed", 0),
                     locked = safeGetAttribute(petData, "LK", 0) == 1,
                     placed = safeGetAttribute(petData, "D", nil) ~= nil
@@ -502,26 +588,30 @@ local function updateInventoryCache()
         for _, eggData in pairs(eggsFolder:GetChildren()) do
             if eggData:IsA("Configuration") then
                 -- Try multiple attributes and wait for data to load
-                local eggType = safeGetAttribute(eggData, "ID", nil) or 
-                               safeGetAttribute(eggData, "T", nil) or 
-                               safeGetAttribute(eggData, "Type", nil)
+                local eggType = safeGetAttribute(eggData, "T", nil)
                 
                 -- Skip items without proper type data (not fully loaded yet)
                 if not eggType or eggType == "" or eggType == "Unknown" then
                     inventoryCache.unknownCount = inventoryCache.unknownCount + 1
+                    trackUnknown(eggData.Name, true)
                     continue -- Skip this egg until it loads properly
                 end
                 
                 local eggInfo = {
                     uid = eggData.Name,
                     type = eggType,
-                    mutation = safeGetAttribute(eggData, "M", safeGetAttribute(eggData, "Mutation", "")),
+                    mutation = safeGetAttribute(eggData, "M", ""),
                     locked = safeGetAttribute(eggData, "LK", 0) == 1,
                     placed = safeGetAttribute(eggData, "D", nil) ~= nil
                 }
                 inventoryCache.eggs[eggData.Name] = eggInfo
             end
         end
+    end
+    
+    -- If there are unknowns, start background resolver
+    if inventoryCache.unknownCount > 0 then
+        startUnknownResolver()
     end
 end
 
@@ -774,7 +864,7 @@ local function sendCurrentInventoryWebhook()
     local payload = {
         embeds = {
             {
-                title = "🎒 Current Inventory",
+                title = "ZEBUX | https://discord.gg/yXPpRCgTQY",
                 description = description,
                 color = 3066993, -- Green color
                 fields = {
@@ -782,7 +872,7 @@ local function sendCurrentInventoryWebhook()
                     { name = "Total Eggs", value = tostring(eggCount), inline = true },
                     { name = "Combined", value = tostring(petCount + eggCount), inline = true }
                 },
-                author = authorName and { name = authorName } or nil,
+                author = nil,
                 footer = { text = "Build A Zoo - Current Inventory" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
@@ -823,18 +913,7 @@ local function refreshItemFromData(uid, isEgg, into)
     if conf and conf:IsA("Configuration") then
         -- Try multiple attributes for better type detection
         local tVal
-        if isEgg then
-            tVal = safeGetAttribute(conf, "ID", nil) or 
-                   safeGetAttribute(conf, "T", nil) or 
-                   safeGetAttribute(conf, "Type", nil)
-        else
-            tVal = safeGetAttribute(conf, "T", nil) or 
-                   safeGetAttribute(conf, "Type", nil)
-        end
-        
-        local mVal = safeGetAttribute(conf, "M", nil) or safeGetAttribute(conf, "Mutation", "")
-        local locked = safeGetAttribute(conf, "LK", 0) == 1
-        local placed = safeGetAttribute(conf, "D", nil) ~= nil
+        tVal = safeGetAttribute(conf, "T", nil)
         
         -- Skip items that haven't loaded type data yet
         if not tVal or tVal == "" or tVal == "Unknown" then
@@ -843,12 +922,12 @@ local function refreshItemFromData(uid, isEgg, into)
         
         if into then
             into.type = tVal
-            into.mutation = mVal or into.mutation
-            into.locked = locked
-            into.placed = placed
+            into.mutation = safeGetAttribute(conf, "M", into.mutation)
+            into.locked = safeGetAttribute(conf, "LK", 0) == 1
+            into.placed = safeGetAttribute(conf, "D", nil) ~= nil
             return into
         else
-            return { uid = uid, type = tVal, mutation = mVal, locked = locked, placed = placed }
+            return { uid = uid, type = tVal, mutation = safeGetAttribute(conf, "M", ""), locked = safeGetAttribute(conf, "LK", 0) == 1, placed = safeGetAttribute(conf, "D", nil) ~= nil }
         end
     end
     return into
