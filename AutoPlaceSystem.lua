@@ -354,14 +354,17 @@ end
 -- Build a ranked pet candidate list from PlayerGui.Data.Pets
 local petCache = {
     lastUpdate = 0,
-    candidates = {}
+    candidates = {},
+    currentIndex = 1 -- Track which pet to place next for sequential placement
 }
 
 local function computeEffectiveRate(petType, mutation, petNode)
     local base = getPetBaseData(petType)
     if not base then return 0 end
-    -- Base produce
+    
+    -- Use precise decimal arithmetic to avoid floating point errors
     local rate = tonumber(base.ProduceRate) or 0
+    
     -- BPV path (big pet exp) overrides base with levelDef.Produce and BigRate
     local bpv = petNode and petNode:GetAttribute("BPV")
     if bpv then
@@ -369,7 +372,7 @@ local function computeEffectiveRate(petType, mutation, petNode)
         if levelDef and levelDef.Produce then
             rate = tonumber(levelDef.Produce) or rate
             -- Scan dynamic MT_* attributes for BigRate max
-            local maxBigRate = 1
+            local maxBigRate = 1.0
             local ok, attrs = pcall(function()
                 return petNode:GetAttributes()
             end)
@@ -384,24 +387,32 @@ local function computeEffectiveRate(petType, mutation, petNode)
                     end
                 end
             end
-            return rate * maxBigRate
+            -- Use precise multiplication and round to avoid precision errors
+            local finalRate = rate * maxBigRate
+            return math.floor(finalRate + 0.5) -- Round to nearest integer
         end
     end
+    
     -- Size/V scaling: V is an integer scaled by 1e-4, exponent 2.24, scaled by (BenfitMax - 1)
     local vAttr = petNode and petNode:GetAttribute("V")
     local benefitMax = script:GetAttribute("BenfitMax") or 1
     if vAttr and benefitMax then
-        local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0
-        rate = rate * (((benefitMax - 1) * (vScaled ^ 2.24)) + 1)
+        local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0.0
+        local vMultiplier = ((benefitMax - 1) * (vScaled ^ 2.24)) + 1
+        rate = rate * vMultiplier
     end
+    
     -- Base mutation multiplier (ProduceRate)
     if mutation then
         local m = getMutationData(mutation)
         if m and tonumber(m.ProduceRate) then
-            rate = rate * tonumber(m.ProduceRate)
+            local mutMultiplier = tonumber(m.ProduceRate)
+            rate = rate * mutMultiplier
         end
     end
-    return math.floor(rate)
+    
+    -- Round to nearest integer to avoid precision issues
+    return math.floor(rate + 0.5)
 end
 
 local function updateAvailablePets()
@@ -434,15 +445,27 @@ local function updateAvailablePets()
             end
         end
     end
+    
+    -- Sort pets for sequential placement
     table.sort(out, function(a, b)
         if petAscendingOrder then
+            -- Sort by speed first, then by UID for consistent ordering
+            if a.effectiveRate == b.effectiveRate then
+                return a.uid < b.uid -- Stable sort by UID
+            end
             return a.effectiveRate < b.effectiveRate
         else
+            if a.effectiveRate == b.effectiveRate then
+                return a.uid < b.uid -- Stable sort by UID
+            end
             return a.effectiveRate > b.effectiveRate
         end
     end)
+    
     petCache.lastUpdate = currentTime
     petCache.candidates = out
+    -- Reset index when pet list changes
+    petCache.currentIndex = 1
     return out
 end
 
@@ -766,35 +789,85 @@ local function getNextBestEgg()
     return nil, nil, "no_space"
 end
 
--- Select best pet candidate and appropriate tile
+-- Select next pet candidate in sequential order and appropriate tile
 local function getNextBestPet()
     local candidates = updateAvailablePets()
     local regularAvailable, waterAvailable = updateTileCache()
+    
     if #candidates == 0 then
         return nil, nil, "no_pets"
     end
-    -- Try water first if any ocean candidate exists and water is available
-    if waterAvailable > 0 then
-        for _, cand in ipairs(candidates) do
-            if cand.isOcean then
-                return cand, getRandomFromList(tileCache.waterTiles), "water"
-            end
-        end
-    end
-    -- Otherwise pick best non-ocean if regular available
-    if regularAvailable > 0 then
-        for _, cand in ipairs(candidates) do
-            if not cand.isOcean then
-                -- Double-check not already placed before returning
-                if not isPetAlreadyPlacedByUid(cand.uid) then
-                    return cand, getRandomFromList(tileCache.regularTiles), "regular"
+    
+    -- Sequential placement: start from current index and find next valid pet
+    local startIndex = petCache.currentIndex
+    local found = false
+    local selectedCandidate = nil
+    local searchAttempts = 0
+    
+    -- Search through candidates starting from current index
+    while searchAttempts < #candidates do
+        local currentCandidate = candidates[petCache.currentIndex]
+        
+        if currentCandidate then
+            -- Double-check pet is still not placed
+            if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
+                -- Check if we have appropriate tiles for this pet
+                if currentCandidate.isOcean and waterAvailable > 0 then
+                    selectedCandidate = currentCandidate
+                    found = true
+                    break
+                elseif not currentCandidate.isOcean and regularAvailable > 0 then
+                    selectedCandidate = currentCandidate
+                    found = true
+                    break
                 end
             end
         end
-        -- If only ocean pets exist but no water, skip
-        return nil, nil, "skip_ocean"
+        
+        -- Move to next pet in sequence
+        petCache.currentIndex = petCache.currentIndex + 1
+        if petCache.currentIndex > #candidates then
+            petCache.currentIndex = 1 -- Wrap around
+        end
+        
+        searchAttempts = searchAttempts + 1
+        
+        -- Prevent infinite loop
+        if petCache.currentIndex == startIndex and searchAttempts > 1 then
+            break
+        end
     end
-    return nil, nil, "no_space"
+    
+    if not found then
+        -- No valid pets found, check why
+        local hasOcean = false
+        local hasRegular = false
+        for _, cand in ipairs(candidates) do
+            if not isPetAlreadyPlacedByUid(cand.uid) then
+                if cand.isOcean then hasOcean = true end
+                if not cand.isOcean then hasRegular = true end
+            end
+        end
+        
+        if hasOcean and not hasRegular and waterAvailable == 0 then
+            return nil, nil, "skip_ocean"
+        else
+            return nil, nil, "no_space"
+        end
+    end
+    
+    -- Advance index for next placement
+    petCache.currentIndex = petCache.currentIndex + 1
+    if petCache.currentIndex > #candidates then
+        petCache.currentIndex = 1 -- Wrap around
+    end
+    
+    -- Return selected pet and appropriate tile
+    if selectedCandidate.isOcean then
+        return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
+    else
+        return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
+    end
 end
 
 local function attemptPlacement()
@@ -843,13 +916,13 @@ local function attemptPlacement()
         if success then
             tileCache.lastUpdate = 0
             petCache.lastUpdate = 0
-            placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type
+            placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
             if petInfo.mutation then
                 placementStats.mutationPlacements = placementStats.mutationPlacements + 1
             end
             WindUI:Notify({
                 Title = "🏠 Auto Place",
-                Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. "!",
+                Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")!",
                 Duration = 2
             })
             return true, "Successfully placed pet"
