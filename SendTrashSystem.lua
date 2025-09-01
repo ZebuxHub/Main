@@ -24,7 +24,7 @@ local HardcodedEggTypes = {
 }
 
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electirc", "Fire", "Dino"
+    "Golden", "Diamond", "Electric", "Fire", "Dino"
 }
 
 -- Services
@@ -538,6 +538,38 @@ local function sendCurrentInventoryWebhook()
     
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
+
+    -- Filter to only items with D attribute empty or missing (unplaced)
+    local function hasEmptyOrNoD(uid, isEgg)
+        local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
+        if not dataRoot then return false end
+        local folder = dataRoot:FindFirstChild(isEgg and "Egg" or "Pets")
+        if not folder then return false end
+        local conf = folder:FindFirstChild(uid)
+        if not conf or not conf:IsA("Configuration") then return false end
+        local dAttr = safeGetAttribute(conf, "D", nil)
+        if dAttr == nil then return true end
+        if type(dAttr) == "string" then
+            local s = dAttr
+            return s == "" or s == "nil"
+        end
+        return false
+    end
+
+    local filteredPets, filteredEggs = {}, {}
+    for _, pet in ipairs(petInventory or {}) do
+        if pet and pet.uid and hasEmptyOrNoD(pet.uid, false) then
+            table.insert(filteredPets, pet)
+        end
+    end
+    for _, egg in ipairs(eggInventory or {}) do
+        if egg and egg.uid and hasEmptyOrNoD(egg.uid, true) then
+            table.insert(filteredEggs, egg)
+        end
+    end
+
+    petInventory = filteredPets
+    eggInventory = filteredEggs
     
     local petCount = petInventory and #petInventory or 0
     local eggCount = eggInventory and #eggInventory or 0
