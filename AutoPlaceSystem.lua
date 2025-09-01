@@ -17,6 +17,19 @@ local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
 
+-- ============ Remote Cache ============
+-- Cache remotes once with timeouts to avoid infinite waits
+local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
+local CharacterRE = Remotes and Remotes:FindFirstChild("CharacterRE")
+
+-- ============ Stats (moved early for visibility) ============
+local placementStats = {
+    totalPlacements = 0,
+    mutationPlacements = 0,
+    lastPlacement = nil,
+    lastReason = nil
+}
+
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
 local tileCache = {
@@ -101,7 +114,7 @@ end
 
 -- Enhanced egg collection with smart filtering
 local function updateAvailableEggs()
-    local currentTime = tick()
+    local currentTime = time()
     if currentTime - eggCache.lastUpdate < CACHE_DURATION then
         return eggCache.availableEggs, eggCache.oceanEggs, eggCache.regularEggs
     end
@@ -337,7 +350,7 @@ end
 
 -- Enhanced tile cache system
 local function updateTileCache()
-    local currentTime = tick()
+    local currentTime = time()
     if currentTime - tileCache.lastUpdate < CACHE_DURATION then
         return tileCache.regularAvailable, tileCache.waterAvailable
     end
@@ -386,21 +399,32 @@ local function updateTileCache()
 end
 
 -- ============ Focus-First Placement System ============
+local function waitJitter(baseSeconds)
+    local jitter = math.random() * 0.2
+    task.wait(baseSeconds + jitter)
+end
+
+local function getRandomFromList(list)
+    local count = #list
+    if count == 0 then return nil end
+    return list[math.random(1, count)]
+end
 local function focusEgg(eggUID)
-    local args = { "Focus", eggUID }
-    local success, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    
-    if not success then
-        warn("Failed to focus egg " .. eggUID .. ": " .. tostring(err))
+    if not CharacterRE then
+        warn("CharacterRE remote missing; cannot focus egg " .. tostring(eggUID))
+        return false
     end
-    
+    local success, err = pcall(function()
+        CharacterRE:FireServer("Focus", eggUID)
+    end)
+    if not success then
+        warn("Failed to focus egg " .. tostring(eggUID) .. ": " .. tostring(err))
+    end
     return success
 end
 
-local function placePet(farmPart, petUID)
-    if not farmPart or not petUID then return false end
+local function placePet(farmPart, eggUID)
+    if not farmPart or not eggUID then return false end
     
     -- Enhanced surface position calculation for 8x8 tiles
     -- Ensure perfect centering on both water and regular farm tiles
@@ -411,16 +435,15 @@ local function placePet(farmPart, petUID)
         math.floor(tileCenter.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
     )
     
-    -- Equip egg to Deploy S2
+    -- Equip egg to Deploy S2 using the exact UID we've collected
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
     if deploy then
-        local eggUID = "Egg_" .. petUID
         deploy:SetAttribute("S2", eggUID)
     end
     
     -- Hold egg (key 2)
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-    task.wait(0.1)
+    waitJitter(0.1)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
     task.wait(0.1)
     
@@ -432,7 +455,7 @@ local function placePet(farmPart, petUID)
             -- Teleport to the exact center of the 8x8 tile
             local teleportPos = Vector3.new(surfacePosition.X, farmPart.Position.Y, surfacePosition.Z)
             hrp.CFrame = CFrame.new(teleportPos)
-            task.wait(0.1)
+            waitJitter(0.1)
         end
     end
     
@@ -442,25 +465,34 @@ local function placePet(farmPart, petUID)
         "Place",
         {
             DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
-            ID = petUID
+            ID = eggUID
         }
     }
-    
+
+    if not CharacterRE then
+        warn("CharacterRE remote missing; cannot place egg " .. tostring(eggUID))
+        return false
+    end
+
     local success, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        CharacterRE:FireServer(unpack(args))
     end)
     
     if not success then
-        warn("Failed to place pet " .. petUID .. ": " .. tostring(err))
+        warn("Failed to place egg " .. tostring(eggUID) .. ": " .. tostring(err))
         return false
     end
     
     -- Verify placement
-    task.wait(0.3)
+    waitJitter(0.25)
+    -- Prefer re-checking occupancy at the intended tile center
+    if isTileOccupied(farmPart) then
+        return true
+    end
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
     if playerBuiltBlocks then
         for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") and model.Name == petUID then
+            if model:IsA("Model") and model.Name == eggUID then
                 return true
             end
         end
@@ -477,10 +509,10 @@ local function getNextBestEgg()
     -- Smart prioritization: choose egg type based on available space
     if waterAvailable > 0 and #oceanEggs > 0 then
         -- Water farms available, prioritize ocean eggs
-        return oceanEggs[1], tileCache.waterTiles[1], "water"
+        return oceanEggs[1], getRandomFromList(tileCache.waterTiles), "water"
     elseif regularAvailable > 0 and #regularEggs > 0 then
         -- Regular farms available, use regular eggs
-        return regularEggs[1], tileCache.regularTiles[1], "regular"
+        return regularEggs[1], getRandomFromList(tileCache.regularTiles), "regular"
     elseif regularAvailable > 0 and #oceanEggs > 0 then
         -- Only regular farms available but we have ocean eggs - skip them
         return nil, nil, "skip_ocean"
@@ -495,17 +527,21 @@ local function attemptPlacement()
     if not eggInfo or not tileInfo then
         if reason == "skip_ocean" then
             -- Ocean eggs skipped - this is normal behavior
-            return false, "Ocean eggs skipped (no water farms)"
+            placementStats.lastReason = "Ocean eggs skipped (no water farms)"
+            return false, placementStats.lastReason
         elseif reason == "no_space" then
-            return false, "No available tiles for any eggs"
+            placementStats.lastReason = "No available tiles for any eggs"
+            return false, placementStats.lastReason
         else
-            return false, "No suitable eggs found"
+            placementStats.lastReason = "No suitable eggs found"
+            return false, placementStats.lastReason
         end
     end
     
     -- Focus egg first (game requirement)
     if not focusEgg(eggInfo.uid) then
-        return false, "Failed to focus egg " .. eggInfo.uid
+        placementStats.lastReason = "Failed to focus egg " .. eggInfo.uid
+        return false, placementStats.lastReason
     end
     
     task.wait(0.2) -- Wait for focus to register
@@ -517,6 +553,10 @@ local function attemptPlacement()
         -- Invalidate cache after successful placement
         tileCache.lastUpdate = 0
         eggCache.lastUpdate = 0
+        placementStats.lastReason = "Placed " .. (eggInfo.mutation and (eggInfo.mutation .. " ") or "") .. eggInfo.type
+        if eggInfo.mutation then
+            placementStats.mutationPlacements = placementStats.mutationPlacements + 1
+        end
         
         if eggInfo.mutation then
             WindUI:Notify({ 
@@ -534,18 +574,14 @@ local function attemptPlacement()
         
         return true, "Successfully placed " .. eggInfo.type
     else
-        return false, "Failed to place " .. eggInfo.type
+        placementStats.lastReason = "Failed to place " .. eggInfo.type
+        return false, placementStats.lastReason
     end
 end
 
 -- ============ Auto Place Main Logic ============
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
-local placementStats = {
-    totalPlacements = 0,
-    mutationPlacements = 0,
-    lastPlacement = nil
-}
 
 local function runAutoPlace()
     local consecutiveFailures = 0
@@ -560,24 +596,24 @@ local function runAutoPlace()
             consecutiveFailures = 0
             
             -- Shorter wait after successful placement
-            task.wait(1.5)
+            waitJitter(1.5)
         else
             consecutiveFailures = consecutiveFailures + 1
             
             -- Adaptive waiting based on failure reason
             if message:find("skip") or message:find("no water") then
                 -- Ocean eggs skipped - wait longer
-                task.wait(5)
+                waitJitter(5)
             elseif message:find("No available tiles") then
                 -- No space - wait longer
-                task.wait(8)
+                waitJitter(8)
             elseif consecutiveFailures >= maxFailures then
                 -- Too many failures - longer wait
-                task.wait(10)
+                waitJitter(10)
                 consecutiveFailures = 0
             else
                 -- Normal failure - short wait
-                task.wait(2)
+                waitJitter(2)
             end
         end
     end
@@ -590,6 +626,7 @@ function AutoPlaceSystem.Init(dependencies)
     Config = dependencies.Config
     
     -- Set up UI elements
+    math.randomseed(os.time())
     AutoPlaceSystem.CreateUI()
     
     return AutoPlaceSystem
@@ -647,10 +684,14 @@ function AutoPlaceSystem.CreateUI()
             local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
             lastPlacementText = " | 🕒 Last: " .. timeText
         end
-        
-        local statsText = string.format("✅ Placed: %d | 🦄 Mutations: %d%s", 
+        local rAvail, wAvail = updateTileCache()
+        local reasonText = placementStats.lastReason and (" | ℹ️ " .. placementStats.lastReason) or ""
+        local statsText = string.format("✅ Placed: %d | 🦄 Mutations: %d | 🧱 Tiles R/W: %d/%d%s%s", 
             placementStats.totalPlacements, 
             placementStats.mutationPlacements,
+            rAvail or 0,
+            wAvail or 0,
+            reasonText,
             lastPlacementText)
         
         if statsLabel.SetDesc then
