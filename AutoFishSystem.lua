@@ -1104,7 +1104,7 @@ local function waitForFishPull()
             lastAnimFish = animFish
         end
         
-        if tostring(animFish) == "Pull" then
+        if tostring(animFish) == "PULL" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
                 Content = "✅ Fish ready to pull! State = " .. tostring(animFish), 
