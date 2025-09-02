@@ -32,7 +32,7 @@ local FishingConfig = {
     AutoFishEnabled = false,
     DelayBetweenCasts = 0.5,
     FishingRange = 5, -- Fish within 5 studs of player
-    VerticalOffset = 50, -- Cast position Y offset above player
+    VerticalOffset = 10, -- Cast position Y offset above player
     PlayerAnchored = false, -- Track if player is anchored
     SafePosition = nil, -- Store safe position to prevent falling
     Original = {
@@ -433,11 +433,13 @@ local function anchorPlayer()
             if not hrp then return end
             local target = FishingConfig.SafePosition
             if not target then return end
-            local posDelta = (hrp.Position - target.Position).Magnitude
-            if posDelta > 0.15 then
-                hrp.CFrame = target
-                hrp.AssemblyLinearVelocity = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            -- Hard lock: snap every frame and zero velocities, also cancel movement commands
+            hrp.CFrame = target
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            if hum and hum.Move then
+                hum:Move(Vector3.new(0, 0, 0), true)
             end
         end)
         
@@ -1034,11 +1036,7 @@ local function pullFish()
     -- Auto-collect fish
     local collectSuccess = collectNearbyFish()
     
-    -- Unanchor player after fishing attempt
-    if unanchorPlayer then
-        pcall(unanchorPlayer)
-    -- else unanchorPlayer is nil
-    end
+    -- Keep player anchored; do not unanchor between casts
     
     FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
     FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
