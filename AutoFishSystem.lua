@@ -1073,7 +1073,7 @@ local function waitForFishPull()
             lastState = playerState
         end
         
-        if tostring(playerState) == "Pull" then
+        if tostring(playerState) == "PULL" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
                 Content = "✅ Fish ready to pull! State = " .. tostring(playerState), 
