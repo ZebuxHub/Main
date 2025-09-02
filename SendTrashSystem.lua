@@ -57,6 +57,9 @@ local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 
+-- Random target state (for "Random Player" mode)
+local randomTargetState = { current = nil, fails = 0 }
+
 -- Inventory Cache System (like auto place)
 local inventoryCache = {
     pets = {},
@@ -518,6 +521,21 @@ local function resolveTargetPlayerByName(name)
         end
     end
     return nil
+end
+
+local function isPlayerValid(p)
+	return p and p.Parent == Players
+end
+
+local function pickRandomTarget(excludeUserId)
+	local list = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and (not excludeUserId or p.UserId ~= excludeUserId) then
+			table.insert(list, p)
+		end
+	end
+	if #list == 0 then return nil end
+	return list[math.random(1, #list)]
 end
 
 -- Get random player
@@ -1245,25 +1263,22 @@ local function processTrash()
 		local sendMode = "Both" -- Default
 		if sendModeDropdown then
 			local success, result = nil, nil
-			-- Try different methods to get the value
 			if sendModeDropdown.GetValue then
 				success, result = pcall(function() return sendModeDropdown:GetValue() end)
 			elseif sendModeDropdown.Value then
 				success, result = pcall(function() return sendModeDropdown.Value end)
 			end
-			if success and result then sendMode = result else sendMode = "Both" end
+			sendMode = (success and result) and result or "Both"
 		else
 			sendMode = "Both"
 		end
 
 		local petInventory = {}
 		local eggInventory = {}
-		-- Get inventories based on send mode
 		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
 		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
 
 		if #petInventory == 0 and #eggInventory == 0 then
-			-- If limit reached, finalize session; else notify once
 			if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
@@ -1274,24 +1289,29 @@ local function processTrash()
 			continue
 		end
 
-		-- Build target list
+		-- Determine targets
 		local targets = {}
 		local randomMode = (selectedTargetName == "Random Player")
 		if randomMode then
-			targets = getRandomTargets(5) -- try up to 5 random players per cycle
+			-- Keep a sticky random target until 3 failed cycles
+			if not isPlayerValid(randomTargetState.current) then
+				randomTargetState.current = pickRandomTarget()
+				randomTargetState.fails = 0
+			end
+			if randomTargetState.current then
+				targets = { randomTargetState.current }
+			end
 		else
 			local tp = resolveTargetPlayerByName(selectedTargetName)
 			if tp then table.insert(targets, tp) end
 		end
 
 		local sentAnyItem = false
-		-- Try each target sequentially until one succeeds
 		for _, targetPlayerObj in ipairs(targets) do
 			local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
 			lastReceiverName = targetPlayer
 			lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
 
-			-- Try to send pets first (respect T/M)
 			if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
@@ -1302,7 +1322,6 @@ local function processTrash()
 				end
 			end
 
-			-- Try eggs if nothing sent
 			if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
 				for _, egg in ipairs(eggInventory) do
 					egg = refreshItemFromData(egg.uid, true, egg)
@@ -1314,18 +1333,30 @@ local function processTrash()
 					end
 				end
 			end
-
-			if sentAnyItem then break end -- stop trying more targets this cycle
+			if sentAnyItem then break end
 		end
 
-		-- Selling removed
+		-- Random target failure accounting (switch after 3 failed cycles)
+		if randomMode then
+			if sentAnyItem then
+				randomTargetState.fails = 0
+			else
+				randomTargetState.fails = (randomTargetState.fails or 0) + 1
+				if randomTargetState.fails >= 3 then
+					local prev = randomTargetState.current and randomTargetState.current.UserId or nil
+					randomTargetState.current = pickRandomTarget(prev)
+					randomTargetState.fails = 0
+					if WindUI and randomTargetState.current then
+						WindUI:Notify({ Title = "🎯 Target Switched", Content = "New target: " .. randomTargetState.current.Name, Duration = 2 })
+					end
+				end
+			end
+		end
 
-		-- Auto-delete slow pets if enabled (only for pets, not eggs)
 		if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
 			autoDeleteSlowPets(autoDeleteMinSpeed)
 		end
 
-		-- Stop if session limit reached
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
 				task.spawn(sendWebhookSummary)
@@ -1334,7 +1365,6 @@ local function processTrash()
 			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 		end
 
-		-- Update status
 		updateStatus()
 		task.wait(0.3)
 	end
@@ -1429,6 +1459,9 @@ function SendTrashSystem.Init(dependencies)
         Value = "Random Player",
         Callback = function(selection)
             selectedTargetName = selection or "Random Player"
+            -- Reset random target state when user changes selection
+            randomTargetState.current = nil
+            randomTargetState.fails = 0
         end
     })
     
