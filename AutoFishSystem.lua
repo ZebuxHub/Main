@@ -31,6 +31,7 @@ local FishingConfig = {
     AutoFishEnabled = false,
     DelayBetweenCasts = 2,
     FishingRange = 5, -- Fish within 5 studs of player
+    VerticalOffset = 10, -- Cast position Y offset above player
     PlayerAnchored = false, -- Track if player is anchored
     SafePosition = nil, -- Store safe position to prevent falling
     Original = {
@@ -474,7 +475,7 @@ local function getRandomFishingPosition()
     -- Generate random position within 5 studs of player
     local randomX = playerPosition.X + (math.random(-50, 50) / 10) -- -5 to 5 studs
     local randomZ = playerPosition.Z + (math.random(-50, 50) / 10) -- -5 to 5 studs
-    local randomY = playerPosition.Y -- Keep same Y level
+    local randomY = playerPosition.Y + (FishingConfig.VerticalOffset or 10) -- Raise above player
     
     return Vector3.new(randomX, randomY, randomZ)
 end
@@ -825,7 +826,7 @@ local function startFishing()
     -- Anchor player to prevent jumping and spinning
     anchorPlayer()
     
-    -- First fire Focus + FishRob (don’t move player)
+    -- First fire Focus + FishRob (don't move player)
     local args = {
         "Focus",
         "FishRob"
@@ -836,7 +837,11 @@ local function startFishing()
     end)
     
     if not success then
-        -- Failed to focus fishing
+        WindUI:Notify({ 
+            Title = "🎣 Auto Fish Debug", 
+            Content = "❌ Failed to focus fishing: " .. tostring(err), 
+            Duration = 3 
+        })
         unanchorPlayer() -- Unanchor if failed
         return false
     end
@@ -844,17 +849,23 @@ local function startFishing()
     -- Wait time for better accuracy (short)
     task.wait(0.3)
     
-    -- Using fishing position
+    -- Select affordable bait
+    local selectedBait = (function()
+        local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
+        if type(chosen) == "table" then chosen = chosen[1] end
+        return chosen or FishingConfig.SelectedBait
+    end)()
+    
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish Debug", 
+        Content = "🎯 Using bait: " .. tostring(selectedBait) .. " at position: " .. tostring(FishingConfig.FishingPosition), 
+        Duration = 2 
+    })
     
     local throwArgs = {
         "Throw",
         {
-            -- Ensure affordable bait at cast time as well
-            Bait = (function()
-                local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
-                if type(chosen) == "table" then chosen = chosen[1] end
-                return chosen or FishingConfig.SelectedBait
-            end)(),
+            Bait = selectedBait,
             Pos = FishingConfig.FishingPosition,
             NoMove = true -- hint for server, if supported
         }
@@ -865,10 +876,20 @@ local function startFishing()
     end)
     
     if not throwSuccess then
-        -- Failed to throw fishing line
+        WindUI:Notify({ 
+            Title = "🎣 Auto Fish Debug", 
+            Content = "❌ Failed to throw fishing line: " .. tostring(throwErr), 
+            Duration = 3 
+        })
         unanchorPlayer() -- Unanchor if failed
         return false
     end
+    
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish Debug", 
+        Content = "✅ Cast successful! Waiting for fish...", 
+        Duration = 2 
+    })
     
     FishingConfig.Stats.TotalCasts = FishingConfig.Stats.TotalCasts + 1
     return true
@@ -1045,26 +1066,54 @@ local function waitForFishPull()
     end
     
     if not fishingObj then
-        -- Could not find fishing object for player
+        WindUI:Notify({ 
+            Title = "🎣 Auto Fish Debug", 
+            Content = "❌ Could not find fishing object for player: " .. LocalPlayer.Name, 
+            Duration = 3 
+        })
         return false
     end
     
-    -- Using fishing object
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish Debug", 
+        Content = "🎯 Using fishing object: " .. fishingObj.Name, 
+        Duration = 2 
+    })
     
     local timeout = 30 -- Increased timeout for better accuracy
     local startTime = tick()
+    local lastAnimFish = nil
     
     -- Wait for AnimFish attribute to be "Pull" with slower checking for accuracy
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
         local animFish = fishingObj:GetAttribute("AnimFish")
+        
+        -- Debug: show AnimFish changes
+        if animFish ~= lastAnimFish then
+            WindUI:Notify({ 
+                Title = "🎣 AnimFish Status", 
+                Content = "AnimFish changed: " .. tostring(lastAnimFish) .. " → " .. tostring(animFish), 
+                Duration = 2 
+            })
+            lastAnimFish = animFish
+        end
+        
         if animFish == "Pull" then
-            -- Fish ready to pull
+            WindUI:Notify({ 
+                Title = "🎣 Auto Fish Debug", 
+                Content = "✅ Fish ready to pull! AnimFish = " .. tostring(animFish), 
+                Duration = 2 
+            })
             return true
         end
         task.wait(0.2) -- Slower checking interval for better accuracy
     end
     
-    -- Fishing timeout reached
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish Debug", 
+        Content = "⏰ Fishing timeout reached. Last AnimFish: " .. tostring(lastAnimFish), 
+        Duration = 3 
+    })
     return false
 end
 
