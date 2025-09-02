@@ -885,12 +885,15 @@ local function sendCurrentInventoryWebhook()
     local petsByType, eggsByType = {}, {}
     local petMutations, eggMutations = {}, {}
     local eggMutsByType = {}
+    local petMutsByType = {}
     for _, pet in ipairs(petInventory) do
         local t = pet.type or "Unknown"
         petsByType[t] = (petsByType[t] or 0) + 1
         local m = pet.mutation
         if m and m ~= "" and m ~= "None" then
             petMutations[m] = (petMutations[m] or 0) + 1
+            petMutsByType[t] = petMutsByType[t] or {}
+            petMutsByType[t][m] = (petMutsByType[t][m] or 0) + 1
         end
     end
     for _, egg in ipairs(eggInventory) do
@@ -942,9 +945,45 @@ local function sendCurrentInventoryWebhook()
     end
 
     local topEggsText, topEggName = eggHierarchy(12, 5)
-    local topPetsText = takeTopLines(petsByType, "🐾", 12)
-    local petMutsText = takeTopLines(petMutations, "🧬", 10)
-    local eggMutsText = takeTopLines(eggMutations, "🧬", 10)
+
+    -- Hierarchical pets display with per-type mutations
+    local function petHierarchy(maxTypes, maxMutsPerType)
+        local typesArr = {}
+        for name, count in pairs(petsByType) do
+            table.insert(typesArr, { name = name, count = count })
+        end
+        table.sort(typesArr, function(a, b)
+            if a.count ~= b.count then return a.count > b.count end
+            return (a.name or "") < (b.name or "")
+        end)
+
+        local lines = {}
+        local limit = math.min(maxTypes or 10, #typesArr)
+        for i = 1, limit do
+            local t = typesArr[i]
+            table.insert(lines, string.format("🐾 %s × %d", t.name, t.count))
+            local muts = petMutsByType[t.name] or {}
+            local mutsArr = {}
+            for m, c in pairs(muts) do table.insert(mutsArr, { m = m, c = c }) end
+            table.sort(mutsArr, function(a, b)
+                if a.c ~= b.c then return a.c > b.c end
+                return (a.m or "") < (b.m or "")
+            end)
+            local mLimit = math.min(maxMutsPerType or 5, #mutsArr)
+            for j = 1, mLimit do
+                table.insert(lines, string.format("L :dna: %s × %d", mutsArr[j].m, mutsArr[j].c))
+            end
+            if #mutsArr > mLimit then
+                table.insert(lines, string.format("L … and %d more", #mutsArr - mLimit))
+            end
+        end
+        if #typesArr > limit then
+            table.insert(lines, string.format("… and %d more pet types", #typesArr - limit))
+        end
+        return table.concat(lines, "\n")
+    end
+
+    local topPetsText = petHierarchy(12, 5)
 
     local playerName = Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"
     local playerId = Players.LocalPlayer and Players.LocalPlayer.UserId or nil
@@ -967,9 +1006,7 @@ local function sendCurrentInventoryWebhook()
         { name = "Overview", value = overviewValue, inline = false },
     }
     if topPetsText ~= "" then table.insert(fields, { name = "Top Pets", value = topPetsText, inline = true }) end
-    if topEggsText ~= "" then table.insert(fields, { name = "Eggs", value = topEggsText, inline = false }) end
-    if petMutsText ~= "" then table.insert(fields, { name = "Pet Mutations", value = petMutsText, inline = true }) end
-    if eggMutsText ~= "" then table.insert(fields, { name = "Egg Mutations", value = eggMutsText, inline = true }) end
+    if topEggsText ~= "" then table.insert(fields, { name = "Top Eggs", value = topEggsText, inline = true }) end
     if unknownNote and unknownNote > 0 then
         table.insert(fields, { name = "Note", value = "Some items are still loading (" .. tostring(unknownNote) .. ")", inline = false })
     end
