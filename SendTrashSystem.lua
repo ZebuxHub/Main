@@ -884,6 +884,7 @@ local function sendCurrentInventoryWebhook()
     -- Build summaries (type + mutation distributions)
     local petsByType, eggsByType = {}, {}
     local petMutations, eggMutations = {}, {}
+    local eggMutsByType = {}
     for _, pet in ipairs(petInventory) do
         local t = pet.type or "Unknown"
         petsByType[t] = (petsByType[t] or 0) + 1
@@ -898,29 +899,49 @@ local function sendCurrentInventoryWebhook()
         local m = egg.mutation
         if m and m ~= "" and m ~= "None" then
             eggMutations[m] = (eggMutations[m] or 0) + 1
+            eggMutsByType[t] = eggMutsByType[t] or {}
+            eggMutsByType[t][m] = (eggMutsByType[t][m] or 0) + 1
         end
     end
 
-    local function topEggLines(maxLines)
-        local arr = {}
+    -- Hierarchical eggs display with per-type mutations
+    local function eggHierarchy(maxTypes, maxMutsPerType)
+        local typesArr = {}
         for name, count in pairs(eggsByType) do
-            local emoji = EggEmojiMap[name] or "🥚"
-            table.insert(arr, { name = name, count = count, emoji = emoji })
+            table.insert(typesArr, { name = name, count = count })
         end
-        table.sort(arr, function(a, b)
+        table.sort(typesArr, function(a, b)
             if a.count ~= b.count then return a.count > b.count end
             return (a.name or "") < (b.name or "")
         end)
+
         local lines = {}
-        local limit = math.min(maxLines or 10, #arr)
+        local limit = math.min(maxTypes or 10, #typesArr)
         for i = 1, limit do
-            table.insert(lines, string.format("%s %s × %d", arr[i].emoji, arr[i].name, arr[i].count))
+            local t = typesArr[i]
+            table.insert(lines, string.format(":trophy: %s × %d", t.name, t.count))
+            local muts = eggMutsByType[t.name] or {}
+            local mutsArr = {}
+            for m, c in pairs(muts) do table.insert(mutsArr, { m = m, c = c }) end
+            table.sort(mutsArr, function(a, b)
+                if a.c ~= b.c then return a.c > b.c end
+                return (a.m or "") < (b.m or "")
+            end)
+            local mLimit = math.min(maxMutsPerType or 5, #mutsArr)
+            for j = 1, mLimit do
+                table.insert(lines, string.format("L :dna: %s × %d", mutsArr[j].m, mutsArr[j].c))
+            end
+            if #mutsArr > mLimit then
+                table.insert(lines, string.format("L … and %d more", #mutsArr - mLimit))
+            end
         end
-        if #arr > limit then table.insert(lines, string.format("… and %d more", #arr - limit)) end
-        return table.concat(lines, "\n"), (arr[1] and arr[1].name or nil)
+        if #typesArr > limit then
+            table.insert(lines, string.format("… and %d more egg types", #typesArr - limit))
+        end
+        return table.concat(lines, "\n"), (typesArr[1] and typesArr[1].name or nil)
     end
 
-    local topEggsText, topEggName = topEggLines(12)
+    local topEggsText, topEggName = eggHierarchy(12, 5)
     local topPetsText = takeTopLines(petsByType, "🐾", 12)
     local petMutsText = takeTopLines(petMutations, "🧬", 10)
     local eggMutsText = takeTopLines(eggMutations, "🧬", 10)
@@ -946,7 +967,7 @@ local function sendCurrentInventoryWebhook()
         { name = "Overview", value = overviewValue, inline = false },
     }
     if topPetsText ~= "" then table.insert(fields, { name = "Top Pets", value = topPetsText, inline = true }) end
-    if topEggsText ~= "" then table.insert(fields, { name = "Top Eggs", value = topEggsText, inline = true }) end
+    if topEggsText ~= "" then table.insert(fields, { name = "Eggs", value = topEggsText, inline = false }) end
     if petMutsText ~= "" then table.insert(fields, { name = "Pet Mutations", value = petMutsText, inline = true }) end
     if eggMutsText ~= "" then table.insert(fields, { name = "Egg Mutations", value = eggMutsText, inline = true }) end
     if unknownNote and unknownNote > 0 then
