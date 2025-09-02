@@ -60,8 +60,13 @@ local lastReceiverName, lastReceiverId -- for webhook author/avatar
 -- Random target state (for "Random Player" mode)
 local randomTargetState = { current = nil, fails = 0 }
 
--- Target cooldowns (userId -> unix time when cooldown expires)
-local targetCooldowns = {}
+-- Target blacklist (userId -> true)
+local targetBlacklist = {}
+local blacklistedNames = {} -- userId -> name for status display
+
+-- Sticky target (preferred receiver after a successful send)
+local stickyTarget = nil
+local stickyFails = 0
 
 -- Inventory Cache System (like auto place)
 local inventoryCache = {
@@ -308,7 +313,7 @@ local function sendWebhookSummary()
     
     table.insert(lines, "📊 **Session Summary:**")
     table.insert(lines, string.format("• Total items sent: **%d**", totalSent))
-    table.insert(lines, string.format("• Players: **%d**", totalReceivers))
+    table.insert(lines, string.format("• Players helped: **%d**", totalReceivers))
     table.insert(lines, "")
     
     -- Detailed breakdown by receiver
@@ -560,11 +565,8 @@ local function getRandomTargets(maxCount)
 	local pool = {}
 	local now = time()
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-			local cd = targetCooldowns[player.UserId]
-			if not cd or cd <= now then
-				table.insert(pool, player)
-			end
+		if player ~= LocalPlayer and not targetBlacklist[player.UserId] then
+			table.insert(pool, player)
 		end
 	end
 	-- Fisher-Yates shuffle
@@ -1235,7 +1237,15 @@ local function updateStatus()
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
         actionCounter
     )
-    
+
+    -- Append blacklist info
+    local blNames = {}
+    for uid, name in pairs(blacklistedNames) do table.insert(blNames, name) end
+    table.sort(blNames)
+    if #blNames > 0 then
+        statusText = statusText .. string.format("\n⛔ Blacklisted targets (%d): %s", #blNames, table.concat(blNames, ", "))
+    end
+
     statusParagraph:SetDesc(statusText)
 end
 
@@ -1272,78 +1282,89 @@ local function processTrash()
 			continue
 		end
 
-		-- Determine targets
+		-- Determine targets with sticky preference
 		local targets = {}
 		local randomMode = (selectedTargetName == "Random Player")
-		if randomMode then
-			-- Try multiple random candidates this cycle
-			targets = getRandomTargets(8)
+		if stickyTarget and stickyTarget.Parent == Players and not targetBlacklist[stickyTarget.UserId] then
+			targets = { stickyTarget }
 		else
-			local tp = resolveTargetPlayerByName(selectedTargetName)
-			-- Skip selected target if on cooldown; fallback to random
-			local now = time()
-			if tp and (not targetCooldowns[tp.UserId] or targetCooldowns[tp.UserId] <= now) then
-				table.insert(targets, tp)
+			stickyTarget = nil
+			stickyFails = 0
+			if randomMode then
+				targets = getRandomTargets(8)
 			else
-				targets = getRandomTargets(5)
+				local tp = resolveTargetPlayerByName(selectedTargetName)
+				if tp and not targetBlacklist[tp.UserId] then
+					targets = { tp }
+				else
+					targets = getRandomTargets(5)
+				end
 			end
 		end
 
 		local sentAnyItem = false
-		for _, targetPlayerObj in ipairs(targets) do
-			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
-				continue
-			end
-			lastReceiverName = targetPlayerObj.Name
-			lastReceiverId = targetPlayerObj.UserId
-
-			local attemptedForThisTarget = false
-
-			if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
+		local function trySendToTarget(targetPlayerObj)
+			local anyAttempt = false
+			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
+			-- attempt pets
+			if sendMode == "Pets" or sendMode == "Both" then
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
 					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
-						attemptedForThisTarget = true
-						local ok = sendItemToPlayer(pet, targetPlayerObj, "pet")
-						if ok then sentAnyItem = true break end
+						anyAttempt = true
+						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
 					end
 				end
 			end
-
-			if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
+			-- attempt eggs
+			if sendMode == "Eggs" or sendMode == "Both" then
 				for _, egg in ipairs(eggInventory) do
 					egg = refreshItemFromData(egg.uid, true, egg)
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
 					if shouldSendItem(egg, tList, mList) then
-						attemptedForThisTarget = true
-						local ok = sendItemToPlayer(egg, targetPlayerObj, "egg")
-						if ok then sentAnyItem = true break end
+						anyAttempt = true
+						if sendItemToPlayer(egg, targetPlayerObj, "egg") then return true, true end
 					end
 				end
 			end
-
-			-- If we attempted sends to this target but nothing left inventory, cooldown this target for 5s
-			if (not sentAnyItem) and attemptedForThisTarget then
-				targetCooldowns[targetPlayerObj.UserId] = time() + 5
-				-- continue to next candidate immediately
-			else
-				if sentAnyItem then break end
-			end
+			return false, anyAttempt
 		end
 
-		-- Random target failure accounting (switch after 3 failed cycles)
-		if randomMode then
-			if sentAnyItem then
-				randomTargetState.fails = 0
+		-- If we have a sticky target: keep trying only them until failure
+		if #targets > 0 and targets[1] == stickyTarget then
+			local ok, attempted = trySendToTarget(stickyTarget)
+			sentAnyItem = ok
+			if not ok and attempted then
+				stickyFails = stickyFails + 1
+				if stickyFails >= 1 then -- one failed cycle un-sticks
+					stickyTarget = nil
+					stickyFails = 0
+				end
 			else
-				randomTargetState.fails = (randomTargetState.fails or 0) + 1
-				if randomTargetState.fails >= 3 then
-					local prev = randomTargetState.current and randomTargetState.current.UserId or nil
-					randomTargetState.current = pickRandomTarget(prev)
-					randomTargetState.fails = 0
-					if WindUI and randomTargetState.current then
-						WindUI:Notify({ Title = "🎯 Target Switched", Content = "New target: " .. randomTargetState.current.Name, Duration = 2 })
+				if ok then stickyFails = 0 end
+			end
+		else
+			-- No sticky: iterate candidates; each gets up to 2 attempts this cycle
+			for _, targetPlayerObj in ipairs(targets) do
+				local attempts = 0
+				local ok = false
+				local attempted = false
+				while attempts < 2 and not ok do
+					local r1, a1 = trySendToTarget(targetPlayerObj)
+					ok = r1
+					attempted = attempted or a1
+					attempts = attempts + 1
+				end
+				if ok then
+					sentAnyItem = true
+					stickyTarget = targetPlayerObj -- stick to winner
+					stickyFails = 0
+					break
+				else
+					if attempted then
+						targetBlacklist[targetPlayerObj.UserId] = true
+						blacklistedNames[targetPlayerObj.UserId] = targetPlayerObj.Name
 					end
 				end
 			end
