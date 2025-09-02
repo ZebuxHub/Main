@@ -43,6 +43,30 @@ local resPetById = nil
 local resMutateById = nil
 local resBigPetScale = nil
 
+-- Cache Util.Pet ModuleScript for global attributes (e.g., BenfitMax)
+local UtilPetModuleScript = nil
+local function getUtilPetModule()
+	if UtilPetModuleScript ~= nil then return UtilPetModuleScript end
+	local ok, util = pcall(function()
+		return ReplicatedStorage:WaitForChild("Util", 5)
+	end)
+	if ok and util then
+		UtilPetModuleScript = util:FindFirstChild("Pet")
+	end
+	return UtilPetModuleScript
+end
+
+local function getUtilPetAttribute(attrName, defaultValue)
+	local mod = getUtilPetModule()
+	if mod then
+		local ok, val = pcall(function()
+			return mod:GetAttribute(attrName)
+		end)
+		if ok and val ~= nil then return val end
+	end
+	return defaultValue
+end
+
 local function loadConfigModule(moduleScript)
     if not moduleScript then return nil end
     local ok, data = pcall(function()
@@ -398,7 +422,7 @@ local function computeEffectiveRate(petType, mutation, petNode)
     
     -- Size/V scaling: V is an integer scaled by 1e-4, exponent 2.24, scaled by (BenfitMax - 1)
     local vAttr = petNode and petNode:GetAttribute("V")
-    local benefitMax = script:GetAttribute("BenfitMax") or 1
+    local benefitMax = getUtilPetAttribute("BenfitMax", 1)
     if vAttr and benefitMax then
         local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0.0
         local vMultiplier = ((benefitMax - 1) * (vScaled ^ 2.24)) + 1
