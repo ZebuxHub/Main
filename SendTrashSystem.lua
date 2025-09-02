@@ -810,14 +810,46 @@ local function sendCurrentInventoryWebhook()
         })
         return
     end
-    
-    -- Force refresh inventory cache
-    forceRefreshCache()
-    
-    local petInventory = getPetInventory()
-    local eggInventory = getEggInventory()
 
-    -- Filter to only items with D attribute empty or missing (unplaced)
+    -- Small helpers
+    local function compactNumber(n)
+        if type(n) ~= "number" then return tostring(n) end
+        local a = math.abs(n)
+        if a >= 1e12 then return string.format("%.2fT", n/1e12) end
+        if a >= 1e9  then return string.format("%.2fB", n/1e9)  end
+        if a >= 1e6  then return string.format("%.2fM", n/1e6)  end
+        if a >= 1e3  then return string.format("%.2fK", n/1e3)  end
+        return tostring(math.floor(n))
+    end
+    local function takeTopLines(map, prefix, maxLines)
+        local arr = {}
+        for name, count in pairs(map) do
+            table.insert(arr, { name = name, count = count })
+        end
+        table.sort(arr, function(a, b)
+            if a.count ~= b.count then return a.count > b.count end
+            return (a.name or "") < (b.name or "")
+        end)
+        local out = {}
+        local limit = math.min(maxLines or 10, #arr)
+        for i = 1, limit do
+            table.insert(out, string.format("%s %s × %d", prefix, arr[i].name, arr[i].count))
+        end
+        if #arr > limit then
+            table.insert(out, string.format("… and %d more", #arr - limit))
+        end
+        return table.concat(out, "\n")
+    end
+
+    -- Force refresh inventory cache for precision
+    forceRefreshCache()
+
+    local petInventoryAll = getPetInventory()
+    local eggInventoryAll = getEggInventory()
+    local allPetCount = petInventoryAll and #petInventoryAll or 0
+    local allEggCount = eggInventoryAll and #eggInventoryAll or 0
+
+    -- Filter to only items with D attribute empty or missing (unplaced/available)
     local function hasEmptyOrNoD(uid, isEgg)
         local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
         if not dataRoot then return false end
@@ -834,148 +866,115 @@ local function sendCurrentInventoryWebhook()
         return false
     end
 
-    local filteredPets, filteredEggs = {}, {}
-    for _, pet in ipairs(petInventory or {}) do
+    local petInventory, eggInventory = {}, {}
+    for _, pet in ipairs(petInventoryAll or {}) do
         if pet and pet.uid and hasEmptyOrNoD(pet.uid, false) then
-            table.insert(filteredPets, pet)
+            table.insert(petInventory, pet)
         end
     end
-    for _, egg in ipairs(eggInventory or {}) do
+    for _, egg in ipairs(eggInventoryAll or {}) do
         if egg and egg.uid and hasEmptyOrNoD(egg.uid, true) then
-            table.insert(filteredEggs, egg)
+            table.insert(eggInventory, egg)
         end
     end
 
-    petInventory = filteredPets
-    eggInventory = filteredEggs
-    
-    local petCount = petInventory and #petInventory or 0
-    local eggCount = eggInventory and #eggInventory or 0
-    
-    -- Build pets section
-    local petsByType = {}
-    if petInventory then
-        for _, pet in ipairs(petInventory) do
-            if pet then
-                local key = (pet.type or "Unknown") .. "|" .. (pet.mutation or "None")
-                petsByType[key] = (petsByType[key] or 0) + 1
-            end
+    local unplacedPetCount = #petInventory
+    local unplacedEggCount = #eggInventory
+
+    -- Build summaries (type + mutation distributions)
+    local petsByType, eggsByType = {}, {}
+    local petMutations, eggMutations = {}, {}
+    for _, pet in ipairs(petInventory) do
+        local t = pet.type or "Unknown"
+        petsByType[t] = (petsByType[t] or 0) + 1
+        local m = pet.mutation
+        if m and m ~= "" and m ~= "None" then
+            petMutations[m] = (petMutations[m] or 0) + 1
         end
     end
-    
-    -- Build eggs section
-    local eggsByType = {}
-    if eggInventory then
-        for _, egg in ipairs(eggInventory) do
-            if egg then
-                local key = (egg.type or "Unknown") .. "|" .. (egg.mutation or "None")
-                eggsByType[key] = (eggsByType[key] or 0) + 1
-            end
+    for _, egg in ipairs(eggInventory) do
+        local t = egg.type or "Unknown"
+        eggsByType[t] = (eggsByType[t] or 0) + 1
+        local m = egg.mutation
+        if m and m ~= "" and m ~= "None" then
+            eggMutations[m] = (eggMutations[m] or 0) + 1
         end
     end
-    
-    -- Create organized description
-    local lines = {}
+
+    local function topEggLines(maxLines)
+        local arr = {}
+        for name, count in pairs(eggsByType) do
+            local emoji = EggEmojiMap[name] or "🥚"
+            table.insert(arr, { name = name, count = count, emoji = emoji })
+        end
+        table.sort(arr, function(a, b)
+            if a.count ~= b.count then return a.count > b.count end
+            return (a.name or "") < (b.name or "")
+        end)
+        local lines = {}
+        local limit = math.min(maxLines or 10, #arr)
+        for i = 1, limit do
+            table.insert(lines, string.format("%s %s × %d", arr[i].emoji, arr[i].name, arr[i].count))
+        end
+        if #arr > limit then table.insert(lines, string.format("… and %d more", #arr - limit)) end
+        return table.concat(lines, "\n"), (arr[1] and arr[1].name or nil)
+    end
+
+    local topEggsText, topEggName = topEggLines(12)
+    local topPetsText = takeTopLines(petsByType, "🐾", 12)
+    local petMutsText = takeTopLines(petMutations, "🧬", 10)
+    local eggMutsText = takeTopLines(eggMutations, "🧬", 10)
+
     local playerName = Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"
-    
-    table.insert(lines, "## 🎒 " .. playerName .. "'s Inventory")
-    table.insert(lines, "")
-    table.insert(lines, "📊 **Summary:**")
-    table.insert(lines, string.format("• 🐾 Total Pets: **%d**", petCount))
-    table.insert(lines, string.format("• 🥚 Total Eggs: **%d**", eggCount))
-    table.insert(lines, string.format("• 📦 Combined: **%d**", petCount + eggCount))
-    table.insert(lines, "")
-    
-    -- Pets section with better organization
-    if petCount > 0 then
-        table.insert(lines, "🐾 **Available Pets:**")
-        local petEntries = {}
-        for key, count in pairs(petsByType) do
-            local type, mutation = key:match("([^|]+)|([^|]+)")
-            type = type or "Unknown"
-            mutation = (mutation and mutation ~= "None" and mutation ~= "") and mutation or nil
-            local displayName = mutation and (type .. " [" .. mutation .. "]") or type
-            table.insert(petEntries, { name = displayName, count = count })
-        end
-        table.sort(petEntries, function(a, b) return a.count > b.count end)
-        for _, entry in ipairs(petEntries) do
-            table.insert(lines, string.format("  🐾 %s × %d", entry.name, entry.count))
-        end
-    else
-        table.insert(lines, "🐾 **Available Pets:** None")
+    local playerId = Players.LocalPlayer and Players.LocalPlayer.UserId or nil
+    local authorBlock = {
+        name = playerName .. " — Inventory Snapshot",
+        icon_url = playerId and getAvatarUrl(playerId) or nil
+    }
+    local thumb = topEggName and getIconUrlFor("egg", topEggName) or nil
+    local netWorth = (Players.LocalPlayer and Players.LocalPlayer:GetAttribute("NetWorth")) or 0
+    local unknownNote = inventoryCache and inventoryCache.unknownCount or 0
+
+    -- Compose embed
+    local overviewValue = table.concat({
+        "🧾 Net Worth: **" .. compactNumber(netWorth) .. "**",
+        string.format("🐾 Pets: **%d** (unplaced **%d**)", allPetCount, unplacedPetCount),
+        string.format("🥚 Eggs: **%d** (unplaced **%d**)", allEggCount, unplacedEggCount)
+    }, "\n")
+
+    local fields = {
+        { name = "Overview", value = overviewValue, inline = false },
+    }
+    if topPetsText ~= "" then table.insert(fields, { name = "Top Pets", value = topPetsText, inline = true }) end
+    if topEggsText ~= "" then table.insert(fields, { name = "Top Eggs", value = topEggsText, inline = true }) end
+    if petMutsText ~= "" then table.insert(fields, { name = "Pet Mutations", value = petMutsText, inline = true }) end
+    if eggMutsText ~= "" then table.insert(fields, { name = "Egg Mutations", value = eggMutsText, inline = true }) end
+    if unknownNote and unknownNote > 0 then
+        table.insert(fields, { name = "Note", value = "Some items are still loading (" .. tostring(unknownNote) .. ")", inline = false })
     end
-    
-    table.insert(lines, "")
-    
-    -- Eggs section with better organization
-    if eggCount > 0 then
-        table.insert(lines, "🥚 **Available Eggs:**")
-        local eggEntries = {}
-        for key, count in pairs(eggsByType) do
-            local type, mutation = key:match("([^|]+)|([^|]+)")
-            type = type or "Unknown"
-            mutation = (mutation and mutation ~= "None" and mutation ~= "") and mutation or nil
-            local displayName = mutation and (type .. " [" .. mutation .. "]") or type
-            local emoji = EggEmojiMap[type] or "🥚"
-            table.insert(eggEntries, { name = displayName, emoji = emoji, count = count })
-        end
-        table.sort(eggEntries, function(a, b) return a.count > b.count end)
-        for _, entry in ipairs(eggEntries) do
-            table.insert(lines, string.format("  %s %s × %d", entry.emoji, entry.name, entry.count))
-        end
-    else
-        table.insert(lines, "🥚 **Available Eggs:** None")
-    end
-    
-    local description = table.concat(lines, "\n")
-    
-    -- Safety check for description
-    if not description or description == "" then
-        description = "No inventory data available"
-    end
-    
-    -- Create webhook payload
-    local authorName = Players.LocalPlayer and Players.LocalPlayer.Name or nil
-    
+
     local payload = {
         embeds = {
             {
-                title = "ZEBUX | https://discord.gg/yXPpRCgTQY",
-                description = description,
-                color = 3066993, -- Green color
-                fields = {
-                    { name = "Total Pets", value = tostring(petCount), inline = true },
-                    { name = "Total Eggs", value = tostring(eggCount), inline = true },
-                    { name = "Combined", value = tostring(petCount + eggCount), inline = true }
-                },
-                author = nil,
-                footer = { text = "Build A Zoo - Current Inventory" },
+                title = "ZEBUX • Inventory Snapshot",
+                description = "A precise snapshot of your current inventory.",
+                color = 5793266, -- Discord blurple-ish
+                author = authorBlock,
+                thumbnail = thumb and { url = thumb } or nil,
+                fields = fields,
+                footer = { text = "Build A Zoo" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
         }
     }
-    
+
     local json = HttpService:JSONEncode(payload)
     http_request = http_request or request or (syn and syn.request)
     if http_request then
-        http_request({ 
-            Url = webhookUrl, 
-            Method = "POST", 
-            Headers = { ["Content-Type"] = "application/json" }, 
-            Body = json 
-        })
-        
-        WindUI:Notify({
-            Title = "📤 Inventory Sent",
-            Content = "Current inventory sent to Discord!",
-            Duration = 3
-        })
+        http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
+        WindUI:Notify({ Title = "📤 Inventory Sent", Content = "Current inventory sent to Discord!", Duration = 3 })
     else
-        WindUI:Notify({
-            Title = "❌ Webhook Failed",
-            Content = "HTTP request function not available",
-            Duration = 3
-        })
+        WindUI:Notify({ Title = "❌ Webhook Failed", Content = "HTTP request function not available", Duration = 3 })
     end
 end
 
