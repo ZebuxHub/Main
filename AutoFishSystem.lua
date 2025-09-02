@@ -1024,57 +1024,7 @@ end
 
 
 -- Enhanced function to find the player's fishing object dynamically
-local function findPlayerFishingObject()
-    if not LocalPlayer then return nil end
-    
-    -- Method 1: Look for object with player's name
-    local playerName = LocalPlayer.Name
-    local playerObj = workspace:FindFirstChild(playerName)
-    if playerObj then
-        return playerObj
-    end
-    
-    -- Method 2: Look for object with player's DisplayName
-    if LocalPlayer.DisplayName and LocalPlayer.DisplayName ~= playerName then
-        local displayObj = workspace:FindFirstChild(LocalPlayer.DisplayName)
-        if displayObj then
-            return displayObj
-        end
-    end
-    
-    -- Method 3: Look for object with player's UserId pattern
-    local userId = LocalPlayer.UserId
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and obj:GetAttribute("UserId") == userId then
-            return obj
-        end
-    end
-    
-    -- Method 4: Search for objects that might be fishing-related and belong to player
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") then
-            local name = obj.Name:lower()
-            -- Check if it contains fishing-related keywords and player identifier
-            if (name:find("fish") or name:find("rod") or name:find("bait")) and 
-               (name:find(playerName:lower()) or name:find(tostring(userId))) then
-                return obj
-            end
-        end
-    end
-    
-    -- Method 5: Look for any object that has AnimFish attribute (fishing objects)
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and obj:GetAttribute("AnimFish") then
-            -- Additional check: see if it's related to the current player
-            local objUserId = obj:GetAttribute("UserId")
-            if objUserId == userId then
-                return obj
-            end
-        end
-    end
-    
-    return nil
-end
+-- Removed: findPlayerFishingObject (no longer used; we rely solely on FishState)
 
 local function waitForFishPull()
     -- We no longer rely on fishingObj/AnimFish; only Player attribute FishState
