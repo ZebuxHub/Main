@@ -32,7 +32,7 @@ local FishingConfig = {
     AutoFishEnabled = false,
     DelayBetweenCasts = 0.5,
     FishingRange = 5, -- Fish within 5 studs of player
-    VerticalOffset = 10, -- Cast position Y offset above player
+    VerticalOffset = 50, -- Cast position Y offset above player
     PlayerAnchored = false, -- Track if player is anchored
     SafePosition = nil, -- Store safe position to prevent falling
     Original = {
@@ -52,7 +52,8 @@ local FishingConfig = {
         LastCatchTime = 0,
         TotalCasts = 0,
         SuccessfulCasts = 0
-    }
+    },
+    PartCollideState = {}
 }
 
 -- Fishing Bait Configuration
@@ -403,6 +404,22 @@ local function anchorPlayer()
         rootPart.AssemblyLinearVelocity = Vector3.zero
         rootPart.AssemblyAngularVelocity = Vector3.zero
 
+        -- Reduce collisions on character to avoid physics push from flying eggs/parts
+        pcall(function()
+            FishingConfig.PartCollideState = {}
+            for _, desc in ipairs(LocalPlayer.Character:GetDescendants()) do
+                if desc:IsA("BasePart") then
+                    FishingConfig.PartCollideState[desc] = desc.CanCollide
+                    desc.CanCollide = false
+                    desc.Massless = true
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
+                end
+            end
+            -- Keep HRP CanCollide false as well
+            FishingConfig.PartCollideState[rootPart] = rootPart.CanCollide
+            rootPart.CanCollide = false
+        end)
+
         -- Hard freeze: keep restoring position if any server animation tries to move us
         if FishingConfig.FreezeConn then
             FishingConfig.FreezeConn:Disconnect()
@@ -495,6 +512,17 @@ local function unanchorPlayer()
         if FishingConfig._Controls and FishingConfig._Controls.Enable then
             pcall(function() FishingConfig._Controls:Enable() end)
         end
+        -- Restore collisions to original state
+        pcall(function()
+            for part, prev in pairs(FishingConfig.PartCollideState or {}) do
+                if part and part.Parent then
+                    part.CanCollide = prev
+                    part.Massless = false
+                    part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
+                end
+            end
+            FishingConfig.PartCollideState = {}
+        end)
         -- Player unanchored with fall protection
     end
 end
@@ -1045,7 +1073,7 @@ local function waitForFishPull()
             lastState = playerState
         end
         
-        if tostring(playerState) == "PULL" then
+        if tostring(playerState) == "Pull" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
                 Content = "✅ Fish ready to pull! State = " .. tostring(playerState), 
