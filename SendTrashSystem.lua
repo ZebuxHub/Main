@@ -66,12 +66,12 @@ local inventoryCache = {
     unknownCount = 0 -- Track items that couldn't load properly
 }
 
--- Unknown resolver that retries resolving names for large inventories without blocking UI
-local unknownResolver = {
-    pets = {},
-    eggs = {},
-    active = false
-}
+-- Unknown resolver removed per user request
+-- local unknownResolver = {
+-- 	pets = {},
+-- 	eggs = {},
+-- 	active = false
+-- }
 
 -- Live data watchers (event-driven cache updates)
 local dataWatch = {
@@ -109,10 +109,10 @@ local function upsertFromConf(conf, isEgg)
     end
     if isEgg then
         inventoryCache.eggs[conf.Name] = record
-        unknownResolver.eggs[conf.Name] = nil
+        -- unknownResolver.eggs[conf.Name] = nil -- This line is removed
     else
         inventoryCache.pets[conf.Name] = record
-        unknownResolver.pets[conf.Name] = nil
+        -- unknownResolver.pets[conf.Name] = nil -- This line is removed
     end
 end
 
@@ -178,85 +178,9 @@ local function stopDataWatchers()
     dataWatch.rootConns = {}
 end
 
-local function trackUnknown(uid, isEgg)
-    if not uid or uid == "" then return end
-    local bucket = isEgg and unknownResolver.eggs or unknownResolver.pets
-    bucket[uid] = bucket[uid] or { attempts = 0 }
-end
-
-local function startUnknownResolver()
-    if unknownResolver.active then return end
-    unknownResolver.active = true
-    task.spawn(function()
-        while unknownResolver.active do
-            local processed = 0
-            local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
-            if dataRoot then
-                local petsFolder = dataRoot:FindFirstChild("Pets")
-                if petsFolder then
-                    for uid, meta in pairs(unknownResolver.pets) do
-                        if processed >= 250 then break end
-                        local conf = petsFolder:FindFirstChild(uid)
-                        if conf then
-                            local okT, tVal = pcall(function() return conf:GetAttribute("T") end)
-                            if okT and tVal and tVal ~= "" then
-                                local okM, mVal = pcall(function() return conf:GetAttribute("M") end)
-                                local okS, speedVal = pcall(function() return conf:GetAttribute("Speed") end)
-                                local okLK, lkVal = pcall(function() return conf:GetAttribute("LK") end)
-                                local okD, dVal = pcall(function() return conf:GetAttribute("D") end)
-                                inventoryCache.pets[uid] = {
-                                    uid = uid,
-                                    type = tVal,
-                                    mutation = (okM and mVal) or "",
-                                    speed = (okS and speedVal) or 0,
-                                    locked = (okLK and lkVal == 1) or false,
-                                    placed = (okD and dVal ~= nil) or false
-                                }
-                                unknownResolver.pets[uid] = nil
-                            else
-                                meta.attempts = (meta.attempts or 0) + 1
-                                if meta.attempts >= 10 then unknownResolver.pets[uid] = nil end
-                            end
-                        else
-                            unknownResolver.pets[uid] = nil
-                        end
-                        processed = processed + 1
-                    end
-                end
-                local eggsFolder = dataRoot:FindFirstChild("Egg")
-                if eggsFolder then
-                    for uid, meta in pairs(unknownResolver.eggs) do
-                        if processed >= 500 then break end
-                        local conf = eggsFolder:FindFirstChild(uid)
-                        if conf then
-                            local okT, tVal = pcall(function() return conf:GetAttribute("T") end)
-                            if okT and tVal and tVal ~= "" then
-                                local okM, mVal = pcall(function() return conf:GetAttribute("M") end)
-                                local okLK, lkVal = pcall(function() return conf:GetAttribute("LK") end)
-                                local okD, dVal = pcall(function() return conf:GetAttribute("D") end)
-                                inventoryCache.eggs[uid] = {
-                                    uid = uid,
-                                    type = tVal,
-                                    mutation = (okM and mVal) or "",
-                                    locked = (okLK and lkVal == 1) or false,
-                                    placed = (okD and dVal ~= nil) or false
-                                }
-                                unknownResolver.eggs[uid] = nil
-                            else
-                                meta.attempts = (meta.attempts or 0) + 1
-                                if meta.attempts >= 10 then unknownResolver.eggs[uid] = nil end
-                            end
-                        else
-                            unknownResolver.eggs[uid] = nil
-                        end
-                        processed = processed + 1
-                    end
-                end
-            end
-            task.wait(processed > 0 and 0.1 or 0.5)
-        end
-    end)
-end
+-- Remove unknown resolver helpers
+-- local function trackUnknown(uid, isEgg) end
+-- local function startUnknownResolver() end
 
 -- Send operation tracking
 local sendInProgress = {}
@@ -685,7 +609,6 @@ local function updateInventoryCache()
                 -- Skip items without proper type data (not fully loaded yet)
                 if not petType or petType == "" or petType == "Unknown" then
                     inventoryCache.unknownCount = inventoryCache.unknownCount + 1
-                    trackUnknown(petData.Name, false)
                     continue -- Skip this pet until it loads properly
                 end
                 
@@ -713,7 +636,6 @@ local function updateInventoryCache()
                 -- Skip items without proper type data (not fully loaded yet)
                 if not eggType or eggType == "" or eggType == "Unknown" then
                     inventoryCache.unknownCount = inventoryCache.unknownCount + 1
-                    trackUnknown(eggData.Name, true)
                     continue -- Skip this egg until it loads properly
                 end
                 
@@ -731,7 +653,7 @@ local function updateInventoryCache()
     
     -- If there are unknowns, start background resolver
     if inventoryCache.unknownCount > 0 then
-        startUnknownResolver()
+        -- startUnknownResolver()
     end
 end
 
@@ -786,98 +708,7 @@ end
 
 -- Actively focus unresolved items to force replication of T/M
 local function forceResolveAllNames()
-    local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not dataRoot then return 0, 0 end
-    local petsFolder = dataRoot:FindFirstChild("Pets")
-    local eggsFolder = dataRoot:FindFirstChild("Egg")
-    if not petsFolder and not eggsFolder then return 0, 0 end
-
-    local unresolvedPets, unresolvedEggs = {}, {}
-
-    if petsFolder then
-        for _, conf in ipairs(petsFolder:GetChildren()) do
-            if conf:IsA("Configuration") then
-                local tVal = conf:GetAttribute("T")
-                if not tVal or tVal == "" then
-                    table.insert(unresolvedPets, conf)
-                end
-            end
-        end
-    end
-    if eggsFolder then
-        for _, conf in ipairs(eggsFolder:GetChildren()) do
-            if conf:IsA("Configuration") then
-                local tVal = conf:GetAttribute("T")
-                if not tVal or tVal == "" then
-                    table.insert(unresolvedEggs, conf)
-                end
-            end
-        end
-    end
-
-    local function resolveBatch(list, isEgg)
-        local resolved = 0
-        local idx = 1
-        local maxConcurrency = 25
-        local active = {}
-
-        local function launch(conf)
-            local uid = conf.Name
-            active[uid] = true
-            task.spawn(function()
-                -- Nudge server to send attributes
-                pcall(function()
-                    local args = {"Focus", uid}
-                    ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-                end)
-                -- Wait up to 1.5s for T to appear
-                local tVal = conf:GetAttribute("T")
-                local start = tick()
-                while (not tVal or tVal == "") and (tick() - start) < 1.5 do
-                    conf:GetAttributeChangedSignal("T"):Wait()
-                    tVal = conf:GetAttribute("T")
-                end
-                if tVal and tVal ~= "" then
-                    upsertFromConf(conf, isEgg)
-                    resolved = resolved + 1
-                else
-                    -- Track for background resolver if still missing
-                    trackUnknown(uid, isEgg)
-                end
-                active[uid] = nil
-            end)
-        end
-
-        while idx <= #list do
-            local slots = maxConcurrency - (function() local c=0 for _ in pairs(active) do c=c+1 end return c end)()
-            while slots > 0 and idx <= #list do
-                launch(list[idx])
-                idx = idx + 1
-                slots = slots - 1
-            end
-            task.wait(0.1)
-        end
-        -- Wait for stragglers
-        while true do
-            local remaining = 0
-            for _ in pairs(active) do remaining = remaining + 1 end
-            if remaining == 0 then break end
-            task.wait(0.05)
-        end
-        return resolved
-    end
-
-    local petResolved = resolveBatch(unresolvedPets, false)
-    local eggResolved = resolveBatch(unresolvedEggs, true)
-
-    -- Start watchers/resolver to mop up any leftovers
-    startDataWatchers()
-    if (petResolved + eggResolved) > 0 then
-        inventoryCache.lastUpdateTime = 0
-        updateInventoryCache()
-    end
-
-    return petResolved, eggResolved
+	return 0, 0
 end
 
 --- Clear send operation tracking
@@ -1396,13 +1227,12 @@ local function updateStatus()
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
         "⚡ Auto-delete speed threshold: %s\n" ..
-        "🔄 Actions performed: %d%s",
+        "🔄 Actions performed: %d",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
-        actionCounter,
-        inventoryCache.unknownCount > 0 and ("\n⚠️ Unknown items: " .. inventoryCache.unknownCount .. " (click Fix Unknown Items)") or ""
+        actionCounter
     )
     
     statusParagraph:SetDesc(statusText)
@@ -1733,69 +1563,9 @@ function SendTrashSystem.Init(dependencies)
             })
         end
     })
-    
-    -- Data reload button for "Unknown" items
-    TrashTab:Button({
-        Title = "🔄 Fix Unknown Items",
-        Desc = "Force reload data to fix 'Unknown' pets/eggs (takes a few seconds)",
-        Callback = function()
-            WindUI:Notify({
-                Title = "🔄 Reloading Data",
-                Content = "Please wait... fixing Unknown items",
-                Duration = 2
-            })
-            
-            task.spawn(function()
-                local loadedPets, loadedEggs = forceDataReload()
-                updateStatus()
-                
-                WindUI:Notify({
-                    Title = "✅ Data Reloaded",
-                    Content = string.format("Loaded %d pets and %d eggs successfully!", loadedPets, loadedEggs),
-                    Duration = 4
-                })
-            end)
-        end
-    })
 
-    -- Aggressive resolver to guarantee names (uses Focus)
-    TrashTab:Button({
-        Title = "🛠️ Force Resolve Names",
-        Desc = "Actively focus all unresolved items to force names to load",
-        Callback = function()
-            WindUI:Notify({ Title = "🛠️ Resolving", Content = "Forcing names to load...", Duration = 2 })
-            task.spawn(function()
-                local p, e = forceResolveAllNames()
-                updateStatus()
-                WindUI:Notify({ Title = "✅ Done", Content = string.format("Resolved %d pets, %d eggs", p, e), Duration = 4 })
-            end)
-        end
-    })
-    
-    -- Force resolve all names button
-    TrashTab:Button({
-        Title = "🔄 Force Resolve All Names",
-        Desc = "Focus all items to force replication of T/M attributes (can take a while)",
-        Callback = function()
-            WindUI:Notify({
-                Title = "🔄 Resolving Names",
-                Content = "Please wait... forcing name resolution",
-                Duration = 2
-            })
-            
-            task.spawn(function()
-                local petResolved, eggResolved = forceResolveAllNames()
-                updateStatus()
-                
-                WindUI:Notify({
-                    Title = "✅ Names Resolved",
-                    Content = string.format("Resolved %d pet names and %d egg names.", petResolved, eggResolved),
-                    Duration = 4
-                })
-            end)
-        end
-    })
-    
+    -- Removed: Fix Unknown Items and Force Resolve Names buttons
+
     -- Send current inventory webhook button
     TrashTab:Button({
         Title = "📤 Send Inventory",
