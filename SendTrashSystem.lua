@@ -598,18 +598,33 @@ end
 
 -- Get random player
 local function getRandomPlayer()
-    local players = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            table.insert(players, player.Name)
-        end
-    end
-    
-    if #players > 0 then
-        return players[math.random(1, #players)]
-    end
-    
-    return nil
+	local players = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			table.insert(players, player)
+		end
+	end
+	if #players > 0 then
+		return players[math.random(1, #players)] -- return Player object
+	end
+	return nil
+end
+
+-- Get a randomized list of up to N candidate players (Player objects)
+local function getRandomTargets(maxCount)
+	local pool = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then table.insert(pool, player) end
+	end
+	-- Fisher-Yates shuffle
+	for i = #pool, 2, -1 do
+		local j = math.random(1, i)
+		pool[i], pool[j] = pool[j], pool[i]
+	end
+	local out = {}
+	local limit = math.min(maxCount or 5, #pool)
+	for i = 1, limit do out[i] = pool[i] end
+	return out
 end
 
 -- Convert dropdown selection into a plain string list
@@ -1395,157 +1410,104 @@ end
 
 -- Main trash processing function
 local function processTrash()
-    while trashEnabled do
-        -- Get send mode setting
-        local sendMode = "Both" -- Default
-        if sendModeDropdown then
-            local success, result = nil, nil
-            
-            -- Try different methods to get the value
-            if sendModeDropdown.GetValue then
-                success, result = pcall(function() return sendModeDropdown:GetValue() end)
-            elseif sendModeDropdown.Value then
-                success, result = pcall(function() return sendModeDropdown.Value end)
-            end
-            
-            if success and result then
-                sendMode = result
-            else
-                sendMode = "Both"
-            end
-        else
-            sendMode = "Both"
-        end
-        
-        local petInventory = {}
-        local eggInventory = {}
-        
-        -- Get inventories based on send mode
-        if sendMode == "Pets" or sendMode == "Both" then
-            petInventory = getPetInventory()
-        end
-        if sendMode == "Eggs" or sendMode == "Both" then
-            eggInventory = getEggInventory()
-        end
-        
-        if #petInventory == 0 and #eggInventory == 0 then
-            -- If limit reached, finalize session; else notify once
-            if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-                trashEnabled = false
-                if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-            else
-                WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
-            end
-            wait(1)
-            continue
-        end
-        
-        -- Get selector settings for pets (include-only)
-        local includePetTypes = {}
-        local includePetMutations = {}
-        
-        if sendPetTypeDropdown and sendPetTypeDropdown.GetValue then
-            local success, result = pcall(function() return sendPetTypeDropdown:GetValue() end)
-            includePetTypes = success and selectionToList(result) or {}
-            selectedPetTypes = includePetTypes
-        end
-        
-        if sendPetMutationDropdown and sendPetMutationDropdown.GetValue then
-            local success, result = pcall(function() return sendPetMutationDropdown:GetValue() end)
-            includePetMutations = success and selectionToList(result) or {}
-            selectedPetMuts = includePetMutations
-        end
-        
-        -- Get selector settings for eggs (include-only)
-        local includeEggTypes = {}
-        local includeEggMutations = {}
-        
-        if sendEggTypeDropdown and sendEggTypeDropdown.GetValue then
-            local success, result = pcall(function() return sendEggTypeDropdown:GetValue() end)
-            includeEggTypes = success and selectionToList(result) or {}
-            selectedEggTypes = includeEggTypes
-        end
-        
-        if sendEggMutationDropdown and sendEggMutationDropdown.GetValue then
-            local success, result = pcall(function() return sendEggMutationDropdown:GetValue() end)
-            includeEggMutations = success and selectionToList(result) or {}
-            selectedEggMuts = includeEggMutations
-        end
-        
-        -- Get target player (robust): prefer cached selection, resolve actual Player
-        local targetPlayerName = selectedTargetName
-        local targetPlayerObj = nil
-        if targetPlayerName and targetPlayerName ~= "Random Player" then
-            targetPlayerObj = resolveTargetPlayerByName(targetPlayerName)
-            if not targetPlayerObj then
-                targetPlayerObj = getRandomPlayer()
-            end
-        else
-            targetPlayerObj = getRandomPlayer()
-        end
-        local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
-        lastReceiverName = targetPlayer
-        lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
-        
-        -- Send items to other players
-        local sentAnyItem = false
-        
-        -- Try to send pets first (respect T/M before any action)
-        if sendMode == "Pets" or sendMode == "Both" then
-            for _, pet in ipairs(petInventory) do
-                -- Re-read attributes live before deciding
-                pet = refreshItemFromData(pet.uid, false, pet)
-                if shouldSendItem(pet, includePetTypes, includePetMutations) and targetPlayer then
-                    local sendSuccess = sendItemToPlayer(pet, targetPlayer, "pet")
-                    if sendSuccess then
-                        sentAnyItem = true
-                        task.wait(0.1) -- Optimized wait between successful sends
-                        break -- Send one at a time
-                    end
-                end
-            end
-        end
-        
-        -- Try to send eggs if no pets were sent (respect T/M before any action)
-        if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
-            for _, egg in ipairs(eggInventory) do
-                egg = refreshItemFromData(egg.uid, true, egg)
-                -- Use cached selectors if available to avoid UI GetValue glitches
-                local tList = (selectedEggTypes and #selectedEggTypes > 0) and selectedEggTypes or includeEggTypes
-                local mList = (selectedEggMuts and #selectedEggMuts > 0) and selectedEggMuts or includeEggMutations
-                if shouldSendItem(egg, tList, mList) and targetPlayer then
-                    local sendSuccess = sendItemToPlayer(egg, targetPlayer, "egg")
-                    if sendSuccess then
-                        sentAnyItem = true
-                        task.wait(0.1) -- Optimized wait between successful sends
-                        break -- Send one at a time
-                    end
-                end
-            end
-        end
-        
-        -- Selling removed
-        
-        -- Auto-delete slow pets if enabled (only for pets, not eggs)
-        if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
-            autoDeleteSlowPets(autoDeleteMinSpeed)
-        end
-        
-        -- Stop if session limit reached
-        if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-            -- Immediately post webhook summary when limit hit
-            if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                task.spawn(sendWebhookSummary)
-            end
-            trashEnabled = false
-            if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-        end
-        
-        -- Update status
-        updateStatus()
-        
-        task.wait(0.3) -- Optimized wait before next cycle
-    end
+	while trashEnabled do
+		-- Get send mode setting
+		local sendMode = "Both" -- Default
+		if sendModeDropdown then
+			local success, result = nil, nil
+			-- Try different methods to get the value
+			if sendModeDropdown.GetValue then
+				success, result = pcall(function() return sendModeDropdown:GetValue() end)
+			elseif sendModeDropdown.Value then
+				success, result = pcall(function() return sendModeDropdown.Value end)
+			end
+			if success and result then sendMode = result else sendMode = "Both" end
+		else
+			sendMode = "Both"
+		end
+
+		local petInventory = {}
+		local eggInventory = {}
+		-- Get inventories based on send mode
+		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
+		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
+
+		if #petInventory == 0 and #eggInventory == 0 then
+			-- If limit reached, finalize session; else notify once
+			if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+				trashEnabled = false
+				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			else
+				WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
+			end
+			wait(1)
+			continue
+		end
+
+		-- Build target list
+		local targets = {}
+		local randomMode = (selectedTargetName == "Random Player")
+		if randomMode then
+			targets = getRandomTargets(5) -- try up to 5 random players per cycle
+		else
+			local tp = resolveTargetPlayerByName(selectedTargetName)
+			if tp then table.insert(targets, tp) end
+		end
+
+		local sentAnyItem = false
+		-- Try each target sequentially until one succeeds
+		for _, targetPlayerObj in ipairs(targets) do
+			local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
+			lastReceiverName = targetPlayer
+			lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
+
+			-- Try to send pets first (respect T/M)
+			if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
+				for _, pet in ipairs(petInventory) do
+					pet = refreshItemFromData(pet.uid, false, pet)
+					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) and targetPlayer then
+						local ok = sendItemToPlayer(pet, targetPlayer, "pet")
+						if ok then sentAnyItem = true break end
+					end
+				end
+			end
+
+			-- Try eggs if nothing sent
+			if not sentAnyItem and (sendMode == "Eggs" or sendMode == "Both") then
+				for _, egg in ipairs(eggInventory) do
+					egg = refreshItemFromData(egg.uid, true, egg)
+					local tList = selectedEggTypes or {}
+					local mList = selectedEggMuts or {}
+					if shouldSendItem(egg, tList, mList) and targetPlayer then
+						local ok = sendItemToPlayer(egg, targetPlayer, "egg")
+						if ok then sentAnyItem = true break end
+					end
+				end
+			end
+
+			if sentAnyItem then break end -- stop trying more targets this cycle
+		end
+
+		-- Selling removed
+
+		-- Auto-delete slow pets if enabled (only for pets, not eggs)
+		if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
+			autoDeleteSlowPets(autoDeleteMinSpeed)
+		end
+
+		-- Stop if session limit reached
+		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+				task.spawn(sendWebhookSummary)
+			end
+			trashEnabled = false
+			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+		end
+
+		-- Update status
+		updateStatus()
+		task.wait(0.3)
+	end
 end
 
 -- Initialize function
