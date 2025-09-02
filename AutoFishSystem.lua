@@ -270,11 +270,6 @@ local function moveToWater(waterPart)
         -- Update fishing position to current location
         if WaterDetection.MovingToWater then
             FishingConfig.FishingPosition = humanoidRootPart.Position
-            WindUI:Notify({ 
-                Title = "🌊 Water Found", 
-                Content = string.format("Moved to water! Distance: %.1fm", (targetPosition - humanoidRootPart.Position).Magnitude), 
-                Duration = 3 
-            })
         end
     else
         -- Fallback: direct movement
@@ -287,11 +282,6 @@ local function moveToWater(waterPart)
             reached = true
             FishingConfig.FishingPosition = humanoidRootPart.Position
             connection:Disconnect()
-            WindUI:Notify({ 
-                Title = "🌊 Water Found", 
-                Content = "Moved to water location!", 
-                Duration = 3 
-            })
         end)
         
         -- Timeout after 15 seconds
@@ -311,27 +301,12 @@ local function autoDetectAndMoveToWater()
         return true -- Skip if auto detection is disabled
     end
     
-    WindUI:Notify({ 
-        Title = "🔍 Water Detection", 
-        Content = "Searching for nearby water...", 
-        Duration = 2 
-    })
     
     local waterPart, distance = findNearestWater()
     
     if waterPart then
-        WindUI:Notify({ 
-            Title = "🌊 Water Found", 
-            Content = string.format("Found water %.1fm away. Moving...", distance), 
-            Duration = 3 
-        })
         return moveToWater(waterPart)
     else
-        WindUI:Notify({ 
-            Title = "❌ No Water Found", 
-            Content = string.format("No water found within %dm. Using current position.", FishingConfig.SearchRadius), 
-            Duration = 4 
-        })
         return false
     end
 end
@@ -617,11 +592,7 @@ end
 
 local function startMouseTracking()
     -- Function kept for compatibility but flag system is preferred
-    WindUI:Notify({ 
-        Title = "🚩 Use Pin System", 
-        Content = "Use 'Place Hologram Pin' for better visual positioning!", 
-        Duration = 3 
-    })
+    -- notifications disabled
 end
 
 local function stopMouseTracking()
@@ -780,12 +751,7 @@ local function enableFlagDragging()
                 stopFlagPlacement()
                 
                 -- Confirmation notification
-                WindUI:Notify({ 
-                    Title = "📍 Pin Placed Successfully", 
-                    Content = string.format("Pin locked at: %.1f, %.1f, %.1f\nClick 'Place Hologram Pin' again to place another pin", 
-                        finalPosition.X, finalPosition.Y, finalPosition.Z), 
-                    Duration = 4 
-                })
+                -- notifications disabled
             end
         end
     end)
@@ -799,11 +765,7 @@ local function enableFlagDragging()
             -- Cancel flag placement and remove the pin
             removeFishingFlag()
             stopFlagPlacement()
-            WindUI:Notify({ 
-                Title = "❌ Pin Placement Cancelled", 
-                Content = "Pin placement was cancelled", 
-                Duration = 2 
-            })
+            -- notifications disabled
         end
     end)
 end
@@ -1202,6 +1164,13 @@ function AutoFishSystem.Init(dependencies)
         return
     end
     
+    -- Silence all notifications from this module
+    pcall(function()
+        if WindUI and type(WindUI) == "table" then
+            WindUI.Notify = function() end
+        end
+    end)
+
     -- Load fishing bait configuration
     loadFishingBaitConfig()
     
