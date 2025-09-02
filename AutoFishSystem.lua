@@ -30,7 +30,7 @@ local FishingConfig = {
     SelectedBait = "FishingBait1",
     FishingPosition = Vector3.new(0, 0, 0),
     AutoFishEnabled = false,
-    DelayBetweenCasts = 1,
+    DelayBetweenCasts = 0.5,
     FishingRange = 5, -- Fish within 5 studs of player
     VerticalOffset = 10, -- Cast position Y offset above player
     PlayerAnchored = false, -- Track if player is anchored
@@ -884,7 +884,7 @@ local function startFishing()
     end)
 
     -- Shorter wait before throw for faster cycles
-    task.wait(0.15)
+    task.wait(0.1)
     
     -- Select affordable bait
     local selectedBait = (function()
@@ -1116,7 +1116,7 @@ local function waitForFishPull()
         Duration = 2 
     })
     
-    local timeout = 30 -- Increased timeout for better accuracy
+    local timeout = 20 -- Lower timeout to recycle faster if missed
     local startTime = tick()
     local lastAnimFish = nil
     
@@ -1143,7 +1143,7 @@ local function waitForFishPull()
             })
             return true
         end
-        task.wait(0.15)
+        task.wait(0.05)
     end
     
     WindUI:Notify({ 
@@ -1165,7 +1165,7 @@ local function runAutoFish()
             end
         end
         -- Faster looping between casts
-        task.wait(FishingConfig.DelayBetweenCasts or 1)
+        task.wait(FishingConfig.DelayBetweenCasts or 0.5)
     end
 end
 
@@ -1297,22 +1297,6 @@ function AutoFishSystem.Init(dependencies)
                 })
             end
         end
-    })
-    
-    -- Simple fishing info
-    MouseTracker.PositionLabel = Tabs.FishTab:Paragraph({
-        Title = "🎣 Auto Fishing System",
-        Desc = "Automatically fishes around player within 5 studs. Player will be anchored during fishing to prevent movement.",
-        Image = "anchor",
-        ImageSize = 18,
-    })
-    
-    -- Fishing range display
-    Tabs.FishTab:Paragraph({
-        Title = "🎯 Fishing Range",
-        Desc = string.format("Fishing within %d studs around player position", FishingConfig.FishingRange),
-        Image = "target",
-        ImageSize = 18,
     })
     
     Tabs.FishTab:Section({ Title = "🤖 Auto Fishing", Icon = "play" })
