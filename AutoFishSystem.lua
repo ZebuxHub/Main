@@ -823,7 +823,7 @@ local function startFishing()
     -- Update fishing position to random spot around player
     updateFishingPosition()
     
-    -- First fire Focus + FishRob (prepare fishing state)
+    -- First fire Focus + FishRob (don't move player)
     local args = {
         "Focus",
         "FishRob"
@@ -843,13 +843,13 @@ local function startFishing()
         return false
     end
     
-    -- Start fishing sequence on FishingRE (if required by server)
+    -- Start fishing state (if server expects a handshake)
     pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Start")
     end)
-    
-    -- Short wait before throw for faster cycles
-    task.wait(0.1)
+
+    -- Shorter wait before throw for faster cycles
+    task.wait(0.15)
     
     -- Select affordable bait
     local selectedBait = (function()
@@ -1081,18 +1081,14 @@ local function waitForFishPull()
         Duration = 2 
     })
     
-    local timeout = 25 -- Faster timeout
+    local timeout = 30 -- Increased timeout for better accuracy
     local startTime = tick()
     local lastAnimFish = nil
     
-    -- Wait for AnimFish attribute to be "Pull" with slower checking for accuracy
+    -- Wait for FishState/AnimFish to be "Pull"
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
-        -- Prefer a FishState attribute on the player (if available), else fallback to object's AnimFish
         local playerState = LocalPlayer:GetAttribute("FishState")
-        local animFish = fishingObj:GetAttribute("AnimFish")
-        if playerState ~= nil then
-            animFish = playerState
-        end
+        local animFish = playerState or fishingObj:GetAttribute("AnimFish")
         
         -- Debug: show AnimFish changes
         if animFish ~= lastAnimFish then
@@ -1104,7 +1100,7 @@ local function waitForFishPull()
             lastAnimFish = animFish
         end
         
-        if tostring(animFish) == "PULL" then
+        if tostring(animFish) == "Pull" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
                 Content = "✅ Fish ready to pull! State = " .. tostring(animFish), 
@@ -1144,6 +1140,8 @@ function FishingSystem.Start()
     FishingSystem.Active = true
     FishingConfig.AutoFishEnabled = true
     FishingConfig.Stats.SessionStartTime = os.time()
+    -- Freeze player for the whole auto-fishing session
+    pcall(anchorPlayer)
     
     FishingSystem.Thread = task.spawn(runAutoFish)
     
@@ -1161,7 +1159,7 @@ function FishingSystem.Stop()
     FishingConfig.AutoFishEnabled = false
     
     -- Make sure to unanchor player when stopping
-    unanchorPlayer()
+    pcall(unanchorPlayer)
     
     if FishingSystem.Thread then
         task.cancel(FishingSystem.Thread)
