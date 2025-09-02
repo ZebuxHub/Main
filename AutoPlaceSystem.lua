@@ -18,11 +18,9 @@ local selectedEggTypes = {}
 local selectedMutations = {}
 local fallbackToRegularWhenNoWater = true
 local usePetPlacementMode = false
+local autoDeleteTileScope = "Both" -- Both | Regular only | Ocean only
 local minPetRateFilter = 0
 local petAscendingOrder = true
-local deleteTileMode = "off" -- off | regular | water
-local replaceWithBetterEnabled = false
-local replaceImprovementPercent = 10
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -605,31 +603,6 @@ local function isTileOccupied(farmPart)
         math.floor(center.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
     )
     
-    -- Helper to extract effective speed from a pet model in workspace
-    local function getModelEffectiveSpeed(model)
-        if not model then return nil end
-        local function findSpeedInModel(m)
-            for _, child in ipairs(m:GetDescendants()) do
-                if child:IsA("TextLabel") or child:IsA("SurfaceGui") then
-                    local text = child.Text or ""
-                    local speedMatch = text:match("Speed:%s*(%d+)") or 
-                        text:match("🏃%s*(%d+)") or text:match("(%d+)%s*/s") or
-                        text:match("Production:%s*(%d+)")
-                    if speedMatch then return tonumber(speedMatch) end
-                end
-            end
-            return nil
-        end
-        return findSpeedInModel(model)
-    end
-
-    -- Decide if we should delete a pet occupying the tile based on settings
-    local function shouldDeleteForMode(isWaterTile)
-        if deleteTileMode == "regular" and not isWaterTile then return true end
-        if deleteTileMode == "water" and isWaterTile then return true end
-        return false
-    end
-
     -- Check PlayerBuiltBlocks
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
     if playerBuiltBlocks then
@@ -640,16 +613,6 @@ local function isTileOccupied(farmPart)
                 local yDistance = math.abs(modelPos.Y - surfacePosition.Y)
                 
                 if xzDistance < 4.0 and yDistance < 12.0 then
-                    -- If deletion mode is enabled, remove the pet occupying this tile
-                    if shouldDeleteForMode(farmPart.Name == "WaterFarm_split_0_0_0") then
-                        pcall(function()
-                            if CharacterRE then
-                                CharacterRE:FireServer("Del", model.Name)
-                            end
-                        end)
-                        -- allow space after deletion
-                        return false
-                    end
                     return true
                 end
             end
@@ -666,7 +629,6 @@ local function isTileOccupied(farmPart)
                 local yDistance = math.abs(petPos.Y - surfacePosition.Y)
                 
                 if xzDistance < 4.0 and yDistance < 12.0 then
-                    -- Deleting workspace pets is not performed here to avoid unintended removals
                     return true
                 end
             end
@@ -806,8 +768,6 @@ local function placePet(farmPart, eggUID)
     if petNode then
         local dAttr = petNode:GetAttribute("D")
         if dAttr ~= nil and tostring(dAttr) ~= "" then
-            -- Optional replacement logic: if a slower pet is on this tile, replace it
-            -- Replacement with better speed is handled during occupancy scan in isTileOccupied
             return true
         end
     end
@@ -854,6 +814,15 @@ local function getActualPetSpeedFromWorkspace(petUID)
 end
 
 local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed)
+    -- Respect tile-scope for auto-delete; when scope filters it out, skip
+    -- tile kind is passed via upvalue on call; we'll check a temporary global
+    local __tile_kind = _G.__last_placed_tile_kind
+    if autoDeleteTileScope == "Regular only" and __tile_kind == "water" then
+        return true
+    end
+    if autoDeleteTileScope == "Ocean only" and (__tile_kind == nil or __tile_kind == "regular") then
+        return true
+    end
     -- Wait a moment for pet to fully appear in workspace
     task.wait(1.0)
     
@@ -1070,10 +1039,13 @@ local function attemptPlacement()
             petCache.lastUpdate = 0
             
             -- Verify pet speed and auto-delete if needed
+            _G.__last_placed_tile_kind = petInfo.isOcean and "water" or "regular"
             local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate)
             
             if isValidPet then
                 placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
+                -- Try replace-with-better: if a lower-speed pet occupies tile area, attempt delete
+                -- (uses verifyAndDeletePetIfNeeded path for consistency)
                 if petInfo.mutation then
                     placementStats.mutationPlacements = placementStats.mutationPlacements + 1
                 end
@@ -1275,7 +1247,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    -- Pet placement mode and filters
+    -- Pet placement mode
     Tabs.PlaceTab:Toggle({
         Title = "Place Pets (use inventory pets instead of eggs)",
         Desc = "ON = use pets; OFF = use eggs.",
@@ -1311,37 +1283,18 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    Tabs.PlaceTab:Dropdown({
-        Title = "Delete pets on tile type",
-        Desc = "Choose tiles to auto-delete before placing: Off/Regular/Water",
-        Values = {"off","regular","water"},
-        Value = "off",
-        Callback = function(val)
-            deleteTileMode = tostring(val or "off")
-        end
-    })
-    
-    Tabs.PlaceTab:Toggle({
-        Title = "Replace with better pet",
-        Desc = "If an existing pet on the tile is slower, delete and place the faster one",
-        Value = false,
-        Callback = function(state)
-            replaceWithBetterEnabled = state
-        end
-    })
-    
-    Tabs.PlaceTab:Slider({
-        Title = "Replace: Min improvement %",
-        Desc = "Only replace if new pet is this % faster than existing",
-        Value = { Min = 0, Max = 200, Default = 10 },
-        Step = 1,
-        Callback = function(val)
-            replaceImprovementPercent = tonumber(val) or 10
-        end
-    })
-    
     -- Excluding Big pets is enforced automatically in selection (no UI toggle)
-    
+
+    Tabs.PlaceTab:Dropdown({
+        Title = "Auto-Delete Scope",
+        Desc = "Choose where auto-delete applies after placement",
+        Values = {"Both", "Regular only", "Ocean only"},
+        Value = "Both",
+        Callback = function(selection)
+            autoDeleteTileScope = selection or "Both"
+        end
+    })
+
     Tabs.PlaceTab:Toggle({
         Title = "Pets: Ascending order (low → high)",
         Desc = "Place lower produce rates first. Turn off for highest first.",
