@@ -976,9 +976,7 @@ local function collectNearbyFish()
     local art = workspace:FindFirstChild("Art")
     if art then searchForFish(art) end
     
-    if collected > 0 then
-        -- Auto-collected fish
-    end
+    -- no-op; boolean success returned below
     
     return collected > 0
 end
@@ -1047,7 +1045,7 @@ local function waitForFishPull()
             lastState = playerState
         end
         
-        if tostring(playerState) == "Pull" then
+        if tostring(playerState) == "PULL" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
                 Content = "✅ Fish ready to pull! State = " .. tostring(playerState), 
