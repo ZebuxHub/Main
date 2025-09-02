@@ -823,7 +823,7 @@ local function startFishing()
     -- Update fishing position to random spot around player
     updateFishingPosition()
     
-    -- First fire Focus + FishRob (don't move player)
+    -- First fire Focus + FishRob (prepare fishing state)
     local args = {
         "Focus",
         "FishRob"
@@ -843,8 +843,13 @@ local function startFishing()
         return false
     end
     
-    -- Shorter wait before throw for faster cycles
-    task.wait(0.15)
+    -- Start fishing sequence on FishingRE (if required by server)
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Start")
+    end)
+    
+    -- Short wait before throw for faster cycles
+    task.wait(0.1)
     
     -- Select affordable bait
     local selectedBait = (function()
@@ -1076,13 +1081,18 @@ local function waitForFishPull()
         Duration = 2 
     })
     
-    local timeout = 30 -- Increased timeout for better accuracy
+    local timeout = 25 -- Faster timeout
     local startTime = tick()
     local lastAnimFish = nil
     
     -- Wait for AnimFish attribute to be "Pull" with slower checking for accuracy
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
+        -- Prefer a FishState attribute on the player (if available), else fallback to object's AnimFish
+        local playerState = LocalPlayer:GetAttribute("FishState")
         local animFish = fishingObj:GetAttribute("AnimFish")
+        if playerState ~= nil then
+            animFish = playerState
+        end
         
         -- Debug: show AnimFish changes
         if animFish ~= lastAnimFish then
@@ -1094,15 +1104,15 @@ local function waitForFishPull()
             lastAnimFish = animFish
         end
         
-        if animFish == "Pull" then
+        if tostring(animFish) == "Pull" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
-                Content = "✅ Fish ready to pull! AnimFish = " .. tostring(animFish), 
+                Content = "✅ Fish ready to pull! State = " .. tostring(animFish), 
                 Duration = 2 
             })
             return true
         end
-        task.wait(0.2) -- Slower checking interval for better accuracy
+        task.wait(0.15)
     end
     
     WindUI:Notify({ 
