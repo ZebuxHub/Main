@@ -1063,126 +1063,100 @@ end
 
 -- Send item (pet or egg) to player
 --- Send item (pet or egg) to player with verification and retry
-local function sendItemToPlayer(item, playerName, itemType)
-    if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-        if not sessionLimits.limitReachedNotified then
-            WindUI:Notify({
-                Title = "⚠️ Send Limit Reached",
-                Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")",
-                Duration = 5
-            })
-            sessionLimits.limitReachedNotified = true
-        end
-        return false
-    end
-    
-    local itemUID = item.uid
-    local isEgg = itemType == "egg"
-    
-    -- Check if send operation is already in progress for this item
-    if sendInProgress[itemUID] then
-        return false -- Already being sent
-    end
-    
-    -- Mark as in progress
-    sendInProgress[itemUID] = true
-    
-    -- Verify item exists before attempting to send
-    if not verifyItemExists(itemUID, isEgg) then
-        sendInProgress[itemUID] = nil
-        return false -- Item no longer exists
-    end
-    
-    local success = false
-    
-    -- If item is placed on ground, remove it first
-    if item.placed then
-        local removeSuccess = removeFromGround(itemUID)
-        if removeSuccess then
-            task.wait(0.05) -- Optimized wait after removal
-            -- Re-verify after removal
-            if not verifyItemExists(itemUID, isEgg) then
-                sendInProgress[itemUID] = nil
-                return false -- Item removed during ground removal
-            end
-        end
-    end
-    
-    -- Focus the item first (REQUIRED before sending)
-    local focusSuccess = focusItem(itemUID)
-    if focusSuccess then
-        task.wait(0.1) -- Optimized wait for focus to process
-    end
-    
-    -- Verify player is still online
-    local targetPlayer = resolveTargetPlayerByName(playerName)
-    if not targetPlayer then
-        warn("Target player " .. playerName .. " not found online")
-        sendInProgress[itemUID] = nil
-        return false
-    end
-    
-    -- Attempt to send
-    local sendSuccess, err = pcall(function()
-        local args = {targetPlayer}
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
-    end)
-    
-    if sendSuccess then
-        -- Wait a moment then verify item was actually sent by checking PlayerGui.Data
-        task.wait(0.3) -- Slightly longer wait for server update
-        local itemStillExists = false
-        
-        -- Check directly in PlayerGui.Data folders
-        if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-            if isEgg then
-                local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
-                if eggsFolder then
-                    itemStillExists = eggsFolder:FindFirstChild(itemUID) ~= nil
-                end
-            else
-                local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-                if petsFolder then
-                    itemStillExists = petsFolder:FindFirstChild(itemUID) ~= nil
-                end
-            end
-        end
-        
-        if not itemStillExists then
-            -- Item successfully sent (no longer in PlayerGui.Data)
-            success = true
-            sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-            actionCounter = actionCounter + 1
-            
-            -- Log for webhook
-            table.insert(sessionLogs, {
-                kind = itemType,
-                uid = itemUID,
-                type = item.type,
-                mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
-                receiver = playerName,
-            })
-        end
-    end
-    
-    -- Clean up
-    sendInProgress[itemUID] = nil
-    
-    if success then
-        WindUI:Notify({
-            Title = "✅ Sent Successfully",
-            Content = itemType:gsub("^%l", string.upper) .. " " .. (item.type or "Unknown") .. " → " .. playerName,
-            Duration = 2
-        })
-    else
-        WindUI:Notify({
-            Title = "❌ Send Failed",
-            Content = "Failed to send " .. itemType,
-            Duration = 3
-        })
-    end
-    
-    return success
+local function sendItemToPlayer(item, target, itemType)
+	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+		if not sessionLimits.limitReachedNotified then
+			WindUI:Notify({ Title = "⚠️ Send Limit Reached", Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")", Duration = 5 })
+			sessionLimits.limitReachedNotified = true
+		end
+		return false
+	end
+
+	local itemUID = item.uid
+	local isEgg = itemType == "egg"
+
+	-- Prevent parallel sends for the same item
+	if sendInProgress[itemUID] then return false end
+	sendInProgress[itemUID] = true
+
+	-- Verify item exists before attempting to send
+	if not verifyItemExists(itemUID, isEgg) then
+		sendInProgress[itemUID] = nil
+		return false
+	end
+
+	-- Resolve target (accept Player instance or name)
+	local targetPlayerObj = nil
+	if typeof(target) == "Instance" then
+		if target:IsA("Player") then targetPlayerObj = target end
+	elseif type(target) == "string" then
+		targetPlayerObj = resolveTargetPlayerByName(target)
+	end
+	if not targetPlayerObj then
+		sendInProgress[itemUID] = nil
+		return false -- silently skip
+	end
+
+	local success = false
+
+	-- If item is placed on ground, remove it first
+	if item.placed then
+		local removeSuccess = removeFromGround(itemUID)
+		if removeSuccess then
+			task.wait(0.05)
+			if not verifyItemExists(itemUID, isEgg) then
+				sendInProgress[itemUID] = nil
+				return false
+			end
+		end
+	end
+
+	-- Focus the item first (REQUIRED)
+	local focusSuccess = focusItem(itemUID)
+	if focusSuccess then task.wait(0.1) end
+
+	-- Ensure player is still online
+	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
+		sendInProgress[itemUID] = nil
+		return false
+	end
+
+	-- Attempt to send
+	local sendSuccess, _ = pcall(function()
+		local args = { targetPlayerObj }
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
+	end)
+
+	if sendSuccess then
+		-- Verify gone from inventory
+		task.wait(0.3)
+		local itemStillExists = false
+		if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+			if isEgg then
+				local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+				if eggsFolder then itemStillExists = eggsFolder:FindFirstChild(itemUID) ~= nil end
+			else
+				local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+				if petsFolder then itemStillExists = petsFolder:FindFirstChild(itemUID) ~= nil end
+			end
+		end
+		if not itemStillExists then
+			success = true
+			sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
+			actionCounter = actionCounter + 1
+			table.insert(sessionLogs, { kind = itemType, uid = itemUID, type = item.type, mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None", receiver = targetPlayerObj.Name })
+		end
+	end
+
+	sendInProgress[itemUID] = nil
+
+	if success then
+		WindUI:Notify({ Title = "✅ Sent Successfully", Content = itemType:gsub("^%l", string.upper) .. " " .. (item.type or "Unknown") .. " → " .. targetPlayerObj.Name, Duration = 2 })
+	else
+		-- silent fail (no spam)
+	end
+
+	return success
 end
 
 -- Sell pet (only pets, no eggs)
@@ -1293,30 +1267,26 @@ local function processTrash()
 		local targets = {}
 		local randomMode = (selectedTargetName == "Random Player")
 		if randomMode then
-			-- Keep a sticky random target until 3 failed cycles
-			if not isPlayerValid(randomTargetState.current) then
-				randomTargetState.current = pickRandomTarget()
-				randomTargetState.fails = 0
-			end
-			if randomTargetState.current then
-				targets = { randomTargetState.current }
-			end
+			-- Try multiple random candidates this cycle
+			targets = getRandomTargets(8)
 		else
 			local tp = resolveTargetPlayerByName(selectedTargetName)
-			if tp then table.insert(targets, tp) end
+			if tp then table.insert(targets, tp) else targets = getRandomTargets(5) end -- auto-fallback if selected is offline
 		end
 
 		local sentAnyItem = false
 		for _, targetPlayerObj in ipairs(targets) do
-			local targetPlayer = targetPlayerObj and targetPlayerObj.Name or nil
-			lastReceiverName = targetPlayer
-			lastReceiverId = targetPlayerObj and targetPlayerObj.UserId or nil
+			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
+				continue
+			end
+			lastReceiverName = targetPlayerObj.Name
+			lastReceiverId = targetPlayerObj.UserId
 
 			if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
-					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) and targetPlayer then
-						local ok = sendItemToPlayer(pet, targetPlayer, "pet")
+					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
+						local ok = sendItemToPlayer(pet, targetPlayerObj, "pet")
 						if ok then sentAnyItem = true break end
 					end
 				end
@@ -1327,8 +1297,8 @@ local function processTrash()
 					egg = refreshItemFromData(egg.uid, true, egg)
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
-					if shouldSendItem(egg, tList, mList) and targetPlayer then
-						local ok = sendItemToPlayer(egg, targetPlayer, "egg")
+					if shouldSendItem(egg, tList, mList) then
+						local ok = sendItemToPlayer(egg, targetPlayerObj, "egg")
 						if ok then sentAnyItem = true break end
 					end
 				end
@@ -1416,7 +1386,22 @@ function SendTrashSystem.Init(dependencies)
             print("Session limits updated: " .. numValue .. " items per session")
         end,
     })
-    
+
+    -- Reset session limits button (moved directly under Session Limit)
+    TrashTab:Button({
+        Title = "🔄 Reset Session Limits",
+        Desc = "Reset send/sell counters for this session",
+        Callback = function()
+            sessionLimits.sendPetCount = 0
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            webhookSent = false
+            sessionLogs = {}
+            actionCounter = 0
+            updateStatus()
+            WindUI:Notify({ Title = "🔄 Session Reset", Content = "Send/sell limits reset!", Duration = 2 })
+        end
+    })
+
     -- Main toggle
     trashToggle = TrashTab:Toggle({
         Title = "🗑️ Send Trash System",
@@ -1621,26 +1606,6 @@ function SendTrashSystem.Init(dependencies)
                 Title = "🛑 Emergency Stop",
                 Content = "Trash system stopped and cleared!",
                 Duration = 3
-            })
-        end
-    })
-    
-    -- Reset session limits button
-    TrashTab:Button({
-        Title = "🔄 Reset Session Limits",
-        Desc = "Reset send/sell counters for this session",
-        Callback = function()
-            sessionLimits.sendPetCount = 0
-            sessionLimits.limitReachedNotified = false -- Reset notification
-            webhookSent = false
-            sessionLogs = {}
-            actionCounter = 0
-            updateStatus()
-            
-            WindUI:Notify({
-                Title = "🔄 Session Reset",
-                Content = "Send/sell limits reset!",
-                Duration = 2
             })
         end
     })
