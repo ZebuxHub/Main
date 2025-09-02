@@ -1077,68 +1077,30 @@ local function findPlayerFishingObject()
 end
 
 local function waitForFishPull()
-    -- Try to find the player's fishing object dynamically
-    local fishingObj = findPlayerFishingObject()
-    
-    if not fishingObj then
-        -- Fallback: try common patterns
-        local commonPatterns = {
-            LocalPlayer.Name,
-            LocalPlayer.DisplayName,
-            "zif_" .. string.format("%03d", LocalPlayer.UserId % 1000),
-            "player_" .. LocalPlayer.UserId,
-            "fishing_" .. LocalPlayer.Name
-        }
-        
-        for _, pattern in ipairs(commonPatterns) do
-            if pattern then
-                local obj = workspace:FindFirstChild(pattern)
-                if obj then
-                    fishingObj = obj
-                    break
-                end
-            end
-        end
-    end
-    
-    if not fishingObj then
-        WindUI:Notify({ 
-            Title = "🎣 Auto Fish Debug", 
-            Content = "❌ Could not find fishing object for player: " .. LocalPlayer.Name, 
-            Duration = 3 
-        })
-        return false
-    end
-    
-    WindUI:Notify({ 
-        Title = "🎣 Auto Fish Debug", 
-        Content = "🎯 Using fishing object: " .. fishingObj.Name, 
-        Duration = 2 
-    })
+    -- We no longer rely on fishingObj/AnimFish; only Player attribute FishState
     
     local timeout = 20 -- Lower timeout to recycle faster if missed
     local startTime = tick()
-    local lastAnimFish = nil
+    local lastState = nil
     
-    -- Wait for FishState/AnimFish to be "Pull"
+    -- Wait for FishState to be "Pull"
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
         local playerState = LocalPlayer:GetAttribute("FishState")
-        local animFish = playerState or fishingObj:GetAttribute("AnimFish")
         
-        -- Debug: show AnimFish changes
-        if animFish ~= lastAnimFish then
+        -- Debug: show state changes
+        if playerState ~= lastState then
             WindUI:Notify({ 
-                Title = "🎣 AnimFish Status", 
-                Content = "AnimFish changed: " .. tostring(lastAnimFish) .. " → " .. tostring(animFish), 
+                Title = "🎣 FishState", 
+                Content = "State changed: " .. tostring(lastState) .. " → " .. tostring(playerState), 
                 Duration = 2 
             })
-            lastAnimFish = animFish
+            lastState = playerState
         end
         
-        if tostring(animFish) == "Pull" then
+        if tostring(playerState) == "Pull" then
             WindUI:Notify({ 
                 Title = "🎣 Auto Fish Debug", 
-                Content = "✅ Fish ready to pull! State = " .. tostring(animFish), 
+                Content = "✅ Fish ready to pull! State = " .. tostring(playerState), 
                 Duration = 2 
             })
             return true
@@ -1148,7 +1110,7 @@ local function waitForFishPull()
     
     WindUI:Notify({ 
         Title = "🎣 Auto Fish Debug", 
-        Content = "⏰ Fishing timeout reached. Last AnimFish: " .. tostring(lastAnimFish), 
+        Content = "⏰ Fishing timeout reached. Last FishState: " .. tostring(lastState), 
         Duration = 3 
     })
     return false
