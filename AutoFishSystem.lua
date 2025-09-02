@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
 local UserInputService = game:GetService("UserInputService")
 local Camera = workspace.CurrentCamera
+local ContextActionService = game:GetService("ContextActionService")
 
 -- Module variables
 local WindUI = nil
@@ -39,6 +40,8 @@ local FishingConfig = {
         JumpPower = nil,
         AutoRotate = nil
     },
+    _Controls = nil, -- cached controls module
+    _CASBound = false, -- movement sink bound flag
     FreezeConn = nil,
     -- Position placement history
     PlacedPositions = {},
@@ -422,6 +425,28 @@ local function anchorPlayer()
         end)
         
         FishingConfig.PlayerAnchored = true
+        -- Hard-disable controls via CAS sink and PlayerModule if available
+        if not FishingConfig._CASBound then
+            local function sink(actionName, inputState, inputObj)
+                return Enum.ContextActionResult.Sink
+            end
+            ContextActionService:BindAction("AFS_BlockMovement", sink, false,
+                Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+                Enum.KeyCode.Space, Enum.KeyCode.LeftShift)
+            FishingConfig._CASBound = true
+        end
+        -- Try to disable PlayerModule controls for gamepads/mobile as well
+        pcall(function()
+            local playerScripts = LocalPlayer:WaitForChild("PlayerScripts", 2)
+            if playerScripts then
+                local pm = playerScripts:FindFirstChild("PlayerModule")
+                if pm and pm:FindFirstChild("ControlModule") then
+                    local controls = require(pm:FindFirstChild("ControlModule"))
+                    FishingConfig._Controls = controls
+                    if controls and controls.Disable then controls:Disable() end
+                end
+            end
+        end)
         -- Player anchored for fishing with fall protection
     end
 end
@@ -460,6 +485,16 @@ local function unanchorPlayer()
 
         rootPart.Anchored = false
         FishingConfig.PlayerAnchored = false
+        -- Re-enable controls
+        if FishingConfig._CASBound then
+            pcall(function()
+                ContextActionService:UnbindAction("AFS_BlockMovement")
+            end)
+            FishingConfig._CASBound = false
+        end
+        if FishingConfig._Controls and FishingConfig._Controls.Enable then
+            pcall(function() FishingConfig._Controls:Enable() end)
+        end
         -- Player unanchored with fall protection
     end
 end
