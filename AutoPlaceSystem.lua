@@ -16,12 +16,10 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
-local fallbackToRegularWhenNoWater = true
+local fallbackToRegularWhenNoWater = false
 local usePetPlacementMode = false
--- removed: mutationsOnlyPet toggle
 local minPetRateFilter = 0
-local petAscendingOrder = true
-local autoDeleteScope = "Both" -- Both | Regular only | Ocean only
+local petAscendingOrder = false
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -814,10 +812,7 @@ local function getActualPetSpeedFromWorkspace(petUID)
     return nil
 end
 
-local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed, isOcean)
-    -- Scope filter: skip deletion if tile type not selected
-    if autoDeleteScope == "Regular only" and isOcean then return true end
-    if autoDeleteScope == "Ocean only" and (not isOcean) then return true end
+local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed)
     -- Wait a moment for pet to fully appear in workspace
     task.wait(1.0)
     
@@ -1034,7 +1029,7 @@ local function attemptPlacement()
             petCache.lastUpdate = 0
             
             -- Verify pet speed and auto-delete if needed
-            local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate, petInfo.isOcean)
+            local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate)
             
             if isValidPet then
                 placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
@@ -1171,13 +1166,8 @@ function AutoPlaceSystem.Init(dependencies)
 end
 
 function AutoPlaceSystem.CreateUI()
-    -- Build three separate tabs: Auto Delete, Auto Place, Auto Unlock
-    local placeTab = Tabs.PlaceTab
-    local deleteTab = Tabs.MainSection and Tabs.MainSection:Tab({ Title = "🗑️ | Auto Delete" }) or placeTab
-    local unlockTab = Tabs.MainSection and Tabs.MainSection:Tab({ Title = "🔓 | Auto Unlock" }) or placeTab
-
     -- Egg filters section
-    placeTab:Paragraph({
+    Tabs.PlaceTab:Paragraph({
         Title = "🥚 Egg filters",
         Desc = "Select which egg types and mutations to place when not using pet mode.",
         Image = "filter",
@@ -1185,7 +1175,7 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Egg selection dropdown
-    local placeEggDropdown = placeTab:Dropdown({
+    local placeEggDropdown = Tabs.PlaceTab:Dropdown({
         Title = "🥚 Pick Egg Types",
         Desc = "Choose which eggs to place (🌊 ocean eggs require water farm)",
         Values = {
@@ -1205,7 +1195,7 @@ function AutoPlaceSystem.CreateUI()
     })
     
     -- Mutation selection dropdown
-    local placeMutationDropdown = placeTab:Dropdown({
+    local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
         Title = "🧬 Pick Mutations",
         Desc = "Choose which mutations to place (leave empty for all mutations)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
@@ -1219,7 +1209,7 @@ function AutoPlaceSystem.CreateUI()
     })
     
     -- Statistics display
-    local statsLabel = placeTab:Paragraph({
+    local statsLabel = Tabs.PlaceTab:Paragraph({
         Title = "📊 Placement Statistics",
         Desc = "Starting up...",
         Image = "activity",
@@ -1227,7 +1217,7 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Mode & behavior section
-    placeTab:Paragraph({
+    Tabs.PlaceTab:Paragraph({
         Title = "🧭 Mode & behavior",
         Desc = "Choose pet/egg mode and global behavior.",
         Image = "settings",
@@ -1235,7 +1225,7 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Behavior toggle: fallback to regular eggs when no water farms
-    placeTab:Toggle({
+    Tabs.PlaceTab:Toggle({
         Title = "Fallback to regular eggs when no water farms",
         Desc = "Egg mode only: if only ocean eggs are selected but water=0, place any regular egg.",
         Value = true,
@@ -1245,7 +1235,7 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Pet placement mode and filters
-    placeTab:Toggle({
+    Tabs.PlaceTab:Toggle({
         Title = "Place Pets (use inventory pets instead of eggs)",
         Desc = "ON = use pets; OFF = use eggs.",
         Value = false,
@@ -1256,16 +1246,16 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Pet settings section
-    placeTab:Paragraph({
+    Tabs.PlaceTab:Paragraph({
         Title = "🐾 Pet placement settings",
         Desc = "These settings are used only when pet mode is ON.",
         Image = "sliders-horizontal",
         ImageSize = 14,
     })
 
-    -- Removed: mutations-only toggle
+    -- Removed "mutations only" toggle per user request
 
-    placeTab:Slider({
+    Tabs.PlaceTab:Slider({
         Title = "Pets: Min Speed",
         Desc = "Filter pets below this effective production rate.",
         Value = {
@@ -1282,7 +1272,7 @@ function AutoPlaceSystem.CreateUI()
     
     -- Excluding Big pets is enforced automatically in selection (no UI toggle)
     
-    placeTab:Toggle({
+    Tabs.PlaceTab:Toggle({
         Title = "Pets: Ascending order (low → high)",
         Desc = "Place lower produce rates first. Turn off for highest first.",
         Value = true,
@@ -1293,7 +1283,7 @@ function AutoPlaceSystem.CreateUI()
     })
     
     -- Blacklist management
-    deleteTab:Button({
+    Tabs.PlaceTab:Button({
         Title = "🗑️ Clear Pet Blacklist",
         Desc = "Remove all pets from blacklist (pets that failed speed verification)",
         Callback = function()
@@ -1302,7 +1292,7 @@ function AutoPlaceSystem.CreateUI()
     })
     
     -- Run section
-    placeTab:Paragraph({
+    Tabs.PlaceTab:Paragraph({
         Title = "▶️ Run",
         Desc = "Start or stop the auto placement loop.",
         Image = "play",
@@ -1336,7 +1326,7 @@ function AutoPlaceSystem.CreateUI()
     end
     
     -- Main auto place toggle
-    local autoPlaceToggle = placeTab:Toggle({
+    local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         Title = "🏠 Auto Place Pets (Revamped)",
         Desc = "Smart placement with ocean egg skipping and focus-first logic!",
         Value = false,
@@ -1368,30 +1358,6 @@ function AutoPlaceSystem.CreateUI()
     AutoPlaceSystem.Toggle = autoPlaceToggle
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
-
-    -- Auto Delete tab controls
-    deleteTab:Paragraph({ Title = "🗑️ Auto Delete Settings", Desc = "Delete slow pets after placement verification.", Image = "trash-2", ImageSize = 14 })
-    deleteTab:Slider({
-        Title = "Pets: Min Speed",
-        Desc = "Delete pets with speed below this value after placement.",
-        Value = { Min = 0, Max = 50000, Default = 0 },
-        Step = 1,
-        Callback = function(val)
-            minPetRateFilter = tonumber(val) or 0
-        end
-    })
-    deleteTab:Dropdown({
-        Title = "Delete Scope",
-        Desc = "Choose which tile types to auto-delete on",
-        Values = { "Both", "Regular only", "Ocean only" },
-        Value = autoDeleteScope,
-        Callback = function(v)
-            autoDeleteScope = v
-        end
-    })
-
-    -- Auto Unlock placeholder (delegated to other module normally)
-    unlockTab:Paragraph({ Title = "🔓 Auto Unlock Tiles", Desc = "This section is managed by the main script.", Image = "unlock", ImageSize = 14 })
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
