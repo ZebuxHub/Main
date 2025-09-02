@@ -29,7 +29,7 @@ local FishingConfig = {
     SelectedBait = "FishingBait1",
     FishingPosition = Vector3.new(0, 0, 0),
     AutoFishEnabled = false,
-    DelayBetweenCasts = 2,
+    DelayBetweenCasts = 1,
     FishingRange = 5, -- Fish within 5 studs of player
     VerticalOffset = 10, -- Cast position Y offset above player
     PlayerAnchored = false, -- Track if player is anchored
@@ -823,9 +823,6 @@ local function startFishing()
     -- Update fishing position to random spot around player
     updateFishingPosition()
     
-    -- Anchor player to prevent jumping and spinning
-    anchorPlayer()
-    
     -- First fire Focus + FishRob (don't move player)
     local args = {
         "Focus",
@@ -846,8 +843,8 @@ local function startFishing()
         return false
     end
     
-    -- Wait time for better accuracy (short)
-    task.wait(0.3)
+    -- Shorter wait before throw for faster cycles
+    task.wait(0.15)
     
     -- Select affordable bait
     local selectedBait = (function()
@@ -881,7 +878,6 @@ local function startFishing()
             Content = "❌ Failed to throw fishing line: " .. tostring(throwErr), 
             Duration = 3 
         })
-        unanchorPlayer() -- Unanchor if failed
         return false
     end
     
@@ -1120,50 +1116,15 @@ end
 local function runAutoFish()
     -- Starting auto fish loop
     while FishingConfig.AutoFishEnabled do
-        -- Beginning new fishing cycle
-        local castStartTime = tick()
-        local success = startFishing()
-        -- Start fishing result
-        
-        if success then
-            -- Wait for the fish to be ready to pull with error handling
-            local pullSuccess, pullWaitResult = pcall(waitForFishPull)
-            if pullSuccess and pullWaitResult then
-                -- Call pullFish with error handling
-                local fishSuccess, fishResult = pcall(pullFish)
-                if fishSuccess and fishResult then
-                    local castTime = tick() - castStartTime
-                    WindUI:Notify({ 
-                        Title = "🎣 Auto Fish", 
-                        Content = string.format("🐟 Caught a fish! (%.1fs)", castTime), 
-                        Duration = 2 
-                    })
-                else
-                    WindUI:Notify({ 
-                        Title = "🎣 Auto Fish", 
-                        Content = "❌ Failed to pull fish: " .. tostring(fishResult), 
-                        Duration = 2 
-                    })
-                end
-            else
-                WindUI:Notify({ 
-                    Title = "🎣 Auto Fish", 
-                    Content = "⏰ Fish pull timeout: " .. tostring(pullWaitResult), 
-                    Duration = 2 
-                })
+        local startOk = startFishing()
+        if startOk then
+            local pullOk = waitForFishPull()
+            if pullOk then
+                pullFish()
             end
-        else
-            WindUI:Notify({ 
-                Title = "🎣 Auto Fish", 
-                Content = "❌ Failed to start fishing", 
-                Duration = 2 
-            })
         end
-        
-        -- Wait before next fishing attempt
-        if FishingConfig.AutoFishEnabled then
-            task.wait(FishingConfig.DelayBetweenCasts)
-        end
+        -- Faster looping between casts
+        task.wait(FishingConfig.DelayBetweenCasts or 1)
     end
 end
 
