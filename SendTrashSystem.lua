@@ -60,6 +60,9 @@ local lastReceiverName, lastReceiverId -- for webhook author/avatar
 -- Random target state (for "Random Player" mode)
 local randomTargetState = { current = nil, fails = 0 }
 
+-- Target cooldowns (userId -> unix time when cooldown expires)
+local targetCooldowns = {}
+
 -- Inventory Cache System (like auto place)
 local inventoryCache = {
     pets = {},
@@ -555,8 +558,14 @@ end
 -- Get a randomized list of up to N candidate players (Player objects)
 local function getRandomTargets(maxCount)
 	local pool = {}
+	local now = time()
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then table.insert(pool, player) end
+		if player ~= LocalPlayer then
+			local cd = targetCooldowns[player.UserId]
+			if not cd or cd <= now then
+				table.insert(pool, player)
+			end
+		end
 	end
 	-- Fisher-Yates shuffle
 	for i = #pool, 2, -1 do
@@ -1271,7 +1280,13 @@ local function processTrash()
 			targets = getRandomTargets(8)
 		else
 			local tp = resolveTargetPlayerByName(selectedTargetName)
-			if tp then table.insert(targets, tp) else targets = getRandomTargets(5) end -- auto-fallback if selected is offline
+			-- Skip selected target if on cooldown; fallback to random
+			local now = time()
+			if tp and (not targetCooldowns[tp.UserId] or targetCooldowns[tp.UserId] <= now) then
+				table.insert(targets, tp)
+			else
+				targets = getRandomTargets(5)
+			end
 		end
 
 		local sentAnyItem = false
@@ -1282,10 +1297,13 @@ local function processTrash()
 			lastReceiverName = targetPlayerObj.Name
 			lastReceiverId = targetPlayerObj.UserId
 
+			local attemptedForThisTarget = false
+
 			if not sentAnyItem and (sendMode == "Pets" or sendMode == "Both") then
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
 					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
+						attemptedForThisTarget = true
 						local ok = sendItemToPlayer(pet, targetPlayerObj, "pet")
 						if ok then sentAnyItem = true break end
 					end
@@ -1298,12 +1316,20 @@ local function processTrash()
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
 					if shouldSendItem(egg, tList, mList) then
+						attemptedForThisTarget = true
 						local ok = sendItemToPlayer(egg, targetPlayerObj, "egg")
 						if ok then sentAnyItem = true break end
 					end
 				end
 			end
-			if sentAnyItem then break end
+
+			-- If we attempted sends to this target but nothing left inventory, cooldown this target for 5s
+			if (not sentAnyItem) and attemptedForThisTarget then
+				targetCooldowns[targetPlayerObj.UserId] = time() + 5
+				-- continue to next candidate immediately
+			else
+				if sentAnyItem then break end
+			end
 		end
 
 		-- Random target failure accounting (switch after 3 failed cycles)
@@ -1593,22 +1619,6 @@ function SendTrashSystem.Init(dependencies)
         end
     })
     
-    -- Emergency stop button
-    TrashTab:Button({
-        Title = "🛑 Emergency Stop",
-        Desc = "Immediately stop all trash processing",
-        Callback = function()
-            trashEnabled = false
-            if trashToggle then trashToggle:SetValue(false) end
-            clearSendProgress() -- Clear any pending operations
-            
-            WindUI:Notify({
-                Title = "🛑 Emergency Stop",
-                Content = "Trash system stopped and cleared!",
-                Duration = 3
-            })
-        end
-    })
     
     -- Register UI elements with config
     if Config then
