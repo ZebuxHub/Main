@@ -308,7 +308,7 @@ local function sendWebhookSummary()
     
     table.insert(lines, "📊 **Session Summary:**")
     table.insert(lines, string.format("• Total items sent: **%d**", totalSent))
-    table.insert(lines, string.format("• Players helped: **%d**", totalReceivers))
+    table.insert(lines, string.format("• Players: **%d**", totalReceivers))
     table.insert(lines, "")
     
     -- Detailed breakdown by receiver
