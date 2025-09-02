@@ -737,14 +737,24 @@ local function placePet(farmPart, eggUID)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
     task.wait(0.1)
     
-    -- No teleport needed: placement uses remote DST position
+    -- Teleport to tile (use grid-snapped position for consistency)
+    local char = LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            -- Teleport to the exact center of the 8x8 tile
+            local teleportPos = Vector3.new(surfacePosition.X, farmPart.Position.Y, surfacePosition.Z)
+            hrp.CFrame = CFrame.new(teleportPos)
+            waitJitter(0.1)
+        end
+    end
     
     -- Place pet (using proper vector.create format)
     local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
     local args = {
         "Place",
         {
-            
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
             ID = eggUID
         }
     }
