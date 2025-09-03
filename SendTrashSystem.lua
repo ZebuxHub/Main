@@ -198,6 +198,18 @@ local sendAttempts = {} -- Track send attempts per item to prevent double-sendin
 local sendVerificationRetries = 3 -- Number of verification retries
 local sessionLimitReservations = 0 -- Track reserved session limit slots
 
+-- Webhook/session reporting
+local webhookUrl = ""
+local sessionLogs = {}
+local webhookSent = false
+
+-- Session limits
+local sessionLimits = {
+    sendPetCount = 0,
+    maxSendPet = 50,
+    limitReachedNotified = false -- Track if user has been notified
+}
+
 -- Session limit reservation system
 local function reserveSessionLimitSlot()
     if sessionLimits.sendPetCount + sessionLimitReservations >= sessionLimits.maxSendPet then
@@ -216,18 +228,6 @@ end
 local function getEffectiveSessionCount()
     return sessionLimits.sendPetCount + sessionLimitReservations
 end
-
--- Webhook/session reporting
-local webhookUrl = ""
-local sessionLogs = {}
-local webhookSent = false
-
--- Session limits
-local sessionLimits = {
-    sendPetCount = 0,
-    maxSendPet = 50,
-    limitReachedNotified = false -- Track if user has been notified
-}
 
 -- Pretty Discord embed assets
 local EggIconMap = {
