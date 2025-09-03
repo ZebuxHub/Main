@@ -235,6 +235,14 @@ end
 local webhookUrl = ""
 local sessionLogs = {}
 local webhookSent = false
+local sendWebhookSummary -- forward declaration for linter
+
+-- Helper: send summary if there are logs and not sent yet
+local function sendSummaryIfPending()
+    if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+        task.spawn(sendWebhookSummary)
+    end
+end
 
 -- Session limits
 local sessionLimits = {
@@ -1365,6 +1373,7 @@ local function processTrash()
 
 		if #petInventory == 0 and #eggInventory == 0 then
 			if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+				sendSummaryIfPending()
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 			else
@@ -1467,9 +1476,7 @@ local function processTrash()
 		end
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-				task.spawn(sendWebhookSummary)
-			end
+			sendSummaryIfPending()
 			trashEnabled = false
 			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 		end
@@ -1551,6 +1558,8 @@ function SendTrashSystem.Init(dependencies)
             trashEnabled = state
             
             if state then
+                webhookSent = false
+                sessionLogs = {}
                 task.spawn(function()
                     processTrash()
                 end)
@@ -1558,9 +1567,7 @@ function SendTrashSystem.Init(dependencies)
             else
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
                 -- Send webhook once per session when turned off
-                if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                    task.spawn(sendWebhookSummary)
-                end
+                sendSummaryIfPending()
             end
         end
     })
