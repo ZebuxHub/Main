@@ -56,6 +56,7 @@ local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
+local stopRequested = false -- graceful stop flag
 
 -- Random target state (for "Random Player" mode)
 local randomTargetState = { current = nil, fails = 0 }
@@ -319,7 +320,7 @@ end
 
 local function sendWebhookSummary()
     if webhookSent or webhookUrl == "" or #sessionLogs == 0 then return end
-    local totalSent = sessionLimits.sendPetCount
+    local totalSent = #sessionLogs
 
     -- Group events by receiver and by type/mutation for readable blocks
     local byReceiver = {}
@@ -1404,10 +1405,12 @@ local function processTrash()
 		local function trySendToTarget(targetPlayerObj)
 			local anyAttempt = false
 			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
+			if stopRequested then return false, anyAttempt end
 			-- attempt pets (stop after first successful send this cycle)
 			if sendMode == "Pets" or sendMode == "Both" then
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
+					if stopRequested then break end
 					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
 						anyAttempt = true
 						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
@@ -1418,6 +1421,7 @@ local function processTrash()
 			if sendMode == "Eggs" or sendMode == "Both" then
 				for _, egg in ipairs(eggInventory) do
 					egg = refreshItemFromData(egg.uid, true, egg)
+					if stopRequested then break end
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
 					if shouldSendItem(egg, tList, mList) then
@@ -1485,6 +1489,7 @@ local function processTrash()
 		updateStatus()
 		-- Gentle global throttle to avoid bursts and improve consistency
 		task.wait(0.45)
+		if stopRequested then break end
 	end
 end
 
@@ -1556,26 +1561,28 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Automatically send/sell unwanted pets based on filters",
         Value = false,
         Callback = function(state)
-            trashEnabled = state
-            
-            if state then
-                -- Start of a new run/session: reset webhook state and logs
-                webhookSent = false
-                sessionLogs = {}
-                task.spawn(function()
-                    processTrash()
-                end)
-                WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
-            else
-                WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
-                -- Send webhook once per session when turned off
-                if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                    task.spawn(function()
-                        sendWebhookSummary()
-                    end)
-                end
-            end
-        end
+			trashEnabled = state
+			
+			if state then
+				-- Start of a new run/session: do not reset logs, only reset webhookSent
+				webhookSent = false
+				stopRequested = false
+				task.spawn(function()
+					processTrash()
+				end)
+				WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
+			else
+				-- Graceful stop: request stop, allow in-flight send to conclude
+				stopRequested = true
+				WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
+				-- Send webhook once per session when turned off
+				if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+					task.spawn(function()
+						sendWebhookSummary()
+					end)
+				end
+			end
+		end
     })
     
     TrashTab:Section({ Title = "🎯 Target Settings", Icon = "target" })
