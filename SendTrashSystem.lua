@@ -506,49 +506,70 @@ end
 
 -- Get all mutations from inventory + hardcoded list
 local function getAllMutations()
-    local mutations = {}
-    
-    -- Add hardcoded mutations
-    for _, mutation in ipairs(HardcodedMutations) do
-        mutations[mutation] = true
-    end
-    
-    -- Add mutations from inventory
-    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-        local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-        if petsFolder then
-            for _, petData in pairs(petsFolder:GetChildren()) do
-                if petData:IsA("Configuration") then
-                    local petMutation = safeGetAttribute(petData, "M", nil)
-                    if petMutation and petMutation ~= "" then
-                        mutations[petMutation] = true
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Convert to sorted array
-    local sortedMutations = {}
-    for mutation in pairs(mutations) do
-        table.insert(sortedMutations, mutation)
-    end
-    table.sort(sortedMutations)
-    
-    return sortedMutations
+	local mutations = {}
+	
+	-- Add hardcoded mutations
+	for _, mutation in ipairs(HardcodedMutations) do
+		mutations[mutation] = true
+	end
+	
+	-- Add mutations from inventory
+	if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+		local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+		if petsFolder then
+			for _, petData in pairs(petsFolder:GetChildren()) do
+				if petData:IsA("Configuration") then
+					local petMutation = safeGetAttribute(petData, "M", nil)
+					if petMutation and petMutation ~= "" then
+						mutations[petMutation] = true
+					end
+				end
+			end
+		end
+	end
+	
+	-- Convert to sorted array
+	local sortedMutations = {}
+	for mutation in pairs(mutations) do
+		table.insert(sortedMutations, mutation)
+	end
+	table.sort(sortedMutations)
+	
+	return sortedMutations
 end
 
--- Utility: convert array list to lowercase set for O(1) membership checks
-local function makeLowerSet(list)
-    local set = {}
-    if type(list) == "table" then
-        for _, v in ipairs(list) do
-            if v and v ~= "" then
-                set[string.lower(tostring(v))] = true
-            end
-        end
-    end
-    return set
+-- Utility: normalize string to lowercase (reuses shouldSendItem.norm behavior)
+local function normalizeLower(value)
+	return value and tostring(value):lower() or nil
+end
+
+-- Utility: convert selection (array or map with boolean true) to lowercase set and count
+local function selectionToLowerSet(selection)
+	local set = {}
+	local count = 0
+	if type(selection) ~= "table" then return set, 0 end
+	-- Detect array-like
+	local isArray = rawget(selection, 1) ~= nil or #selection > 0
+	if isArray then
+		for _, v in ipairs(selection) do
+			local s = normalizeLower(v)
+			if s and s ~= "" and not set[s] then
+				set[s] = true
+				count = count + 1
+			end
+		end
+	else
+		for k, v in pairs(selection) do
+			if v == true and type(k) == "string" then
+				local s = normalizeLower(k)
+				if s and s ~= "" and not set[s] then
+					set[s] = true
+					count = count + 1
+				end
+			end
+		end
+	end
+	return set, count
 end
 
 -- Get player list for sending pets
@@ -1116,54 +1137,38 @@ end
 
 -- Check if item should be sent/sold based on filters
 local function shouldSendItem(item, includeTypes, includeMutations)
-    -- Don't send locked items
-    if item.locked then return false end
-    
-    -- Normalize values for robust comparison
-    local function norm(v)
-        return v and tostring(v):lower() or nil
-    end
-    local itemType = norm(item.type)
-    local itemMut  = norm(item.mutation)
-    
-    -- STRICT: require a valid T (type) to exist
-    if not itemType or itemType == "" or itemType == "unknown" then
-        return false
-    end
-    
-    -- Build lookup sets for O(1) checks and handle non-array Multi values
-    local typesSet, mutsSet
-    if includeTypes and type(includeTypes) == "table" then
-        -- Convert non-array map-style multi to list
-        local tmp = {}
-        local isArray = (#includeTypes > 0)
-        if isArray then
-            tmp = includeTypes
-        else
-            for k, v in pairs(includeTypes) do if v == true and type(k) == "string" then table.insert(tmp, k) end end
-        end
-        if #tmp > 0 then
-            typesSet = makeLowerSet(tmp)
-            if not typesSet[itemType] then return false end
-        end
-    end
-    if includeMutations and type(includeMutations) == "table" then
-        local tmp = {}
-        local isArray = (#includeMutations > 0)
-        if isArray then
-            tmp = includeMutations
-        else
-            for k, v in pairs(includeMutations) do if v == true and type(k) == "string" then table.insert(tmp, k) end end
-        end
-        if #tmp > 0 then
-            -- STRICT for M: require item to have a mutation and it must match
-            if not itemMut or itemMut == "" then return false end
-            mutsSet = makeLowerSet(tmp)
-            if not mutsSet[itemMut] then return false end
-        end
-    end
-    
-    return true
+	-- Don't send locked items
+	if item.locked then return false end
+	
+	-- Normalize values for robust comparison
+	local function norm(v)
+		return v and tostring(v):lower() or nil
+	end
+	local itemType = norm(item.type)
+	local itemMut  = norm(item.mutation)
+	
+	-- STRICT: require a valid T (type) to exist
+	if not itemType or itemType == "" or itemType == "unknown" then
+		return false
+	end
+	
+	-- Build lookup sets for O(1) checks (accept both array and map-style Multi)
+	if includeTypes and type(includeTypes) == "table" then
+		local typesSet, typesCount = selectionToLowerSet(includeTypes)
+		if typesCount > 0 and not typesSet[itemType] then
+			return false
+		end
+	end
+	if includeMutations and type(includeMutations) == "table" then
+		local mutsSet, mutsCount = selectionToLowerSet(includeMutations)
+		if mutsCount > 0 then
+			-- STRICT for M: if selectors provided, item must have an M and it must match
+			if not itemMut or itemMut == "" then return false end
+			if not mutsSet[itemMut] then return false end
+		end
+	end
+	
+	return true
 end
 
 -- Remove placed item from ground
