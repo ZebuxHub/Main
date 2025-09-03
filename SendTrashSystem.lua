@@ -2023,5 +2023,5 @@ function SendTrashSystem.Init(dependencies)
     end)
 end
 
-return SendTrashSystem
+
 return SendTrashSystem
