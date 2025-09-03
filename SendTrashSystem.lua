@@ -45,13 +45,11 @@ local sendPetTypeDropdown
 local sendPetMutationDropdown
 local sendEggTypeDropdown
 local sendEggMutationDropdown
-local speedThresholdSlider
 local sessionLimitInput
 local statusParagraph
 
 -- State variables
 local trashEnabled = false
-local autoDeleteMinSpeed = 0
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
@@ -198,6 +196,26 @@ local sendInProgress = {}
 local sendTimeoutSeconds = 5
 local sendAttempts = {} -- Track send attempts per item to prevent double-sending
 local sendVerificationRetries = 3 -- Number of verification retries
+local sessionLimitReservations = 0 -- Track reserved session limit slots
+
+-- Session limit reservation system
+local function reserveSessionLimitSlot()
+    if sessionLimits.sendPetCount + sessionLimitReservations >= sessionLimits.maxSendPet then
+        return false -- No slots available
+    end
+    sessionLimitReservations = sessionLimitReservations + 1
+    return true -- Slot reserved
+end
+
+local function releaseSessionLimitSlot()
+    if sessionLimitReservations > 0 then
+        sessionLimitReservations = sessionLimitReservations - 1
+    end
+end
+
+local function getEffectiveSessionCount()
+    return sessionLimits.sendPetCount + sessionLimitReservations
+end
 
 -- Webhook/session reporting
 local webhookUrl = ""
@@ -763,6 +781,8 @@ end
 local function clearSendProgress()
     sendInProgress = {}
     sendAttempts = {}
+    -- Release all session limit reservations on clear
+    sessionLimitReservations = 0
 end
 
 --- Save webhook URL to config
@@ -1184,9 +1204,15 @@ end
 
 -- Send item (pet or egg) to player with improved verification and retry logic
 local function sendItemToPlayer(item, target, itemType)
-	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+	-- Reserve a session limit slot before starting
+	if not reserveSessionLimitSlot() then
 		if not sessionLimits.limitReachedNotified then
-			WindUI:Notify({ Title = "⚠️ Send Limit Reached", Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")", Duration = 5 })
+			local effectiveCount = getEffectiveSessionCount()
+			WindUI:Notify({
+				Title = "⚠️ Send Limit Reached",
+				Content = string.format("Reached maximum send limit for this session (%d/%d)", effectiveCount, sessionLimits.maxSendPet),
+				Duration = 5
+			})
 			sessionLimits.limitReachedNotified = true
 		end
 		return false
@@ -1202,6 +1228,7 @@ local function sendItemToPlayer(item, target, itemType)
 
 	-- Limit to maximum 3 attempts per item to prevent infinite loops
 	if sendAttempts[itemUID] >= 3 then
+		releaseSessionLimitSlot()
 		return false
 	end
 
@@ -1214,6 +1241,7 @@ local function sendItemToPlayer(item, target, itemType)
 	if not verifyItemExists(itemUID, isEgg) then
 		sendInProgress[itemUID] = nil
 		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
+		releaseSessionLimitSlot()
 		return false
 	end
 
@@ -1227,6 +1255,7 @@ local function sendItemToPlayer(item, target, itemType)
 	if not targetPlayerObj then
 		sendInProgress[itemUID] = nil
 		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
+		releaseSessionLimitSlot()
 		return false -- silently skip
 	end
 
@@ -1240,6 +1269,7 @@ local function sendItemToPlayer(item, target, itemType)
 			if not verifyItemExists(itemUID, isEgg) then
 				sendInProgress[itemUID] = nil
 				sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
+				releaseSessionLimitSlot()
 				return false
 			end
 		end
@@ -1253,6 +1283,7 @@ local function sendItemToPlayer(item, target, itemType)
 	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
 		sendInProgress[itemUID] = nil
 		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
+		releaseSessionLimitSlot()
 		return false
 	end
 
@@ -1288,10 +1319,12 @@ local function sendItemToPlayer(item, target, itemType)
 		else
 			-- Verification failed - item still exists, don't count it
 			sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on verification failure
+			releaseSessionLimitSlot() -- Release reservation on verification failure
 		end
 	else
 		-- Send failed - decrement attempt counter
 		sendAttempts[itemUID] = sendAttempts[itemUID] - 1
+		releaseSessionLimitSlot() -- Release reservation on send failure
 	end
 
 	sendInProgress[itemUID] = nil
@@ -1322,50 +1355,7 @@ end
 -- Sell pet (only pets, no eggs)
 -- Selling pets has been removed per user request
 
--- Auto-delete slow pets
-local function autoDeleteSlowPets(speedThreshold)
-    if speedThreshold <= 0 then
-        return 0, "Auto-delete disabled (speed threshold: 0)"
-    end
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
-        return 0, "Player data not found"
-    end
-    
-    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-    if not petsFolder then
-        return 0, "Pets folder not found"
-    end
-    
-    local deletedCount = 0
-    local PetRE = ReplicatedStorage:FindChild("Remote") and ReplicatedStorage.Remote:FindFirstChild("PetRE")
-    if not PetRE then
-        return 0, "PetRE not found"
-    end
-    
-    -- Find pets with speed below threshold
-    for _, petData in pairs(petsFolder:GetChildren()) do
-        if petData:IsA("Configuration") then
-            local petSpeed = petData:GetAttribute("Speed") or 0
-            local petLocked = petData:GetAttribute("LK") or 0
-            local petUID = petData.Name
-            
-            -- Only delete unlocked pets below speed threshold
-            if petLocked == 0 and petSpeed < speedThreshold then
-                PetRE:FireServer('Sell', petUID)
-                deletedCount = deletedCount + 1
-                wait(0.05) -- Very quick delay between deletions
-                
-                -- Limit to 5 deletions per cycle to avoid spam
-                if deletedCount >= 5 then
-                    break
-                end
-            end
-        end
-    end
-    
-    return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
-end
+
 
 -- Update status display
 local function updateStatus()
@@ -1382,18 +1372,17 @@ local function updateStatus()
         end
     end
 
+    local effectiveCount = getEffectiveSessionCount()
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
-        "📤 Items sent this session: %d/%d\n" ..
+        "📤 Items sent this session: %d/%d (%d reserved)\n" ..
         "🔄 Active send attempts: %d\n" ..
-        "⚡ Auto-delete speed threshold: %s\n" ..
         "🔄 Actions performed: %d",
         #petInventory,
         #eggInventory,
-        sessionLimits.sendPetCount, sessionLimits.maxSendPet,
+        sessionLimits.sendPetCount, sessionLimits.maxSendPet, sessionLimitReservations,
         activeAttempts,
-        autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
         actionCounter
     )
 
@@ -1527,10 +1516,6 @@ local function processTrash()
 					end
 				end
 			end
-		end
-
-		if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
-			autoDeleteSlowPets(autoDeleteMinSpeed)
 		end
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
@@ -1778,8 +1763,9 @@ function SendTrashSystem.Init(dependencies)
         Callback = function()
             forceRefreshCache()
             clearSendProgress()
-            -- Also clear send attempts tracking
+            -- Also clear send attempts tracking and session limit reservations
             sendAttempts = {}
+            sessionLimitReservations = 0
             updateStatus()
 
             WindUI:Notify({
@@ -1813,7 +1799,6 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
         Config:Register("webhookInput", webhookInput)
         -- Selling config removed
-        Config:Register("speedThreshold", speedThresholdSlider)
         Config:Register("sessionLimit", sessionLimitInput)
     end
     
