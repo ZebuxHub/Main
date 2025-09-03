@@ -1367,7 +1367,9 @@ local function processTrash()
 			if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 				-- Ensure summary is sent even if toggle callback doesn't fire
 				if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-					task.spawn(sendWebhookSummary)
+					task.spawn(function()
+						sendWebhookSummary()
+					end)
 				end
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
@@ -1472,7 +1474,9 @@ local function processTrash()
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-				task.spawn(sendWebhookSummary)
+				task.spawn(function()
+					sendWebhookSummary()
+				end)
 			end
 			trashEnabled = false
 			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
@@ -1566,7 +1570,9 @@ function SendTrashSystem.Init(dependencies)
                 WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
                 -- Send webhook once per session when turned off
                 if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-                    task.spawn(sendWebhookSummary)
+                    task.spawn(function()
+                        sendWebhookSummary()
+                    end)
                 end
             end
         end
