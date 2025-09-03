@@ -32,7 +32,7 @@ local FruitData = {
 	Blueberry = {
 		Name = "Blueberry",
 		Price = "20,000",
-		Icon = "🫐",
+		Icon = "🔵",
 		Rarity = 1
 	},
 	Watermelon = {
@@ -623,6 +623,10 @@ function FeedFruitSelection.CreateUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 6
     scrollFrame.ScrollBarImageColor3 = colors.primary
+    -- Ensure manual canvas sizing for reliable scrolling
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
+    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     scrollFrame.Parent = content
     
     local gridLayout = Instance.new("UIGridLayout")
@@ -633,7 +637,10 @@ function FeedFruitSelection.CreateUI()
     
     -- Add UIPadding to ensure proper scrolling
     local padding = Instance.new("UIPadding")
-    padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 50)
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.PaddingRight = UDim.new(0, 8)
     padding.Parent = scrollFrame
     
     -- Window Control Events
@@ -751,6 +758,19 @@ function FeedFruitSelection.RefreshContent()
             end
             card.BackgroundColor3 = colors.selected
         end
+    end
+
+    -- Update canvas size based on number of items (3 per row)
+    local itemCount = #sortedData
+    if itemCount > 0 then
+        local rows = math.ceil(itemCount / 3)
+        local cellHeight = 120
+        local cellPadding = 8
+        local topPadding = 8
+        local bottomPadding = 50
+        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+        scrollFrame.CanvasPosition = Vector2.new(0, 0)
     end
 end
 
