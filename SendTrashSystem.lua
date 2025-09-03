@@ -1153,9 +1153,9 @@ end
 local function verifyItemSent(itemUID, isEgg, maxRetries)
 	maxRetries = maxRetries or sendVerificationRetries
 
-	for attempt = 1, maxRetries do
+	    for attempt = 1, maxRetries do
 		-- Adaptive wait time: longer for first attempt, shorter for retries
-		local waitTime = attempt == 1 and 0.5 or 0.2
+		local waitTime = attempt == 1 and 0.3 or 0.15
 		task.wait(waitTime)
 
 		local itemStillExists = false
@@ -1236,7 +1236,7 @@ local function sendItemToPlayer(item, target, itemType)
 	if item.placed then
 		local removeSuccess = removeFromGround(itemUID)
 		if removeSuccess then
-			task.wait(0.1) -- Slightly longer wait after remove
+			task.wait(0.05) -- Optimized wait after remove
 			if not verifyItemExists(itemUID, isEgg) then
 				sendInProgress[itemUID] = nil
 				sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
@@ -1247,7 +1247,7 @@ local function sendItemToPlayer(item, target, itemType)
 
 	-- Focus the item first (REQUIRED)
 	local focusSuccess = focusItem(itemUID)
-	if focusSuccess then task.wait(0.15) end -- Slightly longer wait after focus
+	if focusSuccess then task.wait(0.1) end -- Optimized wait after focus
 
 	-- Ensure player is still online
 	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
