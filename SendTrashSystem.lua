@@ -506,70 +506,36 @@ end
 
 -- Get all mutations from inventory + hardcoded list
 local function getAllMutations()
-	local mutations = {}
-	
-	-- Add hardcoded mutations
-	for _, mutation in ipairs(HardcodedMutations) do
-		mutations[mutation] = true
-	end
-	
-	-- Add mutations from inventory
-	if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-		local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-		if petsFolder then
-			for _, petData in pairs(petsFolder:GetChildren()) do
-				if petData:IsA("Configuration") then
-					local petMutation = safeGetAttribute(petData, "M", nil)
-					if petMutation and petMutation ~= "" then
-						mutations[petMutation] = true
-					end
-				end
-			end
-		end
-	end
-	
-	-- Convert to sorted array
-	local sortedMutations = {}
-	for mutation in pairs(mutations) do
-		table.insert(sortedMutations, mutation)
-	end
-	table.sort(sortedMutations)
-	
-	return sortedMutations
-end
-
--- Utility: normalize string to lowercase (reuses shouldSendItem.norm behavior)
-local function normalizeLower(value)
-	return value and tostring(value):lower() or nil
-end
-
--- Utility: convert selection (array or map with boolean true) to lowercase set and count
-local function selectionToLowerSet(selection)
-	local set = {}
-	local count = 0
-	if type(selection) ~= "table" then return set, 0 end
-	-- Detect array-like
-	local isArray = rawget(selection, 1) ~= nil or #selection > 0
-	if isArray then
-		for _, v in ipairs(selection) do
-			local s = normalizeLower(v)
-			if s and s ~= "" and not set[s] then
-				set[s] = true
-				count = count + 1
-			end
-		end
-	else
-		for k, v in pairs(selection) do
-			if v == true and type(k) == "string" then
-				local s = normalizeLower(k)
-				if s and s ~= "" and not set[s] then
-					set[s] = true
-					count = count + 1
-				end
-			end
-		end
-	end
-	return set, count
+    local mutations = {}
+    
+    -- Add hardcoded mutations
+    for _, mutation in ipairs(HardcodedMutations) do
+        mutations[mutation] = true
+    end
+    
+    -- Add mutations from inventory
+    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+        local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+        if petsFolder then
+            for _, petData in pairs(petsFolder:GetChildren()) do
+                if petData:IsA("Configuration") then
+                    local petMutation = safeGetAttribute(petData, "M", nil)
+                    if petMutation and petMutation ~= "" then
+                        mutations[petMutation] = true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Convert to sorted array
+    local sortedMutations = {}
+    for mutation in pairs(mutations) do
+        table.insert(sortedMutations, mutation)
+    end
+    table.sort(sortedMutations)
+    
+    return sortedMutations
 end
 
 -- Get player list for sending pets
@@ -1135,40 +1101,49 @@ local function refreshItemFromData(uid, isEgg, into)
     return into
 end
 
+-- Re-verify live item data against current selectors before sending
+local shouldSendItem
+local function verifyItemMatchesFiltersLive(uid, isEgg, includeTypes, includeMutations)
+    -- Read fresh snapshot from PlayerGui.Data
+    local fresh = refreshItemFromData(uid, isEgg, nil)
+    if not fresh then return false end
+    -- Reuse shouldSendItem logic using the fresh record
+    return shouldSendItem(fresh, includeTypes, includeMutations), fresh
+end
+
 -- Check if item should be sent/sold based on filters
-local function shouldSendItem(item, includeTypes, includeMutations)
-	-- Don't send locked items
-	if item.locked then return false end
-	
-	-- Normalize values for robust comparison
-	local function norm(v)
-		return v and tostring(v):lower() or nil
-	end
-	local itemType = norm(item.type)
-	local itemMut  = norm(item.mutation)
-	
-	-- STRICT: require a valid T (type) to exist
-	if not itemType or itemType == "" or itemType == "unknown" then
-		return false
-	end
-	
-	-- Build lookup sets for O(1) checks (accept both array and map-style Multi)
-	if includeTypes and type(includeTypes) == "table" then
-		local typesSet, typesCount = selectionToLowerSet(includeTypes)
-		if typesCount > 0 and not typesSet[itemType] then
-			return false
-		end
-	end
-	if includeMutations and type(includeMutations) == "table" then
-		local mutsSet, mutsCount = selectionToLowerSet(includeMutations)
-		if mutsCount > 0 then
-			-- STRICT for M: if selectors provided, item must have an M and it must match
-			if not itemMut or itemMut == "" then return false end
-			if not mutsSet[itemMut] then return false end
-		end
-	end
-	
-	return true
+function shouldSendItem(item, includeTypes, includeMutations)
+    -- Don't send locked items
+    if item.locked then return false end
+    
+    -- Normalize values for robust comparison
+    local function norm(v)
+        return v and tostring(v):lower() or nil
+    end
+    local itemType = norm(item.type)
+    local itemMut  = norm(item.mutation)
+    
+    -- STRICT: require a valid T (type) to exist
+    if not itemType or itemType == "" or itemType == "unknown" then
+        return false
+    end
+    
+    -- Build lookup sets for O(1) checks
+    local typesSet, mutsSet
+    if includeTypes and #includeTypes > 0 then
+        typesSet = {}
+        for _, t in ipairs(includeTypes) do typesSet[norm(t)] = true end
+        if not typesSet[itemType] then return false end
+    end
+    if includeMutations and #includeMutations > 0 then
+        -- STRICT for M: if selectors provided, item must have an M and it must match
+        if not itemMut or itemMut == "" then return false end
+        mutsSet = {}
+        for _, m in ipairs(includeMutations) do mutsSet[norm(m)] = true end
+        if not mutsSet[itemMut] then return false end
+    end
+    
+    return true
 end
 
 -- Remove placed item from ground
@@ -1258,6 +1233,15 @@ local function sendItemToPlayer(item, target, itemType)
 	local focusSuccess = focusItem(itemUID)
 	if focusSuccess then task.wait(0.1) end
 
+	-- Re-verify name/type/mutation live right before sending to ensure it still matches filters
+	local typesSel = (itemType == "egg") and (selectedEggTypes or {}) or (selectedPetTypes or {})
+	local mutsSel = (itemType == "egg") and (selectedEggMuts or {}) or (selectedPetMuts or {})
+	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, isEgg, typesSel, mutsSel)
+	if not stillMatches then
+		sendInProgress[itemUID] = nil
+		return false
+	end
+
 	-- Ensure player is still online
 	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
 		sendInProgress[itemUID] = nil
@@ -1274,10 +1258,12 @@ local function sendItemToPlayer(item, target, itemType)
 		-- Robust confirmation: wait until inventory actually removes the item
 		local removed = waitForInventoryRemoval(itemUID, isEgg, 3.0)
 		if removed then
+			-- Use freshest data captured earlier if available to ensure correct type/name/mutation in logs
 			success = true
 			sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
 			actionCounter = actionCounter + 1
-			table.insert(sessionLogs, { kind = itemType, uid = itemUID, type = item.type, mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None", receiver = targetPlayerObj.Name })
+			local logged = fresh or item
+			table.insert(sessionLogs, { kind = itemType, uid = itemUID, type = logged and logged.type or item.type, mutation = (logged and logged.mutation) and logged.mutation or ((item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None"), receiver = targetPlayerObj.Name })
 		else
 			-- Not removed → treat as failure (do not count/log)
 			success = false
