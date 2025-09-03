@@ -538,6 +538,19 @@ local function getAllMutations()
     return sortedMutations
 end
 
+-- Utility: convert array list to lowercase set for O(1) membership checks
+local function makeLowerSet(list)
+    local set = {}
+    if type(list) == "table" then
+        for _, v in ipairs(list) do
+            if v and v ~= "" then
+                set[string.lower(tostring(v))] = true
+            end
+        end
+    end
+    return set
+end
+
 -- Get player list for sending pets
 local function refreshPlayerList()
     local playerList = {"Random Player"}
@@ -1118,19 +1131,36 @@ local function shouldSendItem(item, includeTypes, includeMutations)
         return false
     end
     
-    -- Build lookup sets for O(1) checks
+    -- Build lookup sets for O(1) checks and handle non-array Multi values
     local typesSet, mutsSet
-    if includeTypes and #includeTypes > 0 then
-        typesSet = {}
-        for _, t in ipairs(includeTypes) do typesSet[norm(t)] = true end
-        if not typesSet[itemType] then return false end
+    if includeTypes and type(includeTypes) == "table" then
+        -- Convert non-array map-style multi to list
+        local tmp = {}
+        local isArray = (#includeTypes > 0)
+        if isArray then
+            tmp = includeTypes
+        else
+            for k, v in pairs(includeTypes) do if v == true and type(k) == "string" then table.insert(tmp, k) end end
+        end
+        if #tmp > 0 then
+            typesSet = makeLowerSet(tmp)
+            if not typesSet[itemType] then return false end
+        end
     end
-    if includeMutations and #includeMutations > 0 then
-        -- STRICT for M: if selectors provided, item must have an M and it must match
-        if not itemMut or itemMut == "" then return false end
-        mutsSet = {}
-        for _, m in ipairs(includeMutations) do mutsSet[norm(m)] = true end
-        if not mutsSet[itemMut] then return false end
+    if includeMutations and type(includeMutations) == "table" then
+        local tmp = {}
+        local isArray = (#includeMutations > 0)
+        if isArray then
+            tmp = includeMutations
+        else
+            for k, v in pairs(includeMutations) do if v == true and type(k) == "string" then table.insert(tmp, k) end end
+        end
+        if #tmp > 0 then
+            -- STRICT for M: require item to have a mutation and it must match
+            if not itemMut or itemMut == "" then return false end
+            mutsSet = makeLowerSet(tmp)
+            if not mutsSet[itemMut] then return false end
+        end
     end
     
     return true
@@ -1581,7 +1611,7 @@ function SendTrashSystem.Init(dependencies)
 				-- Graceful stop: request stop, allow in-flight send to conclude
 				stopRequested = true
 				WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
-				-- Do not send webhook here; wait until loop exits so the last in-flight send is counted
+				-- no immediate webhook here; let processTrash() handle it after it exits
 			end
 		end
     })
