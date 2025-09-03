@@ -30,21 +30,21 @@ local FruitData = {
 		Rarity = 1
 	},
 	Blueberry = {
-		Name = "Blueberry", 
+		Name = "Blueberry",
 		Price = "20,000",
-		Icon = "🔵",
+		Icon = "🫐",
 		Rarity = 1
 	},
 	Watermelon = {
 		Name = "Watermelon",
-		Price = "80,000", 
+		Price = "80,000",
 		Icon = "🍉",
 		Rarity = 2
 	},
 	Apple = {
 		Name = "Apple",
 		Price = "400,000",
-		Icon = "🍎", 
+		Icon = "🍎",
 		Rarity = 2
 	},
 	Orange = {
@@ -77,11 +77,35 @@ local FruitData = {
 		Icon = "🍐",
 		Rarity = 5
 	},
-	Peach = {
-		Name = "Peach",
-		Price = "1,000,000,000",
-		Icon = "🍑",
+	Pineapple = {
+		Name = "Pineapple",
+		Price = "600,000,000",
+		Icon = "🍍",
 		Rarity = 5
+	},
+	GoldMango = {
+		Name = "Gold Mango",
+		Price = "2,000,000,000",
+		Icon = "🥭",
+		Rarity = 6
+	},
+	BloodstoneCycad = {
+		Name = "Bloodstone Cycad",
+		Price = "8,000,000,000",
+		Icon = "🌿",
+		Rarity = 6
+	},
+	ColossalPinecone = {
+		Name = "Colossal Pinecone",
+		Price = "40,000,000,000",
+		Icon = "🌲",
+		Rarity = 6
+	},
+	VoltGinkgo = {
+		Name = "Volt Ginkgo",
+		Price = "80,000,000,000",
+		Icon = "⚡",
+		Rarity = 6
 	}
 }
 
