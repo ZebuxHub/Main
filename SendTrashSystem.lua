@@ -645,6 +645,31 @@ local function selectionToList(selection)
     return result
 end
 
+-- Sync cached selector variables from current UI controls (needed after config load)
+local function syncSelectorsFromControls()
+    local function readControl(ctrl)
+        if not ctrl then return nil end
+        local ok, v
+        if ctrl.GetValue then
+            ok, v = pcall(function() return ctrl:GetValue() end)
+        elseif ctrl.Value ~= nil then
+            ok, v = true, ctrl.Value
+        end
+        if ok then return v end
+        return nil
+    end
+
+    local petTypes = readControl(sendPetTypeDropdown)
+    local petMuts = readControl(sendPetMutationDropdown)
+    local eggTypes = readControl(sendEggTypeDropdown)
+    local eggMuts = readControl(sendEggMutationDropdown)
+
+    if petTypes ~= nil then selectedPetTypes = selectionToList(petTypes) end
+    if petMuts ~= nil then selectedPetMuts = selectionToList(petMuts) end
+    if eggTypes ~= nil then selectedEggTypes = selectionToList(eggTypes) end
+    if eggMuts ~= nil then selectedEggMuts = selectionToList(eggMuts) end
+end
+
 -- Get pet inventory
 --- Update inventory cache for better performance
 local function updateInventoryCache()
@@ -1595,6 +1620,7 @@ function SendTrashSystem.Init(dependencies)
 				webhookSent = false
 				stopRequested = false
 				task.spawn(function()
+					syncSelectorsFromControls()
 					processTrash()
 				end)
 				WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
@@ -1794,6 +1820,8 @@ function SendTrashSystem.Init(dependencies)
     -- Initial status update
     task.spawn(function()
         task.wait(1)
+        -- Ensure selectors reflect dropdowns after config load
+        syncSelectorsFromControls()
         updateStatus()
     end)
 end
