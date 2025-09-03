@@ -45,11 +45,13 @@ local sendPetTypeDropdown
 local sendPetMutationDropdown
 local sendEggTypeDropdown
 local sendEggMutationDropdown
+local speedThresholdSlider
 local sessionLimitInput
 local statusParagraph
 
 -- State variables
 local trashEnabled = false
+local autoDeleteMinSpeed = 0
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
@@ -194,14 +196,22 @@ end
 -- Send operation tracking
 local sendInProgress = {}
 local sendTimeoutSeconds = 5
-local sendAttempts = {} -- Track send attempts per item to prevent double-sending
-local sendVerificationRetries = 3 -- Number of verification retries
-local sessionLimitReservations = 0 -- Track reserved session limit slots
+local sendQueue = {} -- Queue for sequential processing
+local isProcessingQueue = false
 
 -- Webhook/session reporting
 local webhookUrl = ""
 local sessionLogs = {}
 local webhookSent = false
+
+-- Network lag detection
+local networkStats = {
+    averageSendTime = 0.5,
+    sendTimeHistory = {},
+    maxHistorySize = 10,
+    lagThreshold = 1.0, -- seconds
+    consecutiveLagCount = 0
+}
 
 -- Session limits
 local sessionLimits = {
@@ -209,25 +219,6 @@ local sessionLimits = {
     maxSendPet = 50,
     limitReachedNotified = false -- Track if user has been notified
 }
-
--- Session limit reservation system
-local function reserveSessionLimitSlot()
-    if sessionLimits.sendPetCount + sessionLimitReservations >= sessionLimits.maxSendPet then
-        return false -- No slots available
-    end
-    sessionLimitReservations = sessionLimitReservations + 1
-    return true -- Slot reserved
-end
-
-local function releaseSessionLimitSlot()
-    if sessionLimitReservations > 0 then
-        sessionLimitReservations = sessionLimitReservations - 1
-    end
-end
-
-local function getEffectiveSessionCount()
-    return sessionLimits.sendPetCount + sessionLimitReservations
-end
 
 -- Pretty Discord embed assets
 local EggIconMap = {
@@ -309,24 +300,14 @@ local function sendWebhookSummary()
 
     -- Group events by receiver and by type/mutation for readable blocks
     local byReceiver = {}
-    local failedAttempts = 0
-    local totalAttempts = 0
-
     for _, it in ipairs(sessionLogs) do
         local r = it.receiver or "?"
-        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0, attempts = 0 }
+        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0 }
         local key = (it.type or it.uid or "?") .. "|" .. (it.mutation or "None") .. "|" .. (it.kind or "?")
         local rec = byReceiver[r]
         rec.counts[key] = (rec.counts[key] or 0) + 1
         rec.list[key] = { type = it.type, mutation = it.mutation or "None", kind = it.kind }
         rec.total = rec.total + 1
-        rec.attempts = rec.attempts + (it.attempts or 1)
-        totalAttempts = totalAttempts + (it.attempts or 1)
-
-        -- Count failed attempts (attempts > 1 means there were failures)
-        if (it.attempts or 1) > 1 then
-            failedAttempts = failedAttempts + ((it.attempts or 1) - 1)
-        end
     end
 
     -- Build organized description for better readability
@@ -340,17 +321,10 @@ local function sendWebhookSummary()
     -- Summary section
     local totalReceivers = 0
     for _ in pairs(byReceiver) do totalReceivers = totalReceivers + 1 end
-
-    -- Calculate success rate
-    local successRate = totalAttempts > 0 and (totalSent / totalAttempts * 100) or 100
-
+    
     table.insert(lines, "📊 **Session Summary:**")
     table.insert(lines, string.format("• Total items sent: **%d**", totalSent))
     table.insert(lines, string.format("• Players helped: **%d**", totalReceivers))
-    table.insert(lines, string.format("• Success rate: **%.1f%%** (%d/%d)", successRate, totalSent, totalAttempts))
-    if failedAttempts > 0 then
-        table.insert(lines, string.format("• Failed attempts: **%d**", failedAttempts))
-    end
     table.insert(lines, "")
     
     -- Detailed breakdown by receiver
@@ -780,9 +754,75 @@ end
 --- Clear send operation tracking
 local function clearSendProgress()
     sendInProgress = {}
-    sendAttempts = {}
-    -- Release all session limit reservations on clear
-    sessionLimitReservations = 0
+    sendQueue = {}
+    isProcessingQueue = false
+end
+
+--- Add network timing to stats for lag detection
+local function recordSendTime(sendTime)
+    table.insert(networkStats.sendTimeHistory, sendTime)
+    if #networkStats.sendTimeHistory > networkStats.maxHistorySize then
+        table.remove(networkStats.sendTimeHistory, 1)
+    end
+
+    -- Calculate rolling average
+    local total = 0
+    for _, time in ipairs(networkStats.sendTimeHistory) do
+        total = total + time
+    end
+    networkStats.averageSendTime = total / #networkStats.sendTimeHistory
+
+    -- Detect lag
+    if sendTime > networkStats.lagThreshold then
+        networkStats.consecutiveLagCount = networkStats.consecutiveLagCount + 1
+    else
+        networkStats.consecutiveLagCount = 0
+    end
+end
+
+--- Get adaptive wait time based on network conditions
+local function getAdaptiveWaitTime(baseWait)
+    local multiplier = 1.0
+    if networkStats.consecutiveLagCount > 2 then
+        multiplier = 2.0 -- Double wait time during lag
+    elseif networkStats.averageSendTime > 0.8 then
+        multiplier = 1.5 -- Increase wait time for slower connections
+    end
+    return math.min(baseWait * multiplier, 3.0) -- Cap at 3 seconds
+end
+
+--- Add item to send queue
+local function queueSend(item, target, itemType, callback)
+    table.insert(sendQueue, {
+        item = item,
+        target = target,
+        itemType = itemType,
+        callback = callback,
+        timestamp = tick(),
+        retryCount = 0
+    })
+end
+
+--- Process send queue sequentially
+local function processSendQueue()
+    if isProcessingQueue or #sendQueue == 0 then return end
+    isProcessingQueue = true
+
+    task.spawn(function()
+        while #sendQueue > 0 do
+            local sendRequest = table.remove(sendQueue, 1)
+            local success = sendItemToPlayer(sendRequest.item, sendRequest.target, sendRequest.itemType)
+
+            if sendRequest.callback then
+                sendRequest.callback(success)
+            end
+
+            -- Adaptive delay between sends
+            local waitTime = getAdaptiveWaitTime(0.2)
+            task.wait(waitTime)
+        end
+        isProcessingQueue = false
+    end)
 end
 
 --- Save webhook URL to config
@@ -1169,48 +1209,20 @@ local function focusItem(itemUID)
     return success
 end
 
--- Verify item was successfully sent with adaptive timing
-local function verifyItemSent(itemUID, isEgg, maxRetries)
-	maxRetries = maxRetries or sendVerificationRetries
+-- Send item (pet or egg) to player
+--- Send item (pet or egg) to player with verification and retry
+local function sendItemToPlayer(item, target, itemType, retryCount)
+	retryCount = retryCount or 0
+	local maxRetries = 3
+	local itemUID = item.uid
+	local isEgg = itemType == "egg"
 
-	    for attempt = 1, maxRetries do
-		-- Adaptive wait time: longer for first attempt, shorter for retries
-		local waitTime = attempt == 1 and 0.3 or 0.15
-		task.wait(waitTime)
-
-		local itemStillExists = false
-		if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-			if isEgg then
-				local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
-				if eggsFolder then itemStillExists = eggsFolder:FindFirstChild(itemUID) ~= nil end
-			else
-				local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-				if petsFolder then itemStillExists = petsFolder:FindFirstChild(itemUID) ~= nil end
-			end
-		end
-
-		if not itemStillExists then
-			return true -- Item successfully sent
-		end
-
-		-- If still exists and this is the last attempt, consider it failed
-		if attempt == maxRetries then
-			return false
-		end
-	end
-
-	return false
-end
-
--- Send item (pet or egg) to player with improved verification and retry logic
-local function sendItemToPlayer(item, target, itemType)
-	-- Reserve a session limit slot before starting
-	if not reserveSessionLimitSlot() then
+	-- Check session limits
+	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 		if not sessionLimits.limitReachedNotified then
-			local effectiveCount = getEffectiveSessionCount()
 			WindUI:Notify({
 				Title = "⚠️ Send Limit Reached",
-				Content = string.format("Reached maximum send limit for this session (%d/%d)", effectiveCount, sessionLimits.maxSendPet),
+				Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")",
 				Duration = 5
 			})
 			sessionLimits.limitReachedNotified = true
@@ -1218,144 +1230,243 @@ local function sendItemToPlayer(item, target, itemType)
 		return false
 	end
 
-	local itemUID = item.uid
-	local isEgg = itemType == "egg"
-
-	-- Prevent double-sending: track attempts per item
-	if not sendAttempts[itemUID] then
-		sendAttempts[itemUID] = 0
-	end
-
-	-- Limit to maximum 3 attempts per item to prevent infinite loops
-	if sendAttempts[itemUID] >= 3 then
-		releaseSessionLimitSlot()
-		return false
-	end
-
 	-- Prevent parallel sends for the same item
-	if sendInProgress[itemUID] then return false end
-	sendInProgress[itemUID] = true
-	sendAttempts[itemUID] = sendAttempts[itemUID] + 1
+	local sendKey = itemUID .. "_" .. retryCount
+	if sendInProgress[sendKey] then return false end
+	sendInProgress[sendKey] = true
 
-	-- Verify item exists before attempting to send
-	if not verifyItemExists(itemUID, isEgg) then
-		sendInProgress[itemUID] = nil
-		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
-		releaseSessionLimitSlot()
-		return false
-	end
+	local startTime = tick()
+	local success = false
+	local targetPlayerObj = nil
 
 	-- Resolve target (accept Player instance or name)
-	local targetPlayerObj = nil
 	if typeof(target) == "Instance" then
 		if target:IsA("Player") then targetPlayerObj = target end
 	elseif type(target) == "string" then
 		targetPlayerObj = resolveTargetPlayerByName(target)
 	end
-	if not targetPlayerObj then
-		sendInProgress[itemUID] = nil
-		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
-		releaseSessionLimitSlot()
-		return false -- silently skip
-	end
 
-	local success = false
-
-	-- If item is placed on ground, remove it first
-	if item.placed then
-		local removeSuccess = removeFromGround(itemUID)
-		if removeSuccess then
-			task.wait(0.05) -- Optimized wait after remove
-			if not verifyItemExists(itemUID, isEgg) then
-				sendInProgress[itemUID] = nil
-				sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
-				releaseSessionLimitSlot()
-				return false
-			end
-		end
-	end
-
-	-- Focus the item first (REQUIRED)
-	local focusSuccess = focusItem(itemUID)
-	if focusSuccess then task.wait(0.1) end -- Optimized wait after focus
-
-	-- Ensure player is still online
-	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
-		sendInProgress[itemUID] = nil
-		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
-		releaseSessionLimitSlot()
+	-- Validate target
+	if not targetPlayerObj or not isPlayerValid(targetPlayerObj) then
+		sendInProgress[sendKey] = nil
 		return false
 	end
 
-	-- Attempt to send
+	-- Verify item exists with fresh cache update
+	forceRefreshCache()
+	if not verifyItemExists(itemUID, isEgg) then
+		sendInProgress[sendKey] = nil
+		return false
+	end
+
+	-- Get fresh item data
+	local freshItem = refreshItemFromData(itemUID, isEgg)
+	if not freshItem or not freshItem.type or freshItem.type == "" or freshItem.type == "Unknown" then
+		sendInProgress[sendKey] = nil
+		return false
+	end
+
+	-- If item is placed on ground, remove it first with verification
+	if freshItem.placed then
+		local removeSuccess = removeFromGround(itemUID)
+		if removeSuccess then
+			local adaptiveWait = getAdaptiveWaitTime(0.1)
+			task.wait(adaptiveWait)
+
+			-- Verify item still exists after removal
+			forceRefreshCache()
+			if not verifyItemExists(itemUID, isEgg) then
+				sendInProgress[sendKey] = nil
+				return false
+			end
+		else
+			sendInProgress[sendKey] = nil
+			return false
+		end
+	end
+
+	-- Focus the item (REQUIRED) with adaptive timing
+	local focusSuccess = focusItem(itemUID)
+	if focusSuccess then
+		local adaptiveWait = getAdaptiveWaitTime(0.15)
+		task.wait(adaptiveWait)
+	end
+
+	-- Final validation before send
+	if not isPlayerValid(targetPlayerObj) then
+		sendInProgress[sendKey] = nil
+		return false
+	end
+
+	-- Record pre-send inventory state for comparison
+	local preSendInventoryCount = 0
+	if isEgg then
+		local eggs = getEggInventory()
+		preSendInventoryCount = #eggs
+	else
+		local pets = getPetInventory()
+		preSendInventoryCount = #pets
+	end
+
+	-- Attempt to send with error handling
 	local sendSuccess, sendError = pcall(function()
 		local args = { targetPlayerObj }
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
 	end)
 
-	if sendSuccess then
-		-- Use improved verification with retries
-		local verifiedSent = verifyItemSent(itemUID, isEgg, sendVerificationRetries)
+	    if not sendSuccess then
+        warn(string.format("[SendTrash] Send failed for %s (%s): %s (attempt %d/%d)",
+            itemUID, itemType, tostring(sendError), retryCount + 1, maxRetries + 1))
+        sendInProgress[sendKey] = nil
 
-		if verifiedSent then
-			success = true
-			sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-			actionCounter = actionCounter + 1
+        -- Retry logic with exponential backoff
+        if retryCount < maxRetries then
+            local backoffTime = getAdaptiveWaitTime(0.5) * (retryCount + 1)
+            print(string.format("[SendTrash] Retrying %s in %.1fs (attempt %d/%d)",
+                itemUID, backoffTime, retryCount + 2, maxRetries + 1))
+            task.wait(backoffTime)
+            return sendItemToPlayer(item, target, itemType, retryCount + 1)
+        end
+        print(string.format("[SendTrash] Failed to send %s after %d attempts", itemUID, maxRetries + 1))
+        return false
+    end
 
-			-- Log to webhook with more details for debugging
-			local logEntry = {
-				kind = itemType,
-				uid = itemUID,
-				type = item.type,
-				mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
-				receiver = targetPlayerObj.Name,
-				attempts = sendAttempts[itemUID],
-				timestamp = os.time()
-			}
-			table.insert(sessionLogs, logEntry)
+	-- Enhanced verification with multiple checks and adaptive timing
+	local verificationStart = tick()
+	local verificationTimeout = getAdaptiveWaitTime(1.0) -- Adaptive timeout
+	local verified = false
+	local verificationAttempts = 0
+	local maxVerificationAttempts = 5
 
-			-- Reset attempt counter on success
-			sendAttempts[itemUID] = 0
+	while not verified and (tick() - verificationStart) < verificationTimeout and verificationAttempts < maxVerificationAttempts do
+		task.wait(0.1) -- Small incremental waits
+		verificationAttempts = verificationAttempts + 1
+
+		-- Force cache refresh for accurate state
+		forceRefreshCache()
+
+		-- Check if item is gone from inventory
+		local itemGone = not verifyItemExists(itemUID, isEgg)
+
+		-- Additional verification: check if inventory count decreased
+		local currentInventoryCount = 0
+		if isEgg then
+			local eggs = getEggInventory()
+			currentInventoryCount = #eggs
 		else
-			-- Verification failed - item still exists, don't count it
-			sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on verification failure
-			releaseSessionLimitSlot() -- Release reservation on verification failure
+			local pets = getPetInventory()
+			currentInventoryCount = #pets
 		end
-	else
-		-- Send failed - decrement attempt counter
-		sendAttempts[itemUID] = sendAttempts[itemUID] - 1
-		releaseSessionLimitSlot() -- Release reservation on send failure
+
+		local inventoryDecreased = currentInventoryCount < preSendInventoryCount
+
+		-- Consider send successful if either condition is met
+		if itemGone or inventoryDecreased then
+			verified = true
+			success = true
+			break
+		end
 	end
 
-	sendInProgress[itemUID] = nil
+	sendInProgress[sendKey] = nil
+
+	-- Record timing for network stats
+	local sendTime = tick() - startTime
+	recordSendTime(sendTime)
 
 	if success then
-		WindUI:Notify({
-			Title = "✅ Sent Successfully",
-			Content = itemType:gsub("^%l", string.upper) .. " " .. (item.type or "Unknown") ..
-					 (item.mutation and item.mutation ~= "" and item.mutation ~= "None" and " [" .. item.mutation .. "]" or "") ..
-					 " → " .. targetPlayerObj.Name,
-			Duration = 2
-		})
-	else
-		-- Only show notification on final failure (after all attempts exhausted)
-		if sendAttempts[itemUID] >= 3 then
-			WindUI:Notify({
-				Title = "❌ Send Failed",
-				Content = "Failed to send " .. itemType .. " " .. (item.type or "Unknown") .. " after " .. sendAttempts[itemUID] .. " attempts",
-				Duration = 3
-			})
-			sendAttempts[itemUID] = 0 -- Reset after notification
-		end
-	end
+		-- Update counters and logs
+		sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
+		actionCounter = actionCounter + 1
 
-	return success
+		-- Add to session logs for webhook
+		local logEntry = {
+			kind = itemType,
+			uid = itemUID,
+			type = freshItem.type,
+			mutation = (freshItem.mutation ~= nil and freshItem.mutation ~= "" and freshItem.mutation) or "None",
+			receiver = targetPlayerObj.Name,
+			sendTime = sendTime,
+			retryCount = retryCount,
+			timestamp = tick()
+		}
+		table.insert(sessionLogs, logEntry)
+
+		-- Debug logging for webhook accuracy
+		print(string.format("[SendTrash] SUCCESS: %s %s (%s) -> %s [%.2fs, retries: %d] | Total: %d/%d",
+			itemType, freshItem.type or "Unknown", logEntry.mutation,
+			targetPlayerObj.Name, sendTime, retryCount,
+			sessionLimits.sendPetCount, sessionLimits.maxSendPet))
+
+		-- Success notification (only for first attempt to avoid spam)
+		if retryCount == 0 then
+			WindUI:Notify({
+				Title = "✅ Sent Successfully",
+				Content = itemType:gsub("^%l", string.upper) .. " " .. (freshItem.type or "Unknown") .. " → " .. targetPlayerObj.Name,
+				Duration = 2
+			})
+		else
+			-- Show retry success as debug info
+			print(string.format("[SendTrash] Retry successful for %s (attempt %d)", itemUID, retryCount + 1))
+		end
+
+		return true
+	else
+		-- Failed after all retries
+		if retryCount >= maxRetries then
+			warn("[SendTrash] Failed to send " .. itemUID .. " after " .. (retryCount + 1) .. " attempts")
+		end
+		return false
+	end
 end
 
 -- Sell pet (only pets, no eggs)
 -- Selling pets has been removed per user request
 
-
+-- Auto-delete slow pets
+local function autoDeleteSlowPets(speedThreshold)
+    if speedThreshold <= 0 then
+        return 0, "Auto-delete disabled (speed threshold: 0)"
+    end
+    
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return 0, "Player data not found"
+    end
+    
+    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+    if not petsFolder then
+        return 0, "Pets folder not found"
+    end
+    
+    local deletedCount = 0
+    local PetRE = ReplicatedStorage:FindChild("Remote") and ReplicatedStorage.Remote:FindFirstChild("PetRE")
+    if not PetRE then
+        return 0, "PetRE not found"
+    end
+    
+    -- Find pets with speed below threshold
+    for _, petData in pairs(petsFolder:GetChildren()) do
+        if petData:IsA("Configuration") then
+            local petSpeed = petData:GetAttribute("Speed") or 0
+            local petLocked = petData:GetAttribute("LK") or 0
+            local petUID = petData.Name
+            
+            -- Only delete unlocked pets below speed threshold
+            if petLocked == 0 and petSpeed < speedThreshold then
+                PetRE:FireServer('Sell', petUID)
+                deletedCount = deletedCount + 1
+                wait(0.05) -- Very quick delay between deletions
+                
+                -- Limit to 5 deletions per cycle to avoid spam
+                if deletedCount >= 5 then
+                    break
+                end
+            end
+        end
+    end
+    
+    return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
+end
 
 -- Update status display
 local function updateStatus()
@@ -1364,25 +1475,32 @@ local function updateStatus()
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
 
-    -- Calculate active send attempts
-    local activeAttempts = 0
-    for uid, attempts in pairs(sendAttempts) do
-        if attempts > 0 then
-            activeAttempts = activeAttempts + attempts
-        end
+    -- Network lag status
+    local lagStatus = ""
+    if networkStats.consecutiveLagCount > 0 then
+        lagStatus = string.format(" | 🐌 Lag detected (%ds avg)", math.floor(networkStats.averageSendTime * 10) / 10)
+    elseif networkStats.averageSendTime > 0.3 then
+        lagStatus = string.format(" | ⏱️ Slow (%ds avg)", math.floor(networkStats.averageSendTime * 10) / 10)
     end
 
-    local effectiveCount = getEffectiveSessionCount()
+    -- Queue status
+    local queueStatus = ""
+    if #sendQueue > 0 then
+        queueStatus = string.format(" | 📋 Queue: %d", #sendQueue)
+    end
+
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
-        "📤 Items sent this session: %d/%d (%d reserved)\n" ..
-        "🔄 Active send attempts: %d\n" ..
+        "📤 Items sent this session: %d/%d%s%s\n" ..
+        "⚡ Auto-delete speed threshold: %s\n" ..
         "🔄 Actions performed: %d",
         #petInventory,
         #eggInventory,
-        sessionLimits.sendPetCount, sessionLimits.maxSendPet, sessionLimitReservations,
-        activeAttempts,
+        sessionLimits.sendPetCount, sessionLimits.maxSendPet,
+        lagStatus,
+        queueStatus,
+        autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
         actionCounter
     )
 
@@ -1392,6 +1510,17 @@ local function updateStatus()
     table.sort(blNames)
     if #blNames > 0 then
         statusText = statusText .. string.format("\n⛔ Blacklisted targets (%d): %s", #blNames, table.concat(blNames, ", "))
+    end
+
+    -- Add retry statistics if any retries occurred
+    local totalRetries = 0
+    for _, log in ipairs(sessionLogs) do
+        if log.retryCount and log.retryCount > 0 then
+            totalRetries = totalRetries + log.retryCount
+        end
+    end
+    if totalRetries > 0 then
+        statusText = statusText .. string.format("\n🔄 Total retries: %d", totalRetries)
     end
 
     statusParagraph:SetDesc(statusText)
@@ -1412,27 +1541,6 @@ local function processTrash()
 			sendMode = (success and result) and result or "Both"
 		else
 			sendMode = "Both"
-		end
-
-		-- 🔒 CRITICAL: Check session limit BEFORE any processing
-		if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
-			if not sessionLimits.limitReachedNotified then
-				local effectiveCount = getEffectiveSessionCount()
-				WindUI:Notify({
-					Title = "⚠️ Session Limit Reached",
-					Content = string.format("Session limit reached: %d/%d items", effectiveCount, sessionLimits.maxSendPet),
-					Duration = 5
-				})
-				sessionLimits.limitReachedNotified = true
-			end
-			trashEnabled = false
-			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-			-- Send webhook if we have logs and haven't sent yet
-			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-				task.spawn(sendWebhookSummary)
-			end
-			task.wait(1)
-			continue
 		end
 
 		local petInventory = {}
@@ -1476,50 +1584,58 @@ local function processTrash()
 			local anyAttempt = false
 			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
 
-			-- Check session limit before attempting any sends
-			if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
-				return false, false
-			end
+			-- Force refresh inventory cache for accuracy
+			forceRefreshCache()
 
-			-- attempt pets
+			-- Re-fetch fresh inventory data
+			local freshPetInventory = getPetInventory()
+			local freshEggInventory = getEggInventory()
+
+			-- Queue items instead of sending immediately
+			local itemsQueued = 0
+
+			-- Queue pets
 			if sendMode == "Pets" or sendMode == "Both" then
-				for _, pet in ipairs(petInventory) do
-					-- Check session limit before each pet send
-					if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
-						break
-					end
-
+				for _, pet in ipairs(freshPetInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
 					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
 						anyAttempt = true
-						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
+						queueSend(pet, targetPlayerObj, "pet", function(success)
+							if success then
+								sentAnyItem = true
+							end
+						end)
+						itemsQueued = itemsQueued + 1
 					end
 				end
 			end
 
-			-- Check session limit before attempting eggs
-			if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
-				return false, anyAttempt
-			end
-
-			-- attempt eggs
+			-- Queue eggs
 			if sendMode == "Eggs" or sendMode == "Both" then
-				for _, egg in ipairs(eggInventory) do
-					-- Check session limit before each egg send
-					if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
-						break
-					end
-
+				for _, egg in ipairs(freshEggInventory) do
 					egg = refreshItemFromData(egg.uid, true, egg)
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
 					if shouldSendItem(egg, tList, mList) then
 						anyAttempt = true
-						if sendItemToPlayer(egg, targetPlayerObj, "egg") then return true, true end
+						queueSend(egg, targetPlayerObj, "egg", function(success)
+							if success then
+								sentAnyItem = true
+							end
+						end)
+						itemsQueued = itemsQueued + 1
 					end
 				end
 			end
-			return false, anyAttempt
+
+			-- Start processing queue if items were queued
+			if itemsQueued > 0 then
+				print(string.format("[SendTrash] Queued %d items for %s", itemsQueued, targetPlayerObj.Name))
+				processSendQueue()
+			end
+
+			-- Return success if any items were queued (they will be processed asynchronously)
+			return itemsQueued > 0, anyAttempt
 		end
 
 		-- If we have a sticky target: keep trying only them until failure
@@ -1561,25 +1677,8 @@ local function processTrash()
 			end
 		end
 
-		-- Check if we hit session limit during target processing
-		if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
-			if not sessionLimits.limitReachedNotified then
-				local effectiveCount = getEffectiveSessionCount()
-				WindUI:Notify({
-					Title = "⚠️ Session Limit Reached",
-					Content = string.format("Session limit reached during processing: %d/%d items", effectiveCount, sessionLimits.maxSendPet),
-					Duration = 5
-				})
-				sessionLimits.limitReachedNotified = true
-			end
-			trashEnabled = false
-			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-			-- Send webhook if we have logs and haven't sent yet
-			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-				task.spawn(sendWebhookSummary)
-			end
-			task.wait(0.3)
-			continue
+		if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
+			autoDeleteSlowPets(autoDeleteMinSpeed)
 		end
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
@@ -1652,8 +1751,23 @@ function SendTrashSystem.Init(dependencies)
             webhookSent = false
             sessionLogs = {}
             actionCounter = 0
+
+            -- Clear all queues and states
+            clearSendProgress()
+            networkStats.sendTimeHistory = {}
+            networkStats.averageSendTime = 0.5
+            networkStats.consecutiveLagCount = 0
+            targetBlacklist = {}
+            blacklistedNames = {}
+            stickyTarget = nil
+            stickyFails = 0
+
             updateStatus()
-            WindUI:Notify({ Title = "🔄 Session Reset", Content = "Send/sell limits reset!", Duration = 2 })
+            WindUI:Notify({
+                Title = "🔄 Session Reset",
+                Content = "All counters, queues, and states reset!",
+                Duration = 3
+            })
         end
     })
 
@@ -1827,14 +1941,11 @@ function SendTrashSystem.Init(dependencies)
         Callback = function()
             forceRefreshCache()
             clearSendProgress()
-            -- Also clear send attempts tracking and session limit reservations
-            sendAttempts = {}
-            sessionLimitReservations = 0
             updateStatus()
-
+            
             WindUI:Notify({
                 Title = "🔄 Cache Refreshed",
-                Content = "Inventory cache, send progress, and attempts cleared!",
+                Content = "Inventory cache and send progress cleared!",
                 Duration = 3
             })
         end
@@ -1850,6 +1961,44 @@ function SendTrashSystem.Init(dependencies)
             task.spawn(sendCurrentInventoryWebhook)
         end
     })
+
+    -- Debug info button
+    TrashTab:Button({
+        Title = "🔍 Debug Info",
+        Desc = "Print detailed debug information to console",
+        Callback = function()
+            print("=== SendTrash Debug Info ===")
+            print("Session sent count:", sessionLimits.sendPetCount)
+            print("Webhook URL set:", webhookUrl ~= "")
+            print("Session logs count:", #sessionLogs)
+            print("Queue size:", #sendQueue)
+            print("Processing queue:", isProcessingQueue)
+            print("Network avg time:", string.format("%.2fs", networkStats.averageSendTime))
+            print("Consecutive lag count:", networkStats.consecutiveLagCount)
+            print("Send in progress count:", (function()
+                local count = 0
+                for _ in pairs(sendInProgress) do count = count + 1 end
+                return count
+            end)())
+
+            -- Show recent session logs
+            if #sessionLogs > 0 then
+                print("Recent session logs:")
+                local start = math.max(1, #sessionLogs - 5)
+                for i = start, #sessionLogs do
+                    local log = sessionLogs[i]
+                    print(string.format("  %s: %s (%s) -> %s [%.2fs]",
+                        log.kind, log.type, log.mutation, log.receiver, log.sendTime or 0))
+                end
+            end
+
+            WindUI:Notify({
+                Title = "🔍 Debug Info",
+                Content = "Debug information printed to console (F9)",
+                Duration = 3
+            })
+        end
+    })
     
     
     -- Register UI elements with config
@@ -1863,6 +2012,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
         Config:Register("webhookInput", webhookInput)
         -- Selling config removed
+        Config:Register("speedThreshold", speedThresholdSlider)
         Config:Register("sessionLimit", sessionLimitInput)
     end
     
@@ -1873,4 +2023,5 @@ function SendTrashSystem.Init(dependencies)
     end)
 end
 
+return SendTrashSystem
 return SendTrashSystem
