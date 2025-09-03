@@ -196,6 +196,8 @@ end
 -- Send operation tracking
 local sendInProgress = {}
 local sendTimeoutSeconds = 5
+local sendAttempts = {} -- Track send attempts per item to prevent double-sending
+local sendVerificationRetries = 3 -- Number of verification retries
 
 -- Webhook/session reporting
 local webhookUrl = ""
@@ -289,14 +291,24 @@ local function sendWebhookSummary()
 
     -- Group events by receiver and by type/mutation for readable blocks
     local byReceiver = {}
+    local failedAttempts = 0
+    local totalAttempts = 0
+
     for _, it in ipairs(sessionLogs) do
         local r = it.receiver or "?"
-        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0 }
+        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0, attempts = 0 }
         local key = (it.type or it.uid or "?") .. "|" .. (it.mutation or "None") .. "|" .. (it.kind or "?")
         local rec = byReceiver[r]
         rec.counts[key] = (rec.counts[key] or 0) + 1
         rec.list[key] = { type = it.type, mutation = it.mutation or "None", kind = it.kind }
         rec.total = rec.total + 1
+        rec.attempts = rec.attempts + (it.attempts or 1)
+        totalAttempts = totalAttempts + (it.attempts or 1)
+
+        -- Count failed attempts (attempts > 1 means there were failures)
+        if (it.attempts or 1) > 1 then
+            failedAttempts = failedAttempts + ((it.attempts or 1) - 1)
+        end
     end
 
     -- Build organized description for better readability
@@ -310,10 +322,17 @@ local function sendWebhookSummary()
     -- Summary section
     local totalReceivers = 0
     for _ in pairs(byReceiver) do totalReceivers = totalReceivers + 1 end
-    
+
+    -- Calculate success rate
+    local successRate = totalAttempts > 0 and (totalSent / totalAttempts * 100) or 100
+
     table.insert(lines, "📊 **Session Summary:**")
     table.insert(lines, string.format("• Total items sent: **%d**", totalSent))
     table.insert(lines, string.format("• Players helped: **%d**", totalReceivers))
+    table.insert(lines, string.format("• Success rate: **%.1f%%** (%d/%d)", successRate, totalSent, totalAttempts))
+    if failedAttempts > 0 then
+        table.insert(lines, string.format("• Failed attempts: **%d**", failedAttempts))
+    end
     table.insert(lines, "")
     
     -- Detailed breakdown by receiver
@@ -743,6 +762,7 @@ end
 --- Clear send operation tracking
 local function clearSendProgress()
     sendInProgress = {}
+    sendAttempts = {}
 end
 
 --- Save webhook URL to config
@@ -1129,8 +1149,40 @@ local function focusItem(itemUID)
     return success
 end
 
--- Send item (pet or egg) to player
---- Send item (pet or egg) to player with verification and retry
+-- Verify item was successfully sent with adaptive timing
+local function verifyItemSent(itemUID, isEgg, maxRetries)
+	maxRetries = maxRetries or sendVerificationRetries
+
+	for attempt = 1, maxRetries do
+		-- Adaptive wait time: longer for first attempt, shorter for retries
+		local waitTime = attempt == 1 and 0.5 or 0.2
+		task.wait(waitTime)
+
+		local itemStillExists = false
+		if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
+			if isEgg then
+				local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+				if eggsFolder then itemStillExists = eggsFolder:FindFirstChild(itemUID) ~= nil end
+			else
+				local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+				if petsFolder then itemStillExists = petsFolder:FindFirstChild(itemUID) ~= nil end
+			end
+		end
+
+		if not itemStillExists then
+			return true -- Item successfully sent
+		end
+
+		-- If still exists and this is the last attempt, consider it failed
+		if attempt == maxRetries then
+			return false
+		end
+	end
+
+	return false
+end
+
+-- Send item (pet or egg) to player with improved verification and retry logic
 local function sendItemToPlayer(item, target, itemType)
 	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 		if not sessionLimits.limitReachedNotified then
@@ -1143,13 +1195,25 @@ local function sendItemToPlayer(item, target, itemType)
 	local itemUID = item.uid
 	local isEgg = itemType == "egg"
 
+	-- Prevent double-sending: track attempts per item
+	if not sendAttempts[itemUID] then
+		sendAttempts[itemUID] = 0
+	end
+
+	-- Limit to maximum 3 attempts per item to prevent infinite loops
+	if sendAttempts[itemUID] >= 3 then
+		return false
+	end
+
 	-- Prevent parallel sends for the same item
 	if sendInProgress[itemUID] then return false end
 	sendInProgress[itemUID] = true
+	sendAttempts[itemUID] = sendAttempts[itemUID] + 1
 
 	-- Verify item exists before attempting to send
 	if not verifyItemExists(itemUID, isEgg) then
 		sendInProgress[itemUID] = nil
+		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
 		return false
 	end
 
@@ -1162,6 +1226,7 @@ local function sendItemToPlayer(item, target, itemType)
 	end
 	if not targetPlayerObj then
 		sendInProgress[itemUID] = nil
+		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
 		return false -- silently skip
 	end
 
@@ -1171,9 +1236,10 @@ local function sendItemToPlayer(item, target, itemType)
 	if item.placed then
 		local removeSuccess = removeFromGround(itemUID)
 		if removeSuccess then
-			task.wait(0.05)
+			task.wait(0.1) -- Slightly longer wait after remove
 			if not verifyItemExists(itemUID, isEgg) then
 				sendInProgress[itemUID] = nil
+				sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
 				return false
 			end
 		end
@@ -1181,47 +1247,73 @@ local function sendItemToPlayer(item, target, itemType)
 
 	-- Focus the item first (REQUIRED)
 	local focusSuccess = focusItem(itemUID)
-	if focusSuccess then task.wait(0.1) end
+	if focusSuccess then task.wait(0.15) end -- Slightly longer wait after focus
 
 	-- Ensure player is still online
 	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
 		sendInProgress[itemUID] = nil
+		sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on failure
 		return false
 	end
 
 	-- Attempt to send
-	local sendSuccess, _ = pcall(function()
+	local sendSuccess, sendError = pcall(function()
 		local args = { targetPlayerObj }
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
 	end)
 
 	if sendSuccess then
-		-- Verify gone from inventory
-		task.wait(0.3)
-		local itemStillExists = false
-		if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-			if isEgg then
-				local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
-				if eggsFolder then itemStillExists = eggsFolder:FindFirstChild(itemUID) ~= nil end
-			else
-				local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-				if petsFolder then itemStillExists = petsFolder:FindFirstChild(itemUID) ~= nil end
-			end
-		end
-		if not itemStillExists then
+		-- Use improved verification with retries
+		local verifiedSent = verifyItemSent(itemUID, isEgg, sendVerificationRetries)
+
+		if verifiedSent then
 			success = true
 			sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
 			actionCounter = actionCounter + 1
-			table.insert(sessionLogs, { kind = itemType, uid = itemUID, type = item.type, mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None", receiver = targetPlayerObj.Name })
+
+			-- Log to webhook with more details for debugging
+			local logEntry = {
+				kind = itemType,
+				uid = itemUID,
+				type = item.type,
+				mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None",
+				receiver = targetPlayerObj.Name,
+				attempts = sendAttempts[itemUID],
+				timestamp = os.time()
+			}
+			table.insert(sessionLogs, logEntry)
+
+			-- Reset attempt counter on success
+			sendAttempts[itemUID] = 0
+		else
+			-- Verification failed - item still exists, don't count it
+			sendAttempts[itemUID] = sendAttempts[itemUID] - 1 -- Decrement on verification failure
 		end
+	else
+		-- Send failed - decrement attempt counter
+		sendAttempts[itemUID] = sendAttempts[itemUID] - 1
 	end
 
 	sendInProgress[itemUID] = nil
 
 	if success then
-		WindUI:Notify({ Title = "✅ Sent Successfully", Content = itemType:gsub("^%l", string.upper) .. " " .. (item.type or "Unknown") .. " → " .. targetPlayerObj.Name, Duration = 2 })
+		WindUI:Notify({
+			Title = "✅ Sent Successfully",
+			Content = itemType:gsub("^%l", string.upper) .. " " .. (item.type or "Unknown") ..
+					 (item.mutation and item.mutation ~= "" and item.mutation ~= "None" and " [" .. item.mutation .. "]" or "") ..
+					 " → " .. targetPlayerObj.Name,
+			Duration = 2
+		})
 	else
-		-- silent fail (no spam)
+		-- Only show notification on final failure (after all attempts exhausted)
+		if sendAttempts[itemUID] >= 3 then
+			WindUI:Notify({
+				Title = "❌ Send Failed",
+				Content = "Failed to send " .. itemType .. " " .. (item.type or "Unknown") .. " after " .. sendAttempts[itemUID] .. " attempts",
+				Duration = 3
+			})
+			sendAttempts[itemUID] = 0 -- Reset after notification
+		end
 	end
 
 	return success
@@ -1278,19 +1370,29 @@ end
 -- Update status display
 local function updateStatus()
     if not statusParagraph then return end
-    
+
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
-    
+
+    -- Calculate active send attempts
+    local activeAttempts = 0
+    for uid, attempts in pairs(sendAttempts) do
+        if attempts > 0 then
+            activeAttempts = activeAttempts + attempts
+        end
+    end
+
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
+        "🔄 Active send attempts: %d\n" ..
         "⚡ Auto-delete speed threshold: %s\n" ..
         "🔄 Actions performed: %d",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
+        activeAttempts,
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
         actionCounter
     )
@@ -1676,11 +1778,13 @@ function SendTrashSystem.Init(dependencies)
         Callback = function()
             forceRefreshCache()
             clearSendProgress()
+            -- Also clear send attempts tracking
+            sendAttempts = {}
             updateStatus()
-            
+
             WindUI:Notify({
                 Title = "🔄 Cache Refreshed",
-                Content = "Inventory cache and send progress cleared!",
+                Content = "Inventory cache, send progress, and attempts cleared!",
                 Duration = 3
             })
         end
