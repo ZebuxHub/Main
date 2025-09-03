@@ -1414,6 +1414,27 @@ local function processTrash()
 			sendMode = "Both"
 		end
 
+		-- 🔒 CRITICAL: Check session limit BEFORE any processing
+		if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
+			if not sessionLimits.limitReachedNotified then
+				local effectiveCount = getEffectiveSessionCount()
+				WindUI:Notify({
+					Title = "⚠️ Session Limit Reached",
+					Content = string.format("Session limit reached: %d/%d items", effectiveCount, sessionLimits.maxSendPet),
+					Duration = 5
+				})
+				sessionLimits.limitReachedNotified = true
+			end
+			trashEnabled = false
+			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			-- Send webhook if we have logs and haven't sent yet
+			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+				task.spawn(sendWebhookSummary)
+			end
+			task.wait(1)
+			continue
+		end
+
 		local petInventory = {}
 		local eggInventory = {}
 		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
@@ -1454,9 +1475,20 @@ local function processTrash()
 		local function trySendToTarget(targetPlayerObj)
 			local anyAttempt = false
 			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
+
+			-- Check session limit before attempting any sends
+			if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
+				return false, false
+			end
+
 			-- attempt pets
 			if sendMode == "Pets" or sendMode == "Both" then
 				for _, pet in ipairs(petInventory) do
+					-- Check session limit before each pet send
+					if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
+						break
+					end
+
 					pet = refreshItemFromData(pet.uid, false, pet)
 					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
 						anyAttempt = true
@@ -1464,9 +1496,20 @@ local function processTrash()
 					end
 				end
 			end
+
+			-- Check session limit before attempting eggs
+			if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
+				return false, anyAttempt
+			end
+
 			-- attempt eggs
 			if sendMode == "Eggs" or sendMode == "Both" then
 				for _, egg in ipairs(eggInventory) do
+					-- Check session limit before each egg send
+					if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
+						break
+					end
+
 					egg = refreshItemFromData(egg.uid, true, egg)
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
@@ -1516,6 +1559,27 @@ local function processTrash()
 					end
 				end
 			end
+		end
+
+		-- Check if we hit session limit during target processing
+		if getEffectiveSessionCount() >= sessionLimits.maxSendPet then
+			if not sessionLimits.limitReachedNotified then
+				local effectiveCount = getEffectiveSessionCount()
+				WindUI:Notify({
+					Title = "⚠️ Session Limit Reached",
+					Content = string.format("Session limit reached during processing: %d/%d items", effectiveCount, sessionLimits.maxSendPet),
+					Duration = 5
+				})
+				sessionLimits.limitReachedNotified = true
+			end
+			trashEnabled = false
+			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			-- Send webhook if we have logs and haven't sent yet
+			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+				task.spawn(sendWebhookSummary)
+			end
+			task.wait(0.3)
+			continue
 		end
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
