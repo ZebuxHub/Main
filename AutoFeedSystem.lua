@@ -30,15 +30,31 @@ local KNOWN_FRUITS = {
     "Peach",
     -- Newly supported fruits (ensure inventory recognition + equip)
     "Pineapple",
-    "Gold Mango",
-    "Bloodstone Cycad",
-    "Colossal Pinecone",
-    "Volt Ginkgo",
+    "GoldMango",
+    "BloodstoneCycad",
+    "ColossalPinecone",
+    "VoltGinkgo",
 }
 
 local CANONICAL_FRUIT_BY_NORMALIZED = {}
 for _, fruitName in ipairs(KNOWN_FRUITS) do
     CANONICAL_FRUIT_BY_NORMALIZED[normalizeFruitName(fruitName)] = fruitName
+end
+
+-- Augment canonical map from the player's Asset attributes dynamically
+local function augmentCanonicalFromAsset(asset)
+    if not asset then return end
+    local ok, attrs = pcall(function()
+        return asset:GetAttributes()
+    end)
+    if ok and type(attrs) == "table" then
+        for k, _ in pairs(attrs) do
+            local n = normalizeFruitName(k)
+            if n ~= "" and not CANONICAL_FRUIT_BY_NORMALIZED[n] then
+                CANONICAL_FRUIT_BY_NORMALIZED[n] = k
+            end
+        end
+    end
 end
 
 -- Auto Feed Functions
@@ -116,6 +132,9 @@ function AutoFeedSystem.getPlayerFruitInventory()
     if ok and type(attrs) == "table" then
         attrMap = attrs
     end
+
+    -- Include all attribute keys in canonical mapping to support new fruits
+    augmentCanonicalFromAsset(asset)
 
     for _, canonicalName in ipairs(KNOWN_FRUITS) do
         local amount = attrMap[canonicalName]
@@ -227,18 +246,31 @@ function AutoFeedSystem.equipFruit(fruitName)
         return false
     end
     
-    local args = {
-        "Focus",
-        fruitName
-    }
-    local ok, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    if not ok then
-        warn("Failed to equip fruit " .. tostring(fruitName) .. ": " .. tostring(err))
-        return false
+    -- Try multiple candidate keys to maximize compatibility
+    local candidates = {}
+    table.insert(candidates, fruitName)
+    local lower = string.lower(fruitName)
+    local upper = string.upper(fruitName)
+    table.insert(candidates, lower)
+    table.insert(candidates, upper)
+    local underscored = tostring(fruitName):gsub(" ", "_")
+    table.insert(candidates, underscored)
+    table.insert(candidates, string.lower(underscored))
+    -- Also try canonical name if we can resolve it via normalization
+    local canonical = CANONICAL_FRUIT_BY_NORMALIZED[normalizeFruitName(fruitName)]
+    if canonical and canonical ~= fruitName then table.insert(candidates, canonical) end
+
+    for _, key in ipairs(candidates) do
+        local args = { "Focus", key }
+        local ok, err = pcall(function()
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        end)
+        if ok then
+            return true
+        end
     end
-    return true
+    warn("Failed to equip fruit after trying candidates for " .. tostring(fruitName))
+    return false
 end
 
 function AutoFeedSystem.feedPet(petName)
