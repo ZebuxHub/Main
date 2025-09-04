@@ -96,6 +96,18 @@ local function disconnectConn(conn)
     if conn then pcall(function() conn:Disconnect() end) end
 end
 
+-- Canonicalize mutation names (deduplicate typos like Electric/Electirc)
+local function canonicalizeMutationName(name)
+    if not name or name == "" then return name end
+    local lower = tostring(name):lower()
+    if lower == "electric" or lower == "electirc" then return "Electirc" end
+    if lower == "dino" then return "Dino" end
+    if lower == "golden" then return "Golden" end
+    if lower == "diamond" then return "Diamond" end
+    if lower == "fire" then return "Fire" end
+    return name
+end
+
 local function clearConnSet(set)
     if not set then return end
     for _, c in pairs(set) do disconnectConn(c) end
@@ -241,7 +253,8 @@ local webhookSent = false
 local sessionLimits = {
     sendPetCount = 0,
     maxSendPet = 50,
-    limitReachedNotified = false -- Track if user has been notified
+    limitReachedNotified = false, -- Track if user has been notified
+    stickyCountMemory = 0 -- Persist count across mid-flight stops
 }
 
 -- Pretty Discord embed assets
@@ -508,9 +521,9 @@ end
 local function getAllMutations()
     local mutations = {}
     
-    -- Add hardcoded mutations
+    -- Add hardcoded mutations (canonicalized)
     for _, mutation in ipairs(HardcodedMutations) do
-        mutations[mutation] = true
+        mutations[canonicalizeMutationName(mutation)] = true
     end
     
     -- Add mutations from inventory
@@ -519,7 +532,7 @@ local function getAllMutations()
         if petsFolder then
             for _, petData in pairs(petsFolder:GetChildren()) do
                 if petData:IsA("Configuration") then
-                    local petMutation = safeGetAttribute(petData, "M", nil)
+                    local petMutation = canonicalizeMutationName(safeGetAttribute(petData, "M", nil))
                     if petMutation and petMutation ~= "" then
                         mutations[petMutation] = true
                     end
@@ -1146,7 +1159,7 @@ function shouldSendItem(item, includeTypes, includeMutations)
         return v and tostring(v):lower() or nil
     end
     local itemType = norm(item.type)
-    local itemMut  = norm(item.mutation)
+    local itemMut  = item.mutation and norm(canonicalizeMutationName(item.mutation)) or nil
     
     -- STRICT: require a valid T (type) to exist
     if not itemType or itemType == "" or itemType == "unknown" then
@@ -1164,7 +1177,7 @@ function shouldSendItem(item, includeTypes, includeMutations)
         -- STRICT for M: if selectors provided, item must have an M and it must match
         if not itemMut or itemMut == "" then return false end
         mutsSet = {}
-        for _, m in ipairs(includeMutations) do mutsSet[norm(m)] = true end
+        for _, m in ipairs(includeMutations) do mutsSet[norm(canonicalizeMutationName(m))] = true end
         if not mutsSet[itemMut] then return false end
     end
     
@@ -1528,6 +1541,10 @@ local function processTrash()
 					sendWebhookSummary()
 				end)
 			end
+			-- Reset counters for next session but remember cumulative memory
+			sessionLimits.stickyCountMemory = sessionLimits.sendPetCount
+			sessionLimits.sendPetCount = 0
+			sessionLimits.limitReachedNotified = false
 			trashEnabled = false
 			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 		end
