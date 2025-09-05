@@ -168,13 +168,6 @@ function AutoSellSystem.CreateUI()
 	-- Create new tab
 	Tabs.SellTab = Tabs.MainSection:Tab({ Title = "💸 | Auto Sell" })
 
-	Tabs.SellTab:Paragraph({
-		Title = "How it works",
-		Desc = "Sells unplaced pets (no D attribute) directly from PlayerGui.Data.Pets.",
-		Image = "info",
-		ImageSize = 14,
-	})
-
 	mutationDropdown = Tabs.SellTab:Dropdown({
 		Title = "🧬 Mutations",
 		Desc = "Choose whether to sell mutated pets (M attribute).",
