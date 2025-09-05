@@ -18,11 +18,14 @@ local PetRE = Remotes and Remotes:FindFirstChild("PetRE")
 local autoSellEnabled = false
 local autoSellThread = nil
 local sellMutations = false -- false = keep mutated (do not sell), true = sell mutated
+local sessionLimit = 0 -- 0 = unlimited
+local sessionSold = 0
 
 -- UI refs
 local statusParagraph
 local mutationDropdown
 local autoSellToggle
+local sessionLimitInput
 
 -- Helpers
 local function getPetContainer()
@@ -64,10 +67,12 @@ local sellStats = {
 local function updateStatus()
 	if not statusParagraph then return end
 	local desc = string.format(
-		"Sold: %d | Scanned: %d | Skipped M: %d%s",
+		"Sold: %d | Scanned: %d | Skipped M: %d\nSession: %d/%s%s",
 		sellStats.totalSold,
 		sellStats.scanned,
 		sellStats.skippedMutations,
+		sessionSold,
+		tostring(sessionLimit == 0 and "∞" or sessionLimit),
 		sellStats.lastAction and ("\n" .. sellStats.lastAction) or ""
 	)
 	if statusParagraph.SetDesc then
@@ -88,6 +93,16 @@ local function scanAndSell()
 
 	for _, node in ipairs(pets:GetChildren()) do
 		if not autoSellEnabled then return end
+		if sessionLimit > 0 and sessionSold >= sessionLimit then
+			sellStats.lastAction = "Session limit reached"
+			updateStatus()
+			if autoSellToggle and autoSellToggle.SetValue then
+				autoSellToggle:SetValue(false)
+			else
+				autoSellEnabled = false
+			end
+			return
+		end
 		sellStats.scanned += 1
 
 		local uid = node.Name
@@ -104,6 +119,7 @@ local function scanAndSell()
 			local ok = sellPetByUid(uid)
 			if ok then
 				sellStats.totalSold += 1
+				sessionSold += 1
 				sellStats.lastSold = uid
 				sellStats.lastAction = "✅ Sold " .. uid
 				if WindUI then
@@ -114,6 +130,19 @@ local function scanAndSell()
 			end
 			updateStatus()
 			task.wait(0.15)
+
+			-- Stop immediately if session limit reached after this sale
+			if sessionLimit > 0 and sessionSold >= sessionLimit then
+				if WindUI then
+					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Session limit reached (" .. tostring(sessionSold) .. "/" .. tostring(sessionLimit) .. ")", Duration = 3 })
+				end
+				if autoSellToggle and autoSellToggle.SetValue then
+					autoSellToggle:SetValue(false)
+				else
+					autoSellEnabled = false
+				end
+				return
+			end
 		end
 	end
 end
@@ -159,6 +188,22 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
+	sessionLimitInput = Tabs.SellTab:Input({
+		Title = "Session Sell Limit",
+		Desc = "Max sells this session (0 = unlimited)",
+		Value = "0",
+		Callback = function(value)
+			local n = tonumber(value)
+			if not n then
+				local cleaned = tostring(value):gsub("[^%d%.]", "")
+				n = tonumber(cleaned) or 0
+			end
+			n = math.max(0, math.floor(n))
+			sessionLimit = n
+			updateStatus()
+		end
+	})
+
 	statusParagraph = Tabs.SellTab:Paragraph({
 		Title = "Status",
 		Desc = "Idle",
@@ -173,6 +218,7 @@ function AutoSellSystem.CreateUI()
 		Callback = function(state)
 			autoSellEnabled = state
 			if state and not autoSellThread then
+				sessionSold = 0
 				autoSellThread = task.spawn(function()
 					runAutoSell()
 					autoSellThread = nil
@@ -195,6 +241,9 @@ function AutoSellSystem.CreateUI()
 		end)
 		pcall(function()
 			Config:Register("autoSellMutationMode", mutationDropdown)
+		end)
+		pcall(function()
+			Config:Register("autoSellSessionLimit", sessionLimitInput)
 		end)
 	end
 
