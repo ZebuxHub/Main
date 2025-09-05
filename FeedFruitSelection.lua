@@ -108,9 +108,9 @@ local FruitData = {
 		Rarity = 6
 	},
 	DeepseaPearlFruit = {
-		Name = "Deepsea Pearl Fruit",
+		Name = "DeepseaPearlFruit",
 		Price = "40,000,000,000",
-		Icon = "🦪",
+		Icon = "💠",
 		Rarity = 6
 	}
 }
