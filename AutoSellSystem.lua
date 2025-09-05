@@ -160,8 +160,17 @@ function AutoSellSystem.runAutoSell(autoSellEnabled, mutationMode, updateSellSta
 
             -- Sell pets one by one with delays
             local soldCount = 0
-            for _, petData in ipairs(targetPets) do
-                if not autoSellEnabled then break end
+            local processedCount = 0
+            print(string.format("🛒 Auto Sell Debug: Starting to sell %d pets", #targetPets))
+
+            for i, petData in ipairs(targetPets) do
+                if not autoSellEnabled then
+                    print("🛒 Auto Sell Debug: Auto sell disabled, stopping loop")
+                    break
+                end
+
+                processedCount = processedCount + 1
+                print(string.format("🛒 Auto Sell Debug: Processing pet %d/%d: %s", processedCount, #targetPets, petData.name))
 
                 if updateSellStatus then
                     updateSellStatus("lastAction", string.format("Selling %s...", petData.name))
@@ -173,7 +182,7 @@ function AutoSellSystem.runAutoSell(autoSellEnabled, mutationMode, updateSellSta
                 if success then
                     soldCount = soldCount + 1
                     if updateSellStatus then
-                        updateSellStatus("totalSold", (updateSellStatus("totalSold") or 0) + 1)
+                        updateSellStatus("totalSold", soldCount)
                         updateSellStatus("lastAction", string.format("✅ Sold %s", petData.name))
                     end
                     print(string.format("🛒 Auto Sell Debug: Successfully sold pet %s", petData.name))
@@ -186,7 +195,14 @@ function AutoSellSystem.runAutoSell(autoSellEnabled, mutationMode, updateSellSta
 
                 -- Small delay between sells to avoid spam
                 task.wait(0.5)
+
+                -- Re-scan pets after each sell to get updated list
+                local currentSellable = AutoSellSystem.getSellablePets()
+                local currentTarget = AutoSellSystem.filterPetsByMutation(currentSellable, mutationMode)
+                print(string.format("🛒 Auto Sell Debug: After sell - %d pets remaining to sell", #currentTarget))
             end
+
+            print(string.format("🛒 Auto Sell Debug: Loop completed - processed %d, sold %d", processedCount, soldCount))
 
             if soldCount > 0 then
                 if updateSellStatus then
