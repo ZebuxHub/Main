@@ -1,8 +1,8 @@
--- FeedFruitSelection.lua - macOS Style Dark Theme UI for Fruit Selection (Auto Feed)
+-- FruitSelection.lua - macOS Style Dark Theme UI for Fruit Selection
 -- Author: Zebux
 -- Version: 1.0
 
-local FeedFruitSelection = {}
+local FruitSelection = {}
 
 -- Services
 local Players = game:GetService("Players")
@@ -10,186 +10,294 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- Name normalization helpers for inventory mapping
-local function normalizeFruitName(name)
-	if type(name) ~= "string" then return "" end
-	local lowered = string.lower(name)
-	lowered = lowered:gsub("[%s_%-%./]", "")
-	return lowered
-end
-
--- Will be filled after FruitData is defined
-local FRUIT_CANONICAL = nil
-
--- Hardcoded fruit data for feeding
+-- Hardcoded Fruit Data with emojis (updated with new fruit data)
 local FruitData = {
-	Strawberry = {
-		Name = "Strawberry",
-		Price = "5,000",
-		Icon = "🍓",
-		Rarity = 1
-	},
-	Blueberry = {
-		Name = "Blueberry",
-		Price = "20,000",
-		Icon = "🔵",
-		Rarity = 1
-	},
-	Watermelon = {
-		Name = "Watermelon",
-		Price = "80,000",
-		Icon = "🍉",
-		Rarity = 2
-	},
-	Apple = {
-		Name = "Apple",
-		Price = "400,000",
-		Icon = "🍎",
-		Rarity = 2
-	},
-	Orange = {
-		Name = "Orange",
-		Price = "1,200,000",
-		Icon = "🍊",
-		Rarity = 3
-	},
-	Corn = {
-		Name = "Corn",
-		Price = "3,500,000",
-		Icon = "🌽",
-		Rarity = 3
-	},
-	Banana = {
-		Name = "Banana",
-		Price = "12,000,000",
-		Icon = "🍌",
-		Rarity = 4
-	},
-	Grape = {
-		Name = "Grape",
-		Price = "50,000,000",
-		Icon = "🍇",
-		Rarity = 4
-	},
-	Pear = {
-		Name = "Pear",
-		Price = "200,000,000",
-		Icon = "🍐",
-		Rarity = 5
-	},
-	Pineapple = {
-		Name = "Pineapple",
-		Price = "600,000,000",
-		Icon = "🍍",
-		Rarity = 5
-	},
-	GoldMango = {
-		Name = "Gold Mango",
-		Price = "2,000,000,000",
-		Icon = "🥭",
-		Rarity = 6
-	},
-	BloodstoneCycad = {
-		Name = "Bloodstone Cycad",
-		Price = "8,000,000,000",
-		Icon = "🌿",
-		Rarity = 6
-	},
-	ColossalPinecone = {
-		Name = "Colossal Pinecone",
-		Price = "40,000,000,000",
-		Icon = "🌲",
-		Rarity = 6
-	},
-	VoltGinkgo = {
-		Name = "Volt Ginkgo",
-		Price = "80,000,000,000",
-		Icon = "⚡",
-		Rarity = 6
-	}
+    Strawberry = {
+        Name = "Strawberry",
+        Price = "5,000",
+        Icon = "🍓",
+        Rarity = 1,
+        FeedValue = 600,
+        ID = "Strawberry",
+        Index = 1,
+        SellStock1 = 2,
+        SellStock2 = 5,
+        SellStockRate = 100,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 16,
+        DescTag = ""
+    },
+    Blueberry = {
+        Name = "Blueberry",
+        Price = "20,000",
+        Icon = "🫐",
+        Rarity = 1,
+        FeedValue = 1250,
+        ID = "Blueberry",
+        Index = 2,
+        SellStock1 = 1,
+        SellStock2 = 3,
+        SellStockRate = 80,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 30,
+        DescTag = ""
+    },
+    Watermelon = {
+        Name = "Watermelon",
+        Price = "80,000",
+        Icon = "🍉",
+        Rarity = 2,
+        FeedValue = 3200,
+        ID = "Watermelon",
+        Index = 3,
+        SellStock1 = 2,
+        SellStock2 = 5,
+        SellStockRate = 60,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 24,
+        DescTag = ""
+    },
+    Apple = {
+        Name = "Apple",
+        Price = "400,000",
+        Icon = "🍎",
+        Rarity = 2,
+        FeedValue = 8000,
+        ID = "Apple",
+        Index = 4,
+        SellStock1 = 2,
+        SellStock2 = 5,
+        SellStockRate = 50,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 40,
+        DescTag = ""
+    },
+    Orange = {
+        Name = "Orange",
+        Price = "1,200,000",
+        Icon = "🍊",
+        Rarity = 3,
+        FeedValue = 20000,
+        ID = "Orange",
+        Index = 5,
+        SellStock1 = 2,
+        SellStock2 = 4,
+        SellStockRate = 30,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 32,
+        DescTag = ""
+    },
+    Corn = {
+        Name = "Corn",
+        Price = "3,500,000",
+        Icon = "🌽",
+        Rarity = 3,
+        FeedValue = 50000,
+        ID = "Corn",
+        Index = 6,
+        SellStock1 = 2,
+        SellStock2 = 4,
+        SellStockRate = 20,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 60,
+        DescTag = ""
+    },
+    Banana = {
+        Name = "Banana",
+        Price = "12,000,000",
+        Icon = "🍌",
+        Rarity = 4,
+        FeedValue = 120000,
+        ID = "Banana",
+        Index = 7,
+        SellStock1 = 1,
+        SellStock2 = 4,
+        SellStockRate = 15,
+        RefreshLuck = 1,
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 90,
+        DescTag = ""
+    },
+    Grape = {
+        Name = "Grape",
+        Price = "50,000,000",
+        Icon = "🍇",
+        Rarity = 4,
+        FeedValue = 300000,
+        ID = "Grape",
+        Index = 8,
+        SellStock1 = 1,
+        SellStock2 = 4,
+        SellStockRate = 12,
+        RefreshLuck = 1,
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 200,
+        DescTag = ""
+    },
+    Pear = {
+        Name = "Pear",
+        Price = "200,000,000",
+        Icon = "🍐",
+        Rarity = 5,
+        FeedValue = 800000,
+        ID = "Pear",
+        Index = 9,
+        SellStock1 = 1,
+        SellStock2 = 3,
+        SellStockRate = 8,
+        RefreshLuck = 1,
+        MutateRate = 10,
+        MutateID = "Golden",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 180,
+        DescTag = ""
+    },
+    Pineapple = {
+        Name = "Pineapple",
+        Price = "600,000,000",
+        Icon = "🍍",
+        Rarity = 5,
+        FeedValue = 1500000,
+        ID = "Pineapple",
+        Index = 10,
+        SellStock1 = 1,
+        SellStock2 = 3,
+        SellStockRate = 5,
+        RefreshLuck = 1,
+        MutateRate = 10,
+        MutateID = "Diamond",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 280,
+        DescTag = ""
+    },
+    GoldMango = {
+        Name = "Gold Mango",
+        Price = "2,000,000,000",
+        Icon = "🥭",
+        Rarity = 6,
+        FeedValue = 4000000,
+        ID = "GoldMango",
+        Index = 11,
+        SellStock1 = 1,
+        SellStock2 = 2,
+        SellStockRate = 2,
+        RefreshLuck = 1,
+        MutateRate = 10,
+        MutateID = "Fire",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 360,
+        DescTag = ""
+    },
+    BloodstoneCycad = {
+        Name = "Bloodstone Cycad",
+        Price = "8,000,000,000",
+        Icon = "🌿",
+        Rarity = 6,
+        FeedValue = 5000000,
+        ID = "BloodstoneCycad",
+        Index = 12,
+        SellStock1 = 1,
+        SellStock2 = 1,
+        SellStockRate = 2,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "L_FRUIT_DINO1",
+        UnlockCategory = "Normal",
+        EatTime = 360,
+        DescTag = "K_PETFOOD_DESC_FDINO1"
+    },
+    ColossalPinecone = {
+        Name = "Colossal Pinecone",
+        Price = "40,000,000,000",
+        Icon = "🌲",
+        Rarity = 6,
+        FeedValue = 8000000,
+        ID = "ColossalPinecone",
+        Index = 13,
+        SellStock1 = 1,
+        SellStock2 = 1,
+        SellStockRate = 1,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "L_FRUIT_DINO2",
+        UnlockCategory = "Normal",
+        EatTime = 360,
+        DescTag = "K_PETFOOD_DESC_FDINO2"
+    },
+    VoltGinkgo = {
+        Name = "Volt Ginkgo",
+        Price = "80,000,000,000",
+        Icon = "⚡",
+        Rarity = 6,
+        FeedValue = 20000000,
+        ID = "VoltGinkgo",
+        Index = 14,
+        SellStock1 = 1,
+        SellStock2 = 1,
+        SellStockRate = 0.2,
+        RefreshLuck = "",
+        MutateRate = 10,
+        MutateID = "Dino",
+        UnlockLoot = "",
+        UnlockCategory = "",
+        EatTime = 360,
+        DescTag = ""
+    },
+    DeepseaPearlFruit = {
+        Name = "Deepsea Pearl Fruit",
+        Price = "40,000,000,000",
+        Icon = "🦪",
+        Rarity = 6,
+        FeedValue = 8000000,
+        ID = "DeepseaPearlFruit",
+        Index = 15,
+        SellStock1 = 1,
+        SellStock2 = 1,
+        SellStockRate = 1,
+        RefreshLuck = "",
+        MutateRate = "",
+        MutateID = "",
+        UnlockLoot = "L_FRUIT_FISH1",
+        UnlockCategory = "Fish",
+        EatTime = 360,
+        DescTag = "K_PETFOOD_DESC_FFISH1"
+    }
 }
-
--- Build canonical name map from FruitData
-local function buildFruitCanonical()
-	local map = {}
-	for id, item in pairs(FruitData) do
-		local display = item.Name or id
-		map[normalizeFruitName(id)] = display
-		map[normalizeFruitName(display)] = display
-	end
-	return map
-end
-FRUIT_CANONICAL = buildFruitCanonical()
-
--- Local function to read player's fruit inventory using canonical name matching
-local function getPlayerFruitInventory()
-	local localPlayer = Players.LocalPlayer
-	if not localPlayer then
-		return {}
-	end
-
-	local playerGui = localPlayer:FindFirstChild("PlayerGui")
-	if not playerGui then
-		return {}
-	end
-
-	local data = playerGui:FindFirstChild("Data")
-	if not data then
-		return {}
-	end
-
-	local asset = data:FindFirstChild("Asset")
-	if not asset then
-		return {}
-	end
-
-    local fruitInventory = {}
-
-    -- First, read from Attributes on Asset (primary source)
-    local attrMap = {}
-    local ok, attrs = pcall(function()
-        return asset:GetAttributes()
-    end)
-    if ok and type(attrs) == "table" then
-        attrMap = attrs
-    end
-    for id, item in pairs(FruitData) do
-        local display = item.Name or id
-        local amount = attrMap[display] or attrMap[id]
-        if amount == nil then
-            -- Fallback by normalized key search
-            local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
-            for k, v in pairs(attrMap) do
-                local nk = normalizeFruitName(k)
-                if nk == wantA or nk == wantB then
-                    amount = v
-                    break
-                end
-            end
-        end
-        if type(amount) == "string" then amount = tonumber(amount) or 0 end
-        if type(amount) == "number" and amount > 0 then
-            fruitInventory[display] = amount
-        end
-    end
-
-    -- Also support legacy children-based values as fallback/merge
-    for _, child in pairs(asset:GetChildren()) do
-        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-            local normalized = normalizeFruitName(child.Name)
-            local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
-            if canonical then
-                local amount = child.Value
-                if type(amount) == "string" then amount = tonumber(amount) or 0 end
-                if type(amount) == "number" and amount > 0 then
-                    fruitInventory[canonical] = amount
-                end
-            end
-        end
-    end
-
-    return fruitInventory
-end
 
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
@@ -211,19 +319,19 @@ local onToggleChanged = nil
 
 -- macOS Dark Theme Colors
 local colors = {
-    background = Color3.fromRGB(18, 18, 20),
-    surface = Color3.fromRGB(32, 32, 34),
-    primary = Color3.fromRGB(0, 122, 255),
-    secondary = Color3.fromRGB(88, 86, 214),
-    text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(200, 200, 200),
-    textTertiary = Color3.fromRGB(150, 150, 150),
-    border = Color3.fromRGB(50, 50, 52),
-    selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(45, 45, 47),
-    close = Color3.fromRGB(255, 69, 58),
-    minimize = Color3.fromRGB(255, 159, 10),
-    maximize = Color3.fromRGB(48, 209, 88)
+    background = Color3.fromRGB(18, 18, 20), -- Darker background for better contrast
+    surface = Color3.fromRGB(32, 32, 34), -- Lighter surface for cards
+    primary = Color3.fromRGB(0, 122, 255), -- Brighter blue accent
+    secondary = Color3.fromRGB(88, 86, 214), -- Purple accent
+    text = Color3.fromRGB(255, 255, 255), -- Pure white text
+    textSecondary = Color3.fromRGB(200, 200, 200), -- Brighter gray text
+    textTertiary = Color3.fromRGB(150, 150, 150), -- Medium gray for placeholders
+    border = Color3.fromRGB(50, 50, 52), -- Slightly darker border
+    selected = Color3.fromRGB(0, 122, 255), -- Bright blue for selected
+    hover = Color3.fromRGB(45, 45, 47), -- Lighter hover state
+    close = Color3.fromRGB(255, 69, 58), -- Red close button
+    minimize = Color3.fromRGB(255, 159, 10), -- Yellow minimize
+    maximize = Color3.fromRGB(48, 209, 88) -- Green maximize
 }
 
 -- Utility Functions
@@ -245,16 +353,12 @@ local function formatNumber(num)
 end
 
 local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 20 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 10 then return Color3.fromRGB(255, 159, 10)
-    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85)
-    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88)
-    else return Color3.fromRGB(174, 174, 178)
+    if rarity >= 6 then return Color3.fromRGB(255, 45, 85) -- Ultra pink
+    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58) -- Legendary red
+    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222) -- Epic purple
+    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214) -- Rare blue
+    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88) -- Uncommon green
+    else return Color3.fromRGB(174, 174, 178) -- Common gray
     end
 end
 
@@ -263,6 +367,7 @@ local function parsePrice(priceStr)
     if type(priceStr) == "number" then
         return priceStr
     end
+    -- Remove commas and convert to number
     local cleanPrice = priceStr:gsub(",", "")
     return tonumber(cleanPrice) or 0
 end
@@ -375,7 +480,7 @@ local function createItemCard(itemId, itemData, parent)
     stroke.Thickness = 1
     stroke.Parent = card
     
-    -- Create Icon (TextLabel for fruits)
+    -- Create Icon (TextLabel for emoji)
     local icon = Instance.new("TextLabel")
     icon.Name = "Icon"
     icon.Size = UDim2.new(0, 50, 0, 50)
@@ -405,54 +510,13 @@ local function createItemCard(itemId, itemData, parent)
     price.Size = UDim2.new(1, -16, 0, 16)
     price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
-    price.Text = "Loading..." -- Will be updated with inventory count
+    price.Text = "$" .. itemData.Price
     price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
     price.TextXAlignment = Enum.TextXAlignment.Center
     price.TextWrapped = true
     price.Parent = card
-    
-    -- Update price label with inventory count
-    local function updateInventoryDisplay()
-        local fruitInventory = getPlayerFruitInventory()
-        local fruitAmount = fruitInventory[itemData.Name] or 0
-        
-        if fruitAmount > 0 then
-            price.Text = fruitAmount .. "x"
-            price.TextColor3 = colors.textSecondary
-        else
-            price.Text = "0x"
-            price.TextColor3 = Color3.fromRGB(255, 69, 58) -- Red for 0 inventory
-        end
-    end
-    
-    -- Update immediately
-    updateInventoryDisplay()
-    
-    -- Update every 2 seconds to keep inventory current
-    local lastUpdate = 0
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not card.Parent then
-            connection:Disconnect()
-            return
-        end
-        
-        -- Update every 2 seconds
-        local currentTime = tick()
-        if currentTime - lastUpdate >= 2 then
-            updateInventoryDisplay()
-            lastUpdate = currentTime
-        end
-    end)
-    
-    -- Clean up connection when card is destroyed
-    card.AncestryChanged:Connect(function()
-        if not card.Parent then
-            connection:Disconnect()
-        end
-    end)
     
     local checkmark = Instance.new("TextLabel")
     checkmark.Name = "Checkmark"
@@ -553,7 +617,7 @@ local function createSearchBar(parent)
     searchBox.Changed:Connect(function(prop)
         if prop == "Text" then
             searchText = searchBox.Text
-            FeedFruitSelection.RefreshContent()
+            FruitSelection.RefreshContent()
         end
     end)
     
@@ -561,13 +625,13 @@ local function createSearchBar(parent)
 end
 
 -- Create UI
-function FeedFruitSelection.CreateUI()
+function FruitSelection.CreateUI()
     if ScreenGui then
         ScreenGui:Destroy()
     end
     
     ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "FeedFruitSelectionUI"
+    ScreenGui.Name = "FruitSelectionUI"
     ScreenGui.Parent = PlayerGui
     
     MainFrame = Instance.new("Frame")
@@ -599,7 +663,7 @@ function FeedFruitSelection.CreateUI()
     title.Size = UDim2.new(1, -140, 0, 20)
     title.Position = UDim2.new(0, 100, 0, 12)
     title.BackgroundTransparency = 1
-    title.Text = "Feed Fruit Selection"
+    title.Text = "Fruit Selection"
     title.TextSize = 14
     title.Font = Enum.Font.GothamSemibold
     title.TextColor3 = colors.text
@@ -623,16 +687,19 @@ function FeedFruitSelection.CreateUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 6
     scrollFrame.ScrollBarImageColor3 = colors.primary
-    -- Ensure manual canvas sizing for reliable scrolling
+    -- Disable AutomaticCanvasSize and handle manually for better control
     scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000) -- Start with reasonable default
     scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    scrollFrame.ScrollingEnabled = true
     scrollFrame.Parent = content
     
     local gridLayout = Instance.new("UIGridLayout")
     gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
     gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
     gridLayout.Parent = scrollFrame
     
     -- Add UIPadding to ensure proper scrolling
@@ -671,6 +738,7 @@ function FeedFruitSelection.CreateUI()
     end)
     
     maximizeBtn.MouseButton1Click:Connect(function()
+        -- Toggle between normal and full size
         if MainFrame.Size == originalSize then
             MainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
             MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
@@ -680,7 +748,7 @@ function FeedFruitSelection.CreateUI()
         end
     end)
     
-    -- Dragging
+    -- Dragging - Fixed to work properly
     local titleBar = Instance.new("Frame")
     titleBar.Name = "TitleBar"
     titleBar.Size = UDim2.new(1, 0, 0, 40)
@@ -714,8 +782,43 @@ function FeedFruitSelection.CreateUI()
     return ScreenGui
 end
 
+-- Update ScrollingFrame canvas size based on content
+local function updateCanvasSize(scrollFrame)
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if not gridLayout then return end
+    
+    -- Wait for layout to update
+    task.wait(0.2)
+    
+    -- Calculate content size based on grid layout
+    local itemCount = 0
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            itemCount = itemCount + 1
+        end
+    end
+    
+    if itemCount > 0 then
+        -- Calculate rows needed (3 items per row)
+        local rows = math.ceil(itemCount / 3)
+        local cellHeight = 120 -- Height of each cell
+        local cellPadding = 8 -- Padding between cells
+        local topPadding = 8 -- Top padding from UIPadding
+        local bottomPadding = 50 -- Bottom padding from UIPadding
+        
+        -- More accurate calculation including all padding
+        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
+        
+        -- Always update canvas size to ensure proper scrolling
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+        
+        -- Also force a canvas position reset to ensure scrollability
+        scrollFrame.CanvasPosition = Vector2.new(0, 0)
+    end
+end
+
 -- Refresh Content
-function FeedFruitSelection.RefreshContent()
+function FruitSelection.RefreshContent()
     if not ScreenGui then return end
     
     local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
@@ -731,24 +834,13 @@ function FeedFruitSelection.RefreshContent()
     -- Filter by search
     local filteredData = filterDataBySearch(FruitData, searchText)
     
-    -- Sort by inventory count (high to low) instead of price
-    local sortedData = {}
-    for id, item in pairs(filteredData) do
-        table.insert(sortedData, {id = id, data = item})
-    end
-    
-    -- Sort by inventory count (high to low)
-    local fruitInventory = getPlayerFruitInventory()
-    table.sort(sortedData, function(a, b)
-        local amountA = fruitInventory[a.data.Name] or 0
-        local amountB = fruitInventory[b.data.Name] or 0
-        return amountA > amountB -- High to low
-    end)
+    -- Sort by price (low to high)
+    local sortedData = sortDataByPrice(filteredData)
     
     -- Add content
     for i, item in ipairs(sortedData) do
         local card = createItemCard(item.id, item.data, scrollFrame)
-        card.LayoutOrder = i
+        card.LayoutOrder = i -- Ensure proper ordering
         
         -- Apply saved selection state
         if selectedItems[item.id] then
@@ -759,23 +851,49 @@ function FeedFruitSelection.RefreshContent()
             card.BackgroundColor3 = colors.selected
         end
     end
-
-    -- Update canvas size based on number of items (3 per row)
-    local itemCount = #sortedData
-    if itemCount > 0 then
-        local rows = math.ceil(itemCount / 3)
-        local cellHeight = 120
-        local cellPadding = 8
-        local topPadding = 8
-        local bottomPadding = 50
-        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-        scrollFrame.CanvasPosition = Vector2.new(0, 0)
+    
+    -- Update canvas size to ensure proper scrolling
+    -- Multiple approaches to ensure it works properly
+    task.spawn(function()
+        updateCanvasSize(scrollFrame)
+    end)
+    
+    -- Also try after a longer delay as backup
+    task.spawn(function()
+        task.wait(0.5)
+        updateCanvasSize(scrollFrame)
+    end)
+    
+    -- Connect to layout changes for real-time updates
+    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
+    if gridLayout then
+        local connection = nil
+        connection = gridLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            task.wait(0.1)
+            local itemCount = 0
+            for _, child in pairs(scrollFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    itemCount = itemCount + 1
+                end
+            end
+            
+            if itemCount > 0 then
+                local rows = math.ceil(itemCount / 3)
+                local totalHeight = 8 + (rows * 120) + ((rows - 1) * 8) + 50
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+            end
+            
+            -- Disconnect after first successful update
+            if connection then
+                connection:Disconnect()
+                connection = nil
+            end
+        end)
     end
 end
 
 -- Public Functions
-function FeedFruitSelection.Show(callback, toggleCallback, savedFruits)
+function FruitSelection.Show(callback, toggleCallback, savedFruits)
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
     
@@ -787,56 +905,35 @@ function FeedFruitSelection.Show(callback, toggleCallback, savedFruits)
     end
     
     if not ScreenGui then
-        FeedFruitSelection.CreateUI()
+        FruitSelection.CreateUI()
     end
     
+    -- Wait a frame to ensure UI is created
     task.wait()
-    FeedFruitSelection.RefreshContent()
+    FruitSelection.RefreshContent()
     ScreenGui.Enabled = true
     ScreenGui.Parent = PlayerGui
 end
 
-function FeedFruitSelection.Hide()
+function FruitSelection.Hide()
     if ScreenGui then
         ScreenGui.Enabled = false
     end
 end
 
-function FeedFruitSelection.GetSelectedItems()
+function FruitSelection.GetSelectedItems()
     return selectedItems
 end
 
-function FeedFruitSelection.SetSelectedItems(items)
-    selectedItems = items or {}
-    
-    if ScreenGui then
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-        for _, child in pairs(scrollFrame:GetChildren()) do
-            if child:IsA("TextButton") then
-                local checkmark = child:FindFirstChild("Checkmark")
-                if checkmark then
-                    if selectedItems[child.Name] then
-                        checkmark.Visible = true
-                        child.BackgroundColor3 = colors.selected
-                    else
-                        checkmark.Visible = false
-                        child.BackgroundColor3 = colors.surface
-                    end
-                end
-            end
-        end
-    end
-end
-
-function FeedFruitSelection.IsVisible()
+function FruitSelection.IsVisible()
     return ScreenGui and ScreenGui.Enabled
 end
 
-function FeedFruitSelection.GetCurrentSelections()
+function FruitSelection.GetCurrentSelections()
     return selectedItems
 end
 
-function FeedFruitSelection.UpdateSelections(fruits)
+function FruitSelection.UpdateSelections(fruits)
     selectedItems = {}
     
     if fruits then
@@ -846,8 +943,8 @@ function FeedFruitSelection.UpdateSelections(fruits)
     end
     
     if ScreenGui then
-        FeedFruitSelection.RefreshContent()
+        FruitSelection.RefreshContent()
     end
 end
 
-return FeedFruitSelection
+return FruitSelection
