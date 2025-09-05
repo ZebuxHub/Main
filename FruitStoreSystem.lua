@@ -39,6 +39,13 @@ function FruitStoreSystem.candidateKeysForFruit(fruitId)
     table.insert(candidates, underscoreVersion)
     table.insert(candidates, string.lower(underscoreVersion))
     
+    -- Special-cases/aliases to be extra robust
+    if fruitId == "DeepseaPearlFruit" then
+        table.insert(candidates, "DeepSeaPearlFruit")
+        table.insert(candidates, "deepseaPearlFruit")
+        table.insert(candidates, "DEEPSEAPEARLFRUIT")
+    end
+    
     return candidates
 end
 
