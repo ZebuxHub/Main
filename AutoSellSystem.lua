@@ -1,6 +1,6 @@
--- AutoSellSystem.lua - Auto Sell Pet functionality for Build A Zoo
--- Author: Zebux
--- Version: 1.0
+-- Auto Sell System for Build a Zoo
+-- Created by Zebux
+-- Handles automatic selling of pets based on user preferences
 
 local AutoSellSystem = {}
 
@@ -8,107 +8,128 @@ local AutoSellSystem = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
--- Get the local player
-local function getLocalPlayer()
-    return Players.LocalPlayer
+-- Constants
+local PET_REMOTE_PATH = "Remote.PetRE"
+
+-- Helper function to get the PetRE remote
+local function getPetRemote()
+    local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE")
+    return remote
 end
 
--- Get all sellable pets (pets without "D" attribute)
+-- Function to get all pets that are available for selling
 function AutoSellSystem.getSellablePets()
-    local localPlayer = getLocalPlayer()
+    local localPlayer = Players.LocalPlayer
     if not localPlayer then
-        warn("Auto Sell Debug: LocalPlayer not found")
+        print("🛒 Auto Sell Debug: LocalPlayer not found")
         return {}
     end
 
     local petsFolder = workspace:FindFirstChild("Pets")
     if not petsFolder then
-        warn("Auto Sell Debug: Pets folder not found")
+        print("🛒 Auto Sell Debug: Pets folder not found")
         return {}
     end
 
     local sellablePets = {}
+    local totalPets = 0
+    local unsellablePets = 0
 
     for _, petModel in ipairs(petsFolder:GetChildren()) do
         if petModel:IsA("Model") then
+            totalPets = totalPets + 1
+
             local rootPart = petModel:FindFirstChild("RootPart")
             if rootPart then
                 local petUserId = rootPart:GetAttribute("UserId")
-                local petId = rootPart:GetAttribute("ID")
 
-                -- Check if this pet belongs to the local player
-                if petUserId == localPlayer.UserId and petId then
-                    -- Check if pet has "D" attribute (not sellable if it has "D")
-                    local hasD = rootPart:GetAttribute("D")
-                    local hasM = rootPart:GetAttribute("M")
+                -- Only process player's own pets
+                if petUserId == localPlayer.UserId then
+                    local petName = petModel.Name
+                    local hasDAttribute = rootPart:GetAttribute("D") -- D = unsellable flag
+                    local hasMAttribute = rootPart:GetAttribute("M") -- M = mutation flag
 
-                    if not hasD then -- Only add if no "D" attribute
+                    if not hasDAttribute then
+                        -- Pet is sellable
                         table.insert(sellablePets, {
+                            name = petName,
                             model = petModel,
-                            id = petId,
-                            name = petModel.Name or "Unknown Pet",
-                            hasMutation = hasM ~= nil,
-                            rootPart = rootPart
+                            rootPart = rootPart,
+                            hasMutation = hasMAttribute or false
                         })
                     else
-                        print("🛒 Auto Sell Debug - Skipping pet " .. (petModel.Name or "Unknown") .. " (has D attribute)")
+                        unsellablePets = unsellablePets + 1
+                        print(string.format("🛒 Auto Sell Debug: Pet %s is unsellable (has D attribute)", petName))
                     end
                 end
             end
         end
     end
 
+    print(string.format("🛒 Auto Sell Debug: Found %d total pets, %d sellable, %d unsellable",
+        totalPets, #sellablePets, unsellablePets))
+
     return sellablePets
 end
 
--- Check if a pet should be sold based on mutation setting
-function AutoSellSystem.shouldSellPet(petData, sellMutations)
-    if sellMutations == "Sell All" then
-        return true
-    elseif sellMutations == "No Mutations" then
-        return not petData.hasMutation
-    elseif sellMutations == "Only Mutations" then
-        return petData.hasMutation
+-- Function to filter pets based on mutation mode
+function AutoSellSystem.filterPetsByMutation(sellablePets, mutationMode)
+    if mutationMode == "Sell All" then
+        return sellablePets -- Sell all sellable pets
+    elseif mutationMode == "No Mutations" then
+        -- Only sell pets without mutations
+        local filtered = {}
+        for _, pet in ipairs(sellablePets) do
+            if not pet.hasMutation then
+                table.insert(filtered, pet)
+            end
+        end
+        return filtered
+    elseif mutationMode == "Only Mutations" then
+        -- Only sell pets with mutations
+        local filtered = {}
+        for _, pet in ipairs(sellablePets) do
+            if pet.hasMutation then
+                table.insert(filtered, pet)
+            end
+        end
+        return filtered
     end
-    return false -- Default to not selling
+
+    return sellablePets -- Default to sell all
 end
 
--- Sell a single pet
-function AutoSellSystem.sellPet(petId)
-    if not petId then
+-- Function to sell a single pet
+function AutoSellSystem.sellPet(petName)
+    if not petName then
+        print("🛒 Auto Sell Debug: No pet name provided for selling")
         return false
     end
 
-    local PetRE = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE")
-    if not PetRE then
-        warn("Auto Sell Debug: PetRE remote not found")
-        return false
-    end
-
-    -- Fire the sell remote
-    local args = {
-        "Sell",
-        petId
-    }
-
-    local success = pcall(function()
-        PetRE:FireServer(unpack(args))
+    local ok, err = pcall(function()
+        local remote = getPetRemote()
+        local args = {
+            "Sell",
+            petName
+        }
+        remote:FireServer(unpack(args))
+        print(string.format("🛒 Auto Sell Debug: Fired sell remote for pet %s", petName))
     end)
 
-    if success then
-        print("🛒 Auto Sell Debug - Successfully sold pet with ID: " .. petId)
-        return true
-    else
-        warn("Auto Sell Debug - Failed to sell pet with ID: " .. petId)
+    if not ok then
+        warn("Auto Sell error selling pet " .. petName .. ": " .. tostring(err))
         return false
     end
+
+    return true
 end
 
 -- Main auto sell function
-function AutoSellSystem.runAutoSell(autoSellEnabled, sellMutations, updateSellStatus)
+function AutoSellSystem.runAutoSell(autoSellEnabled, mutationMode, updateSellStatus)
     while autoSellEnabled do
         local shouldContinue = true
         local ok, err = pcall(function()
+            -- Get all sellable pets
             local sellablePets = AutoSellSystem.getSellablePets()
 
             if updateSellStatus then
@@ -116,7 +137,6 @@ function AutoSellSystem.runAutoSell(autoSellEnabled, sellMutations, updateSellSt
             end
 
             if #sellablePets == 0 then
-                print("🛒 Auto Sell Debug - No sellable pets found")
                 if updateSellStatus then
                     updateSellStatus("lastAction", "No sellable pets found")
                 end
@@ -124,62 +144,58 @@ function AutoSellSystem.runAutoSell(autoSellEnabled, sellMutations, updateSellSt
                 return
             end
 
-            local petsSold = 0
-            local soldPetNames = {}
+            -- Filter pets based on mutation mode
+            local targetPets = AutoSellSystem.filterPetsByMutation(sellablePets, mutationMode)
 
-            print("🛒 Auto Sell Debug - Found " .. #sellablePets .. " sellable pets")
+            print(string.format("🛒 Auto Sell Debug: Mutation mode '%s' - %d pets to sell out of %d sellable",
+                mutationMode, #targetPets, #sellablePets))
 
-            for _, petData in ipairs(sellablePets) do
-                if not autoSellEnabled then break end
-
-                -- Check if we should sell this pet based on mutation setting
-                if AutoSellSystem.shouldSellPet(petData, sellMutations) then
-                    if updateSellStatus then
-                        updateSellStatus("lastAction", "Selling " .. petData.name)
-                    end
-
-                    -- Attempt to sell the pet with retry
-                    local sellSuccess = false
-                    for retry = 1, 3 do
-                        if AutoSellSystem.sellPet(petData.id) then
-                            sellSuccess = true
-                            break
-                        else
-                            task.wait(0.2) -- Wait before retry
-                        end
-                    end
-
-                    if sellSuccess then
-                        petsSold = petsSold + 1
-                        table.insert(soldPetNames, petData.name)
-                        print("🛒 Auto Sell Debug - Successfully sold " .. petData.name)
-
-                        -- Small delay between sells
-                        task.wait(0.3)
-                    else
-                        warn("Auto Sell Debug - Failed to sell " .. petData.name .. " after 3 attempts")
-                        if updateSellStatus then
-                            updateSellStatus("lastAction", "Failed to sell " .. petData.name)
-                        end
-                    end
-                else
-                    local skipReason = petData.hasMutation and "has mutation (skipped)" or "no mutation (skipped)"
-                    print("🛒 Auto Sell Debug - Skipping " .. petData.name .. " (" .. skipReason .. ")")
+            if #targetPets == 0 then
+                if updateSellStatus then
+                    updateSellStatus("lastAction", string.format("No pets match mutation criteria (%s)", mutationMode))
                 end
+                shouldContinue = false
+                return
             end
 
-            -- Update final status
-            if petsSold > 0 then
-                local petNamesText = table.concat(soldPetNames, ", ")
-                print("🛒 Auto Sell Debug - Cycle complete: Sold " .. petsSold .. " pets: " .. petNamesText)
+            -- Sell pets one by one with delays
+            local soldCount = 0
+            for _, petData in ipairs(targetPets) do
+                if not autoSellEnabled then break end
+
                 if updateSellStatus then
-                    updateSellStatus("lastAction", "Sold " .. petsSold .. " pets: " .. petNamesText)
-                    updateSellStatus("totalSold", (updateSellStatus("totalSold") or 0) + petsSold)
+                    updateSellStatus("lastAction", string.format("Selling %s...", petData.name))
                 end
-            else
-                print("🛒 Auto Sell Debug - No pets were sold this cycle")
+
+                -- Attempt to sell the pet
+                local success = AutoSellSystem.sellPet(petData.name)
+
+                if success then
+                    soldCount = soldCount + 1
+                    if updateSellStatus then
+                        updateSellStatus("totalSold", (updateSellStatus("totalSold") or 0) + 1)
+                        updateSellStatus("lastAction", string.format("✅ Sold %s", petData.name))
+                    end
+                    print(string.format("🛒 Auto Sell Debug: Successfully sold pet %s", petData.name))
+                else
+                    if updateSellStatus then
+                        updateSellStatus("lastAction", string.format("❌ Failed to sell %s", petData.name))
+                    end
+                    print(string.format("🛒 Auto Sell Debug: Failed to sell pet %s", petData.name))
+                end
+
+                -- Small delay between sells to avoid spam
+                task.wait(0.5)
+            end
+
+            if soldCount > 0 then
                 if updateSellStatus then
-                    updateSellStatus("lastAction", "No pets sold (check settings)")
+                    updateSellStatus("lastAction", string.format("✅ Sold %d pets this cycle", soldCount))
+                end
+                print(string.format("🛒 Auto Sell Debug: Cycle complete - sold %d pets", soldCount))
+            else
+                if updateSellStatus then
+                    updateSellStatus("lastAction", "❌ No pets were sold this cycle")
                 end
             end
         end)
@@ -202,7 +218,7 @@ end
 
 -- Debug function to help troubleshoot auto sell issues
 function AutoSellSystem.debugAutoSell()
-    local localPlayer = getLocalPlayer()
+    local localPlayer = Players.LocalPlayer
     if not localPlayer then
         print("🛒 Auto Sell Debug: LocalPlayer not found")
         return
@@ -214,51 +230,68 @@ function AutoSellSystem.debugAutoSell()
         return
     end
 
+    print("🛒 Auto Sell Debug: Starting comprehensive pet analysis...")
+
     local totalPets = 0
-    local myPets = 0
+    local playerPets = 0
     local sellablePets = 0
-    local petsWithD = 0
-    local petsWithM = 0
+    local unsellablePets = 0
+    local mutationPets = 0
 
     for _, petModel in ipairs(petsFolder:GetChildren()) do
         if petModel:IsA("Model") then
             totalPets = totalPets + 1
+
             local rootPart = petModel:FindFirstChild("RootPart")
             if rootPart then
                 local petUserId = rootPart:GetAttribute("UserId")
-                local petId = rootPart:GetAttribute("ID")
-                local hasD = rootPart:GetAttribute("D")
-                local hasM = rootPart:GetAttribute("M")
+                local petName = petModel.Name
+                local hasDAttribute = rootPart:GetAttribute("D")
+                local hasMAttribute = rootPart:GetAttribute("M")
 
                 if petUserId == localPlayer.UserId then
-                    myPets = myPets + 1
-                    print(string.format("🛒 My Pet: %s (ID: %s, D: %s, M: %s)",
-                        petModel.Name or "Unknown",
-                        petId or "No ID",
-                        tostring(hasD),
-                        tostring(hasM)
-                    ))
+                    playerPets = playerPets + 1
 
-                    if hasD then
-                        petsWithD = petsWithD + 1
+                    print(string.format("🛒 Auto Sell Debug: Pet %s - D:%s M:%s",
+                        petName,
+                        hasDAttribute and "YES" or "NO",
+                        hasMAttribute and "YES" or "NO"))
+
+                    if hasDAttribute then
+                        unsellablePets = unsellablePets + 1
                     else
                         sellablePets = sellablePets + 1
-                    end
-
-                    if hasM then
-                        petsWithM = petsWithM + 1
+                        if hasMAttribute then
+                            mutationPets = mutationPets + 1
+                        end
                     end
                 end
+            else
+                print(string.format("🛒 Auto Sell Debug: Pet %s has no RootPart", petModel.Name))
             end
         end
     end
 
-    print("🛒 Auto Sell Debug Summary:")
-    print("  Total Pets: " .. totalPets)
-    print("  My Pets: " .. myPets)
-    print("  Sellable Pets: " .. sellablePets)
-    print("  Pets with D (unsellable): " .. petsWithD)
-    print("  Pets with M (mutations): " .. petsWithM)
+    print("🛒 Auto Sell Debug: Summary:")
+    print(string.format("  Total pets in workspace: %d", totalPets))
+    print(string.format("  Your pets: %d", playerPets))
+    print(string.format("  Sellable pets: %d", sellablePets))
+    print(string.format("  Unsellable pets (has D): %d", unsellablePets))
+    print(string.format("  Pets with mutations: %d", mutationPets))
+
+    -- Test remote availability
+    local remoteAvailable = false
+    pcall(function()
+        local remote = getPetRemote()
+        if remote then
+            remoteAvailable = true
+            print("🛒 Auto Sell Debug: PetRE remote is available")
+        end
+    end)
+
+    if not remoteAvailable then
+        print("🛒 Auto Sell Debug: WARNING - PetRE remote not found!")
+    end
 end
 
 return AutoSellSystem
