@@ -107,13 +107,9 @@ local function applyAll()
 
 	local terrain = workspace:FindFirstChildOfClass("Terrain")
 	if terrain then
-		state.terrain = {
-			Decoration = terrain.Decoration,
-			WaterWaveSize = terrain.WaterWaveSize,
-			WaterWaveSpeed = terrain.WaterWaveSpeed,
-			WaterTransparency = terrain.WaterTransparency,
-			WaterReflectance = terrain.WaterReflectance,
-		}
+		state.terrain = {}
+		pcall(function() state.terrain.WaterTransparency = terrain.WaterTransparency end)
+		pcall(function() state.terrain.WaterReflectance = terrain.WaterReflectance end)
 	end
 
 	-- Apply Lighting reductions
@@ -140,11 +136,8 @@ local function applyAll()
 
 	-- Terrain reductions
 	if terrain then
-		safelySet(terrain, "Decoration", false)
-		safelySet(terrain, "WaterWaveSize", 0)
-		safelySet(terrain, "WaterWaveSpeed", 0)
-		safelySet(terrain, "WaterTransparency", 1)
-		safelySet(terrain, "WaterReflectance", 0)
+		pcall(function() terrain.WaterTransparency = 1 end)
+		pcall(function() terrain.WaterReflectance = 0 end)
 	end
 
 	-- Streaming/Quality/Camera
@@ -299,6 +292,40 @@ local function restoreAll()
 	if WindUI then WindUI:Notify({ Title = "⚡ Performance", Content = "Ultra Performance OFF", Duration = 3 }) end
 end
 
+-- One-shot purge to reduce memory (irreversible)
+local function purgeMemory()
+	-- Remove heavy visual instances permanently
+	for _, inst in ipairs(Lighting:GetChildren()) do
+		if inst:IsA("PostEffect") or inst:IsA("Atmosphere") or inst:IsA("Sky") then
+			pcall(function() inst:Destroy() end)
+		end
+	end
+
+	for _, inst in ipairs(game:GetDescendants()) do
+		if not isInPlayerGui(inst) then
+			if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") or inst:IsA("Highlight") then
+				pcall(function() inst:Destroy() end)
+			elseif inst:IsA("Decal") or inst:IsA("Texture") or inst:IsA("SurfaceAppearance") then
+				pcall(function() inst:Destroy() end)
+			elseif inst:IsA("PointLight") or inst:IsA("SpotLight") or inst:IsA("SurfaceLight") then
+				pcall(function() inst:Destroy() end)
+			elseif inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then
+				pcall(function() inst:Destroy() end)
+			elseif inst:IsA("Sound") then
+				pcall(function() inst:Stop() end)
+				pcall(function() inst:Destroy() end)
+			end
+		end
+	end
+
+	-- Attempt to hint GC
+	pcall(function()
+		collectgarbage("collect")
+	end)
+
+	if WindUI then WindUI:Notify({ Title = "🧽 Memory", Content = "Purged visual assets to free memory", Duration = 3 }) end
+end
+
 function Performance.Init(deps)
 	WindUI = deps.WindUI
 	Tabs = deps.Tabs
@@ -314,6 +341,14 @@ function Performance.Init(deps)
 		Value = false,
 		Callback = function(stateOn)
 			if stateOn then applyAll() else restoreAll() end
+		end
+	})
+
+	Tabs.PerfTab:Button({
+		Title = "🧽 Free Memory (Purge)",
+		Desc = "Destroy effects/lights/textures permanently to reduce memory",
+		Callback = function()
+			purgeMemory()
 		end
 	})
 
