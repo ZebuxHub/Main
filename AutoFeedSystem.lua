@@ -28,12 +28,12 @@ local KNOWN_FRUITS = {
     "Grape",
     "Pear",
     "Peach",
-    -- Newly supported fruits (ensure inventory recognition + equip)
     "Pineapple",
     "GoldMango",
     "BloodstoneCycad",
     "ColossalPinecone",
     "VoltGinkgo",
+    "DeepseaPearlFruit",
 }
 
 local CANONICAL_FRUIT_BY_NORMALIZED = {}
@@ -218,9 +218,7 @@ function AutoFeedSystem.isPetEating(petData)
             -- Check how long it's been stuck at 00:01
             local stuckDuration = currentTime - AutoFeedSystem.stuckTimers[petKey]
             if stuckDuration > 2 then
-                -- Been stuck for more than 2 seconds, check if Feed frame is visible
-                print("🍎 Auto Feed Debug - Pet " .. petKey .. " stuck at 00:01 for " .. string.format("%.1f", stuckDuration) .. "s, Feed visible: " .. tostring(feedGUI.Visible))
-                
+                -- Been stuck for more than 2 seconds, check if Feed frame is visible                
                 if not feedGUI.Visible then
                     -- Feed frame not visible, pet is ready to feed
                     AutoFeedSystem.stuckTimers[petKey] = nil -- Reset timer
@@ -329,7 +327,6 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                     end
                 end
 
-                print("🍎 Auto Feed Debug - Pet " .. petData.name .. " feed time: '" .. tostring(feedTimeText) .. "' eating status: " .. tostring(isEating))
 
                 if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
@@ -360,9 +357,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
 
                 -- Log current selections for debugging
                 if fruitCount > 0 then
-                    print("🍎 Auto Feed Debug - Current selections:", table.concat(fruitList, ", "))
                 else
-                    print("🍎 Auto Feed Debug - No fruit selections found!")
                 end
 
                 -- Check if we have selected fruits
@@ -386,7 +381,6 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                             -- Check if player has this fruit
                             local fruitAmount = fruitInventory[fruitName] or 0
                             if fruitAmount <= 0 then
-                                print("🍎 Auto Feed Debug - No " .. fruitName .. " in inventory for " .. petData.name)
                                 task.wait(0.1)
                             else
                                 -- Update status to show which pet we're trying to feed
@@ -427,13 +421,10 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                                         feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
                                         petFed = true
 
-                                        print("🍎 Auto Feed Debug - Successfully fed " .. petData.name .. " with " .. fruitName)
                                         break -- Move to next pet
                                     else
-                                        print("🍎 Auto Feed Debug - Failed to feed " .. petData.name .. " with " .. fruitName .. " after 3 attempts")
                                     end
                                 else
-                                    print("🍎 Auto Feed Debug - Failed to equip " .. fruitName .. " for " .. petData.name .. " after 3 attempts")
                                 end
 
                                 task.wait(0.05) -- Very short delay between fruit attempts for multiple pets
@@ -453,7 +444,6 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, feedFruitStatus, updateFeed
                         if updateFeedStatusParagraph then
                             updateFeedStatusParagraph()
                         end
-                        print("🍎 Auto Feed Debug - Cycle complete: Fed " .. petsFed .. " pets")
                     else
                         feedFruitStatus.lastAction = "❌ No pets could be fed (check fruit inventory)"
                         if updateFeedStatusParagraph then
@@ -498,13 +488,11 @@ end
 function AutoFeedSystem.debugAutoFeed()
     local localPlayer = game:GetService("Players").LocalPlayer
     if not localPlayer then
-        print("🍎 Auto Feed Debug: LocalPlayer not found")
         return
     end
     
     local petsFolder = workspace:FindFirstChild("Pets")
     if not petsFolder then
-        print("🍎 Auto Feed Debug: Pets folder not found")
         return
     end
     
@@ -532,7 +520,6 @@ function AutoFeedSystem.debugAutoFeed()
                             if feedText and feedText:IsA("TextLabel") then
                                 local feedTime = feedText.Text
                                 local feedVisible = feedGUI.Visible
-                                print("🍎 Auto Feed Debug - Pet " .. petModel.Name .. " feed time: '" .. tostring(feedTime) .. "' visible: " .. tostring(feedVisible))
                                 
                                 -- Check if ready using the same logic as isPetEating
                                 local isReady = false
@@ -544,29 +531,19 @@ function AutoFeedSystem.debugAutoFeed()
                                 
                                 if isReady then
                                     availablePets = availablePets + 1
-                                    print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " is ready to eat")
                                 else
-                                    print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " is eating (" .. feedTime .. ")")
                                 end
                             else
-                                print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " has no feed text")
                             end
                         else
-                            print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " has no feed GUI")
                         end
                     else
-                        print("🍎 Auto Feed Debug: Pet " .. petModel.Name .. " is not a Big Pet")
                     end
                 end
             end
         end
     end
     
-    print("🍎 Auto Feed Debug Summary:")
-    print("  Total pets in workspace: " .. totalPets)
-    print("  My pets: " .. myPets)
-    print("  Big pets: " .. bigPets)
-    print("  Available for feeding: " .. availablePets)
     
     -- Check fruit inventory
     local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
@@ -574,12 +551,12 @@ function AutoFeedSystem.debugAutoFeed()
     for fruitName, amount in pairs(fruitInventory) do
         if amount > 0 then
             fruitCount = fruitCount + 1
-            print("🍎 Auto Feed Debug: Have " .. amount .. "x " .. fruitName)
+            
         end
     end
     
     if fruitCount == 0 then
-        print("🍎 Auto Feed Debug: No fruits in inventory")
+
     end
 end
 
