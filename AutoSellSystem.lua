@@ -67,7 +67,7 @@ local sellStats = {
 local function updateStatus()
 	if not statusParagraph then return end
 	local desc = string.format(
-		"Sold: %d | Scanned: %d | Skipped M: %d\nSession: %d/%s%s",
+		"Sold: %d | Scanned: %d | Skipped Mutated: %d\nSession: %d/%s%s",
 		sellStats.totalSold,
 		sellStats.scanned,
 		sellStats.skippedMutations,
@@ -170,7 +170,7 @@ function AutoSellSystem.CreateUI()
 
 	mutationDropdown = Tabs.SellTab:Dropdown({
 		Title = "🧬 Mutations",
-		Desc = "Choose whether to sell mutated pets (M attribute).",
+		Desc = "Choose whether to sell mutated pets.",
 		Values = { "Sell mutated pets", "Keep mutated (don't sell)" },
 		Value = "Keep mutated (don't sell)",
 		Multi = false,
@@ -206,7 +206,7 @@ function AutoSellSystem.CreateUI()
 
 	autoSellToggle = Tabs.SellTab:Toggle({
 		Title = "💸 Auto Sell Unplaced Pets",
-		Desc = "Automatically sell pets without 'D' attribute (not placed).",
+		Desc = "Automatically sell pets (not placed).",
 		Value = false,
 		Callback = function(state)
 			autoSellEnabled = state
