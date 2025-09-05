@@ -48,27 +48,6 @@ function AutoSellSystem.getSellablePets()
     local totalPets = 0
     local unsellablePets = 0
 
-    -- Get pets from workspace for model reference
-    local petsFolder = workspace:FindFirstChild("Pets")
-    local workspacePets = {}
-    if petsFolder then
-        for _, petModel in ipairs(petsFolder:GetChildren()) do
-            if petModel:IsA("Model") then
-                local rootPart = petModel:FindFirstChild("RootPart")
-                if rootPart then
-                    local petUserId = rootPart:GetAttribute("UserId")
-                    if petUserId == localPlayer.UserId then
-                        workspacePets[petModel.Name] = {
-                            model = petModel,
-                            rootPart = rootPart,
-                            hasMWorkspace = rootPart:GetAttribute("M") or false
-                        }
-                    end
-                end
-            end
-        end
-    end
-
     -- Process pets from PlayerGui.Data.Pets
     for _, petObject in ipairs(petsData:GetChildren()) do
         totalPets = totalPets + 1
@@ -84,26 +63,21 @@ function AutoSellSystem.getSellablePets()
             hasMAttribute and "YES" or "NO"))
 
         if not hasDAttribute then
-            -- Pet is sellable - must have model in workspace to sell
-            local workspaceData = workspacePets[petName]
-            if workspaceData then
-                table.insert(sellablePets, {
-                    name = petName,
-                    model = workspaceData.model,
-                    rootPart = workspaceData.rootPart,
-                    hasMutation = hasMAttribute or workspaceData.hasMWorkspace
-                })
-                print(string.format("🛒 Auto Sell Debug: ✅ Pet %s is sellable and has workspace model", petName))
-            else
-                print(string.format("🛒 Auto Sell Debug: ⚠️ Pet %s is sellable but no workspace model found", petName))
-            end
+            -- Pet is sellable - use pet name from PlayerGui.Data.Pets
+            table.insert(sellablePets, {
+                name = petName,
+                model = nil,  -- Not needed for selling
+                rootPart = nil,  -- Not needed for selling
+                hasMutation = hasMAttribute
+            })
+            print(string.format("🛒 Auto Sell Debug: ✅ Pet %s is sellable", petName))
         else
             unsellablePets = unsellablePets + 1
             print(string.format("🛒 Auto Sell Debug: ❌ Pet %s is unsellable (has D attribute)", petName))
         end
     end
 
-    print(string.format("🛒 Auto Sell Debug: Found %d total pets in PlayerGui, %d sellable, %d unsellable",
+    print(string.format("🛒 Auto Sell Debug: Found %d total pets in PlayerGui.Data.Pets, %d sellable, %d unsellable",
         totalPets, #sellablePets, unsellablePets))
 
     return sellablePets
@@ -292,24 +266,6 @@ function AutoSellSystem.debugAutoSell()
     local sellablePets = 0
     local unsellablePets = 0
     local mutationPets = 0
-    local petsWithWorkspaceModel = 0
-
-    -- Get workspace pets for reference
-    local petsFolder = workspace:FindFirstChild("Pets")
-    local workspacePets = {}
-    if petsFolder then
-        for _, petModel in ipairs(petsFolder:GetChildren()) do
-            if petModel:IsA("Model") then
-                local rootPart = petModel:FindFirstChild("RootPart")
-                if rootPart then
-                    local petUserId = rootPart:GetAttribute("UserId")
-                    if petUserId == localPlayer.UserId then
-                        workspacePets[petModel.Name] = true
-                    end
-                end
-            end
-        end
-    end
 
     -- Analyze pets from PlayerGui.Data.Pets
     for _, petObject in ipairs(petsData:GetChildren()) do
@@ -319,13 +275,11 @@ function AutoSellSystem.debugAutoSell()
         -- Check D and M attributes from PlayerGui
         local hasDAttribute = petObject:GetAttribute("D") or false
         local hasMAttribute = petObject:GetAttribute("M") or false
-        local hasWorkspaceModel = workspacePets[petName] or false
 
-        print(string.format("🛒 Auto Sell Debug: Pet %s - D:%s M:%s Workspace:%s",
+        print(string.format("🛒 Auto Sell Debug: Pet %s - D:%s M:%s",
             petName,
             hasDAttribute and "YES" or "NO",
-            hasMAttribute and "YES" or "NO",
-            hasWorkspaceModel and "YES" or "NO"))
+            hasMAttribute and "YES" or "NO"))
 
         if hasDAttribute then
             unsellablePets = unsellablePets + 1
@@ -333,9 +287,6 @@ function AutoSellSystem.debugAutoSell()
             sellablePets = sellablePets + 1
             if hasMAttribute then
                 mutationPets = mutationPets + 1
-            end
-            if hasWorkspaceModel then
-                petsWithWorkspaceModel = petsWithWorkspaceModel + 1
             end
         end
     end
@@ -345,7 +296,6 @@ function AutoSellSystem.debugAutoSell()
     print(string.format("  ✅ Sellable pets: %d", sellablePets))
     print(string.format("  ❌ Unsellable pets (has D): %d", unsellablePets))
     print(string.format("  🧬 Pets with mutations: %d", mutationPets))
-    print(string.format("  🏗️ Sellable pets with workspace model: %d", petsWithWorkspaceModel))
 
     -- Test remote availability
     local remoteAvailable = false
