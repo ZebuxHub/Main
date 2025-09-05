@@ -48,32 +48,33 @@ function AutoSellSystem.getSellablePets()
     local totalPets = 0
     local unsellablePets = 0
 
-    -- Process pets from PlayerGui.Data.Pets
+    -- Process pets from PlayerGui.Data.Pets ONLY (no workspace model checking)
+    print("🛒 Auto Sell Debug: 🔍 Scanning PlayerGui.Data.Pets for sellable pets...")
     for _, petObject in ipairs(petsData:GetChildren()) do
         totalPets = totalPets + 1
         local petName = petObject.Name
 
-        -- Check D and M attributes from PlayerGui
+        -- Check D and M attributes from PlayerGui ONLY
         local hasDAttribute = petObject:GetAttribute("D") or false
         local hasMAttribute = petObject:GetAttribute("M") or false
 
-        print(string.format("🛒 Auto Sell Debug: Analyzing pet %s - D:%s M:%s",
+        print(string.format("🛒 Auto Sell Debug: 📋 Found pet %s in PlayerGui.Data.Pets - D:%s M:%s",
             petName,
             hasDAttribute and "YES" or "NO",
             hasMAttribute and "YES" or "NO"))
 
         if not hasDAttribute then
-            -- Pet is sellable - use pet name from PlayerGui.Data.Pets
+            -- Pet is sellable - use pet name from PlayerGui.Data.Pets only
             table.insert(sellablePets, {
-                name = petName,
-                model = nil,  -- Not needed for selling
-                rootPart = nil,  -- Not needed for selling
-                hasMutation = hasMAttribute
+                name = petName,     -- From PlayerGui.Data.Pets
+                model = nil,        -- NOT USED - we don't need workspace model
+                rootPart = nil,     -- NOT USED - we don't need workspace model
+                hasMutation = hasMAttribute  -- From PlayerGui.Data.Pets
             })
-            print(string.format("🛒 Auto Sell Debug: ✅ Pet %s is sellable", petName))
+            print(string.format("🛒 Auto Sell Debug: ✅ Pet %s from PlayerGui.Data.Pets is sellable (no workspace model needed)", petName))
         else
             unsellablePets = unsellablePets + 1
-            print(string.format("🛒 Auto Sell Debug: ❌ Pet %s is unsellable (has D attribute)", petName))
+            print(string.format("🛒 Auto Sell Debug: ❌ Pet %s from PlayerGui.Data.Pets is unsellable (has D attribute)", petName))
         end
     end
 
@@ -260,31 +261,33 @@ function AutoSellSystem.debugAutoSell()
         return
     end
 
-    print("🛒 Auto Sell Debug: Starting comprehensive pet analysis from PlayerGui.Data.Pets...")
+    print("🛒 Auto Sell Debug: 🔍 Starting comprehensive analysis from PlayerGui.Data.Pets ONLY (no workspace checking)")
 
     local totalPets = 0
     local sellablePets = 0
     local unsellablePets = 0
     local mutationPets = 0
 
-    -- Analyze pets from PlayerGui.Data.Pets
+    -- Analyze pets from PlayerGui.Data.Pets ONLY
     for _, petObject in ipairs(petsData:GetChildren()) do
         totalPets = totalPets + 1
         local petName = petObject.Name
 
-        -- Check D and M attributes from PlayerGui
+        -- Check D and M attributes from PlayerGui ONLY
         local hasDAttribute = petObject:GetAttribute("D") or false
         local hasMAttribute = petObject:GetAttribute("M") or false
 
-        print(string.format("🛒 Auto Sell Debug: Pet %s - D:%s M:%s",
+        print(string.format("🛒 Auto Sell Debug: 📋 Analyzing %s from PlayerGui.Data.Pets - D:%s M:%s",
             petName,
             hasDAttribute and "YES" or "NO",
             hasMAttribute and "YES" or "NO"))
 
         if hasDAttribute then
             unsellablePets = unsellablePets + 1
+            print(string.format("🛒 Auto Sell Debug: ❌ %s has D attribute (unsellable)", petName))
         else
             sellablePets = sellablePets + 1
+            print(string.format("🛒 Auto Sell Debug: ✅ %s is sellable (no workspace model needed)", petName))
             if hasMAttribute then
                 mutationPets = mutationPets + 1
             end
