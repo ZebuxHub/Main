@@ -48,6 +48,9 @@ local function isInPlayerGui(inst)
 	return pg and inst:IsDescendantOf(pg)
 end
 
+-- Forward declare so applyAll can call it
+local purgeMemory = nil
+
 local function stopAndBlockAnimator(animator)
 	if not animator then return end
 	local ok, tracks = pcall(function()
@@ -218,6 +221,10 @@ local function applyAll()
 	end
 
 	state.applied = true
+	-- Also run one-shot purge to free memory immediately
+	pcall(function()
+		if purgeMemory then purgeMemory() end
+	end)
 	if WindUI then WindUI:Notify({ Title = "⚡ Performance", Content = "Ultra Performance ON", Duration = 3 }) end
 end
 
@@ -293,7 +300,7 @@ local function restoreAll()
 end
 
 -- One-shot purge to reduce memory (irreversible)
-local function purgeMemory()
+purgeMemory = function()
 	-- Remove heavy visual instances permanently
 	for _, inst in ipairs(Lighting:GetChildren()) do
 		if inst:IsA("PostEffect") or inst:IsA("Atmosphere") or inst:IsA("Sky") then
