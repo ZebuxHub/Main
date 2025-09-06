@@ -869,6 +869,7 @@ local FishingSystem = {
     Thread = nil
 }
 local fishStateConn = nil
+local startFishing; local pullFish
 
 -- Enhanced fish collection system
 local function collectNearbyFish()
@@ -920,7 +921,83 @@ local function collectNearbyFish()
     return collected > 0
 end
 
-local function pullFish()
+startFishing = function()
+    -- Update fishing position to random spot around player
+    updateFishingPosition()
+    
+    -- Ensure we're holding FishRob before any fishing actions
+    local focused = ensureFishRobFocus()
+    if not focused then
+        local success, err = pcall(function()
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob")
+        end)
+        if not success then
+            WindUI:Notify({ 
+                Title = "🎣 Auto Fish Debug", 
+                Content = "❌ Failed to focus fishing: " .. tostring(err), 
+                Duration = 3 
+            })
+            unanchorPlayer() -- Unanchor if failed
+            return false
+        end
+    end
+    
+    -- Start fishing state (if server expects a handshake)
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Start")
+    end)
+
+    -- Shorter wait before throw for faster cycles
+    task.wait(0.1)
+    
+    -- Select affordable bait
+    local selectedBait = (function()
+        local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
+        if type(chosen) == "table" then chosen = chosen[1] end
+        return chosen or FishingConfig.SelectedBait
+    end)()
+    
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish Debug", 
+        Content = "🎯 Using bait: " .. tostring(selectedBait) .. " at position: " .. tostring(FishingConfig.FishingPosition), 
+        Duration = 2 
+    })
+    
+    -- Re-ensure focus just before throw to avoid losing hold due to other systems
+    ensureFishRobFocus()
+    local throwArgs = {
+        "Throw",
+        {
+            Bait = selectedBait,
+            Pos = FishingConfig.FishingPosition,
+            NoMove = true -- hint for server, if supported
+        }
+    }
+    
+    local throwSuccess, throwErr = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
+    end)
+    
+    if not throwSuccess then
+        WindUI:Notify({ 
+            Title = "🎣 Auto Fish Debug", 
+            Content = "❌ Failed to throw fishing line: " .. tostring(throwErr), 
+            Duration = 3 
+        })
+        return false
+    end
+    
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish Debug", 
+        Content = "✅ Cast successful! Waiting for fish...", 
+        Duration = 2 
+    })
+    
+    -- removed statistics counter
+    return true
+end
+
+pullFish = function()
     local args = {
         "POUT",
         {
