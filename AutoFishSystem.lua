@@ -412,7 +412,7 @@ local function anchorPlayer()
                     FishingConfig.PartCollideState[desc] = desc.CanCollide
                     desc.CanCollide = false
                     desc.Massless = true
-                    desc.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(0.0001, 0, 0)
                 end
             end
             -- Keep HRP CanCollide false as well
@@ -520,7 +520,7 @@ local function unanchorPlayer()
                 if part and part.Parent then
                     part.CanCollide = prev
                     part.Massless = false
-                    part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
+                    part.CustomPhysicalProperties = PhysicalProperties.new(1.0, 0.3, 0.5)
                 end
             end
             FishingConfig.PartCollideState = {}
@@ -881,9 +881,14 @@ local function startFishing()
 	local held = readHoldUID()
 	if held ~= "FishRob" then
 		if not ensureFishRobFocus() then return false end
+		-- Wait briefly for HoldUID to update to FishRob to avoid early throws being ignored
+		local deadline = tick() + 0.35
+		while readHoldUID() ~= "FishRob" and tick() < deadline do
+			task.wait(0.02)
+		end
 	end
 	
-	-- Select affordable bait
+	-- Use exactly the user-selected bait
 	local selectedBait = FishingConfig.SelectedBait or "FishingBait1"
 	-- Throw ASAP
 	isCasting = true
@@ -1015,7 +1020,7 @@ local function waitForFishPull()
             lastState = playerState
         end
         
-        if tostring(playerState) == "PULL" then
+        if tostring(playerState):upper() == "PULL" then
             return true
         end
         task.wait(0.05)
