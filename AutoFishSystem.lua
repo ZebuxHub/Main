@@ -412,7 +412,7 @@ local function anchorPlayer()
                     FishingConfig.PartCollideState[desc] = desc.CanCollide
                     desc.CanCollide = false
                     desc.Massless = true
-                    desc.CustomPhysicalProperties = PhysicalProperties.new(0.0001, 0, 0)
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
                 end
             end
             -- Keep HRP CanCollide false as well
@@ -520,7 +520,7 @@ local function unanchorPlayer()
                 if part and part.Parent then
                     part.CanCollide = prev
                     part.Massless = false
-                    part.CustomPhysicalProperties = PhysicalProperties.new(1.0, 0.3, 0.5)
+                    part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
                 end
             end
             FishingConfig.PartCollideState = {}
@@ -872,23 +872,30 @@ local FishingSystem = {
 }
 
 local function startFishing()
-	-- Compute cast position above player's head for instant throw
+	-- Determine cast position: workspace.Sea CFrame if available, else above head
+	local function getSeaCastPosition()
+		local sea = workspace:FindFirstChild("Sea")
+		if not sea then return nil end
+		local cf = nil
+		local ok, pivot = pcall(function() return sea:GetPivot() end)
+		if ok and pivot then cf = pivot
+		elseif sea:IsA("BasePart") then cf = sea.CFrame
+		elseif sea.PrimaryPart then cf = sea.PrimaryPart.CFrame end
+		return cf and cf.Position or nil
+	end
+	local seaPos = getSeaCastPosition()
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local castPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset or 10, 0)) or Vector3.new()
+	local defaultPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset or 10, 0)) or Vector3.new()
+	local castPos = seaPos or defaultPos
 	FishingConfig.FishingPosition = castPos
 
 	-- Ensure hold and throw immediately
 	local held = readHoldUID()
 	if held ~= "FishRob" then
 		if not ensureFishRobFocus() then return false end
-		-- Wait briefly for HoldUID to update to FishRob to avoid early throws being ignored
-		local deadline = tick() + 0.35
-		while readHoldUID() ~= "FishRob" and tick() < deadline do
-			task.wait(0.02)
-		end
 	end
 	
-	-- Use exactly the user-selected bait
+	-- Select affordable bait
 	local selectedBait = FishingConfig.SelectedBait or "FishingBait1"
 	-- Throw ASAP
 	isCasting = true
@@ -1020,7 +1027,7 @@ local function waitForFishPull()
             lastState = playerState
         end
         
-        if tostring(playerState):upper() == "PULL" then
+        if tostring(playerState) == "PULL" then
             return true
         end
         task.wait(0.05)
