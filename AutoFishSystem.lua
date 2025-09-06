@@ -23,6 +23,7 @@ local active = false
 local baitDropdown = nil
 local autoFishToggle = nil
 local safeCF = nil
+local freezeActive = false
 
 -- Config
 local FishingConfig = {
@@ -68,9 +69,10 @@ local function anchorPlayer()
 	hum.JumpPower = 0
 	hum:Move(Vector3.new(0,0,0), true)
 	hrp.Anchored = true
+	freezeActive = true
 	if freezeConn then freezeConn:Disconnect() freezeConn = nil end
 	freezeConn = RunService.Heartbeat:Connect(function()
-		if not active then return end
+		if not active or not freezeActive then return end
 		local c = LocalPlayer.Character
 		local root = c and c:FindFirstChild("HumanoidRootPart")
 		local h = c and c:FindFirstChildOfClass("Humanoid")
@@ -105,11 +107,18 @@ local function unanchorPlayer()
 	end
 	if hrp then hrp.Anchored = false end
 	safeCF = nil
+	freezeActive = false
+	-- Unsink movement
+	pcall(function()
+		ContextActionService:UnbindAction("AFS_BlockMovement")
+	end)
 end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
 local function castOnce()
-	if not ensureFishRobFocus() then return end
+	-- Freeze only during the cast
+	anchorPlayer()
+	if not ensureFishRobFocus() then unanchorPlayer() return end
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local pos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
 	local bait = FishingConfig.SelectedBait or "FishingBait1"
@@ -124,6 +133,8 @@ local function castOnce()
 	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob") end)
 	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus") end)
 	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob") end)
+	-- Release all freeze after POUT
+	unanchorPlayer()
 end
 
 local function loopCast()
@@ -140,7 +151,6 @@ function AutoFishSystem.SetEnabled(state)
 		if active then return end
 		active = true
 		FishingConfig.AutoFishEnabled = true
-		anchorPlayer()
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
 			if active and readHoldUID() == "FishRob" then castOnce() end
