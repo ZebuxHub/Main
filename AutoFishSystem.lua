@@ -99,22 +99,24 @@ end
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
 local function castOnce()
 	if not ensureFishRobFocus() then return end
+	task.wait(1)
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local pos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
 	local bait = FishingConfig.SelectedBait or "FishingBait1"
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
 	end)
+	task.wait(1)
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
 	end)
+	task.wait(1)
 end
 
 local function loopCast()
 	while active do
 		castOnce()
-		-- no delays for maximum throughput
-		RunService.Heartbeat:Wait()
+		-- waits are inside castOnce to ensure 1s per step
 	end
 end
 
