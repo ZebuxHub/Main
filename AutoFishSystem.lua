@@ -24,6 +24,7 @@ local baitDropdown = nil
 local autoFishToggle = nil
 local lastCastPos = nil
 local lastCastPosAt = 0
+local controlsRef = nil
 
 -- Config
 local FishingConfig = {
@@ -80,6 +81,17 @@ local function anchorPlayer()
 		ContextActionService:BindAction("AFS_BlockMovement", function() return Enum.ContextActionResult.Sink end, false,
 			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.LeftShift)
 	end)
+	-- Disable PlayerModule controls (mobile/gamepad/pc)
+	pcall(function()
+		local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+		local pm = ps and ps:FindFirstChild("PlayerModule")
+		local cm = pm and pm:FindFirstChild("ControlModule")
+		if cm then
+			local controls = require(cm)
+			controlsRef = controls
+			if controls and controls.Disable then controls:Disable() end
+		end
+	end)
 end
 
 local function unanchorPlayer()
@@ -96,6 +108,10 @@ local function unanchorPlayer()
 		hum.JumpPower = 50
 	end
 	if hrp then hrp.Anchored = false end
+	pcall(function()
+		if controlsRef and controlsRef.Enable then controlsRef:Enable() end
+		controlsRef = nil
+	end)
 end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
