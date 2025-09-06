@@ -1085,8 +1085,7 @@ local function runAutoFish()
                 pullFish()
             end
         end
-        -- Faster looping between casts
-        task.wait(FishingConfig.DelayBetweenCasts or 0)
+        -- No delay between casts; restart ASAP
     end
 end
 
@@ -1179,48 +1178,26 @@ function AutoFishSystem.Init(dependencies)
     loadFishingBaitConfig()
     
     -- Create Auto Fish Tab UI
-    Tabs.FishTab:Section({ Title = "🎣 Fishing Settings", Icon = "settings" })
-    
-    -- Bait selection dropdown
-    task.wait(1) -- Wait for config to load
+    -- Minimal Fish UI: only Select Bait (keeps desc) and Auto Fish toggle
+    task.wait(1)
     baitDropdown = Tabs.FishTab:Dropdown({
-        Title = "🎣 Select Bait",
-        Desc = "Choose fishing bait. If too expensive, we’ll fallback one step cheaper.",
+        Title = "Select Bait",
+        Desc = "Choose fishing bait; will fallback to cheaper if unaffordable.",
         Values = #AvailableBaits > 0 and AvailableBaits or {"FishingBait1", "FishingBait2", "FishingBait3"},
         Default = FishingConfig.SelectedBait,
         Callback = function(selected)
-            local chosen, downgraded = chooseAffordableBait(selected)
+            local chosen = chooseAffordableBait(selected)
+            if type(chosen) == "table" then chosen = chosen[1] end
             FishingConfig.SelectedBait = chosen
-            if downgraded and chosen ~= selected then
-                WindUI:Notify({
-                    Title = "🎣 Bait Adjusted",
-                    Content = "Not enough money. Using cheaper bait: " .. tostring(chosen),
-                    Duration = 3
-                })
-                pcall(function() baitDropdown:Select(chosen) end)
-            else
-                WindUI:Notify({ 
-                    Title = "🎣 Bait Selected", 
-                    Content = "Selected: " .. tostring(chosen), 
-                    Duration = 2 
-                })
-            end
+            pcall(function() baitDropdown:Select(chosen) end)
         end
     })
-    
-    Tabs.FishTab:Section({ Title = "🤖 Auto Fishing", Icon = "play" })
-    
-    -- Auto Fish toggle
+
     autoFishToggle = Tabs.FishTab:Toggle({
-        Title = "🎣 Auto Fish",
-        Desc = "Automatically fish with selected bait at specified position",
+        Title = "Auto Fish",
         Value = false,
         Callback = function(state)
-            if state then
-                FishingSystem.Start()
-            else
-                FishingSystem.Stop()
-            end
+            if state then FishingSystem.Start() else FishingSystem.Stop() end
         end
     })
     
@@ -1239,6 +1216,16 @@ function AutoFishSystem.Init(dependencies)
     })
     
     -- statistics removed
+    
+    Tabs.FishTab:Section({ Title = "📊 Statistics", Icon = "info" })
+    
+    -- Statistics display
+    statsLabel = Tabs.FishTab:Paragraph({
+        Title = "🎣 Fishing Statistics",
+        Desc = "🐟 Fish: 0 | 🎯 Rate: 0% | ⏱️ Session: 0m",
+        Image = "activity",
+        ImageSize = 18,
+    })
     
     Tabs.FishTab:Section({ Title = "🎮 Manual Controls", Icon = "settings" })
     
