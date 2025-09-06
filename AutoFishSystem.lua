@@ -48,7 +48,9 @@ local FishingConfig = {
 	-- Position placement history
 	PlacedPositions = {},
 	CurrentPositionIndex = 1,
-	PartCollideState = {}
+	PartCollideState = {},
+	AutoWaterDetection = false,
+	SearchRadius = 250
 }
 
 -- Fishing Bait Configuration
@@ -872,55 +874,42 @@ local FishingSystem = {
 }
 
 local function startFishing()
-	-- Determine cast position: workspace.Sea CFrame if available, else above head
-	local function getSeaCastPosition()
-		local sea = workspace:FindFirstChild("Sea")
-		if not sea then return nil end
-		local cf = nil
-		local ok, pivot = pcall(function() return sea:GetPivot() end)
-		if ok and pivot then cf = pivot
-		elseif sea:IsA("BasePart") then cf = sea.CFrame
-		elseif sea.PrimaryPart then cf = sea.PrimaryPart.CFrame end
-		return cf and cf.Position or nil
-	end
-	local seaPos = getSeaCastPosition()
-	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local defaultPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset or 10, 0)) or Vector3.new()
-	local castPos = seaPos or defaultPos
-	FishingConfig.FishingPosition = castPos
-
-	-- Ensure hold and throw immediately
-	local held = readHoldUID()
-	if held ~= "FishRob" then
-		if not ensureFishRobFocus() then return false end
-	end
-	
-	-- Select affordable bait
-	local selectedBait = (function()
-		local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
-		if type(chosen) == "table" then chosen = chosen[1] end
-		return chosen or FishingConfig.SelectedBait
-	end)()
-	-- Throw ASAP
-	isCasting = true
-	local throwArgs = {
-		"Throw",
-		{
-			Bait = selectedBait,
-			Pos = FishingConfig.FishingPosition,
-			NoMove = true
-		}
-	}
-	
-	local throwSuccess = pcall(function()
-		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
-	end)
-	
-	if not throwSuccess then
-		isCasting = false
-		return false
-	end
-	return true
+    -- Update fishing position to random spot around player
+    updateFishingPosition()
+    
+    -- Ensure hold and throw immediately
+    local held = readHoldUID()
+    if held ~= "FishRob" then
+        if not ensureFishRobFocus() then return false end
+    end
+    
+    -- Select affordable bait
+    local selectedBait = (function()
+        local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
+        if type(chosen) == "table" then chosen = chosen[1] end
+        return chosen or FishingConfig.SelectedBait
+    end)()
+    -- Throw ASAP
+    isCasting = true
+    local throwArgs = {
+        "Throw",
+        {
+            Bait = selectedBait,
+            Pos = FishingConfig.FishingPosition,
+            NoMove = true -- hint for server, if supported
+        }
+    }
+    
+    local throwSuccess, throwErr = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
+    end)
+    
+    if not throwSuccess then
+        isCasting = false
+        return false
+    end
+    -- removed statistics counter
+    return true
 end
 
 -- Enhanced fish collection system
@@ -974,31 +963,36 @@ local function collectNearbyFish()
 end
 
 local function pullFish()
-	local args = {
-		"POUT",
-		{
-			SUC = 1,
-			NoMove = true
-		}
-	}
-	
-	local success, err = pcall(function()
-		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
-	end)
-	
-	if not success then
-		-- Failed to pull fish
-		unanchorPlayer() -- Unanchor if failed
-		return false
-	end
-	
-	-- Auto-collect fish immediately (no delay)
-	local collectSuccess = collectNearbyFish()
-	
-	-- Keep player anchored; do not unanchor between casts
-	
-	-- removed statistics counters
-	return true
+    local args = {
+        "POUT",
+        {
+            SUC = 1,
+            NoMove = true
+        }
+    }
+    -- Re-ensure we are holding FishRob before pulling to avoid desync
+    pcall(ensureFishRobFocus)
+    
+    local success, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
+    end)
+    
+    if not success then
+        -- Failed to pull fish
+        unanchorPlayer() -- Unanchor if failed
+        return false
+    end
+    
+    -- Wait a moment for fish to be caught before collecting
+    task.wait(0.5)
+    
+    -- Auto-collect fish
+    local collectSuccess = collectNearbyFish()
+    
+    -- Keep player anchored; do not unanchor between casts
+    
+    -- removed statistics counters
+    return true
 end
 
 
@@ -1016,16 +1010,8 @@ local function waitForFishPull()
     -- Wait for FishState to be "Pull"
     while FishingConfig.AutoFishEnabled and (tick() - startTime) < timeout do
         local playerState = LocalPlayer:GetAttribute("FishState")
-        
         -- Debug: show state changes
-        if playerState ~= lastState then
-            WindUI:Notify({ 
-                Title = "🎣 FishState", 
-                Content = "State changed: " .. tostring(lastState) .. " → " .. tostring(playerState), 
-                Duration = 2 
-            })
-            lastState = playerState
-        end
+        if playerState ~= lastState then lastState = playerState end
         
         if tostring(playerState) == "PULL" then
             return true
@@ -1054,33 +1040,33 @@ local function runAutoFish()
 end
 
 function FishingSystem.Start()
-	if FishingSystem.Active then return end
-	
-	FishingSystem.Active = true
-	FishingConfig.AutoFishEnabled = true
-	-- removed statistics session start
-	-- Freeze player for the whole auto-fishing session
-	pcall(anchorPlayer)
-	
-	FishingSystem.Thread = task.spawn(runAutoFish)
-	-- Listen for HoldUID changes to throw ASAP when holding FishRob
-	pcall(function()
-		if holdConn then holdConn:Disconnect() end
-		holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
-			if FishingConfig.AutoFishEnabled and readHoldUID()=="FishRob" and not isCasting then
-				startFishing()
-			end
-		end)
-	end)
-	-- Immediately focus and start a cast on toggle
-	pcall(function() ensureFishRobFocus() end)
-	startFishing()
-	
-	WindUI:Notify({ 
-		Title = "🎣 Auto Fish", 
-		Content = "Started fishing around player! Player will be anchored during fishing. 🎉", 
-		Duration = 3 
-	})
+    if FishingSystem.Active then return end
+    
+    FishingSystem.Active = true
+    FishingConfig.AutoFishEnabled = true
+    -- removed statistics session start
+    -- Freeze player for the whole auto-fishing session
+    pcall(anchorPlayer)
+    
+    FishingSystem.Thread = task.spawn(runAutoFish)
+    -- Listen for HoldUID changes to throw ASAP when holding FishRob
+    pcall(function()
+        if holdConn then holdConn:Disconnect() end
+        holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
+            if FishingConfig.AutoFishEnabled and readHoldUID()=="FishRob" and not isCasting then
+                startFishing()
+            end
+        end)
+    end)
+    -- Immediately focus and cast once on enable for responsiveness
+    pcall(ensureFishRobFocus)
+    startFishing()
+    
+    WindUI:Notify({ 
+        Title = "🎣 Auto Fish", 
+        Content = "Started fishing around player! Player will be anchored during fishing. 🎉", 
+        Duration = 3 
+    })
 end
 
 function FishingSystem.Stop()
@@ -1208,6 +1194,28 @@ function AutoFishSystem.Cleanup()
     unanchorPlayer()
     
     -- Auto Fish System cleaned up successfully
+end
+
+-- Public API helpers for smooth integration
+function AutoFishSystem.SetEnabled(state)
+	if state then
+		if not (FishingSystem.Active and FishingConfig.AutoFishEnabled) then
+			FishingSystem.Start()
+		end
+	else
+		FishingSystem.Stop()
+	end
+end
+
+function AutoFishSystem.SetBait(baitId)
+	if baitId and tostring(baitId) ~= "" then
+		local chosen = chooseAffordableBait(tostring(baitId))
+		if type(chosen) == "table" then chosen = chosen[1] end
+		FishingConfig.SelectedBait = chosen or FishingConfig.SelectedBait
+		pcall(function()
+			if baitDropdown then baitDropdown:Select(FishingConfig.SelectedBait) end
+		end)
+	end
 end
 
 return AutoFishSystem
