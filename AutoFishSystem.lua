@@ -1170,7 +1170,13 @@ function AutoFishSystem.Init(dependencies)
         Title = "Auto Fish",
         Value = false,
         Callback = function(state)
-            if state then FishingSystem.Start() else FishingSystem.Stop() end
+            if state then
+                FishingSystem.Start()
+                pcall(function() ensureFishRobFocus() end)
+                startFishing()
+            else
+                FishingSystem.Stop()
+            end
         end
     })
     -- reset statistics button removed
