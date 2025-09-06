@@ -253,7 +253,7 @@ local function anchorPlayer()
                     FishingConfig.PartCollideState[desc] = desc.CanCollide
                     desc.CanCollide = false
                     desc.Massless = true
-                    desc.CustomPhysicalProperties = PhysicalProperties.new(1, 1, 1)
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(0.0001, 0, 0)
                 end
             end
             -- Keep HRP CanCollide false as well
