@@ -113,15 +113,17 @@ local function castOnce()
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local pos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
 	local bait = FishingConfig.SelectedBait or "FishingBait1"
-                pcall(function()
+	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
 	end)
-    pcall(function()
+	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
 	end)
-	-- Wait 2 seconds after POUT, then re-focus FishRob before next cycle
-	task.wait(2)
-	pcall(ensureFishRobFocus)
+	-- Post-POUT: fast double focus sequence
+	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus") end)
+	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob") end)
+	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus") end)
+	pcall(function() ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob") end)
 end
 
 local function loopCast()
