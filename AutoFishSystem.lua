@@ -872,21 +872,9 @@ local FishingSystem = {
 }
 
 local function startFishing()
-	-- Determine cast position: workspace.Sea CFrame if available, else above head
-	local function getSeaCastPosition()
-		local sea = workspace:FindFirstChild("Sea")
-		if not sea then return nil end
-		local cf = nil
-		local ok, pivot = pcall(function() return sea:GetPivot() end)
-		if ok and pivot then cf = pivot
-		elseif sea:IsA("BasePart") then cf = sea.CFrame
-		elseif sea.PrimaryPart then cf = sea.PrimaryPart.CFrame end
-		return cf and cf.Position or nil
-	end
-	local seaPos = getSeaCastPosition()
+	-- Compute cast position above player's head for instant throw
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local defaultPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset or 10, 0)) or Vector3.new()
-	local castPos = seaPos or defaultPos
+	local castPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset or 10, 0)) or Vector3.new()
 	FishingConfig.FishingPosition = castPos
 
 	-- Ensure hold and throw immediately
