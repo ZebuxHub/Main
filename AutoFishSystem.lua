@@ -963,36 +963,31 @@ local function collectNearbyFish()
 end
 
 local function pullFish()
-    local args = {
-        "POUT",
-        {
-            SUC = 1,
-            NoMove = true
-        }
-    }
-    -- Re-ensure we are holding FishRob before pulling to avoid desync
-    pcall(ensureFishRobFocus)
-    
-    local success, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
-    end)
-    
-    if not success then
-        -- Failed to pull fish
-        unanchorPlayer() -- Unanchor if failed
-        return false
-    end
-    
-    -- Wait a moment for fish to be caught before collecting
-    task.wait(0.5)
-    
-    -- Auto-collect fish
-    local collectSuccess = collectNearbyFish()
-    
-    -- Keep player anchored; do not unanchor between casts
-    
-    -- removed statistics counters
-    return true
+	local args = {
+		"POUT",
+		{
+			SUC = 1,
+			NoMove = true
+		}
+	}
+	
+	local success, err = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
+	end)
+	
+	if not success then
+		-- Failed to pull fish
+		unanchorPlayer() -- Unanchor if failed
+		return false
+	end
+	
+	-- Auto-collect fish
+	local collectSuccess = collectNearbyFish()
+	
+	-- Keep player anchored; do not unanchor between casts
+	
+	-- removed statistics counters
+	return true
 end
 
 
