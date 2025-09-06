@@ -30,7 +30,7 @@ local FishingConfig = {
 	SelectedBait = "FishingBait1",
 	FishingPosition = Vector3.new(0, 0, 0),
 	AutoFishEnabled = false,
-	DelayBetweenCasts = 0.5,
+	DelayBetweenCasts = 0,
 	FishingRange = 5, -- Fish within 5 studs of player
 	VerticalOffset = 10, -- Cast position Y offset above player
 	PlayerAnchored = false, -- Track if player is anchored
@@ -46,13 +46,6 @@ local FishingConfig = {
 	-- Position placement history
 	PlacedPositions = {},
 	CurrentPositionIndex = 1,
-	Stats = {
-		FishCaught = 0,
-		SessionStartTime = os.time(),
-		LastCatchTime = 0,
-		TotalCasts = 0,
-		SuccessfulCasts = 0
-	},
 	PartCollideState = {}
 }
 
@@ -948,7 +941,7 @@ local function startFishing()
         Duration = 2 
     })
     
-    FishingConfig.Stats.TotalCasts = FishingConfig.Stats.TotalCasts + 1
+    -- removed statistics counter
     return true
 end
 
@@ -1029,10 +1022,7 @@ local function pullFish()
     
     -- Keep player anchored; do not unanchor between casts
     
-    FishingConfig.Stats.FishCaught = FishingConfig.Stats.FishCaught + 1
-    FishingConfig.Stats.SuccessfulCasts = FishingConfig.Stats.SuccessfulCasts + 1
-    FishingConfig.Stats.LastCatchTime = os.time()
-    
+    -- removed statistics counters
     return true
 end
 
@@ -1096,7 +1086,7 @@ local function runAutoFish()
             end
         end
         -- Faster looping between casts
-        task.wait(FishingConfig.DelayBetweenCasts or 0.5)
+        task.wait(FishingConfig.DelayBetweenCasts or 0)
     end
 end
 
@@ -1105,7 +1095,7 @@ function FishingSystem.Start()
     
     FishingSystem.Active = true
     FishingConfig.AutoFishEnabled = true
-    FishingConfig.Stats.SessionStartTime = os.time()
+    -- removed statistics session start
     -- Freeze player for the whole auto-fishing session
     pcall(anchorPlayer)
     
@@ -1132,13 +1122,7 @@ function FishingSystem.Stop()
         FishingSystem.Thread = nil
     end
     
-    local sessionTime = os.time() - FishingConfig.Stats.SessionStartTime
-    local sessionMinutes = math.floor(sessionTime / 60)
-    WindUI:Notify({ 
-        Title = "🎣 Auto Fish", 
-        Content = string.format("🛑 Stopped! Session: %dm | Fish: %d | Player unanchored", sessionMinutes, FishingConfig.Stats.FishCaught), 
-        Duration = 3 
-    })
+    WindUI:Notify({ Title = "🎣 Auto Fish", Content = "🛑 Stopped! Player unanchored", Duration = 2 })
 end
 
 -- UI Elements
@@ -1158,20 +1142,7 @@ function updateCurrentPositionDisplay()
 end
 
 local function updateStats()
-    if not statsLabel then return end
-    
-    local successRate = FishingConfig.Stats.TotalCasts > 0 and 
-        math.floor((FishingConfig.Stats.SuccessfulCasts / FishingConfig.Stats.TotalCasts) * 100) or 0
-    
-    local sessionTime = os.time() - FishingConfig.Stats.SessionStartTime
-    local sessionMinutes = math.floor(sessionTime / 60)
-    
-    local statsText = string.format("🐟 Fish: %d | 🎯 Rate: %d%% | ⏱️ Session: %dm", 
-        FishingConfig.Stats.FishCaught, successRate, sessionMinutes)
-    
-    if statsLabel.SetDesc then
-        statsLabel:SetDesc(statsText)
-    end
+    -- removed statistics
 end
 
 -- Initialize function called by main script
@@ -1267,15 +1238,7 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    Tabs.FishTab:Section({ Title = "📊 Statistics", Icon = "info" })
-    
-    -- Statistics display
-    statsLabel = Tabs.FishTab:Paragraph({
-        Title = "🎣 Fishing Statistics",
-        Desc = "🐟 Fish: 0 | 🎯 Rate: 0% | ⏱️ Session: 0m",
-        Image = "activity",
-        ImageSize = 18,
-    })
+    -- statistics removed
     
     Tabs.FishTab:Section({ Title = "🎮 Manual Controls", Icon = "settings" })
     
@@ -1310,25 +1273,7 @@ function AutoFishSystem.Init(dependencies)
         end
     })
     
-    Tabs.FishTab:Button({
-        Title = "🔄 Reset Statistics",
-        Desc = "Reset fishing statistics",
-        Callback = function()
-            FishingConfig.Stats = {
-                FishCaught = 0,
-                SessionStartTime = os.time(),
-                LastCatchTime = 0,
-                TotalCasts = 0,
-                SuccessfulCasts = 0
-            }
-            updateStats()
-            WindUI:Notify({ 
-                Title = "🔄 Statistics Reset", 
-                Content = "Statistics have been reset!", 
-                Duration = 2 
-            })
-        end
-    })
+    -- reset statistics button removed
     
     -- Register with config system if available
     if Config and autoFishToggle then
@@ -1346,13 +1291,7 @@ function AutoFishSystem.Init(dependencies)
         -- Config system not available, settings won't be saved
     end
     
-    -- Start stats update loop
-    task.spawn(function()
-        while true do
-            updateStats()
-            task.wait(2)
-        end
-    end)
+    -- stats update loop removed
     
     -- Auto Fish System initialized successfully
 end
