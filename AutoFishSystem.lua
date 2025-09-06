@@ -22,9 +22,7 @@ local castThread = nil
 local active = false
 local baitDropdown = nil
 local autoFishToggle = nil
-local controlModule = nil
-local controlsDisabled = false
-local origWalkSpeed, origJumpPower, origAutoRotate = nil, nil, nil
+local safeCF = nil
 
 -- Config
 local FishingConfig = {
@@ -64,45 +62,31 @@ local function anchorPlayer()
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not (hrp and hum) then return end
-	-- store originals once
-	if origWalkSpeed == nil then origWalkSpeed = hum.WalkSpeed end
-	if origJumpPower == nil then origJumpPower = hum.JumpPower end
-	if origAutoRotate == nil then origAutoRotate = hum.AutoRotate end
+	if not safeCF then safeCF = hrp.CFrame end
 	hum.AutoRotate = false
 	hum.WalkSpeed = 0
 	hum.JumpPower = 0
+	hum:Move(Vector3.new(0,0,0), true)
 	hrp.Anchored = true
 	if freezeConn then freezeConn:Disconnect() freezeConn = nil end
 	freezeConn = RunService.Heartbeat:Connect(function()
 		if not active then return end
-        pcall(function()
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+		local c = LocalPlayer.Character
+		local root = c and c:FindFirstChild("HumanoidRootPart")
+		local h = c and c:FindFirstChildOfClass("Humanoid")
+		if not root then return end
+		pcall(function()
+			root.Anchored = true
+			if safeCF then root.CFrame = safeCF end
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			if h and h.Move then h:Move(Vector3.new(0,0,0), true) end
 		end)
 	end)
 	-- Sink movement
-        pcall(function()
-		ContextActionService:BindAction("AFS_BlockMovement", function() return Enum.ContextActionResult.Sink end, false,
-			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
-			Enum.KeyCode.Up, Enum.KeyCode.Down, Enum.KeyCode.Left, Enum.KeyCode.Right,
-			Enum.KeyCode.Space, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift,
-			Enum.KeyCode.ButtonA, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonY,
-			Enum.KeyCode.DPadLeft, Enum.KeyCode.DPadRight, Enum.KeyCode.DPadUp, Enum.KeyCode.DPadDown,
-			Enum.KeyCode.Thumbstick1)
-	end)
-	-- Disable PlayerModule controls for all devices
 	pcall(function()
-		local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
-		if playerScripts then
-			local pm = playerScripts:FindFirstChild("PlayerModule")
-			if pm and pm:FindFirstChild("ControlModule") then
-				controlModule = require(pm:FindFirstChild("ControlModule"))
-				if controlModule and controlModule.Disable then
-					controlModule:Disable()
-					controlsDisabled = true
-				end
-			end
-		end
+		ContextActionService:BindAction("AFS_BlockMovement", function() return Enum.ContextActionResult.Sink end, false,
+			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.LeftShift)
 	end)
 end
 
@@ -115,18 +99,12 @@ local function unanchorPlayer()
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
-		hum.AutoRotate = (origAutoRotate ~= nil) and origAutoRotate or true
-		hum.WalkSpeed = (origWalkSpeed ~= nil) and origWalkSpeed or 16
-		hum.JumpPower = (origJumpPower ~= nil) and origJumpPower or 50
+		hum.AutoRotate = true
+		hum.WalkSpeed = 16
+		hum.JumpPower = 50
 	end
 	if hrp then hrp.Anchored = false end
-	-- Re-enable PlayerModule controls
-	pcall(function()
-		if controlsDisabled and controlModule and controlModule.Enable then
-			controlModule:Enable()
-		end
-		controlsDisabled = false
-	end)
+	safeCF = nil
 end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
