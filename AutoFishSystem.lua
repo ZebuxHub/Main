@@ -27,67 +27,97 @@ local removeFishingFlag
 
 -- Configuration
 local FishingConfig = {
-    SelectedBait = "FishingBait1",
-    FishingPosition = Vector3.new(0, 0, 0),
-    AutoFishEnabled = false,
-    DelayBetweenCasts = 0.5,
-    FishingRange = 5, -- Fish within 5 studs of player
-    VerticalOffset = 10, -- Cast position Y offset above player
-    PlayerAnchored = false, -- Track if player is anchored
-    SafePosition = nil, -- Store safe position to prevent falling
-    Original = {
-        WalkSpeed = nil,
-        JumpPower = nil,
-        AutoRotate = nil
-    },
-    _Controls = nil, -- cached controls module
-    _CASBound = false, -- movement sink bound flag
-    FreezeConn = nil,
-    -- Position placement history
-    PlacedPositions = {},
-    CurrentPositionIndex = 1,
-    Stats = {
-        FishCaught = 0,
-        SessionStartTime = os.time(),
-        LastCatchTime = 0,
-        TotalCasts = 0,
-        SuccessfulCasts = 0
-    },
-    PartCollideState = {}
+	SelectedBait = "FishingBait1",
+	FishingPosition = Vector3.new(0, 0, 0),
+	AutoFishEnabled = false,
+	DelayBetweenCasts = 0.5,
+	FishingRange = 5, -- Fish within 5 studs of player
+	VerticalOffset = 10, -- Cast position Y offset above player
+	PlayerAnchored = false, -- Track if player is anchored
+	SafePosition = nil, -- Store safe position to prevent falling
+	Original = {
+		WalkSpeed = nil,
+		JumpPower = nil,
+		AutoRotate = nil
+	},
+	_Controls = nil, -- cached controls module
+	_CASBound = false, -- movement sink bound flag
+	FreezeConn = nil,
+	-- Position placement history
+	PlacedPositions = {},
+	CurrentPositionIndex = 1,
+	Stats = {
+		FishCaught = 0,
+		SessionStartTime = os.time(),
+		LastCatchTime = 0,
+		TotalCasts = 0,
+		SuccessfulCasts = 0
+	},
+	PartCollideState = {}
 }
 
 -- Fishing Bait Configuration
 local FishingBaitConfig = {}
 local AvailableBaits = {}
 
+-- Ensure Focus helpers (hold FishRob)
+local function readHoldUID()
+	local lp = LocalPlayer
+	if not lp then return nil end
+	local attrVal = nil
+	pcall(function()
+		attrVal = lp:GetAttribute("HoldUID")
+	end)
+	if attrVal and tostring(attrVal) ~= "" then
+		return tostring(attrVal)
+	end
+	local vobj = lp:FindFirstChild("HoldUID")
+	if vobj and vobj:IsA("ValueBase") then
+		local vv = vobj.Value
+		if vv and tostring(vv) ~= "" then
+			return tostring(vv)
+		end
+	end
+	return nil
+end
+
+local function ensureFishRobFocus()
+	local held = readHoldUID()
+	if held == "FishRob" then return true end
+	local ok = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob")
+	end)
+	return ok == true
+end
+
 local function loadFishingBaitConfig()
-    local success, result = pcall(function()
-        local configFolder = ReplicatedStorage:WaitForChild("Config", 5)
-        if configFolder then
-            local baitModule = configFolder:FindFirstChild("ResFishingBait")
-            if baitModule then
-                return require(baitModule)
-            end
-        end
-        return nil
-    end)
-    
-    if success and result then
-        FishingBaitConfig = result
-        -- Build available baits list
-        AvailableBaits = {}
-        for id, data in pairs(FishingBaitConfig) do
-            if type(id) == "string" and not id:match("^_") and id ~= "__index" then
-                table.insert(AvailableBaits, id)
-            end
-        end
-        table.sort(AvailableBaits)
-        -- Loaded " .. #AvailableBaits .. " fishing baits
-    else
-        -- Fallback baits
-        AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
-        -- Failed to load fishing bait config, using fallback baits
-    end
+	local success, result = pcall(function()
+		local configFolder = ReplicatedStorage:WaitForChild("Config", 5)
+		if configFolder then
+			local baitModule = configFolder:FindFirstChild("ResFishingBait")
+			if baitModule then
+				return require(baitModule)
+			end
+		end
+		return nil
+	end)
+	
+	if success and result then
+		FishingBaitConfig = result
+		-- Build available baits list
+		AvailableBaits = {}
+		for id, data in pairs(FishingBaitConfig) do
+			if type(id) == "string" and not id:match("^_") and id ~= "__index" then
+				table.insert(AvailableBaits, id)
+			end
+		end
+		table.sort(AvailableBaits)
+		-- Loaded " .. #AvailableBaits .. " fishing baits
+	else
+		-- Fallback baits
+		AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
+		-- Failed to load fishing bait config, using fallback baits
+	end
 end
 
 -- Water Detection System
@@ -850,24 +880,21 @@ local function startFishing()
     -- Update fishing position to random spot around player
     updateFishingPosition()
     
-    -- First fire Focus + FishRob (don't move player)
-    local args = {
-        "Focus",
-        "FishRob"
-    }
-    
-    local success, err = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
-    end)
-    
-    if not success then
-        WindUI:Notify({ 
-            Title = "🎣 Auto Fish Debug", 
-            Content = "❌ Failed to focus fishing: " .. tostring(err), 
-            Duration = 3 
-        })
-        unanchorPlayer() -- Unanchor if failed
-        return false
+    -- Ensure we're holding FishRob before any fishing actions
+    local focused = ensureFishRobFocus()
+    if not focused then
+        local success, err = pcall(function()
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "FishRob")
+        end)
+        if not success then
+            WindUI:Notify({ 
+                Title = "🎣 Auto Fish Debug", 
+                Content = "❌ Failed to focus fishing: " .. tostring(err), 
+                Duration = 3 
+            })
+            unanchorPlayer() -- Unanchor if failed
+            return false
+        end
     end
     
     -- Start fishing state (if server expects a handshake)
@@ -891,6 +918,8 @@ local function startFishing()
         Duration = 2 
     })
     
+    -- Re-ensure focus just before throw to avoid losing hold due to other systems
+    ensureFishRobFocus()
     local throwArgs = {
         "Throw",
         {
@@ -1055,10 +1084,14 @@ end
 local function runAutoFish()
     -- Starting auto fish loop
     while FishingConfig.AutoFishEnabled do
+        -- Keep hold consistent at the start of each cycle
+        ensureFishRobFocus()
         local startOk = startFishing()
         if startOk then
             local pullOk = waitForFishPull()
             if pullOk then
+                -- Ensure hold before pulling to reduce desync
+                ensureFishRobFocus()
                 pullFish()
             end
         end
