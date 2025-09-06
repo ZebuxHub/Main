@@ -24,8 +24,6 @@ local isCasting = false
 
 -- Forward declarations for functions referenced earlier
 local updateCurrentPositionDisplay
-local stopFlagPlacement
-local removeFishingFlag
 
 -- Configuration
 local FishingConfig = {
@@ -116,34 +114,9 @@ local function loadFishingBaitConfig()
 end
 
 -- Water Detection System
-local WaterDetection = {
-    WaterNames = {"Water", "Lake", "Pond", "River", "Stream", "Ocean", "Sea"},
-    CurrentTarget = nil,
-    MovingToWater = false
-}
+-- Water detection system removed for minimal, instant-cast flow
 
-local function isWaterPart(part)
-    if not part then return false end
-    
-    local name = part.Name:lower()
-    for _, waterName in ipairs(WaterDetection.WaterNames) do
-        if name:find(waterName:lower()) then
-            return true
-        end
-    end
-    
-    -- Check material for water-like materials
-    if part.Material == Enum.Material.Water then
-        return true
-    end
-    
-    -- Check transparency and color for water-like appearance
-    if part.Transparency > 0.3 and part.BrickColor.Name == "Bright blue" then
-        return true
-    end
-    
-    return false
-end
+ 
 
 -- Player NetWorth helper (money)
 local function getPlayerNetWorth()
@@ -210,149 +183,17 @@ local function chooseAffordableBait(selectedId)
 	return items[1].id, true
 end
 
-local function findNearestWater()
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        return nil
-    end
-    
-    local playerPosition = LocalPlayer.Character.HumanoidRootPart.Position
-    local nearestWater = nil
-    local shortestDistance = FishingConfig.SearchRadius
-    
-    -- Search for water parts in workspace
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and isWaterPart(obj) then
-            local distance = (obj.Position - playerPosition).Magnitude
-            if distance < shortestDistance then
-                nearestWater = obj
-                shortestDistance = distance
-            end
-        end
-    end
-    
-    return nearestWater, shortestDistance
-end
+-- findNearestWater removed
 
-local function moveToWater(waterPart)
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") then
-        return false
-    end
-    
-    local humanoid = LocalPlayer.Character.Humanoid
-    local humanoidRootPart = LocalPlayer.Character.HumanoidRootPart
-    
-    if not waterPart then
-        return false
-    end
-    
-    WaterDetection.MovingToWater = true
-    WaterDetection.CurrentTarget = waterPart
-    
-    -- Calculate position near the water (slightly offset to avoid going into water)
-    local targetPosition = waterPart.Position + Vector3.new(0, waterPart.Size.Y/2 + 3, 0)
-    
-    -- Use pathfinding for smart movement
-    local path = PathfindingService:CreatePath({
-        AgentRadius = 2,
-        AgentHeight = 5,
-        AgentCanJump = true,
-        AgentMaxSlope = 45
-    })
-    
-    local success, errorMessage = pcall(function()
-        path:ComputeAsync(humanoidRootPart.Position, targetPosition)
-    end)
-    
-    if success and path.Status == Enum.PathStatus.Success then
-        local waypoints = path:GetWaypoints()
-        
-        for i, waypoint in ipairs(waypoints) do
-            if not WaterDetection.MovingToWater then break end
-            
-            humanoid:MoveTo(waypoint.Position)
-            
-            -- Wait for the character to reach the waypoint
-            local connection
-            local reached = false
-            
-            connection = humanoid.MoveToFinished:Connect(function(reachedWaypoint)
-                reached = true
-                connection:Disconnect()
-            end)
-            
-            -- Timeout after 10 seconds per waypoint
-            local timeout = 0
-            while not reached and WaterDetection.MovingToWater and timeout < 100 do
-                task.wait(0.1)
-                timeout = timeout + 1
-            end
-            
-            if connection then
-                connection:Disconnect()
-            end
-        end
-        
-        -- Update fishing position to current location
-        if WaterDetection.MovingToWater then
-            FishingConfig.FishingPosition = humanoidRootPart.Position
-        end
-    else
-        -- Fallback: direct movement
-        humanoid:MoveTo(targetPosition)
-        
-        local connection
-        local reached = false
-        
-        connection = humanoid.MoveToFinished:Connect(function(reachedTarget)
-            reached = true
-            FishingConfig.FishingPosition = humanoidRootPart.Position
-            connection:Disconnect()
-        end)
-        
-        -- Timeout after 15 seconds
-        task.delay(15, function()
-            if connection then
-                connection:Disconnect()
-            end
-        end)
-    end
-    
-    WaterDetection.MovingToWater = false
-    return true
-end
+-- moveToWater removed
 
-local function autoDetectAndMoveToWater()
-    if not FishingConfig.AutoWaterDetection then
-        return true -- Skip if auto detection is disabled
-    end
-    
-    
-    local waterPart, distance = findNearestWater()
-    
-    if waterPart then
-        return moveToWater(waterPart)
-    else
-        return false
-    end
-end
+-- autoDetectAndMoveToWater removed
 
 -- Mouse Position Tracking System
-local MouseTracker = {
-    Connection = nil,
-    GuiConnection = nil,
-    ClickConnection = nil,
-    PositionLabel = nil
-}
+-- MouseTracker removed (no pin UI in minimal flow)
 
 -- Flag System for Position Setting
-local FlagSystem = {
-    FlagPart = nil,
-    PinHologram = nil,
-    DragConnection = nil,
-    ClickConnection = nil,
-    Active = false,
-    UserInputConnection = nil
-}
+-- FlagSystem removed (no pin/hologram UI)
 
 local function getMouseWorldPosition()
     local mouse = LocalPlayer:GetMouse()
@@ -615,255 +456,19 @@ local function clearPositionHistory()
     FishingConfig.CurrentPositionIndex = 1
 end
 
-local function startMouseTracking()
-    -- Function kept for compatibility but flag system is preferred
-    -- notifications disabled
-end
+-- startMouseTracking removed
 
-local function stopMouseTracking()
-    -- Function kept for compatibility
-end
+-- stopMouseTracking removed
 
-local function createFishingFlag()
-    -- Remove existing flag if any
-    if FlagSystem.FlagPart then
-        FlagSystem.FlagPart:Destroy()
-        FlagSystem.FlagPart = nil
-    end
-    
-    -- Create main pin container
-    local pinContainer = Instance.new("Model")
-    pinContainer.Name = "HologramPinModel"
-    pinContainer.Parent = workspace
-    
-    -- Create hologram pin
-    local pin = Instance.new("Part")
-    pin.Name = "HologramPin"
-    pin.Size = Vector3.new(1, 3, 1)
-    pin.Material = Enum.Material.ForceField
-    pin.Color = Color3.new(0, 1, 1)
-    pin.Transparency = 0.3
-    pin.CanCollide = false
-    pin.Anchored = true
-    pin.Shape = Enum.PartType.Cylinder
-    pin.Position = FishingConfig.FishingPosition + Vector3.new(0, 1.5, 0)
-    pin.Rotation = Vector3.new(0, 0, 90) -- Rotate to make it stand upright
-    pin.Parent = pinContainer
-    
-    -- Add subtle glow
-    local pinLight = Instance.new("PointLight")
-    pinLight.Color = Color3.new(0, 1, 1)
-    pinLight.Brightness = 2
-    pinLight.Range = 15
-    pinLight.Parent = pin
-    
-    -- Create floating text label
-    local billboardGui = Instance.new("BillboardGui")
-    billboardGui.Size = UDim2.new(0, 150, 0, 50)
-    billboardGui.StudsOffset = Vector3.new(0, 2.5, 0)
-    billboardGui.AlwaysOnTop = true
-    billboardGui.Parent = pinContainer
-    
-    -- Simple text background
-    local textBackground = Instance.new("Frame")
-    textBackground.Size = UDim2.new(1, 0, 1, 0)
-    textBackground.BackgroundColor3 = Color3.new(0, 0, 0)
-    textBackground.BackgroundTransparency = 0.6
-    textBackground.BorderSizePixel = 0
-    textBackground.Parent = billboardGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = textBackground
-    
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = "🎣 Fishing Spot"
-    textLabel.TextColor3 = Color3.new(0, 1, 1)
-    textLabel.TextScaled = true
-    textLabel.Font = Enum.Font.SourceSansBold
-    textLabel.TextStrokeTransparency = 0
-    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-    textLabel.Parent = textBackground
-    
-    -- Add simple selection box
-    local selectionBox = Instance.new("SelectionBox")
-    selectionBox.Color3 = Color3.new(0, 1, 1)
-    selectionBox.LineThickness = 0.2
-    selectionBox.Transparency = 0.4
-    selectionBox.Adornee = pinContainer
-    selectionBox.Parent = pinContainer
-    
-    -- Store references
-    FlagSystem.FlagPart = pinContainer
-    FlagSystem.PinHologram = pin
-    
-    return pinContainer
-end
+-- createFishingFlag removed
 
-local function enableFlagDragging()
-    if not FlagSystem.FlagPart then return end
-    
-    local mouse = LocalPlayer:GetMouse()
-    local flag = FlagSystem.FlagPart
-    
-    -- Mouse move connection for real-time preview
-    FlagSystem.DragConnection = mouse.Move:Connect(function()
-        if FlagSystem.Active then
-            local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
-            
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, flag}
-            
-            local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
-            
-            if raycastResult then
-                -- Update pin position in real-time as mouse moves
-                local newPosition = raycastResult.Position
-                
-                -- Update pin hologram position
-                if FlagSystem.PinHologram then
-                    FlagSystem.PinHologram.Position = newPosition + Vector3.new(0, 1.5, 0)
-                end
-                
-                -- Update display but don't save position yet
-                if MouseTracker.PositionLabel then
-                    MouseTracker.PositionLabel:SetDesc("Pin Position: %.1f, %.1f, %.1f\nLeft-click anywhere to place pin here!", 
-                        raycastResult.Position.X, raycastResult.Position.Y, raycastResult.Position.Z)
-                end
-            end
-        end
-    end)
-    
-    -- Mouse click connection to confirm position
-    local clickConnection
-    clickConnection = mouse.Button1Down:Connect(function()
-        if FlagSystem.Active then
-            local unitRay = Camera:ScreenPointToRay(mouse.X, mouse.Y)
-            
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, flag}
-            
-            local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
-            
-            if raycastResult then
-                -- Final pin position
-                local finalPosition = raycastResult.Position
-                
-                -- Update pin hologram to final position and stop following mouse
-                if FlagSystem.PinHologram then
-                    FlagSystem.PinHologram.Position = finalPosition + Vector3.new(0, 1.5, 0)
-                end
-                
-                -- Save fishing position
-                FishingConfig.FishingPosition = finalPosition
-                
-                -- Save to position history
-                savePositionToHistory(finalPosition, "Pin Placement")
-                
-                -- Update displays immediately with error handling
-                pcall(function()
-                    if currentPosLabel then
-                        currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
-                            finalPosition.X, finalPosition.Y, finalPosition.Z))
-                    end
-                end)
-                
-                -- Stop flag placement mode completely - ready for next placement
-                stopFlagPlacement()
-                
-                -- Confirmation notification
-                -- notifications disabled
-            end
-        end
-    end)
-    
-    -- Store click connection for cleanup
-    FlagSystem.ClickConnection = clickConnection
-    
-    -- User input for canceling (ESC key)
-    FlagSystem.UserInputConnection = UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.Escape and FlagSystem.Active then
-            -- Cancel flag placement and remove the pin
-            removeFishingFlag()
-            stopFlagPlacement()
-            -- notifications disabled
-        end
-    end)
-end
+-- enableFlagDragging removed
 
-local function startFlagPlacement()
-    FlagSystem.Active = true
-    
-    -- Create flag at current fishing position
-    local flag = createFishingFlag()
-    
-    -- Enable dragging
-    enableFlagDragging()
-    
-    -- Note: Notification is now handled in the button callback for better clarity
-end
+-- startFlagPlacement removed
 
-function stopFlagPlacement()
-    -- Immediately set active to false to stop all tracking
-    FlagSystem.Active = false
-    
-    -- Disconnect all mouse tracking connections with error handling
-    pcall(function()
-        if FlagSystem.DragConnection then
-            FlagSystem.DragConnection:Disconnect()
-            FlagSystem.DragConnection = nil
-        end
-    end)
-    
-    pcall(function()
-        if FlagSystem.ClickConnection then
-            FlagSystem.ClickConnection:Disconnect()
-            FlagSystem.ClickConnection = nil
-        end
-    end)
-    
-    pcall(function()
-        if FlagSystem.UserInputConnection then
-            FlagSystem.UserInputConnection:Disconnect()
-            FlagSystem.UserInputConnection = nil
-        end
-    end)
-    
-    -- Update displays with error handling
-    pcall(function()
-        if currentPosLabel then
-            currentPosLabel:SetDesc(string.format("X: %.1f, Y: %.1f, Z: %.1f", 
-                FishingConfig.FishingPosition.X, 
-                FishingConfig.FishingPosition.Y, 
-                FishingConfig.FishingPosition.Z))
-        end
-    end)
-    
-    -- Update UI guidance text
-    pcall(function()
-        if MouseTracker.PositionLabel then
-            MouseTracker.PositionLabel:SetDesc("Click 'Place Hologram Pin' then left-click anywhere in the world to place pin")
-        end
-    end)
-    
-    -- Pin placement stopped
-end
+-- stopFlagPlacement removed
 
-function removeFishingFlag()
-    if FlagSystem.FlagPart then
-        FlagSystem.FlagPart:Destroy()
-        FlagSystem.FlagPart = nil
-    end
-    
-    -- Stop any active dragging
-    if FlagSystem.Active then
-        stopFlagPlacement()
-    end
-end
+-- removeFishingFlag removed
 
 -- Fishing System
 local FishingSystem = {
@@ -921,54 +526,7 @@ local function startFishing()
 end
 
 -- Enhanced fish collection system
-local function collectNearbyFish()
-    local playerRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not playerRootPart then return false end
-    
-    local playerPosition = playerRootPart.Position
-    local collected = 0
-    
-    -- Look for fish models in workspace
-    local function searchForFish(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            if child:IsA("Model") and child.Name:lower():find("fish") then
-                -- Check if fish belongs to player
-                local userId = child:GetAttribute("UserId")
-                if userId and tonumber(userId) == LocalPlayer.UserId then
-                    -- Check distance
-                    local fishPosition = child:GetPivot().Position
-                    local distance = (fishPosition - playerPosition).Magnitude
-                    
-                    if distance <= FishingConfig.FishingRange * 2 then -- Larger collection range
-                        -- Try to collect fish
-                        local collectArgs = {"Collect", child.Name}
-                        local success = pcall(function()
-                            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(collectArgs))
-                        end)
-                        
-                        if success then
-                            collected = collected + 1
-                            -- Collected fish
-                        end
-                    end
-                end
-            end
-            -- Recursively search children
-            if child:IsA("Folder") or child:IsA("Model") then
-                searchForFish(child)
-            end
-        end
-    end
-    
-    -- Search in multiple locations where fish might spawn
-    searchForFish(workspace)
-    local art = workspace:FindFirstChild("Art")
-    if art then searchForFish(art) end
-    
-    -- no-op; boolean success returned below
-    
-    return collected > 0
-end
+-- collectNearbyFish removed for instant recast flow
 
 local function pullFish()
     local args = {
@@ -978,26 +536,13 @@ local function pullFish()
             NoMove = true
         }
     }
-    
-    local success, err = pcall(function()
+    local success = pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
     end)
-    
     if not success then
-        -- Failed to pull fish
-        unanchorPlayer() -- Unanchor if failed
+        unanchorPlayer()
         return false
     end
-    
-    -- Wait a moment for fish to be caught before collecting
-    task.wait(0.5)
-    
-    -- Auto-collect fish
-    local collectSuccess = collectNearbyFish()
-    
-    -- Keep player anchored; do not unanchor between casts
-    
-    -- removed statistics counters
     return true
 end
 
@@ -1040,16 +585,15 @@ end
 local function runAutoFish()
     -- Starting auto fish loop
     while FishingConfig.AutoFishEnabled do
-        -- If already casting, just wait for pull; else try to start immediately
-        local startOk = isCasting or startFishing()
-        if startOk then
-            local pullOk = waitForFishPull()
-            if pullOk then
-                pullFish()
-                isCasting = false
-            end
+        if not isCasting then
+            startFishing()
         end
-        -- No delay between casts; restart ASAP
+        local pullOk = waitForFishPull()
+        if pullOk then
+            pullFish()
+            isCasting = false
+            -- Immediate recast in next loop iteration (no waits)
+        end
     end
 end
 
