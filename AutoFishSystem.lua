@@ -27,26 +27,26 @@ local updateCurrentPositionDisplay
 
 -- Configuration
 local FishingConfig = {
-	SelectedBait = "FishingBait1",
-	FishingPosition = Vector3.new(0, 0, 0),
-	AutoFishEnabled = false,
+    SelectedBait = "FishingBait1",
+    FishingPosition = Vector3.new(0, 0, 0),
+    AutoFishEnabled = false,
 	DelayBetweenCasts = 0,
-	FishingRange = 5, -- Fish within 5 studs of player
-	VerticalOffset = 10, -- Cast position Y offset above player
-	PlayerAnchored = false, -- Track if player is anchored
-	SafePosition = nil, -- Store safe position to prevent falling
-	Original = {
-		WalkSpeed = nil,
-		JumpPower = nil,
-		AutoRotate = nil
-	},
-	_Controls = nil, -- cached controls module
-	_CASBound = false, -- movement sink bound flag
-	FreezeConn = nil,
-	-- Position placement history
-	PlacedPositions = {},
-	CurrentPositionIndex = 1,
-	PartCollideState = {}
+    FishingRange = 5, -- Fish within 5 studs of player
+    VerticalOffset = 10, -- Cast position Y offset above player
+    PlayerAnchored = false, -- Track if player is anchored
+    SafePosition = nil, -- Store safe position to prevent falling
+    Original = {
+        WalkSpeed = nil,
+        JumpPower = nil,
+        AutoRotate = nil
+    },
+    _Controls = nil, -- cached controls module
+    _CASBound = false, -- movement sink bound flag
+    FreezeConn = nil,
+    -- Position placement history
+    PlacedPositions = {},
+    CurrentPositionIndex = 1,
+    PartCollideState = {}
 }
 
 -- Fishing Bait Configuration
@@ -84,33 +84,33 @@ local function ensureFishRobFocus()
 end
 
 local function loadFishingBaitConfig()
-	local success, result = pcall(function()
-		local configFolder = ReplicatedStorage:WaitForChild("Config", 5)
-		if configFolder then
-			local baitModule = configFolder:FindFirstChild("ResFishingBait")
-			if baitModule then
-				return require(baitModule)
-			end
-		end
-		return nil
-	end)
-	
-	if success and result then
-		FishingBaitConfig = result
-		-- Build available baits list
-		AvailableBaits = {}
-		for id, data in pairs(FishingBaitConfig) do
-			if type(id) == "string" and not id:match("^_") and id ~= "__index" then
-				table.insert(AvailableBaits, id)
-			end
-		end
-		table.sort(AvailableBaits)
-		-- Loaded " .. #AvailableBaits .. " fishing baits
-	else
-		-- Fallback baits
-		AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
-		-- Failed to load fishing bait config, using fallback baits
-	end
+    local success, result = pcall(function()
+        local configFolder = ReplicatedStorage:WaitForChild("Config", 5)
+        if configFolder then
+            local baitModule = configFolder:FindFirstChild("ResFishingBait")
+            if baitModule then
+                return require(baitModule)
+            end
+        end
+        return nil
+    end)
+    
+    if success and result then
+        FishingBaitConfig = result
+        -- Build available baits list
+        AvailableBaits = {}
+        for id, data in pairs(FishingBaitConfig) do
+            if type(id) == "string" and not id:match("^_") and id ~= "__index" then
+                table.insert(AvailableBaits, id)
+            end
+        end
+        table.sort(AvailableBaits)
+        -- Loaded " .. #AvailableBaits .. " fishing baits
+    else
+        -- Fallback baits
+        AvailableBaits = {"FishingBait1", "FishingBait2", "FishingBait3"}
+        -- Failed to load fishing bait config, using fallback baits
+    end
 end
 
 -- Water Detection System
@@ -253,7 +253,7 @@ local function anchorPlayer()
                     FishingConfig.PartCollideState[desc] = desc.CanCollide
                     desc.CanCollide = false
                     desc.Massless = true
-                    desc.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(1, 0, 0)
                 end
             end
             -- Keep HRP CanCollide false as well
@@ -499,30 +499,30 @@ local function startFishing()
 	if held ~= "FishRob" then
 		if not ensureFishRobFocus() then return false end
 	end
-	
-	-- Select affordable bait
+    
+    -- Select affordable bait
 	local selectedBait = FishingConfig.SelectedBait or "FishingBait1"
 	-- Throw ASAP
 	isCasting = true
-	local throwArgs = {
-		"Throw",
-		{
-			Bait = selectedBait,
+    local throwArgs = {
+        "Throw",
+        {
+            Bait = selectedBait,
 			Pos = castPos,
-			NoMove = true -- hint for server, if supported
-		}
-	}
-	
-	local throwSuccess, throwErr = pcall(function()
-		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
-	end)
-	
-	if not throwSuccess then
+            NoMove = true -- hint for server, if supported
+        }
+    }
+    
+    local throwSuccess, throwErr = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
+    end)
+    
+    if not throwSuccess then
 		isCasting = false
-		return false
-	end
+        return false
+    end
 	-- removed statistics counter
-	return true
+    return true
 end
 
 -- Enhanced fish collection system
@@ -588,12 +588,12 @@ local function runAutoFish()
         if not isCasting then
             startFishing()
         end
-        local pullOk = waitForFishPull()
-        if pullOk then
-            pullFish()
+            local pullOk = waitForFishPull()
+            if pullOk then
+                pullFish()
             isCasting = false
             -- Immediate recast in next loop iteration (no waits)
-        end
+            end
     end
 end
 
@@ -709,7 +709,7 @@ function AutoFishSystem.Init(dependencies)
             end
         end
     })
-
+    
     autoFishToggle = Tabs.FishTab:Toggle({
         Title = "Auto Fish",
         Value = false,
