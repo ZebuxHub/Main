@@ -2060,8 +2060,8 @@ local function runAutoQuest()
             return res
         end
         
-        -- Buy cheapest affordable egg from current island conveyors
-        local function buyCheapestAffordableEgg()
+        -- Buy fast (lowest hatch time) affordable egg; randomize among equals
+        local function buyFastAffordableEgg()
             local islandName = getAssignedIslandName()
             if not islandName then return false end
             local art = workspace:FindFirstChild("Art")
@@ -2070,7 +2070,8 @@ local function runAutoQuest()
             local conveyorRoot = env and env:FindFirstChild("Conveyor")
             if not conveyorRoot then return false end
             local netWorth = LocalPlayer:GetAttribute("NetWorth") or 0
-            local cheapestModel, cheapestPrice = nil, math.huge
+            local bestModels = {}
+            local bestHatch = math.huge
             
             local function parsePriceFromGUI(rootPart)
                 local paths = {"GUI/EggGUI", "EggGUI", "GUI", "Gui"}
@@ -2109,26 +2110,38 @@ local function runAutoQuest()
                         if eggModel:IsA("Model") then
                             local rootPart = eggModel:FindFirstChild("RootPart")
                             local price = nil
+                            local eggType = eggModel:GetAttribute("Type") or eggModel:GetAttribute("EggType") or eggModel:GetAttribute("Name")
                             if rootPart then
                                 price = parsePriceFromGUI(rootPart) or eggModel:GetAttribute("Price")
                             end
                             if type(price) == "number" and price > 0 and price <= netWorth then
-                                if price < cheapestPrice then
-                                    cheapestPrice = price
-                                    cheapestModel = eggModel
+                                local hatchTime = EggHatchTimes[eggType] or math.huge
+                                if hatchTime < bestHatch then
+                                    bestHatch = hatchTime
+                                    bestModels = { eggModel }
+                                elseif hatchTime == bestHatch then
+                                    table.insert(bestModels, eggModel)
                                 end
                             end
                         end
                     end
                 end
             end
-            if not cheapestModel then return false end
+            if #bestModels == 0 then return false end
+            local chosen = bestModels[math.random(1, #bestModels)]
             local ok = pcall(function()
-                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("BuyEgg", cheapestModel.Name)
+                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("BuyEgg", chosen.Name)
                 task.wait(0.1)
-                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", cheapestModel.Name)
+                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", chosen.Name)
             end)
             return ok == true
+        end
+
+        -- Place any available inventory egg that isn't placed yet (single attempt)
+        local function placeAnyInventoryEggNow()
+            local eggs = getEggInventory()
+            if #eggs == 0 then return false end
+            return placeAndHatchOnce(false)
         end
 
         -- Send gift (prefer cheapest egg; else lowest-sell pet)
@@ -2151,9 +2164,9 @@ local function runAutoQuest()
                 table.sort(pets, function(a,b) return getPetSellByType(a.type) < getPetSellByType(b.type) end)
                 if #pets > 0 then itemUid = pets[1].uid isEgg = false end
             end
-            -- If still no inventory, buy cheapest egg then retry once
+            -- If still no inventory, buy a fast egg then retry once
             if not itemUid then
-                if buyCheapestAffordableEgg() then
+                if buyFastAffordableEgg() then
                     task.wait(0.6)
                     eggs = getEggInventory()
                     table.sort(eggs, function(a,b) return getEggPriceByType(a.type) < getEggPriceByType(b.type) end)
@@ -2263,10 +2276,28 @@ local function runAutoQuest()
         local function sellOne()
             local pets = getPetInventoryUnplacedNonMutated()
             if #pets == 0 then
-                -- Try to buy cheapest egg; optional quick place/hatch to create a pet for selling later
-                if buyCheapestAffordableEgg() then
-                    task.wait(0.6)
-                    placeAndHatchOnce(false)
+                -- Try to buy a fast egg and place it to generate a pet later
+                if buyFastAffordableEgg() then
+                    task.wait(0.5)
+                    placeAnyInventoryEggNow()
+                end
+                -- Additionally, delete any existing low-speed pets (<100)
+                local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+                local data = pg and pg:FindFirstChild("Data")
+                local petsFolder = data and data:FindFirstChild("Pets")
+                if petsFolder then
+                    for _, node in ipairs(petsFolder:GetChildren()) do
+                        if node:IsA("Configuration") then
+                            local locked = node:GetAttribute("LK") == 1
+                            local speed = tonumber(node:GetAttribute("Speed")) or 0
+                            if not locked and speed < 100 then
+                                pcall(function()
+                                    ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer('Sell', node.Name)
+                                end)
+                                return true, "sold slow"
+                            end
+                        end
+                    end
                 end
                 return false, "no candidates"
             end
@@ -2346,7 +2377,15 @@ local function runAutoQuest()
         
         -- Fishing stubs (drive via external system if available; else wait)
         local function doFishingTick()
-            -- Try to poke any exposed AutoFish runner if it exists; otherwise passive wait
+            -- Try to enable Auto Fish system briefly if available
+            local AutoFish = (getfenv and getfenv().AutoFishSystem) or _G.AutoFishSystem or rawget(_G, "AutoFishSystem")
+            if AutoFish then
+                if AutoFish.SetEnabled then
+                    pcall(function() AutoFish.SetEnabled(true) end)
+                elseif AutoFish.Toggle and AutoFish.Toggle.SetValue then
+                    pcall(function() AutoFish.Toggle:SetValue(true) end)
+                end
+            end
             return true
         end
         
@@ -2375,7 +2414,10 @@ local function runAutoQuest()
             if not d3done then feedBigPetOnce() task.wait(0.5) end
             if not d4done then task.wait(1) end
             if not d5done then sellOne() task.wait(0.4) end
-            if not d6done then placeAndHatchOnce(false) task.wait(0.6) end
+            if not d6done then placeAndHatchOnce(false) task.wait(0.6) else
+                -- If we already completed hatch task but still hold eggs, place opportunistically
+                placeAnyInventoryEggNow()
+            end
             if not d7done then doFishingTick() task.wait(0.6) end
             if not d8done then placeAndHatchOnce(true) task.wait(0.8) end
             if not d9done then buyFruitOnce() task.wait(0.6) end
