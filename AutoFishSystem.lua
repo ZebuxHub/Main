@@ -22,11 +22,14 @@ local castThread = nil
 local active = false
 local baitDropdown = nil
 local autoFishToggle = nil
+local controlModule = nil
+local controlsDisabled = false
+local origWalkSpeed, origJumpPower, origAutoRotate = nil, nil, nil
 
 -- Config
 local FishingConfig = {
-	SelectedBait = "FishingBait1",
-	AutoFishEnabled = false,
+    SelectedBait = "FishingBait1",
+    AutoFishEnabled = false,
 	VerticalOffset = 10,
 }
 
@@ -61,6 +64,10 @@ local function anchorPlayer()
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not (hrp and hum) then return end
+	-- store originals once
+	if origWalkSpeed == nil then origWalkSpeed = hum.WalkSpeed end
+	if origJumpPower == nil then origJumpPower = hum.JumpPower end
+	if origAutoRotate == nil then origAutoRotate = hum.AutoRotate end
 	hum.AutoRotate = false
 	hum.WalkSpeed = 0
 	hum.JumpPower = 0
@@ -68,56 +75,80 @@ local function anchorPlayer()
 	if freezeConn then freezeConn:Disconnect() freezeConn = nil end
 	freezeConn = RunService.Heartbeat:Connect(function()
 		if not active then return end
-		pcall(function()
-			hrp.AssemblyLinearVelocity = Vector3.zero
-			hrp.AssemblyAngularVelocity = Vector3.zero
+        pcall(function()
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
 		end)
 	end)
 	-- Sink movement
-	pcall(function()
+        pcall(function()
 		ContextActionService:BindAction("AFS_BlockMovement", function() return Enum.ContextActionResult.Sink end, false,
-			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.LeftShift)
+			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+			Enum.KeyCode.Up, Enum.KeyCode.Down, Enum.KeyCode.Left, Enum.KeyCode.Right,
+			Enum.KeyCode.Space, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift,
+			Enum.KeyCode.ButtonA, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonY,
+			Enum.KeyCode.DPadLeft, Enum.KeyCode.DPadRight, Enum.KeyCode.DPadUp, Enum.KeyCode.DPadDown,
+			Enum.KeyCode.Thumbstick1)
+	end)
+	-- Disable PlayerModule controls for all devices
+	pcall(function()
+		local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
+		if playerScripts then
+			local pm = playerScripts:FindFirstChild("PlayerModule")
+			if pm and pm:FindFirstChild("ControlModule") then
+				controlModule = require(pm:FindFirstChild("ControlModule"))
+				if controlModule and controlModule.Disable then
+					controlModule:Disable()
+					controlsDisabled = true
+				end
+			end
+		end
 	end)
 end
 
 local function unanchorPlayer()
-	pcall(function()
-		ContextActionService:UnbindAction("AFS_BlockMovement")
-	end)
+            pcall(function()
+                ContextActionService:UnbindAction("AFS_BlockMovement")
+            end)
 	if freezeConn then freezeConn:Disconnect() freezeConn = nil end
 	local char = LocalPlayer.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
-		hum.AutoRotate = true
-		hum.WalkSpeed = 16
-		hum.JumpPower = 50
+		hum.AutoRotate = (origAutoRotate ~= nil) and origAutoRotate or true
+		hum.WalkSpeed = (origWalkSpeed ~= nil) and origWalkSpeed or 16
+		hum.JumpPower = (origJumpPower ~= nil) and origJumpPower or 50
 	end
 	if hrp then hrp.Anchored = false end
+	-- Re-enable PlayerModule controls
+	pcall(function()
+		if controlsDisabled and controlModule and controlModule.Enable then
+			controlModule:Enable()
+		end
+		controlsDisabled = false
+	end)
 end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
 local function castOnce()
 	if not ensureFishRobFocus() then return end
-	task.wait(1)
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local pos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
 	local bait = FishingConfig.SelectedBait or "FishingBait1"
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
 	end)
-	task.wait(1)
-	pcall(function()
+                pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
-	end)
-	task.wait(1)
+    end)
 end
 
 local function loopCast()
 	while active do
 		castOnce()
-		-- waits are inside castOnce to ensure 1s per step
-	end
+		-- no delays for maximum throughput
+		RunService.Heartbeat:Wait()
+    end
 end
 
 -- Public API
@@ -133,47 +164,47 @@ function AutoFishSystem.SetEnabled(state)
 		end)
 		castThread = task.spawn(loopCast)
 	else
-		FishingConfig.AutoFishEnabled = false
+    FishingConfig.AutoFishEnabled = false
 		active = false
 		if castThread then task.cancel(castThread) castThread = nil end
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		unanchorPlayer()
-	end
+    end
 end
 
 function AutoFishSystem.SetBait(baitId)
 	if baitId and tostring(baitId) ~= "" then
 		FishingConfig.SelectedBait = tostring(baitId)
 		pcall(function() if baitDropdown then baitDropdown:Select(FishingConfig.SelectedBait) end end)
-	end
+    end
 end
 
 -- UI integration
 function AutoFishSystem.Init(dependencies)
 	if not dependencies then return end
-	WindUI = dependencies.WindUI
-	Tabs = dependencies.Tabs
+    WindUI = dependencies.WindUI
+    Tabs = dependencies.Tabs
 	Config = dependencies.Config
 	if not (WindUI and Tabs and Tabs.FishTab) then return end
 	-- Silence notifications for smooth flow
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
-	baitDropdown = Tabs.FishTab:Dropdown({
+    baitDropdown = Tabs.FishTab:Dropdown({
 		Title = "Select Bait",
 		Desc = "Choose bait; loop is continuous.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
-		Default = FishingConfig.SelectedBait,
+        Default = FishingConfig.SelectedBait,
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
-		end
-	})
-	autoFishToggle = Tabs.FishTab:Toggle({
+        end
+    })
+    autoFishToggle = Tabs.FishTab:Toggle({
 		Title = "Auto Fish",
-		Value = false,
-		Callback = function(state)
+        Value = false,
+        Callback = function(state)
 			AutoFishSystem.SetEnabled(state)
-		end
-	})
-	if Config and autoFishToggle then
+        end
+    })
+    if Config and autoFishToggle then
 		pcall(function() Config:Register("autoFishEnabled", autoFishToggle) end)
 	end
 end
