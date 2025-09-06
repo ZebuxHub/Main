@@ -197,7 +197,7 @@ end
 -- Custom settings save/load functions
 local function saveCustomAutoQuestSettings()
     if not writefile or not HttpService then return end
-    
+
     -- Update custom settings with current values
     customAutoQuestSettings.autoDeleteMinSpeed = autoDeleteMinSpeed
     customAutoQuestSettings.currentPlacementTarget = currentPlacementTarget
@@ -208,11 +208,11 @@ local function saveCustomAutoQuestSettings()
         maxSendEgg = sessionLimits.maxSendEgg or 5,
         maxSellPet = sessionLimits.maxSellPet or 5
     }
-    
+
     local success, encoded = pcall(function()
         return HttpService:JSONEncode(customAutoQuestSettings)
     end)
-    
+
     if success then
         pcall(function()
             writefile("AutoQuestCustomSettings.json", encoded)
@@ -223,44 +223,44 @@ end
 
 local function loadCustomAutoQuestSettings()
     if not readfile or not isfile or not HttpService then return end
-    
+
     if not isfile("AutoQuestCustomSettings.json") then
         print("Auto Quest: No custom settings file found, using defaults")
         return
     end
-    
+
     local success, fileContent = pcall(function()
         return readfile("AutoQuestCustomSettings.json")
     end)
-    
+
     if not success then
         print("Auto Quest: Failed to read custom settings file")
         return
     end
-    
+
     local decoded = nil
     success, decoded = pcall(function()
         return HttpService:JSONDecode(fileContent)
     end)
-    
+
     if success and decoded then
         -- Load custom settings
         autoDeleteMinSpeed = decoded.autoDeleteMinSpeed or 0
         currentPlacementTarget = decoded.currentPlacementTarget
         placementTargetTime = decoded.placementTargetTime or math.huge
-        
+
         if decoded.sessionLimits then
             sessionLimits.sendEggCount = decoded.sessionLimits.sendEggCount or 0
             sessionLimits.sellPetCount = decoded.sessionLimits.sellPetCount or 0
             sessionLimits.maxSendEgg = decoded.sessionLimits.maxSendEgg or 5
             sessionLimits.maxSellPet = decoded.sessionLimits.maxSellPet or 5
         end
-        
+
         -- Update UI elements if they exist
         if autoDeleteSlider and autoDeleteSlider.SetValue then
             pcall(function() autoDeleteSlider:SetValue(tostring(autoDeleteMinSpeed)) end)
         end
-        
+
         print("Auto Quest: Custom settings loaded successfully")
     else
         print("Auto Quest: Failed to decode custom settings file")
@@ -419,66 +419,66 @@ local function getCurrentTasks()
     local success, err = pcall(function()
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if not playerGui then return end
-    
-    local data = playerGui:FindFirstChild("Data")
+
+        local data = playerGui:FindFirstChild("Data")
         if not data then return end
-        
-        local taskData = data:FindFirstChild("DinoEventTaskData")
+
+            local taskData = data:FindFirstChild("DinoEventTaskData")
         if not taskData then return end
         
-        local tasksContainer = taskData:FindFirstChild("Tasks")
+                local tasksContainer = taskData:FindFirstChild("Tasks")
         if not tasksContainer then return end
         
-        for i = 1, 3 do
-            local taskSlot = tasksContainer:FindFirstChild(tostring(i))
-            if taskSlot then
-                local taskId = safeGetAttribute(taskSlot, "Id", nil)
-                local progress = safeGetAttribute(taskSlot, "Progress", 0)
-                local claimedCount = safeGetAttribute(taskSlot, "ClaimedCount", 0)
-                
-                if taskId and TaskConfig[taskId] then
-                    local task = {}
-                    for k, v in pairs(TaskConfig[taskId]) do
-                        task[k] = v
-                    end
-                    task.Progress = progress
-                    task.ClaimedCount = claimedCount
-                    task.Slot = i
-                    
-                    table.insert(tasks, task)
+                    for i = 1, 3 do
+                        local taskSlot = tasksContainer:FindFirstChild(tostring(i))
+                        if taskSlot then
+                            local taskId = safeGetAttribute(taskSlot, "Id", nil)
+                            local progress = safeGetAttribute(taskSlot, "Progress", 0)
+                            local claimedCount = safeGetAttribute(taskSlot, "ClaimedCount", 0)
+
+                            if taskId and TaskConfig[taskId] then
+                                local task = {}
+                                for k, v in pairs(TaskConfig[taskId]) do
+                                    task[k] = v
+                                end
+                                task.Progress = progress
+                                task.ClaimedCount = claimedCount
+                                task.Slot = i
+
+                                table.insert(tasks, task)
                 end
             end
         end
     end)
-    
+
     if not success then
         warn("Failed to get current tasks: " .. tostring(err))
     end
-    
+
     return tasks
 end
 
 local function claimTask(taskId)
     local success, err = pcall(function()
-    local args = {
-        {
-            event = "claimreward",
-            id = taskId
-        }
-    }
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
-    end)
-    
+            local args = {
+                {
+                    event = "claimreward",
+                    id = taskId
+                }
+            }
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+        end)
+
     if success then
-        WindUI:Notify({ 
+        WindUI:Notify({
             Title = "🏆 Quest Complete",
             Content = "Claimed reward for " .. taskId .. "!",
-            Duration = 3 
+            Duration = 3
         })
     else
         warn("Failed to claim task " .. taskId .. ": " .. tostring(err))
     end
-    
+
     return success
 end
 
@@ -654,7 +654,7 @@ end
 
 local function updateQuestStatus()
     if not questStatusParagraph then return end
-    
+
     local function fmt(count, target, done)
         if done then return "✅ Done" end
         count = tonumber(count) or 0
@@ -700,23 +700,23 @@ local function updateQuestStatus()
     local lines = {
         "📝 Season Pass Status:",
         "\n— Daily:",
-        string.format("  1) SendGift: %s", d1),
-        string.format("  2) LikeZoo: %s", d2),
-        string.format("  3) FeedBigPet: %s", d3),
-        string.format("  4) OnlineTime: %s", d4),
-        string.format("  5) SellObject: %s", d5),
-        string.format("  6) HatchEgg: %s", d6),
+        string.format("  1) Send Gift: %s", d1),
+        string.format("  2) Like Zoo: %s", d2),
+        string.format("  3) Feed Big Pet: %s", d3),
+        string.format("  4) Online Time: %s", d4),
+        string.format("  5) Sell Object: %s", d5),
+        string.format("  6) Hatch Egg: %s", d6),
         string.format("  7) Fishing: %s", d7),
-        string.format("  8) HatchMutated: %s", d8),
-        string.format("  9) BuyFruit LTR5: %s", d9),
+        string.format("  8) Hatch Mutated: %s", d8),
+        string.format("  9) Buy Fruit Legendary+: %s", d9),
         "\n— Weekly:",
-        string.format("  1) OnlineTime: %s", w1),
-        string.format("  2) LikeZoo: %s", w2),
-        string.format("  3) SendGift: %s", w3),
-        string.format("  4) HatchMutated: %s", w4),
-        string.format("  5) UsePotion: %s", w5),
+        string.format("  1) Online Time: %s", w1),
+        string.format("  2) Like Zoo: %s", w2),
+        string.format("  3) Send Gift: %s", w3),
+        string.format("  4) Hatch Mutated: %s", w4),
+        string.format("  5) Use Potion: %s", w5),
         "\n— Season:",
-        string.format("  FishingMutated: %s", s1),
+        string.format("  Fishing Mutated: %s", s1),
         string.format("\n📊 Session Limits:\nSent: %d/%d | Sold: %d/%d", sessionLimits.sendEggCount, sessionLimits.maxSendEgg, sessionLimits.sellPetCount, sessionLimits.maxSellPet)
     }
     
@@ -787,12 +787,12 @@ local function executeQuestTasks()
         table.sort(tasks, function(a, b)
             local aPriority = 999
             local bPriority = 999
-            
+
             for i, taskType in ipairs(priorityOrder) do
                 if a.CompleteType == taskType then aPriority = i end
                 if b.CompleteType == taskType then bPriority = i end
             end
-            
+
             return aPriority < bPriority
         end)
         
@@ -820,7 +820,7 @@ local function executeQuestTasks()
                 if task.CompleteType == "HatchEgg" then
                     saveAutomationStates()
                     enableHatchingAutomation()
-                    
+
                     -- PRIORITY 1: Check for ready-to-hatch eggs on farm first
                     local hatchSuccess, hatchMessage = findAndHatchReadyEggs()
                     if hatchSuccess then
@@ -839,7 +839,7 @@ local function executeQuestTasks()
                             wait(0.5) -- Brief pause before checking other tasks
                             end
                         end
-                        
+
                 elseif task.CompleteType == "SendEgg" then
                     local eggInventory = getEggInventory()
                     if #eggInventory == 0 then
@@ -1961,6 +1961,7 @@ local function runAutoQuest()
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local TeleportService = game:GetService("TeleportService")
         local LocalPlayer = Players.LocalPlayer
+        local placeAndHatchOnce
         
         local function getSeasonNode()
             local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
@@ -2059,6 +2060,77 @@ local function runAutoQuest()
             return res
         end
         
+        -- Buy cheapest affordable egg from current island conveyors
+        local function buyCheapestAffordableEgg()
+            local islandName = getAssignedIslandName()
+            if not islandName then return false end
+            local art = workspace:FindFirstChild("Art")
+            local island = art and art:FindFirstChild(islandName)
+            local env = island and island:FindFirstChild("ENV")
+            local conveyorRoot = env and env:FindFirstChild("Conveyor")
+            if not conveyorRoot then return false end
+            local netWorth = LocalPlayer:GetAttribute("NetWorth") or 0
+            local cheapestModel, cheapestPrice = nil, math.huge
+            
+            local function parsePriceFromGUI(rootPart)
+                local paths = {"GUI/EggGUI", "EggGUI", "GUI", "Gui"}
+                for _, p in ipairs(paths) do
+                    local eggGUI = rootPart:FindFirstChild(p)
+                    if eggGUI then
+                        local labels = {"Price", "PriceLabel", "Cost", "CostLabel"}
+                        for _, name in ipairs(labels) do
+                            local lbl = eggGUI:FindFirstChild(name)
+                            if lbl and lbl:IsA("TextLabel") then
+                                local txt = lbl.Text or ""
+                                local numStr = txt:gsub("[^%d%.KMBkmb]", "")
+                                if numStr ~= "" then
+                                    local num = tonumber(numStr:match("([%d%.]+)"))
+                                    if num then
+                                        local suf = numStr:match("[KMBkmb]")
+                                        if suf then
+                                            local s = suf:lower()
+                                            if s == "k" then num = num * 1e3 elseif s == "m" then num = num * 1e6 elseif s == "b" then num = num * 1e9 end
+                                        end
+                                        return num
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                return nil
+            end
+            
+            for i = 1, 9 do
+                local c = conveyorRoot:FindFirstChild("Conveyor" .. i)
+                local belt = c and c:FindFirstChild("Belt")
+                if belt then
+                    for _, eggModel in ipairs(belt:GetChildren()) do
+                        if eggModel:IsA("Model") then
+                            local rootPart = eggModel:FindFirstChild("RootPart")
+                            local price = nil
+                            if rootPart then
+                                price = parsePriceFromGUI(rootPart) or eggModel:GetAttribute("Price")
+                            end
+                            if type(price) == "number" and price > 0 and price <= netWorth then
+                                if price < cheapestPrice then
+                                    cheapestPrice = price
+                                    cheapestModel = eggModel
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            if not cheapestModel then return false end
+            local ok = pcall(function()
+                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("BuyEgg", cheapestModel.Name)
+                task.wait(0.1)
+                ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", cheapestModel.Name)
+            end)
+            return ok == true
+        end
+
         -- Send gift (prefer cheapest egg; else lowest-sell pet)
         local function sendGiftOnce()
             -- Choose target player (random not self)
@@ -2078,6 +2150,15 @@ local function runAutoQuest()
                 local pets = getPetInventoryUnplacedNonMutated()
                 table.sort(pets, function(a,b) return getPetSellByType(a.type) < getPetSellByType(b.type) end)
                 if #pets > 0 then itemUid = pets[1].uid isEgg = false end
+            end
+            -- If still no inventory, buy cheapest egg then retry once
+            if not itemUid then
+                if buyCheapestAffordableEgg() then
+                    task.wait(0.6)
+                    eggs = getEggInventory()
+                    table.sort(eggs, function(a,b) return getEggPriceByType(a.type) < getEggPriceByType(b.type) end)
+                    if #eggs > 0 then itemUid = eggs[1].uid isEgg = true end
+                end
             end
             if not itemUid then return false, "no inventory" end
             
@@ -2181,7 +2262,14 @@ local function runAutoQuest()
         -- Sell one unplaced non-mutated pet
         local function sellOne()
             local pets = getPetInventoryUnplacedNonMutated()
-            if #pets == 0 then return false, "no candidates" end
+            if #pets == 0 then
+                -- Try to buy cheapest egg; optional quick place/hatch to create a pet for selling later
+                if buyCheapestAffordableEgg() then
+                    task.wait(0.6)
+                    placeAndHatchOnce(false)
+                end
+                return false, "no candidates"
+            end
             table.sort(pets, function(a,b) return getPetSellByType(a.type) < getPetSellByType(b.type) end)
             local uid = pets[1].uid
             local ok = pcall(function()
@@ -2207,7 +2295,7 @@ local function runAutoQuest()
             end
             return nil
         end
-        local function placeAndHatchOnce(requireMutated)
+        placeAndHatchOnce = function(requireMutated)
             local eggs = getEggInventory()
             if #eggs == 0 then return false, "no eggs" end
             local chosen
