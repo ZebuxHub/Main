@@ -22,6 +22,8 @@ local castThread = nil
 local active = false
 local baitDropdown = nil
 local autoFishToggle = nil
+local lastCastPos = nil
+local lastCastPosAt = 0
 
 -- Config
 local FishingConfig = {
@@ -97,14 +99,26 @@ local function unanchorPlayer()
 end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
+local function getCachedCastPos()
+	local now = tick()
+	if (not lastCastPos) or (now - (lastCastPosAt or 0) >= 5) then
+		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		lastCastPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
+		lastCastPosAt = now
+		pcall(function()
+			shared.LastFishPosList = { { position = lastCastPos } }
+		end)
+	end
+	return lastCastPos
+end
+
 local function castOnce()
 	if not ensureFishRobFocus() then return end
 	-- Start fishing state after focus
     pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Start")
     end)
-	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local pos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
+	local pos = getCachedCastPos()
 	local bait = FishingConfig.SelectedBait or "FishingBait1"
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
@@ -128,6 +142,8 @@ function AutoFishSystem.SetEnabled(state)
 		if active then return end
 		active = true
     FishingConfig.AutoFishEnabled = true
+		lastCastPos = nil
+		lastCastPosAt = 0
 		anchorPlayer()
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
@@ -140,6 +156,9 @@ function AutoFishSystem.SetEnabled(state)
 		if castThread then task.cancel(castThread) castThread = nil end
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		unanchorPlayer()
+		lastCastPos = nil
+		lastCastPosAt = 0
+		pcall(function() shared.LastFishPosList = nil end)
     end
 end
 
