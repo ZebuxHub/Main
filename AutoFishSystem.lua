@@ -529,15 +529,8 @@ end
 -- collectNearbyFish removed for instant recast flow
 
 local function pullFish()
-    local args = {
-        "POUT",
-        {
-            SUC = 1,
-            NoMove = true
-        }
-    }
     local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
     end)
     if not success then
         unanchorPlayer()
@@ -554,7 +547,7 @@ end
 local function waitForFishPull()
     -- We no longer rely on fishingObj/AnimFish; only Player attribute FishState
     
-    local timeout = 20 -- Lower timeout to recycle faster if missed
+    local timeout = 8 -- Lower timeout more to recycle faster if missed
     local startTime = tick()
     local lastState = nil
     
@@ -575,7 +568,7 @@ local function waitForFishPull()
         if tostring(playerState) == "PULL" then
             return true
         end
-        task.wait(0.05)
+        task.wait(0.03)
     end
     
     isCasting = false
@@ -603,17 +596,22 @@ function FishingSystem.Start()
     FishingSystem.Active = true
     FishingConfig.AutoFishEnabled = true
     -- removed statistics session start
-    -- Freeze player for the whole auto-fishing session
-    pcall(anchorPlayer)
+    -- Do not anchor player to avoid any perceived freezing during casts
     
-    FishingSystem.Thread = task.spawn(runAutoFish)
+    FishingSystem.Thread = task.spawn(function()
+        -- Yield to next heartbeat to avoid blocking UI thread on toggle
+        RunService.Heartbeat:Wait()
+        runAutoFish()
+    end)
     -- Listen for HoldUID changes to throw ASAP when holding FishRob
     pcall(function()
         if holdConn then holdConn:Disconnect() end
         holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
-            if not FishingConfig.AutoFishEnabled then return end
-            if isCasting then return end
-            if readHoldUID()=="FishRob" then startFishing() end
+            if not FishingConfig.AutoFishEnabled or isCasting then return end
+            if readHoldUID()=="FishRob" then
+                -- Defer to next frame to avoid re-entrancy during attribute change
+                task.defer(startFishing)
+            end
         end)
     end)
     
