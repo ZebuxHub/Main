@@ -1962,6 +1962,8 @@ local function runAutoQuest()
         local TeleportService = game:GetService("TeleportService")
         local LocalPlayer = Players.LocalPlayer
         local placeAndHatchOnce
+        local placeAllInventoryEggs
+        local hatchAllOwnedEggsDirect
         
         local function getSeasonNode()
             local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
@@ -2355,6 +2357,51 @@ local function runAutoQuest()
             return false, "no rf"
         end
         
+        -- Place all inventory eggs (mutated first if requested); attempt hatch after place loop
+        placeAllInventoryEggs = function(requireMutatedFirst)
+            local eggs = getEggInventory()
+            if #eggs == 0 then return false end
+            if requireMutatedFirst then
+                table.sort(eggs, function(a,b)
+                    local am = a.mut and a.mut ~= "" and a.mut ~= "None"
+                    local bm = b.mut and b.mut ~= "" and b.mut ~= "None"
+                    if am ~= bm then return am end
+                    return (EggHatchTimes[a.type] or 9e9) < (EggHatchTimes[b.type] or 9e9)
+                end)
+            else
+                table.sort(eggs, function(a,b)
+                    return (EggHatchTimes[a.type] or 9e9) < (EggHatchTimes[b.type] or 9e9)
+                end)
+            end
+            local placedAny = false
+            local attempts = 0
+            local maxAttempts = math.min(#eggs, 6)
+            while attempts < maxAttempts do
+                attempts = attempts + 1
+                local ok = placeAndHatchOnce(requireMutatedFirst or false)
+                if ok then placedAny = true end
+                task.wait(0.2)
+            end
+            return placedAny
+        end
+        
+        -- Hatch all owned eggs directly via RF when possible
+        hatchAllOwnedEggsDirect = function()
+            local owned = collectOwnedEggs()
+            if #owned == 0 then return false end
+            local hatched = false
+            for _, eggModel in ipairs(owned) do
+                local rp = eggModel:FindFirstChild("RootPart")
+                local rf = rp and rp:FindFirstChild("RF")
+                if rf then
+                    pcall(function() rf:InvokeServer("Hatch") end)
+                    hatched = true
+                    task.wait(0.1)
+                end
+            end
+            return hatched
+        end
+        
         -- Buy fruit (LTR5 list) once
         local LTR5 = { "Banana", "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", "VoltGinkgo", "DeepseaPearlFruit" }
         local function buyFruitOnce()
@@ -2414,12 +2461,21 @@ local function runAutoQuest()
             if not d3done then feedBigPetOnce() task.wait(0.5) end
             if not d4done then task.wait(1) end
             if not d5done then sellOne() task.wait(0.4) end
-            if not d6done then placeAndHatchOnce(false) task.wait(0.6) else
-                -- If we already completed hatch task but still hold eggs, place opportunistically
-                placeAnyInventoryEggNow()
+            if not d6done then
+                placeAllInventoryEggs(false)
+                hatchAllOwnedEggsDirect()
+                task.wait(0.6)
+            else
+                -- Already done: still place/hatch leftover eggs to generate pets for selling later
+                placeAllInventoryEggs(false)
+                hatchAllOwnedEggsDirect()
             end
             if not d7done then doFishingTick() task.wait(0.6) end
-            if not d8done then placeAndHatchOnce(true) task.wait(0.8) end
+            if not d8done then
+                placeAllInventoryEggs(true)
+                hatchAllOwnedEggsDirect()
+                task.wait(0.8)
+            end
             if not d9done then buyFruitOnce() task.wait(0.6) end
             
             -- Weeklies
@@ -2435,7 +2491,11 @@ local function runAutoQuest()
                 task.wait(0.25)
             end
             if not w3done then sendGiftOnce() task.wait(0.35) end
-            if not w4done then placeAndHatchOnce(true) task.wait(0.7) end
+            if not w4done then
+                placeAllInventoryEggs(true)
+                hatchAllOwnedEggsDirect()
+                task.wait(0.7)
+            end
             if not w5done then usePotionOnce() task.wait(0.6) end
             -- W_OnlineTime handled passively
             
