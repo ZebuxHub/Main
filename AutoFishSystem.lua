@@ -253,7 +253,7 @@ local function anchorPlayer()
                     FishingConfig.PartCollideState[desc] = desc.CanCollide
                     desc.CanCollide = false
                     desc.Massless = true
-                    desc.CustomPhysicalProperties = PhysicalProperties.new(0.0001, 0, 0)
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
                 end
             end
             -- Keep HRP CanCollide false as well
@@ -529,8 +529,15 @@ end
 -- collectNearbyFish removed for instant recast flow
 
 local function pullFish()
+    local args = {
+        "POUT",
+        {
+            SUC = 1,
+            NoMove = true
+        }
+    }
     local success = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(args))
     end)
     if not success then
         unanchorPlayer()
@@ -547,7 +554,7 @@ end
 local function waitForFishPull()
     -- We no longer rely on fishingObj/AnimFish; only Player attribute FishState
     
-    local timeout = 8 -- Lower timeout more to recycle faster if missed
+    local timeout = 20 -- Lower timeout to recycle faster if missed
     local startTime = tick()
     local lastState = nil
     
@@ -568,7 +575,7 @@ local function waitForFishPull()
         if tostring(playerState) == "PULL" then
             return true
         end
-        task.wait(0.03)
+        task.wait(0.05)
     end
     
     isCasting = false
@@ -596,22 +603,17 @@ function FishingSystem.Start()
     FishingSystem.Active = true
     FishingConfig.AutoFishEnabled = true
     -- removed statistics session start
-    -- Do not anchor player to avoid any perceived freezing during casts
+    -- Freeze player for the whole auto-fishing session
+    pcall(anchorPlayer)
     
-    FishingSystem.Thread = task.spawn(function()
-        -- Yield to next heartbeat to avoid blocking UI thread on toggle
-        RunService.Heartbeat:Wait()
-        runAutoFish()
-    end)
+    FishingSystem.Thread = task.spawn(runAutoFish)
     -- Listen for HoldUID changes to throw ASAP when holding FishRob
     pcall(function()
         if holdConn then holdConn:Disconnect() end
         holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
-            if not FishingConfig.AutoFishEnabled or isCasting then return end
-            if readHoldUID()=="FishRob" then
-                -- Defer to next frame to avoid re-entrancy during attribute change
-                task.defer(startFishing)
-            end
+            if not FishingConfig.AutoFishEnabled then return end
+            if isCasting then return end
+            if readHoldUID()=="FishRob" then startFishing() end
         end)
     end)
     
