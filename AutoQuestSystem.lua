@@ -655,43 +655,72 @@ end
 local function updateQuestStatus()
     if not questStatusParagraph then return end
     
-    local tasks = getCurrentTasks()
-    local statusText = "📝 Quest Status:\n"
-    
-    if #tasks == 0 then
-        statusText = statusText .. "No active tasks found."
-    else
-        for _, task in ipairs(tasks) do
-            local progress = task.Progress or 0
-            local target = task.CompleteValue or 1
-            local claimed = task.ClaimedCount or 0
-            local maxClaimed = task.RepeatCount or 1
-            
-            local progressPercent = math.floor((progress / target) * 100)
-            local taskStatus = ""
-            
-            if claimed >= maxClaimed then
-                taskStatus = "✅ COMPLETED"
-            elseif progress >= target then
-                taskStatus = "🏆 READY TO CLAIM"
-            else
-                taskStatus = string.format("⏳ %d/%d (%d%%)", progress, target, progressPercent)
-                
-                -- Add special status for BuyMutateEgg task
-                if task.CompleteType == "BuyMutateEgg" then
-                    taskStatus = taskStatus .. " - " .. buyMutateEggStatus
-                            end
-                        end
-                        
-            statusText = statusText .. string.format("\n%s (%s): %s", task.Id, task.CompleteType, taskStatus)
-        end
+    local function fmt(count, target, done)
+        if done then return "✅ Done" end
+        count = tonumber(count) or 0
+        target = tonumber(target) or 0
+        local pct = target > 0 and math.floor((count/target)*100) or 0
+        return string.format("⏳ %d/%d (%d%%)", count, target, pct)
     end
     
-    statusText = statusText .. string.format("\n\n📊 Session Limits:\nSent: %d/%d | Sold: %d/%d", 
-        sessionLimits.sendEggCount, sessionLimits.maxSendEgg,
-        sessionLimits.sellPetCount, sessionLimits.maxSellPet)
+    local player = Players.LocalPlayer
+    local pg = player and player:FindFirstChild("PlayerGui")
+    local data = pg and pg:FindFirstChild("Data")
+    local sp = data and data:FindFirstChild("SeasonPass")
+    local season = sp and sp:FindFirstChild("Season1")
     
-    questStatusParagraph:SetDesc(statusText)
+    if not season then
+        questStatusParagraph:SetDesc("📝 Season Pass Status:\nNo SeasonPass data found.")
+        return
+    end
+    
+    local function A(name) return (pcall(function() return season:GetAttribute(name) end)) and season:GetAttribute(name) or nil end
+    
+    -- Dailies
+    local d1 = fmt(A("D_SendGift") or 0, 3, A("CC_DailyTask1") == 1)
+    local d2 = fmt(A("D_LikeZoo") or 0, 3, A("CC_DailyTask2") == 1)
+    local d3 = fmt(A("D_FeedBigPet") or 0, 2, A("CC_DailyTask3") == 1)
+    local d4 = fmt(A("D_OnlineTime") or 0, 1200, A("CC_DailyTask4") == 1)
+    local d5 = fmt(A("D_SellObject") or 0, 6, A("CC_DailyTask5") == 1)
+    local d6 = fmt(A("D_HatchEgg") or 0, 8, A("CC_DailyTask6") == 1)
+    local d7 = fmt(A("D_Fishing") or 0, 5, A("CC_DailyTask7") == 1)
+    local d8 = fmt(A("D_HatchMutated") or 0, 1, A("CC_DailyTask8") == 1)
+    local d9 = fmt(A("D_BuyFruitLTR5") or 0, 1, A("CC_DailyTask9") == 1)
+    
+    -- Weeklies
+    local w1 = fmt(A("W_OnlineTime") or 0, 7200, A("CC_WeekTask1") == 1)
+    local w2 = fmt(A("W_LikeZoo") or 0, 20, A("CC_WeekTask2") == 1)
+    local w3 = fmt(A("W_SendGift") or 0, 24, A("CC_WeekTask3") == 1)
+    local w4 = fmt(A("W_HatchMutated") or 0, 10, A("CC_WeekTask4") == 1)
+    local w5 = fmt(A("W_UsePotion") or 0, 10, A("CC_WeekTask5") == 1)
+    
+    -- Season
+    local s1 = fmt(A("S_FishingMutated") or 0, 20, false)
+    
+    local lines = {
+        "📝 Season Pass Status:",
+        "\n— Daily:",
+        string.format("  1) SendGift: %s", d1),
+        string.format("  2) LikeZoo: %s", d2),
+        string.format("  3) FeedBigPet: %s", d3),
+        string.format("  4) OnlineTime: %s", d4),
+        string.format("  5) SellObject: %s", d5),
+        string.format("  6) HatchEgg: %s", d6),
+        string.format("  7) Fishing: %s", d7),
+        string.format("  8) HatchMutated: %s", d8),
+        string.format("  9) BuyFruit LTR5: %s", d9),
+        "\n— Weekly:",
+        string.format("  1) OnlineTime: %s", w1),
+        string.format("  2) LikeZoo: %s", w2),
+        string.format("  3) SendGift: %s", w3),
+        string.format("  4) HatchMutated: %s", w4),
+        string.format("  5) UsePotion: %s", w5),
+        "\n— Season:",
+        string.format("  FishingMutated: %s", s1),
+        string.format("\n📊 Session Limits:\nSent: %d/%d | Sold: %d/%d", sessionLimits.sendEggCount, sessionLimits.maxSendEgg, sessionLimits.sellPetCount, sessionLimits.maxSellPet)
+    }
+    
+    questStatusParagraph:SetDesc(table.concat(lines, "\n"))
 end
 
 local function checkInventoryDialog(taskType, requiredTypes, requiredMutations, availableItems)
