@@ -75,7 +75,7 @@ local function anchorPlayer()
 		local root = c and c:FindFirstChild("HumanoidRootPart")
 		local h = c and c:FindFirstChildOfClass("Humanoid")
 		if not root then return end
-		pcall(function()
+        pcall(function()
 			root.Anchored = true
 			if safeCF then root.CFrame = safeCF end
 			root.AssemblyLinearVelocity = Vector3.zero
@@ -84,7 +84,7 @@ local function anchorPlayer()
 		end)
 	end)
 	-- Sink movement
-	pcall(function()
+        pcall(function()
 		ContextActionService:BindAction("AFS_BlockMovement", function() return Enum.ContextActionResult.Sink end, false,
 			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.LeftShift)
 	end)
@@ -113,12 +113,15 @@ local function castOnce()
 	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local pos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
 	local bait = FishingConfig.SelectedBait or "FishingBait1"
-	pcall(function()
+                pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
 	end)
-                pcall(function()
+    pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
-    end)
+	end)
+	-- Wait 2 seconds after POUT, then re-focus FishRob before next cycle
+	task.wait(2)
+	pcall(ensureFishRobFocus)
 end
 
 local function loopCast()
