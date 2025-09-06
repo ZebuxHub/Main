@@ -152,11 +152,11 @@ local sellPetTypeDropdown = nil
 local sellPetMutationDropdown = nil
 local questStatusParagraph = nil
 local autoDeleteSlider = nil
+local Tabs = nil
 
 -- Dependencies (passed from main script)
 local WindUI = nil
 local Window = nil
-local TabsRef = nil
 local Config = nil
 local waitForSettingsReady = nil
 local autoBuyToggle = nil
@@ -2329,8 +2329,8 @@ function AutoQuestSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
-    TabsRef = dependencies.Tabs
     waitForSettingsReady = dependencies.waitForSettingsReady
+    Tabs = dependencies.Tabs
     autoBuyToggle = dependencies.autoBuyToggle
     autoPlaceToggle = dependencies.autoPlaceToggle
     autoHatchToggle = dependencies.autoHatchToggle
@@ -2338,16 +2338,16 @@ function AutoQuestSystem.Init(dependencies)
     getAutoPlaceEnabled = dependencies.getAutoPlaceEnabled
     getAutoHatchEnabled = dependencies.getAutoHatchEnabled
     
-    -- Create the Quest tab (attach to existing sections if available)
+    -- Create the Quest tab under existing sections if available
     local QuestTab
-    if TabsRef and TabsRef.SecondSection and TabsRef.SecondSection.Tab then
-        QuestTab = TabsRef.SecondSection:Tab({ Title = "📝 | Auto Quest" })
-    elseif TabsRef and TabsRef.MainSection and TabsRef.MainSection.Tab then
-        QuestTab = TabsRef.MainSection:Tab({ Title = "📝 | Auto Quest" })
+    if Tabs and Tabs.SecondSection and Tabs.SecondSection.Tab then
+        QuestTab = Tabs.SecondSection:Tab({ Title = "📝 | Auto Quest" })
+    elseif Tabs and Tabs.MainSection and Tabs.MainSection.Tab then
+        QuestTab = Tabs.MainSection:Tab({ Title = "📝 | Auto Quest" })
     else
         QuestTab = Window:Tab({ Title = "📝 | Auto Quest"})
     end
-
+    
     -- Status display
     questStatusParagraph = QuestTab:Paragraph({
         Title = "Quest List:",
