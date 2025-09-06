@@ -25,6 +25,7 @@ local autoFishToggle = nil
 local lastCastPos = nil
 local lastCastPosAt = 0
 local controlsRef = nil
+local safeCF = nil
 
 -- Config
 local FishingConfig = {
@@ -64,6 +65,7 @@ local function anchorPlayer()
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not (hrp and hum) then return end
+	safeCF = hrp.CFrame
 	hum.AutoRotate = false
 	hum.WalkSpeed = 0
 	hum.JumpPower = 0
@@ -72,8 +74,16 @@ local function anchorPlayer()
 	freezeConn = RunService.Heartbeat:Connect(function()
 		if not active then return end
         pcall(function()
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+			local c = LocalPlayer.Character
+			local root = c and c:FindFirstChild("HumanoidRootPart") or hrp
+			local h = c and c:FindFirstChildOfClass("Humanoid")
+			if root then
+				root.Anchored = true
+				if safeCF then root.CFrame = safeCF end
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+			end
+			if h and h.Move then h:Move(Vector3.new(0,0,0), true) end
 		end)
 	end)
 	-- Sink movement
@@ -89,9 +99,9 @@ local function anchorPlayer()
 		if cm then
 			local controls = require(cm)
 			controlsRef = controls
-			if controls and controls.Disable then controls:Disable() end
-		end
-	end)
+                    if controls and controls.Disable then controls:Disable() end
+            end
+        end)
 end
 
 local function unanchorPlayer()
@@ -108,10 +118,11 @@ local function unanchorPlayer()
 		hum.JumpPower = 50
 	end
 	if hrp then hrp.Anchored = false end
-	pcall(function()
+        pcall(function()
 		if controlsRef and controlsRef.Enable then controlsRef:Enable() end
 		controlsRef = nil
-	end)
+    end)
+	safeCF = nil
 end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
@@ -121,7 +132,7 @@ local function getCachedCastPos()
 		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 		lastCastPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset, 0)) or Vector3.new()
 		lastCastPosAt = now
-		pcall(function()
+    pcall(function()
 			shared.LastFishPosList = { { position = lastCastPos } }
 		end)
 	end
