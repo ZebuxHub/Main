@@ -872,42 +872,40 @@ local FishingSystem = {
 }
 
 local function startFishing()
-    -- Update fishing position to random spot around player
-    updateFishingPosition()
-    
-    -- Ensure hold and throw immediately
-    local held = readHoldUID()
-    if held ~= "FishRob" then
-        if not ensureFishRobFocus() then return false end
-    end
-    
-    -- Select affordable bait
-    local selectedBait = (function()
-        local chosen = chooseAffordableBait(FishingConfig.SelectedBait)
-        if type(chosen) == "table" then chosen = chosen[1] end
-        return chosen or FishingConfig.SelectedBait
-    end)()
-    -- Throw ASAP
-    isCasting = true
-    local throwArgs = {
-        "Throw",
-        {
-            Bait = selectedBait,
-            Pos = FishingConfig.FishingPosition,
-            NoMove = true -- hint for server, if supported
-        }
-    }
-    
-    local throwSuccess, throwErr = pcall(function()
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
-    end)
-    
-    if not throwSuccess then
-        isCasting = false
-        return false
-    end
-    -- removed statistics counter
-    return true
+	-- Compute cast position above player's head for instant throw
+	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local castPos = hrp and (hrp.Position + Vector3.new(0, FishingConfig.VerticalOffset or 10, 0)) or Vector3.new()
+	FishingConfig.FishingPosition = castPos
+
+	-- Ensure hold and throw immediately
+	local held = readHoldUID()
+	if held ~= "FishRob" then
+		if not ensureFishRobFocus() then return false end
+	end
+	
+	-- Select affordable bait
+	local selectedBait = FishingConfig.SelectedBait or "FishingBait1"
+	-- Throw ASAP
+	isCasting = true
+	local throwArgs = {
+		"Throw",
+		{
+			Bait = selectedBait,
+			Pos = castPos,
+			NoMove = true -- hint for server, if supported
+		}
+	}
+	
+	local throwSuccess, throwErr = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer(unpack(throwArgs))
+	end)
+	
+	if not throwSuccess then
+		isCasting = false
+		return false
+	end
+	-- removed statistics counter
+	return true
 end
 
 -- Enhanced fish collection system
@@ -1057,9 +1055,9 @@ function FishingSystem.Start()
     pcall(function()
         if holdConn then holdConn:Disconnect() end
         holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
-            if FishingConfig.AutoFishEnabled and readHoldUID()=="FishRob" and not isCasting then
-                startFishing()
-            end
+            if not FishingConfig.AutoFishEnabled then return end
+            if isCasting then return end
+            if readHoldUID()=="FishRob" then startFishing() end
         end)
     end)
     
@@ -1150,10 +1148,9 @@ function AutoFishSystem.Init(dependencies)
         Values = #AvailableBaits > 0 and AvailableBaits or {"FishingBait1", "FishingBait2", "FishingBait3"},
         Default = FishingConfig.SelectedBait,
         Callback = function(selected)
-            local chosen = chooseAffordableBait(selected)
-            if type(chosen) == "table" then chosen = chosen[1] end
-            FishingConfig.SelectedBait = chosen
-            pcall(function() baitDropdown:Select(chosen) end)
+            if selected and tostring(selected) ~= "" then
+                FishingConfig.SelectedBait = tostring(selected)
+            end
         end
     })
 
