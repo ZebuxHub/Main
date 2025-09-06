@@ -41,64 +41,145 @@ local HardcodedPetTypes = {
 }
 
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Jurassic"
+    "Golden", "Diamond", "Electirc", "Fire", "Jurassic"
 }
 
--- Task configuration data
+-- New Quest configuration data (updated for Season Pass system)
 local TaskConfig = {
-    Task_1 = {
-        Id = "Task_1",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "HatchEgg",
-        CompleteValue = 5,
-        Desc = "K_DINO_DESC_Task_1",
-        Icon = "rbxassetid://90239318564009"
+    DailyTask1 = {
+        Id = "DailyTask1",
+        TaskPoints = 300,
+        TaskType = "Daily",
+        CompleteType = "SendGift",
+        CompleteValue = 3,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK1",
+        Icon = ""
     },
-    Task_3 = {
-        Id = "Task_3",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "SellPet",
-        CompleteValue = 5,
-        Desc = "K_DINO_DESC_Task_3",
-        Icon = "rbxassetid://90239318564009"
+    DailyTask2 = {
+        Id = "DailyTask2",
+        TaskPoints = 280,
+        TaskType = "Daily",
+        CompleteType = "LikeZoo",
+        CompleteValue = 3,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK2",
+        Icon = ""
     },
-    Task_4 = {
-        Id = "Task_4",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "SendEgg",
-        CompleteValue = 5,
-        Desc = "K_DINO_DESC_Task_4",
-        Icon = "rbxassetid://90239318564009"
+    DailyTask3 = {
+        Id = "DailyTask3",
+        TaskPoints = 240,
+        TaskType = "Daily",
+        CompleteType = "FeedBigPet",
+        CompleteValue = 2,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK3",
+        Icon = ""
     },
-    Task_5 = {
-        Id = "Task_5",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "BuyMutateEgg",
-        CompleteValue = 1,
-        Desc = "K_DINO_DESC_Task_5",
-        Icon = "rbxassetid://90239318564009"
-    },
-    Task_7 = {
-        Id = "Task_7",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "HatchEgg",
-        CompleteValue = 10,
-        Desc = "K_DINO_DESC_Task_7",
-        Icon = "rbxassetid://90239318564009"
-    },
-    Task_8 = {
-        Id = "Task_8",
-        TaskPoints = 15,
-        RepeatCount = 6,
+    DailyTask4 = {
+        Id = "DailyTask4",
+        TaskPoints = 280,
+        TaskType = "Daily",
         CompleteType = "OnlineTime",
-        CompleteValue = 900,
-        Desc = "K_DINO_DESC_Task_8",
-        Icon = "rbxassetid://90239318564009"
+        CompleteValue = 1200,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK4",
+        Icon = ""
+    },
+    DailyTask5 = {
+        Id = "DailyTask5",
+        TaskPoints = 200,
+        TaskType = "Daily",
+        CompleteType = "SellObject",
+        CompleteValue = 6,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK5",
+        Icon = ""
+    },
+    DailyTask6 = {
+        Id = "DailyTask6",
+        TaskPoints = 240,
+        TaskType = "Daily",
+        CompleteType = "HatchEgg",
+        CompleteValue = 8,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK6",
+        Icon = ""
+    },
+    DailyTask7 = {
+        Id = "DailyTask7",
+        TaskPoints = 200,
+        TaskType = "Daily",
+        CompleteType = "Fishing",
+        CompleteValue = 5,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK7",
+        Icon = ""
+    },
+    DailyTask8 = {
+        Id = "DailyTask8",
+        TaskPoints = 360,
+        TaskType = "Daily",
+        CompleteType = "HatchMutated",
+        CompleteValue = 1,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK8",
+        Icon = ""
+    },
+    DailyTask9 = {
+        Id = "DailyTask9",
+        TaskPoints = 400,
+        TaskType = "Daily",
+        CompleteType = "BuyFruitLTR5",
+        CompleteValue = 1,
+        Desc = "K_SP_MISSION_DESC_DAILYTASK9",
+        Icon = ""
+    },
+    WeekTask1 = {
+        Id = "WeekTask1",
+        TaskPoints = 1000,
+        TaskType = "Week",
+        CompleteType = "OnlineTime",
+        CompleteValue = 7200,
+        Desc = "K_SP_MISSION_DESC_WEEKTASK1",
+        Icon = ""
+    },
+    WeekTask2 = {
+        Id = "WeekTask2",
+        TaskPoints = 1080,
+        TaskType = "Week",
+        CompleteType = "LikeZoo",
+        CompleteValue = 20,
+        Desc = "K_SP_MISSION_DESC_WEEKTASK2",
+        Icon = ""
+    },
+    WeekTask3 = {
+        Id = "WeekTask3",
+        TaskPoints = 1100,
+        TaskType = "Week",
+        CompleteType = "SendGift",
+        CompleteValue = 24,
+        Desc = "K_SP_MISSION_DESC_WEEKTASK3",
+        Icon = ""
+    },
+    WeekTask4 = {
+        Id = "WeekTask4",
+        TaskPoints = 1200,
+        TaskType = "Week",
+        CompleteType = "HatchMutated",
+        CompleteValue = 10,
+        Desc = "K_SP_MISSION_DESC_WEEKTASK4",
+        Icon = ""
+    },
+    WeekTask5 = {
+        Id = "WeekTask5",
+        TaskPoints = 1200,
+        TaskType = "Week",
+        CompleteType = "UsePotion",
+        CompleteValue = 10,
+        Desc = "K_SP_MISSION_DESC_WEEKTASK5",
+        Icon = ""
+    },
+    Season1 = {
+        Id = "Season1",
+        TaskPoints = 6000,
+        TaskType = "Season",
+        CompleteType = "FishingMutated",
+        CompleteValue = 20,
+        Desc = "K_SP_MISSION_DESC_SEASON1",
+        Icon = ""
     }
 }
 
@@ -164,6 +245,8 @@ local autoHatchToggle = nil
 local getAutoBuyEnabled = nil
 local getAutoPlaceEnabled = nil
 local getAutoHatchEnabled = nil
+local AutoFeedSystem = nil
+local AutoFishSystem = nil
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -194,8 +277,13 @@ end
 
 -- Custom settings save/load functions
 local function saveCustomAutoQuestSettings()
-    if not writefile or not HttpService then return end
-    
+    if not HttpService then return end
+
+    -- Check if writefile is available
+    local writefileAvailable = type(writefile) == "function"
+
+    if not writefileAvailable then return end
+
     -- Update custom settings with current values
     customAutoQuestSettings.autoDeleteMinSpeed = autoDeleteMinSpeed
     customAutoQuestSettings.currentPlacementTarget = currentPlacementTarget
@@ -206,11 +294,11 @@ local function saveCustomAutoQuestSettings()
         maxSendEgg = sessionLimits.maxSendEgg or 5,
         maxSellPet = sessionLimits.maxSellPet or 5
     }
-    
+
     local success, encoded = pcall(function()
         return HttpService:JSONEncode(customAutoQuestSettings)
     end)
-    
+
     if success then
         pcall(function()
             writefile("AutoQuestCustomSettings.json", encoded)
@@ -220,45 +308,51 @@ local function saveCustomAutoQuestSettings()
 end
 
 local function loadCustomAutoQuestSettings()
-    if not readfile or not isfile or not HttpService then return end
-    
+    if not HttpService then return end
+
+    -- Check if file functions are available
+    local readfileAvailable = type(readfile) == "function"
+    local isfileAvailable = type(isfile) == "function"
+
+    if not readfileAvailable or not isfileAvailable then return end
+
     if not isfile("AutoQuestCustomSettings.json") then
         print("Auto Quest: No custom settings file found, using defaults")
         return
     end
-    
+
     local success, fileContent = pcall(function()
         return readfile("AutoQuestCustomSettings.json")
     end)
-    
+
     if not success then
         print("Auto Quest: Failed to read custom settings file")
         return
     end
-    
+
     local decoded = nil
     success, decoded = pcall(function()
         return HttpService:JSONDecode(fileContent)
     end)
-    
+
     if success and decoded then
         -- Load custom settings
         autoDeleteMinSpeed = decoded.autoDeleteMinSpeed or 0
         currentPlacementTarget = decoded.currentPlacementTarget
         placementTargetTime = decoded.placementTargetTime or math.huge
-        
+
         if decoded.sessionLimits then
             sessionLimits.sendEggCount = decoded.sessionLimits.sendEggCount or 0
             sessionLimits.sellPetCount = decoded.sessionLimits.sellPetCount or 0
             sessionLimits.maxSendEgg = decoded.sessionLimits.maxSendEgg or 5
             sessionLimits.maxSellPet = decoded.sessionLimits.maxSellPet or 5
         end
-        
+
         -- Update UI elements if they exist
         if autoDeleteSlider and autoDeleteSlider.SetValue then
             pcall(function() autoDeleteSlider:SetValue(tostring(autoDeleteMinSpeed)) end)
         end
-        
+
         print("Auto Quest: Custom settings loaded successfully")
     else
         print("Auto Quest: Failed to decode custom settings file")
@@ -417,66 +511,109 @@ local function getCurrentTasks()
     local success, err = pcall(function()
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if not playerGui then return end
-    
-    local data = playerGui:FindFirstChild("Data")
+
+        local data = playerGui:FindFirstChild("Data")
         if not data then return end
-        
-        local taskData = data:FindFirstChild("DinoEventTaskData")
-        if not taskData then return end
-        
-        local tasksContainer = taskData:FindFirstChild("Tasks")
-        if not tasksContainer then return end
-        
-        for i = 1, 3 do
-            local taskSlot = tasksContainer:FindFirstChild(tostring(i))
-            if taskSlot then
-                local taskId = safeGetAttribute(taskSlot, "Id", nil)
-                local progress = safeGetAttribute(taskSlot, "Progress", 0)
-                local claimedCount = safeGetAttribute(taskSlot, "ClaimedCount", 0)
-                
-                if taskId and TaskConfig[taskId] then
+
+        -- New Season Pass quest tracking
+        local seasonPass = data:FindFirstChild("SeasonPass")
+        if seasonPass then
+            local season1 = seasonPass:FindFirstChild("Season1")
+            if season1 then
+                -- Get all quests from TaskConfig
+                for taskId, taskData in pairs(TaskConfig) do
+                    -- Get progress from D_ attributes
+                    local progressAttr = "D_" .. taskData.CompleteType
+                    local progress = safeGetAttribute(season1, progressAttr, 0)
+
+                    -- Get completion from CC_ attributes
+                    local completionAttr = "CC_" .. taskId
+                    local isCompleted = safeGetAttribute(season1, completionAttr, 0) == 1
+
                     local task = {}
-                    for k, v in pairs(TaskConfig[taskId]) do
+                    for k, v in pairs(taskData) do
                         task[k] = v
                     end
                     task.Progress = progress
-                    task.ClaimedCount = claimedCount
-                    task.Slot = i
-                    
+                    task.Completed = isCompleted
+                    task.Slot = 1 -- Single slot for season pass
+
                     table.insert(tasks, task)
                 end
             end
         end
+
+        -- Fallback to old DinoEventTaskData system if SeasonPass not found
+        if #tasks == 0 then
+            local taskData = data:FindFirstChild("DinoEventTaskData")
+            if taskData then
+                local tasksContainer = taskData:FindFirstChild("Tasks")
+                if tasksContainer then
+                    for i = 1, 3 do
+                        local taskSlot = tasksContainer:FindFirstChild(tostring(i))
+                        if taskSlot then
+                            local taskId = safeGetAttribute(taskSlot, "Id", nil)
+                            local progress = safeGetAttribute(taskSlot, "Progress", 0)
+                            local claimedCount = safeGetAttribute(taskSlot, "ClaimedCount", 0)
+
+                            if taskId and TaskConfig[taskId] then
+                                local task = {}
+                                for k, v in pairs(TaskConfig[taskId]) do
+                                    task[k] = v
+                                end
+                                task.Progress = progress
+                                task.ClaimedCount = claimedCount
+                                task.Slot = i
+
+                                table.insert(tasks, task)
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end)
-    
+
     if not success then
         warn("Failed to get current tasks: " .. tostring(err))
     end
-    
+
     return tasks
 end
 
 local function claimTask(taskId)
     local success, err = pcall(function()
-    local args = {
-        {
-            event = "claimreward",
-            id = taskId
+        -- Try new Season Pass claim method first
+        local args = {
+            "ClaimTask",
+            taskId
         }
-    }
-        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("SeasonPassRE"):FireServer(unpack(args))
     end)
-    
+
+    if not success then
+        -- Fallback to old DinoEvent claim method
+        success, err = pcall(function()
+            local args = {
+                {
+                    event = "claimreward",
+                    id = taskId
+                }
+            }
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+        end)
+    end
+
     if success then
-        WindUI:Notify({ 
+        WindUI:Notify({
             Title = "🏆 Quest Complete",
             Content = "Claimed reward for " .. taskId .. "!",
-            Duration = 3 
+            Duration = 3
         })
     else
         warn("Failed to claim task " .. taskId .. ": " .. tostring(err))
     end
-    
+
     return success
 end
 
@@ -652,43 +789,38 @@ end
 
 local function updateQuestStatus()
     if not questStatusParagraph then return end
-    
+
     local tasks = getCurrentTasks()
-    local statusText = "📝 Quest Status:\n"
-    
+    local statusText = "📝 Season Pass Quests:\n"
+
     if #tasks == 0 then
-        statusText = statusText .. "No active tasks found."
+        statusText = statusText .. "No active quests found."
     else
         for _, task in ipairs(tasks) do
             local progress = task.Progress or 0
             local target = task.CompleteValue or 1
-            local claimed = task.ClaimedCount or 0
-            local maxClaimed = task.RepeatCount or 1
-            
+            local isCompleted = task.Completed or false
+            local taskType = task.TaskType or "Unknown"
+
             local progressPercent = math.floor((progress / target) * 100)
             local taskStatus = ""
-            
-            if claimed >= maxClaimed then
+
+            if isCompleted then
                 taskStatus = "✅ COMPLETED"
             elseif progress >= target then
                 taskStatus = "🏆 READY TO CLAIM"
             else
                 taskStatus = string.format("⏳ %d/%d (%d%%)", progress, target, progressPercent)
-                
-                -- Add special status for BuyMutateEgg task
-                if task.CompleteType == "BuyMutateEgg" then
-                    taskStatus = taskStatus .. " - " .. buyMutateEggStatus
-                            end
-                        end
-                        
+            end
+
             statusText = statusText .. string.format("\n%s (%s): %s", task.Id, task.CompleteType, taskStatus)
         end
     end
-    
-    statusText = statusText .. string.format("\n\n📊 Session Limits:\nSent: %d/%d | Sold: %d/%d", 
+
+    statusText = statusText .. string.format("\n\n📊 Session Limits:\nSent: %d/%d | Sold: %d/%d",
         sessionLimits.sendEggCount, sessionLimits.maxSendEgg,
         sessionLimits.sellPetCount, sessionLimits.maxSellPet)
-    
+
     questStatusParagraph:SetDesc(statusText)
 end
 
@@ -751,17 +883,20 @@ local function executeQuestTasks()
             lastInventoryRefresh = actionCounter
         end
         
-        -- Sort tasks by priority: BuyMutateEgg → HatchEgg → SendEgg → SellPet → OnlineTime
-        local priorityOrder = {"BuyMutateEgg", "HatchEgg", "SendEgg", "SellPet", "OnlineTime"}
+        -- Sort tasks by priority for new quest system
+        local priorityOrder = {
+            "SendGift", "LikeZoo", "FeedBigPet", "SellObject", "BuyFruitLTR5",
+            "HatchMutated", "Fishing", "FishingMutated", "HatchEgg", "OnlineTime"
+        }
         table.sort(tasks, function(a, b)
             local aPriority = 999
             local bPriority = 999
-            
+
             for i, taskType in ipairs(priorityOrder) do
                 if a.CompleteType == taskType then aPriority = i end
                 if b.CompleteType == taskType then bPriority = i end
             end
-            
+
             return aPriority < bPriority
         end)
         
@@ -786,10 +921,62 @@ local function executeQuestTasks()
                 anyTaskActive = true
                 
                 -- Execute task based on type
-                if task.CompleteType == "HatchEgg" then
+                if task.CompleteType == "SendGift" then
+                    if sendGiftToRandomPlayer() then
+                        actionCounter = actionCounter + 1
+                        wait(1)
+                    end
+
+                elseif task.CompleteType == "LikeZoo" then
+                    if sendGiftToRandomPlayer() then
+                        actionCounter = actionCounter + 1
+                        wait(1)
+                    end
+
+                elseif task.CompleteType == "FeedBigPet" then
+                    -- First unlock big pets if needed
+                    unlockBigPets()
+                    task.wait(0.5)
+
+                    -- Then feed big pets
+                    if feedBigPet() then
+                        actionCounter = actionCounter + 1
+                        wait(1)
+                    end
+
+                elseif task.CompleteType == "SellObject" then
+                    if sellUnplacedPet() then
+                        actionCounter = actionCounter + 1
+                        wait(1)
+                    end
+
+                elseif task.CompleteType == "BuyFruitLTR5" then
+                    if buyFruitLTR5() then
+                        actionCounter = actionCounter + 1
+                        wait(1)
+                    end
+
+                elseif task.CompleteType == "HatchMutated" then
+                    if hatchMutatedEgg() then
+                        actionCounter = actionCounter + 1
+                        wait(1)
+                    end
+
+                elseif task.CompleteType == "Fishing" or task.CompleteType == "FishingMutated" then
+                    -- Use AutoFishSystem if available
+                    if AutoFishSystem and AutoFishSystem.Start then
+                        AutoFishSystem.Start()
+                        actionCounter = actionCounter + 1
+                        wait(5) -- Wait for fishing to complete
+                        if AutoFishSystem.Stop then
+                            AutoFishSystem.Stop()
+                        end
+                    end
+
+                elseif task.CompleteType == "HatchEgg" then
                     saveAutomationStates()
                     enableHatchingAutomation()
-                    
+
                     -- PRIORITY 1: Check for ready-to-hatch eggs on farm first
                     local hatchSuccess, hatchMessage = findAndHatchReadyEggs()
                     if hatchSuccess then
@@ -808,7 +995,7 @@ local function executeQuestTasks()
                             wait(0.5) -- Brief pause before checking other tasks
                             end
                         end
-                        
+
                 elseif task.CompleteType == "SendEgg" then
                     local eggInventory = getEggInventory()
                     if #eggInventory == 0 then
@@ -1417,6 +1604,121 @@ buyAnyCheapestEgg = function()
     return false, "No proximity prompt found"
 end
 
+-- New Quest completion functions
+local function sendGiftToRandomPlayer()
+    local success, err = pcall(function()
+        local randomPlayer = getRandomPlayer()
+        if not randomPlayer then return false end
+
+        local args = {
+            "GiveLike",
+            randomPlayer.UserId
+        }
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        return true
+    end)
+    return success and err or false
+end
+
+local function unlockBigPets()
+    local success, err = pcall(function()
+        local args = {
+            "UnlockBP",
+            1
+        }
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        return true
+    end)
+    return success and err or false
+end
+
+local function feedBigPet()
+    -- Use the same logic as the main script for feeding big pets
+    -- This would integrate with the AutoFeedSystem
+    local success, err = pcall(function()
+        -- Check if AutoFeedSystem is available and use it
+        if AutoFeedSystem and AutoFeedSystem.runAutoFeed then
+            AutoFeedSystem.runAutoFeed(true, {}, function() end, {})
+            return true
+        else
+            -- Fallback: manually feed big pets
+            -- This would require implementing big pet detection and feeding logic
+            return false
+        end
+    end)
+    return success and err or false
+end
+
+local function sellUnplacedPet()
+    local petInventory = getPetInventory()
+    if #petInventory == 0 then return false end
+
+    -- Find a pet without D or M attributes (unplaced, no mutations)
+    for _, pet in ipairs(petInventory) do
+        local hasD = safeGetAttribute(pet, "D", nil)
+        local hasM = safeGetAttribute(pet, "M", nil)
+
+        if not hasD and not hasM then
+            return sellPet(pet.uid)
+        end
+    end
+
+    return false
+end
+
+local function buyFruitLTR5()
+    local success, err = pcall(function()
+        -- This would need to integrate with the fruit buying system
+        -- For now, return false as placeholder
+        local args = {
+            "BuyFruit",
+            "LTR5"
+        }
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FruitStoreRE"):FireServer(unpack(args))
+        return true
+    end)
+    return success and err or false
+end
+
+local function hatchEggDirectly(eggUID)
+    if not eggUID then return false end
+
+    local success, err = pcall(function()
+        -- Find the egg model in workspace.PlayerBuiltBlocks
+        local eggModel = workspace.PlayerBuiltBlocks:FindFirstChild(eggUID)
+        if not eggModel or not eggModel:IsA("Model") then return false end
+
+        local rootPart = eggModel:FindFirstChild("RootPart")
+        if not rootPart then return false end
+
+        local rf = rootPart:FindFirstChild("RF")
+        if not rf then return false end
+
+        -- Fire the hatch remote
+        local args = {"Hatch"}
+        rf:InvokeServer(unpack(args))
+        return true
+    end)
+
+    return success and err or false
+end
+
+local function hatchMutatedEgg()
+    -- Find and hatch a mutated egg
+    local eggInventory = getEggInventory()
+    if #eggInventory == 0 then return false end
+
+    -- Look for eggs with mutations
+    for _, egg in ipairs(eggInventory) do
+        if egg.mutation then
+            -- Use existing hatch logic
+            return hatchEggDirectly(egg.uid)
+        end
+    end
+
+    return false
+end
+
 -- Helper functions for ready egg detection (same as main script)
 local function isStringEmpty(s)
     return type(s) == "string" and (s == "" or s:match("^%s*$") ~= nil)
@@ -1966,6 +2268,8 @@ function AutoQuestSystem.Init(dependencies)
     getAutoBuyEnabled = dependencies.getAutoBuyEnabled
     getAutoPlaceEnabled = dependencies.getAutoPlaceEnabled
     getAutoHatchEnabled = dependencies.getAutoHatchEnabled
+    AutoFeedSystem = dependencies.AutoFeedSystem
+    AutoFishSystem = dependencies.AutoFishSystem
     
     -- Create the Quest tab
     local QuestTab = Window:Tab({ Title = "📝 | Auto Quest"})
