@@ -162,27 +162,44 @@ function WebhookSystem:getFruitInventory()
     local fruits = {}
     local fruitNames = {"Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", "VoltGinkgo", "DeepseaPearlFruit"}
     
+    print("🔍 Checking Asset folder for fruits...")
+    print("📁 Asset children count:", #asset:GetChildren())
+    
     for _, fruitName in ipairs(fruitNames) do
-        -- Try multiple ways to get the count
         local count = 0
-        local attr = asset:GetAttribute(fruitName)
-        if attr then count = tonumber(attr) or 0 end
         
-        -- Also try looking for a child with the fruit name
+        -- Try GetAttribute first
+        local attr = asset:GetAttribute(fruitName)
+        if attr then 
+            count = tonumber(attr) or 0
+            print("🍎 " .. fruitName .. " (attribute): " .. count)
+        end
+        
+        -- Try looking for a child with the fruit name
         if count == 0 then
             local child = asset:FindFirstChild(fruitName)
             if child then
                 if child:IsA("IntValue") or child:IsA("NumberValue") then
                     count = child.Value
+                    print("🍎 " .. fruitName .. " (child value): " .. count)
                 elseif child:IsA("StringValue") then
                     count = tonumber(child.Value) or 0
+                    print("🍎 " .. fruitName .. " (child string): " .. count)
                 end
+            end
+        end
+        
+        -- Try case variations
+        if count == 0 then
+            local lowerChild = asset:FindFirstChild(string.lower(fruitName))
+            if lowerChild and (lowerChild:IsA("IntValue") or lowerChild:IsA("NumberValue")) then
+                count = lowerChild.Value
+                print("🍎 " .. fruitName .. " (lowercase child): " .. count)
             end
         end
         
         if count > 0 then
             fruits[fruitName] = count
-            print("🍎 Found " .. fruitName .. ": " .. count)
         end
     end
     
@@ -206,6 +223,10 @@ function WebhookSystem:getPetInventory()
     end
     
     local petCounts = {}
+    local totalPets = 0
+    
+    print("🔍 Processing " .. #pets:GetChildren() .. " pet configurations...")
+    
     for _, petNode in ipairs(pets:GetChildren()) do
         if petNode:IsA("Configuration") then
             local attrs = petNode:GetAttributes()
@@ -215,11 +236,15 @@ function WebhookSystem:getPetInventory()
             
             local key = petType .. (mutation and (" [" .. mutation .. "]") or "")
             petCounts[key] = (petCounts[key] or 0) + 1
-            print("🐾 Found pet: " .. key)
+            totalPets = totalPets + 1
+            
+            if totalPets <= 5 then -- Only print first 5 for debugging
+                print("🐾 Found pet: " .. key .. " (Type: " .. tostring(attrs.T) .. ", Mutation: " .. tostring(attrs.M) .. ")")
+            end
         end
     end
     
-    print("🐾 Total pet types found: " .. #petCounts)
+    print("🐾 Total pet types found: " .. #petCounts .. " (Total pets: " .. totalPets .. ")")
     return petCounts
 end
 
@@ -232,6 +257,10 @@ function WebhookSystem:getEggInventory()
     end
     
     local eggCounts = {}
+    local totalEggs = 0
+    
+    print("🔍 Processing " .. #eggs:GetChildren() .. " egg configurations...")
+    
     for _, eggNode in ipairs(eggs:GetChildren()) do
         if eggNode:IsA("Configuration") then
             local attrs = eggNode:GetAttributes()
@@ -241,11 +270,15 @@ function WebhookSystem:getEggInventory()
             
             local key = eggType .. (mutation and (" [" .. mutation .. "]") or "")
             eggCounts[key] = (eggCounts[key] or 0) + 1
-            print("🥚 Found egg: " .. key)
+            totalEggs = totalEggs + 1
+            
+            if totalEggs <= 5 then -- Only print first 5 for debugging
+                print("🥚 Found egg: " .. key .. " (Type: " .. tostring(attrs.T) .. ", Mutation: " .. tostring(attrs.M) .. ")")
+            end
         end
     end
     
-    print("🥚 Total egg types found: " .. #eggCounts)
+    print("🥚 Total egg types found: " .. #eggCounts .. " (Total eggs: " .. totalEggs .. ")")
     return eggCounts
 end
 
