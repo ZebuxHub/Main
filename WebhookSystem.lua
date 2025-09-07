@@ -74,18 +74,35 @@ function WebhookSystem:getRequestFunction()
 end
 
 function WebhookSystem:sendPayload(payload)
-    if not self.config.url or self.config.url == "" then return false, "No URL" end
+    print("🌐 Preparing HTTP request...")
+    
+    if not self.config.url or self.config.url == "" then 
+        print("❌ No webhook URL!")
+        return false, "No URL" 
+    end
+    
     local req = self:getRequestFunction()
-    if not req then return false, "No request function" end
+    if not req then 
+        print("❌ No HTTP request function available!")
+        return false, "No request function" 
+    end
+    
+    print("✅ HTTP request function found")
+    print("🔗 URL:", self.config.url)
     
     local ok, res = pcall(function()
-        return req({
+        print("📡 Making HTTP request...")
+        local result = req({
             Url = self.config.url,
             Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = HttpService:JSONEncode(payload)
         })
+        print("📡 HTTP request completed")
+        return result
     end)
+    
+    print("📡 HTTP result:", ok, res)
     return ok == true, res
 end
 
@@ -96,7 +113,12 @@ function WebhookSystem:sendText(text)
 end
 
 function WebhookSystem:sendEmbed(embed)
-    return self:sendPayload({ embeds = { embed } })
+    print("📤 Sending embed to Discord...")
+    local payload = { embeds = { embed } }
+    print("📦 Payload created, sending...")
+    local success, result = self:sendPayload(payload)
+    print("📤 Send result:", success, result)
+    return success, result
 end
 
 -- Get player data
@@ -272,24 +294,47 @@ function WebhookSystem:formatPetLine(pets, limit)
 end
 
 function WebhookSystem:sendInventorySnapshot()
+    print("🚀 Starting inventory snapshot...")
+    
     if not self.config.url or self.config.url == "" then
         print("❌ Webhook URL not set!")
         return false, "No webhook URL"
     end
     
+    print("✅ Webhook URL found:", self.config.url)
+    
+    print("📊 Getting net worth...")
     local netWorth = self:getNetWorth()
+    print("💰 Net worth:", netWorth)
+    
+    print("🎫 Getting ticket count...")
     local ticketCount = self:getTicketCount()
+    print("🎫 Ticket count:", ticketCount)
+    
+    print("🍎 Getting fruit inventory...")
     local fruits = self:getFruitInventory()
+    
+    print("🐾 Getting pet inventory...")
     local pets = self:getPetInventory()
+    
+    print("🥚 Getting egg inventory...")
     local eggs = self:getEggInventory()
     
+    print("🔢 Formatting numbers...")
     local netWorthStr = self:formatNumber(netWorth)
     local ticketStr = self:formatNumber(ticketCount)
+    print("💰 Formatted net worth:", netWorthStr)
+    print("🎫 Formatted tickets:", ticketStr)
     
+    print("📝 Formatting text...")
     local fruitText = self:formatFruitLine(fruits)
     local petText = self:formatPetLine(pets, 15)
     local eggText = self:formatPetLine(eggs, 10)
+    print("🍎 Fruit text length:", #fruitText)
+    print("🐾 Pet text length:", #petText)
+    print("🥚 Egg text length:", #eggText)
     
+    print("🏗️ Building embed...")
     local embed = {
         title = "📊 Inventory Snapshot",
         color = 16761095,
