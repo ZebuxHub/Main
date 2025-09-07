@@ -1,195 +1,184 @@
-local HttpService = game:GetService("HttpService")
+-- WebhookSystem.lua
+-- Lightweight webhook sender and trade/cerberus notifier
+
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
-local M = {
-	url = "",
-	cerbOnce = false,
-	tradeNotify = false,
-	session = { entries = {}, limit = 0, target = "", startedAt = os.time() },
-	_cerbConn = nil,
-	_cerbSent = false,
-}
+local M = {}
 
-function M:SetUrl(url)
-	self.url = tostring(url or "")
-end
+M.url = ""
+M.tradeNotify = false
+M._cerbOnce = false
+M._cerbSent = false
+M._cerbConn = nil
+M._cerbConn2 = nil
+M._session = nil
 
-function M:Post(payload)
-	if not self.url or self.url == "" then return end
-	pcall(function()
-		HttpService:PostAsync(self.url, HttpService:JSONEncode(payload), Enum.HttpContentType.ApplicationJson)
-	end)
-end
-
-function M:CollectPets()
-	local out = {}
+local function safeGetPetsFolder()
 	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
 	local data = pg and pg:FindFirstChild("Data")
-	local pets = data and data:FindFirstChild("Pets")
-	if pets then
-		for _, node in ipairs(pets:GetChildren()) do
-			if node:IsA("Configuration") then
-				local attrs = node:GetAttributes()
-				local d = attrs.D
-				if d == nil or tostring(d) == "" then
-					table.insert(out, { uid = node.Name, T = attrs.T, M = attrs.M })
-				end
+	return data and data:FindFirstChild("Pets") or nil
+end
+
+local function buildEnvelope(event, payload)
+	local env = {
+		event = event,
+		playerName = LocalPlayer and LocalPlayer.Name or "",
+		userId = LocalPlayer and LocalPlayer.UserId or 0,
+		timestamp = os.time(),
+		payload = payload or {}
+	}
+	return env
+end
+
+local function post(url, body)
+	if type(url) ~= "string" or url == "" then return false, "no_url" end
+	local json = HttpService:JSONEncode(body)
+	local ok, res = pcall(function()
+		return HttpService:PostAsync(url, json, Enum.HttpContentType.ApplicationJson, false)
+	end)
+	return ok, res
+end
+
+function M.SetUrl(url)
+	M.url = tostring(url or "")
+end
+
+function M.SetTradeNotify(flag)
+	M.tradeNotify = flag and true or false
+end
+
+local function extractConfInfo(conf)
+	if not conf or not conf.GetAttribute then return { id = tostring(conf and conf.Name or ""), type = "", mutate = "" } end
+	local t = conf:GetAttribute("T") or ""
+	local m = conf:GetAttribute("M") or ""
+	if tostring(m) == "Dino" then m = "Jurassic" end
+	return { id = tostring(conf.Name), type = tostring(t), mutate = tostring(m) }
+end
+
+function M.SendAllInventory()
+	local pets = safeGetPetsFolder()
+	if not pets then return false end
+	local list = {}
+	for _, conf in ipairs(pets:GetChildren()) do
+		if conf:IsA("Configuration") then
+			table.insert(list, extractConfInfo(conf))
+		end
+	end
+	local env = buildEnvelope("send_all", { items = list })
+	post(M.url, env)
+	return true
+end
+
+local function cerbCheckOnce()
+	if M._cerbSent then return end
+	local pets = safeGetPetsFolder()
+	if not pets then return end
+	for _, conf in ipairs(pets:GetChildren()) do
+		if conf:IsA("Configuration") then
+			local t = conf:GetAttribute("T")
+			if tostring(t) == "Cerberus" or tostring(conf.Name):find("Cerberus") then
+				local env = buildEnvelope("cerberus", { item = extractConfInfo(conf) })
+				post(M.url, env)
+				M._cerbSent = true
+				return
 			end
 		end
 	end
-	-- group count by T/M
-	local map = {}
-	for _, it in ipairs(out) do
-		local key = string.format("%s|%s", tostring(it.T or "Unknown"), tostring(it.M or ""))
-		local rec = map[key]
-		if not rec then rec = { T = it.T, M = it.M, count = 0 }; map[key] = rec end
-		rec.count += 1
-	end
-	local arr = {}
-	for _, rec in pairs(map) do table.insert(arr, rec) end
-	table.sort(arr, function(a,b)
-		if tostring(a.T) == tostring(b.T) then return tostring(a.M or "") < tostring(b.M or "") end
-		return tostring(a.T) < tostring(b.T)
-	end)
-	return arr
 end
 
-function M:CollectEggs()
-	local out = {}
-	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-	local data = pg and pg:FindFirstChild("Data")
-	local eggs = data and data:FindFirstChild("Egg")
-	if eggs then
-		for _, node in ipairs(eggs:GetChildren()) do
-			if node:IsA("Configuration") then
-				local attrs = node:GetAttributes()
-				local d = attrs.D
-				if d == nil or tostring(d) == "" then
-					table.insert(out, { uid = node.Name, T = (attrs.T or node.Name), M = attrs.M })
-				end
-			end
-		end
-	end
-	local map = {}
-	for _, it in ipairs(out) do
-		local key = string.format("%s|%s", tostring(it.T or "Unknown"), tostring(it.M or ""))
-		local rec = map[key]
-		if not rec then rec = { T = it.T, M = it.M, count = 0 }; map[key] = rec end
-		rec.count += 1
-	end
-	local arr = {}
-	for _, rec in pairs(map) do table.insert(arr, rec) end
-	table.sort(arr, function(a,b)
-		if tostring(a.T) == tostring(b.T) then return tostring(a.M or "") < tostring(b.M or "") end
-		return tostring(a.T) < tostring(b.T)
-	end)
-	return arr
+local function disconnectCerb()
+	if M._cerbConn then pcall(function() M._cerbConn:Disconnect() end) M._cerbConn = nil end
+	if M._cerbConn2 then pcall(function() M._cerbConn2:Disconnect() end) M._cerbConn2 = nil end
 end
 
-local function makeEmbed(title, description, fields)
-	return { title = title, description = description, color = 5814783, timestamp = DateTime.now():ToIsoDate(), fields = fields }
-end
-
-function M:SendAllInventory()
-	local eggs = self:CollectEggs()
-	local pets = self:CollectPets()
-	local eggLines, petLines = {}, {}
-	for _, e in ipairs(eggs) do table.insert(eggLines, string.format("%s%s x%d", tostring(e.T or "Unknown"), (e.M and (" ["..tostring(e.M).."]") or ""), tonumber(e.count) or 0)) end
-	for _, p in ipairs(pets) do table.insert(petLines, string.format("%s%s x%d", tostring(p.T or "Unknown"), (p.M and (" ["..tostring(p.M).."]") or ""), tonumber(p.count) or 0)) end
-	local fields = {
-		{ name = "Eggs (unplaced)", value = (#eggLines>0 and table.concat(eggLines, "\n") or "None"), inline = false },
-		{ name = "Pets (unplaced)", value = (#petLines>0 and table.concat(petLines, "\n") or "None"), inline = false },
-	}
-	self:Post({ username = "Best Auto", embeds = { makeEmbed("Inventory Snapshot", tostring(LocalPlayer and LocalPlayer.Name or ""), fields) } })
-end
-
-function M:SendSummary(reason)
-	if not (self.tradeNotify and self.url ~= "") then return end
-	local lines = {}
-	for _, ent in ipairs(self.session.entries) do
-		local s = string.format("%s → %s | %s%s | %s", tostring(LocalPlayer and LocalPlayer.Name or ""), tostring(ent.receiver or ""), tostring(ent.T or "Unknown"), (ent.M and (" ["..tostring(ent.M).."]") or ""), tostring(ent.uid or ""))
-		table.insert(lines, s)
-	end
-	local fields = {
-		{ name = "Target", value = tostring(self.session.target or ""), inline = true },
-		{ name = "Limit", value = tostring(self.session.limit or 0), inline = true },
-		{ name = "Count", value = tostring(#self.session.entries), inline = true },
-		{ name = "Entries", value = (#lines>0 and table.concat(lines, "\n") or "None"), inline = false },
-	}
-	self:Post({ username = "Best Auto", embeds = { makeEmbed("Trade Session Summary ("..tostring(reason or "")..
-		")", os.date("!%Y-%m-%dT%H:%M:%SZ", self.session.startedAt or os.time()), fields) } })
-end
-
-function M:OnGift(targetPlayer, kind, conf)
-	if not conf then return end
-	local tVal = conf:GetAttribute("T")
-	local mVal = conf:GetAttribute("M")
-	local uid = conf.Name or ""
-	local receiver = targetPlayer and targetPlayer.Name or ""
-	if self.tradeNotify and self.url ~= "" then
-		local fields = {
-			{ name = "Receiver", value = receiver or "", inline = true },
-			{ name = "Kind", value = tostring(kind or ""), inline = true },
-			{ name = "Item", value = string.format("%s%s", tostring(tVal or "Unknown"), (mVal and (" ["..tostring(mVal).."]") or "")), inline = false },
-			{ name = "UID", value = uid or "", inline = false },
-		}
-		self:Post({ username = "Best Auto", embeds = { makeEmbed("Trade Complete", tostring(LocalPlayer and LocalPlayer.Name or ""), fields) } })
-	end
-	self:AddEntry(receiver, kind, uid, tVal, mVal)
-end
-
-function M:OnTradeToggle(enabled, limit, target)
-	if enabled then
-		self:Reset(limit, target)
-	else
-		if #self.session.entries > 0 then self:SendSummary("stopped") end
-	end
-end
-
-function M:OnTradeHitLimit(limit, count, target)
-	self.session.limit = tonumber(limit) or self.session.limit
-	self.session.target = tostring(target or self.session.target)
-	self:SendSummary("limit_reached")
-end
-
-function M:SetCerbOnce(enabled)
-	self.cerbOnce = enabled and true or false
-	if self._cerbConn then pcall(function() self._cerbConn:Disconnect() end) self._cerbConn = nil end
-	self._cerbSent = false
-	if not self.cerbOnce then return end
-	-- Immediate scan
-	if self:_scanForCerberus() and not self._cerbSent then
-		self:Post({ event = "cerberus_detected", user = tostring(LocalPlayer and LocalPlayer.Name or "") })
-		self._cerbSent = true
+function M.SetCerbOnce(flag)
+	M._cerbOnce = flag and true or false
+	if not M._cerbOnce then
+		disconnectCerb()
 		return
 	end
-	-- Watch for new pets
-	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-	local data = pg and pg:FindFirstChild("Data")
-	local pets = data and data:FindFirstChild("Pets")
-	if pets then
-		self._cerbConn = pets.ChildAdded:Connect(function(child)
-			if self._cerbSent or not self.cerbOnce then return end
-			if child and child:IsA("Configuration") then
-				local t = child:GetAttribute("T")
-				if tostring(t) == "Cerberus" then
-					self:Post({ event = "cerberus_detected", user = tostring(LocalPlayer and LocalPlayer.Name or "") })
-					self._cerbSent = true
-					if self._cerbConn then pcall(function() self._cerbConn:Disconnect() end) self._cerbConn = nil end
-				end
+	M._cerbSent = false
+	cerbCheckOnce()
+	local pets = safeGetPetsFolder()
+	if not pets then return end
+	M._cerbConn = pets.ChildAdded:Connect(function(ch)
+		if M._cerbSent or not M._cerbOnce then return end
+		if ch:IsA("Configuration") then
+			local t = ch:GetAttribute("T")
+			if tostring(t) == "Cerberus" or tostring(ch.Name):find("Cerberus") then
+				local env = buildEnvelope("cerberus", { item = extractConfInfo(ch), source = "ChildAdded" })
+				post(M.url, env)
+				M._cerbSent = true
+				disconnectCerb()
 			end
-		end)
+		end
+	end)
+	M._cerbConn2 = pets.ChildRemoved:Connect(function()
+		-- no-op; keep connection alive until sent
+	end)
+end
+
+local function ensureSession()
+	if not M._session then
+		M._session = { id = tostring(HttpService:GenerateGUID(false)), items = {}, start = os.time(), limit = 0, target = "" }
+	end
+	return M._session
+end
+
+function M.OnTradeToggle(enabled, limit, target)
+	if enabled then
+		M._session = { id = tostring(HttpService:GenerateGUID(false)), items = {}, start = os.time(), limit = tonumber(limit) or 0, target = tostring(target or "") }
+	else
+		if M.tradeNotify and M._session then
+			local payload = {
+				sessionId = M._session.id,
+				target = M._session.target,
+				limit = M._session.limit,
+				count = #M._session.items,
+				items = M._session.items,
+				ended = os.time(),
+				status = "stopped"
+			}
+			post(M.url, buildEnvelope("trade_stop", payload))
+		end
+		M._session = nil
 	end
 end
 
-function M:Reset(limit, target)
-	self.session = { entries = {}, limit = tonumber(limit) or 0, target = tostring(target or ""), startedAt = os.time() }
+function M.OnGift(targetPlayer, kind, conf)
+	if not M.tradeNotify then return end
+	local s = ensureSession()
+	local rec = extractConfInfo(conf)
+	rec.kind = tostring(kind)
+	if typeof(targetPlayer) == "Instance" then
+		rec.receiver = targetPlayer.Name
+		rec.receiverUserId = targetPlayer.UserId
+	else
+		rec.receiver = tostring(targetPlayer)
+		rec.receiverUserId = 0
+	end
+	table.insert(s.items, rec)
+	-- optional live progress
+	post(M.url, buildEnvelope("trade_progress", { sessionId = s.id, last = rec, count = #s.items, target = s.target }))
 end
 
-function M:AddEntry(receiver, kind, uid, T, MVal)
-	table.insert(self.session.entries, { receiver = tostring(receiver or ""), kind = tostring(kind or ""), uid = tostring(uid or ""), T = T, M = MVal, ts = os.time() })
+function M.OnTradeHitLimit(limit, count, target)
+	if not M.tradeNotify then return end
+	local s = ensureSession()
+	local payload = {
+		sessionId = s.id,
+		target = tostring(target or s.target),
+		limit = tonumber(limit) or s.limit,
+		count = tonumber(count) or #s.items,
+		items = s.items,
+		ended = os.time(),
+		status = "complete"
+	}
+	post(M.url, buildEnvelope("trade_complete", payload))
+	M._session = nil
 end
 
 return M
