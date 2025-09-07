@@ -132,7 +132,10 @@ end
 function WebhookSystem:getFruitInventory()
     local data = self:getPlayerData()
     local asset = data and data:FindFirstChild("Asset")
-    if not asset then return {} end
+    if not asset then 
+        print("❌ Asset folder not found!")
+        return {} 
+    end
     
     local fruits = {}
     local fruitNames = {"Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", "VoltGinkgo", "DeepseaPearlFruit"}
@@ -141,9 +144,11 @@ function WebhookSystem:getFruitInventory()
         local count = asset:GetAttribute(fruitName) or 0
         if count > 0 then
             fruits[fruitName] = count
+            print("🍎 Found " .. fruitName .. ": " .. count)
         end
     end
     
+    print("📊 Total fruits found: " .. #fruits)
     return fruits
 end
 
@@ -157,7 +162,10 @@ end
 function WebhookSystem:getPetInventory()
     local data = self:getPlayerData()
     local pets = data and data:FindFirstChild("Pets")
-    if not pets then return {} end
+    if not pets then 
+        print("❌ Pets folder not found!")
+        return {} 
+    end
     
     local petCounts = {}
     for _, petNode in ipairs(pets:GetChildren()) do
@@ -172,13 +180,17 @@ function WebhookSystem:getPetInventory()
         end
     end
     
+    print("🐾 Total pet types found: " .. #petCounts)
     return petCounts
 end
 
 function WebhookSystem:getEggInventory()
     local data = self:getPlayerData()
     local eggs = data and data:FindFirstChild("Egg")
-    if not eggs then return {} end
+    if not eggs then 
+        print("❌ Egg folder not found!")
+        return {} 
+    end
     
     local eggCounts = {}
     for _, eggNode in ipairs(eggs:GetChildren()) do
@@ -193,6 +205,7 @@ function WebhookSystem:getEggInventory()
         end
     end
     
+    print("🥚 Total egg types found: " .. #eggCounts)
     return eggCounts
 end
 
@@ -259,6 +272,11 @@ function WebhookSystem:formatPetLine(pets, limit)
 end
 
 function WebhookSystem:sendInventorySnapshot()
+    if not self.config.url or self.config.url == "" then
+        print("❌ Webhook URL not set!")
+        return false, "No webhook URL"
+    end
+    
     local netWorth = self:getNetWorth()
     local ticketCount = self:getTicketCount()
     local fruits = self:getFruitInventory()
@@ -299,7 +317,14 @@ function WebhookSystem:sendInventorySnapshot()
         }
     }
     
-    return self:sendEmbed(embed)
+    print("📊 Sending inventory snapshot...")
+    local success, result = self:sendEmbed(embed)
+    if success then
+        print("✅ Inventory snapshot sent successfully!")
+    else
+        print("❌ Failed to send inventory snapshot:", result)
+    end
+    return success, result
 end
 
 -- Cerberus detection
