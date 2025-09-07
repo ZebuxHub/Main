@@ -6,6 +6,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
+-- Global declarations for executors
+local http_request = http_request
+local request = request
+local syn = syn
+local krnl = krnl
+local fluxus = fluxus
+local http = http
+
 local WebhookSystem = {}
 
 -- Configuration
