@@ -296,80 +296,88 @@ end
 function WebhookSystem:sendInventorySnapshot()
     print("🚀 Starting inventory snapshot...")
     
-    if not self.config.url or self.config.url == "" then
-        print("❌ Webhook URL not set!")
-        return false, "No webhook URL"
-    end
-    
-    print("✅ Webhook URL found:", self.config.url)
-    
-    print("📊 Getting net worth...")
-    local netWorth = self:getNetWorth()
-    print("💰 Net worth:", netWorth)
-    
-    print("🎫 Getting ticket count...")
-    local ticketCount = self:getTicketCount()
-    print("🎫 Ticket count:", ticketCount)
-    
-    print("🍎 Getting fruit inventory...")
-    local fruits = self:getFruitInventory()
-    
-    print("🐾 Getting pet inventory...")
-    local pets = self:getPetInventory()
-    
-    print("🥚 Getting egg inventory...")
-    local eggs = self:getEggInventory()
-    
-    print("🔢 Formatting numbers...")
-    local netWorthStr = self:formatNumber(netWorth)
-    local ticketStr = self:formatNumber(ticketCount)
-    print("💰 Formatted net worth:", netWorthStr)
-    print("🎫 Formatted tickets:", ticketStr)
-    
-    print("📝 Formatting text...")
-    local fruitText = self:formatFruitLine(fruits)
-    local petText = self:formatPetLine(pets, 15)
-    local eggText = self:formatPetLine(eggs, 10)
-    print("🍎 Fruit text length:", #fruitText)
-    print("🐾 Pet text length:", #petText)
-    print("🥚 Egg text length:", #eggText)
-    
-    print("🏗️ Building embed...")
-    local embed = {
-        title = "📊 Inventory Snapshot",
-        color = 16761095,
-        fields = {
-            {
-                value = "💰 Net Worth: `" .. netWorthStr .. "`\n" .. self.emojis.Ticket .. " Ticket: `" .. ticketStr .. "`"
+    local success, error = pcall(function()
+        if not self.config.url or self.config.url == "" then
+            print("❌ Webhook URL not set!")
+            return false, "No webhook URL"
+        end
+        
+        print("✅ Webhook URL found:", self.config.url)
+        
+        print("📊 Getting net worth...")
+        local netWorth = self:getNetWorth()
+        print("💰 Net worth:", netWorth)
+        
+        print("🎫 Getting ticket count...")
+        local ticketCount = self:getTicketCount()
+        print("🎫 Ticket count:", ticketCount)
+        
+        print("🍎 Getting fruit inventory...")
+        local fruits = self:getFruitInventory()
+        
+        print("🐾 Getting pet inventory...")
+        local pets = self:getPetInventory()
+        
+        print("🥚 Getting egg inventory...")
+        local eggs = self:getEggInventory()
+        
+        print("🔢 Formatting numbers...")
+        local netWorthStr = self:formatNumber(netWorth)
+        local ticketStr = self:formatNumber(ticketCount)
+        print("💰 Formatted net worth:", netWorthStr)
+        print("🎫 Formatted tickets:", ticketStr)
+        
+        print("📝 Formatting text...")
+        local fruitText = self:formatFruitLine(fruits)
+        local petText = self:formatPetLine(pets, 15)
+        local eggText = self:formatPetLine(eggs, 10)
+        print("🍎 Fruit text length:", #fruitText)
+        print("🐾 Pet text length:", #petText)
+        print("🥚 Egg text length:", #eggText)
+        
+        print("🏗️ Building embed...")
+        local embed = {
+            title = "📊 Inventory Snapshot",
+            color = 16761095,
+            fields = {
+                {
+                    value = "💰 Net Worth: `" .. netWorthStr .. "`\n" .. self.emojis.Ticket .. " Ticket: `" .. ticketStr .. "`"
+                },
+                {
+                    name = "🪣 Fruits",
+                    value = fruitText
+                },
+                {
+                    name = "🐾 Pets",
+                    value = "```diff\n" .. petText .. "\n```",
+                    inline = true
+                },
+                {
+                    name = "🥚 Top Eggs",
+                    value = "```diff\n" .. eggText .. "\n```",
+                    inline = true
+                }
             },
-            {
-                name = "🪣 Fruits",
-                value = fruitText
-            },
-            {
-                name = "🐾 Pets",
-                value = "```diff\n" .. petText .. "\n```",
-                inline = true
-            },
-            {
-                name = "🥚 Top Eggs",
-                value = "```diff\n" .. eggText .. "\n```",
-                inline = true
+            footer = {
+                text = "Generated • Build A Zoo"
             }
-        },
-        footer = {
-            text = "Generated • Build A Zoo"
         }
-    }
+        
+        print("📊 Sending inventory snapshot...")
+        local success, result = self:sendEmbed(embed)
+        if success then
+            print("✅ Inventory snapshot sent successfully!")
+        else
+            print("❌ Failed to send inventory snapshot:", result)
+        end
+        return success, result
+    end)
     
-    print("📊 Sending inventory snapshot...")
-    local success, result = self:sendEmbed(embed)
-    if success then
-        print("✅ Inventory snapshot sent successfully!")
-    else
-        print("❌ Failed to send inventory snapshot:", result)
+    if not success then
+        print("❌ Error in sendInventorySnapshot:", error)
     end
-    return success, result
+    
+    return success, error
 end
 
 -- Cerberus detection
