@@ -163,7 +163,23 @@ function WebhookSystem:getFruitInventory()
     local fruitNames = {"Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", "VoltGinkgo", "DeepseaPearlFruit"}
     
     for _, fruitName in ipairs(fruitNames) do
-        local count = asset:GetAttribute(fruitName) or 0
+        -- Try multiple ways to get the count
+        local count = 0
+        local attr = asset:GetAttribute(fruitName)
+        if attr then count = tonumber(attr) or 0 end
+        
+        -- Also try looking for a child with the fruit name
+        if count == 0 then
+            local child = asset:FindFirstChild(fruitName)
+            if child then
+                if child:IsA("IntValue") or child:IsA("NumberValue") then
+                    count = child.Value
+                elseif child:IsA("StringValue") then
+                    count = tonumber(child.Value) or 0
+                end
+            end
+        end
+        
         if count > 0 then
             fruits[fruitName] = count
             print("🍎 Found " .. fruitName .. ": " .. count)
@@ -199,6 +215,7 @@ function WebhookSystem:getPetInventory()
             
             local key = petType .. (mutation and (" [" .. mutation .. "]") or "")
             petCounts[key] = (petCounts[key] or 0) + 1
+            print("🐾 Found pet: " .. key)
         end
     end
     
@@ -224,6 +241,7 @@ function WebhookSystem:getEggInventory()
             
             local key = eggType .. (mutation and (" [" .. mutation .. "]") or "")
             eggCounts[key] = (eggCounts[key] or 0) + 1
+            print("🥚 Found egg: " .. key)
         end
     end
     
