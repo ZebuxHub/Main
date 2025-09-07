@@ -1,5 +1,5 @@
 -- WebhookSystem.lua
--- Discord webhook integration for Build a Zoo automation
+-- Advanced Discord webhook system for Build a Zoo automation
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,9 +18,8 @@ WebhookSystem.config = {
     inventorySnapshot = false
 }
 
--- Emoji mappings for fruits and items
-WebhookSystem.emojis = {
-    -- Fruits
+-- Fruit emojis mapping
+WebhookSystem.fruitEmojis = {
     Strawberry = "<:Strawberry:1414278519382605874>",
     Blueberry = "<:Blueberry:1414278423119007744>",
     Watermelon = "<:Watermelon:1414278523903803402>",
@@ -35,37 +34,41 @@ WebhookSystem.emojis = {
     BloodstoneCycad = "<:BloodstoneCycad:1414278408988528725>",
     ColossalPinecone = "<:ColossalPinecone:1414278437052616865>",
     VoltGinkgo = "<:VoltGinkgo:1414278521681088543>",
-    DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>",
-    
-    -- Other items
-    Ticket = "<:Ticket:1414283452659798167>",
-    
-    -- Pet emojis
+    DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>"
+}
+
+-- Mutation emojis
+WebhookSystem.mutationEmojis = {
+    Golden = "🧬",
+    Diamond = "💎",
+    Fire = "🔥",
+    Electric = "⚡",
+    Dino = "🦕",
+    Jurassic = "🦕"
+}
+
+-- Pet emojis
+WebhookSystem.petEmojis = {
     Mouse = "🐾",
-    Rabbit = "🐾",
-    Toucan = "🐾",
-    Fox = "🐾",
-    Bighead = "🐾",
-    
-    -- Egg emojis
+    Rabbit = "🐰",
+    Toucan = "🦜",
+    Fox = "🦊",
+    Bighead = "🐸",
+    Cerberus = "🐕"
+}
+
+-- Egg emojis
+WebhookSystem.eggEmojis = {
     RareEgg = "🥚",
     EpicEgg = "🥚",
     LionfishEgg = "🏆",
-    SharkEgg = "🏆",
-    
-    -- Mutation emojis
-    Golden = "🧬",
-    Diamond = "🧬",
-    Dino = "🧬",
-    Electric = "⚡",
-    Fire = "🔥"
+    SharkEgg = "🏆"
 }
 
--- Internal state
-WebhookSystem.cerbNotifiedUID = {}
-WebhookSystem.cerbConnection = nil
+-- Trade tracking
 WebhookSystem.tradeLog = {}
-WebhookSystem.sessionStartTime = 0
+WebhookSystem.cerberusNotified = {}
+WebhookSystem.cerberusConnection = nil
 
 -- Utility functions
 function WebhookSystem:getRequestFunction()
@@ -74,35 +77,18 @@ function WebhookSystem:getRequestFunction()
 end
 
 function WebhookSystem:sendPayload(payload)
-    print("🌐 Preparing HTTP request...")
-    
-    if not self.config.url or self.config.url == "" then 
-        print("❌ No webhook URL!")
-        return false, "No URL" 
-    end
-    
+    if not self.config.url or self.config.url == "" then return false, "No URL" end
     local req = self:getRequestFunction()
-    if not req then 
-        print("❌ No HTTP request function available!")
-        return false, "No request function" 
-    end
-    
-    print("✅ HTTP request function found")
-    print("🔗 URL:", self.config.url)
+    if not req then return false, "No request function" end
     
     local ok, res = pcall(function()
-        print("📡 Making HTTP request...")
-        local result = req({
+        return req({
             Url = self.config.url,
             Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = HttpService:JSONEncode(payload)
         })
-        print("📡 HTTP request completed")
-        return result
     end)
-    
-    print("📡 HTTP result:", ok, res)
     return ok == true, res
 end
 
@@ -113,12 +99,7 @@ function WebhookSystem:sendText(text)
 end
 
 function WebhookSystem:sendEmbed(embed)
-    print("📤 Sending embed to Discord...")
-    local payload = { embeds = { embed } }
-    print("📦 Payload created, sending...")
-    local success, result = self:sendPayload(payload)
-    print("📤 Send result:", success, result)
-    return success, result
+    return self:sendPayload({ embeds = { embed } })
 end
 
 -- Get player data
@@ -129,473 +110,367 @@ function WebhookSystem:getPlayerData()
 end
 
 function WebhookSystem:getNetWorth()
-    local lp = LocalPlayer
-    if not lp then return 0 end
-    local a = lp:GetAttribute("NetWorth")
-    if type(a) == "number" then return a end
-    local ls = lp:FindFirstChild("leaderstats")
-    if ls then
-        local nv = ls:FindFirstChild("NetWorth")
+    local data = self:getPlayerData()
+    if not data then return 0 end
+    
+    local netWorth = data:GetAttribute("NetWorth")
+    if type(netWorth) == "number" then return netWorth end
+    
+    local leaderstats = data:FindFirstChild("leaderstats")
+    if leaderstats then
+        local nv = leaderstats:FindFirstChild("NetWorth")
         if nv and type(nv.Value) == "number" then return nv.Value end
     end
     return 0
 end
 
 function WebhookSystem:formatNumber(num)
-    if not num or num == 0 then return "0" end
-    if num >= 1e12 then return string.format("%.2fT", num / 1e12)
-    elseif num >= 1e9 then return string.format("%.2fB", num / 1e9)
-    elseif num >= 1e6 then return string.format("%.2fM", num / 1e6)
-    elseif num >= 1e3 then return string.format("%.2fK", num / 1e3)
-    else return tostring(math.floor(num)) end
+    if not num or num < 0 then return "0" end
+    if num < 1000 then return tostring(math.floor(num)) end
+    if num < 1000000 then return string.format("%.2fK", num / 1000) end
+    if num < 1000000000 then return string.format("%.2fM", num / 1000000) end
+    if num < 1000000000000 then return string.format("%.2fB", num / 1000000000) end
+    return string.format("%.2fT", num / 1000000000000)
 end
 
--- Inventory snapshot
+-- Get fruit inventory
 function WebhookSystem:getFruitInventory()
     local data = self:getPlayerData()
     local asset = data and data:FindFirstChild("Asset")
-    if not asset then 
-        print("❌ Asset folder not found!")
-        return {} 
-    end
+    if not asset then return {} end
     
     local fruits = {}
-    local fruitNames = {"Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", "VoltGinkgo", "DeepseaPearlFruit"}
-    
-    print("🔍 Checking Asset folder for fruits...")
-    print("📁 Asset children count:", #asset:GetChildren())
-    
-    for _, fruitName in ipairs(fruitNames) do
-        local count = 0
-        
-        -- Try GetAttribute first
-        local attr = asset:GetAttribute(fruitName)
-        if attr then 
-            count = tonumber(attr) or 0
-            print("🍎 " .. fruitName .. " (attribute): " .. count)
-        end
-        
-        -- Try looking for a child with the fruit name
-        if count == 0 then
-            local child = asset:FindFirstChild(fruitName)
-            if child then
-                if child:IsA("IntValue") or child:IsA("NumberValue") then
-                    count = child.Value
-                    print("🍎 " .. fruitName .. " (child value): " .. count)
-                elseif child:IsA("StringValue") then
-                    count = tonumber(child.Value) or 0
-                    print("🍎 " .. fruitName .. " (child string): " .. count)
-                end
-            end
-        end
-        
-        -- Try case variations
-        if count == 0 then
-            local lowerChild = asset:FindFirstChild(string.lower(fruitName))
-            if lowerChild and (lowerChild:IsA("IntValue") or lowerChild:IsA("NumberValue")) then
-                count = lowerChild.Value
-                print("🍎 " .. fruitName .. " (lowercase child): " .. count)
-            end
-        end
-        
+    for fruitName, emoji in pairs(self.fruitEmojis) do
+        local count = asset:GetAttribute(fruitName) or 0
         if count > 0 then
-            fruits[fruitName] = count
+            fruits[fruitName] = {
+                count = count,
+                emoji = emoji
+            }
         end
     end
     
-    print("📊 Total fruits found: " .. #fruits)
+    -- Get lottery tickets
+    local tickets = asset:GetAttribute("LotteryTicket") or 0
+    if tickets > 0 then
+        fruits["Ticket"] = {
+            count = tickets,
+            emoji = "<:Ticket:1414283452659798167>"
+        }
+    end
+    
     return fruits
 end
 
-function WebhookSystem:getTicketCount()
-    local data = self:getPlayerData()
-    local asset = data and data:FindFirstChild("Asset")
-    if not asset then return 0 end
-    return asset:GetAttribute("LotteryTicket") or 0
-end
-
-function WebhookSystem:getPetInventory()
+-- Get pets inventory
+function WebhookSystem:getPetsInventory()
     local data = self:getPlayerData()
     local pets = data and data:FindFirstChild("Pets")
-    if not pets then 
-        print("❌ Pets folder not found!")
-        return {} 
-    end
+    if not pets then return {} end
     
     local petCounts = {}
-    local totalPets = 0
-    
-    print("🔍 Processing " .. #pets:GetChildren() .. " pet configurations...")
-    
     for _, petNode in ipairs(pets:GetChildren()) do
         if petNode:IsA("Configuration") then
             local attrs = petNode:GetAttributes()
             local petType = attrs.T or "Unknown"
-            local mutation = attrs.M
-            if mutation == "Dino" then mutation = "Jurassic" end
+            local mutation = attrs.M or ""
+            local key = petType .. (mutation ~= "" and ("_" .. mutation) or "")
             
-            local key = petType .. (mutation and (" [" .. mutation .. "]") or "")
-            petCounts[key] = (petCounts[key] or 0) + 1
-            totalPets = totalPets + 1
-            
-            if totalPets <= 5 then -- Only print first 5 for debugging
-                print("🐾 Found pet: " .. key .. " (Type: " .. tostring(attrs.T) .. ", Mutation: " .. tostring(attrs.M) .. ")")
+            if not petCounts[key] then
+                petCounts[key] = {
+                    type = petType,
+                    mutation = mutation,
+                    count = 0
+                }
             end
+            petCounts[key].count = petCounts[key].count + 1
         end
     end
     
-    print("🐾 Total pet types found: " .. #petCounts .. " (Total pets: " .. totalPets .. ")")
     return petCounts
 end
 
-function WebhookSystem:getEggInventory()
+-- Get eggs inventory
+function WebhookSystem:getEggsInventory()
     local data = self:getPlayerData()
     local eggs = data and data:FindFirstChild("Egg")
-    if not eggs then 
-        print("❌ Egg folder not found!")
-        return {} 
-    end
+    if not eggs then return {} end
     
     local eggCounts = {}
-    local totalEggs = 0
-    
-    print("🔍 Processing " .. #eggs:GetChildren() .. " egg configurations...")
-    
     for _, eggNode in ipairs(eggs:GetChildren()) do
         if eggNode:IsA("Configuration") then
             local attrs = eggNode:GetAttributes()
             local eggType = attrs.T or "Unknown"
-            local mutation = attrs.M
-            if mutation == "Dino" then mutation = "Jurassic" end
+            local mutation = attrs.M or ""
+            local key = eggType .. (mutation ~= "" and ("_" .. mutation) or "")
             
-            local key = eggType .. (mutation and (" [" .. mutation .. "]") or "")
-            eggCounts[key] = (eggCounts[key] or 0) + 1
-            totalEggs = totalEggs + 1
-            
-            if totalEggs <= 5 then -- Only print first 5 for debugging
-                print("🥚 Found egg: " .. key .. " (Type: " .. tostring(attrs.T) .. ", Mutation: " .. tostring(attrs.M) .. ")")
+            if not eggCounts[key] then
+                eggCounts[key] = {
+                    type = eggType,
+                    mutation = mutation,
+                    count = 0
+                }
             end
+            eggCounts[key].count = eggCounts[key].count + 1
         end
     end
     
-    print("🥚 Total egg types found: " .. #eggCounts .. " (Total eggs: " .. totalEggs .. ")")
     return eggCounts
 end
 
-function WebhookSystem:formatFruitLine(fruits)
-    local lines = {}
-    local line1 = {}
-    local line2 = {}
-    local line3 = {}
+-- Send inventory snapshot
+function WebhookSystem:sendInventorySnapshot()
+    local netWorth = self:getNetWorth()
+    local fruits = self:getFruitInventory()
+    local pets = self:getPetsInventory()
+    local eggs = self:getEggsInventory()
     
-    local fruitOrder = {"Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", "Corn", "Banana", "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", "VoltGinkgo", "DeepseaPearlFruit"}
-    
-    for i, fruitName in ipairs(fruitOrder) do
-        local count = fruits[fruitName] or 0
-        if count > 0 then
-            local emoji = self.emojis[fruitName] or "🍎"
-            local item = emoji .. " `" .. tostring(count) .. "`"
-            
-            if i <= 5 then
-                table.insert(line1, item)
-            elseif i <= 10 then
-                table.insert(line2, item)
-            else
-                table.insert(line3, item)
+    -- Format fruits
+    local fruitLines = {}
+    local fruitCount = 0
+    for fruitName, data in pairs(fruits) do
+        if fruitName ~= "Ticket" then
+            table.insert(fruitLines, data.emoji .. " `" .. tostring(data.count) .. "`")
+            fruitCount = fruitCount + 1
+            if fruitCount % 5 == 0 then
+                table.insert(fruitLines, "\n")
             end
         end
     end
     
-    if #line1 > 0 then table.insert(lines, table.concat(line1, "  ")) end
-    if #line2 > 0 then table.insert(lines, table.concat(line2, "  ")) end
-    if #line3 > 0 then table.insert(lines, table.concat(line3, "  ")) end
-    
-    return table.concat(lines, "\n\n")
-end
-
-function WebhookSystem:formatPetLine(pets, limit)
-    local lines = {}
-    local sorted = {}
-    
-    for pet, count in pairs(pets) do
-        table.insert(sorted, {pet = pet, count = count})
+    -- Add lottery tickets
+    if fruits["Ticket"] then
+        table.insert(fruitLines, 1, fruits["Ticket"].emoji .. " Ticket: `" .. self:formatNumber(fruits["Ticket"].count) .. "`")
     end
     
-    table.sort(sorted, function(a, b) return a.count > b.count end)
+    local fruitValue = table.concat(fruitLines, "  ")
     
-    local current = 1
-    for _, item in ipairs(sorted) do
-        if current > (limit or 20) then break end
-        
-        local petName = item.pet:match("^([^%[]+)")
-        local mutation = item.pet:match("%[([^%]]+)%]")
-        local emoji = self.emojis[petName] or "🐾"
-        local mutEmoji = self.emojis[mutation] or "🧬"
-        
-        local line = emoji .. " " .. petName .. " × " .. item.count
-        if mutation then
-            line = line .. "\nL " .. mutEmoji .. " " .. mutation .. " × " .. item.count
+    -- Format pets (top 10)
+    local petEntries = {}
+    for _, data in pairs(pets) do
+        table.insert(petEntries, data)
+    end
+    table.sort(petEntries, function(a, b) return a.count > b.count end)
+    
+    local petLines = {}
+    for i = 1, math.min(10, #petEntries) do
+        local pet = petEntries[i]
+        local emoji = self.petEmojis[pet.type] or "🐾"
+        local mutEmoji = self.mutationEmojis[pet.mutation] or ""
+        local line = emoji .. " " .. pet.type .. " × " .. pet.count
+        if pet.mutation ~= "" then
+            line = line .. "\nL " .. mutEmoji .. " " .. pet.mutation .. " × " .. pet.count
         end
-        
-        table.insert(lines, line)
-        current = current + 1
+        table.insert(petLines, line)
     end
     
-    return table.concat(lines, "\n")
-end
-
-function WebhookSystem:sendInventorySnapshot()
-    print("🚀 Starting inventory snapshot...")
+    local petValue = "```diff\n" .. table.concat(petLines, "\n\n") .. "\n```"
     
-    local success, error = pcall(function()
-        if not self.config.url or self.config.url == "" then
-            print("❌ Webhook URL not set!")
-            return false, "No webhook URL"
+    -- Format eggs (top 5)
+    local eggEntries = {}
+    for _, data in pairs(eggs) do
+        table.insert(eggEntries, data)
+    end
+    table.sort(eggEntries, function(a, b) return a.count > b.count end)
+    
+    local eggLines = {}
+    for i = 1, math.min(5, #eggEntries) do
+        local egg = eggEntries[i]
+        local emoji = self.eggEmojis[egg.type] or "🥚"
+        local mutEmoji = self.mutationEmojis[egg.mutation] or ""
+        local line = emoji .. " " .. egg.type .. " × " .. egg.count
+        if egg.mutation ~= "" then
+            line = line .. "\nL " .. mutEmoji .. " " .. egg.mutation .. " × " .. egg.count
         end
-        
-        print("✅ Webhook URL found:", self.config.url)
-        
-        print("📊 Getting net worth...")
-        local netWorth = self:getNetWorth()
-        print("💰 Net worth:", netWorth)
-        
-        print("🎫 Getting ticket count...")
-        local ticketCount = self:getTicketCount()
-        print("🎫 Ticket count:", ticketCount)
-        
-        print("🍎 Getting fruit inventory...")
-        local fruits = self:getFruitInventory()
-        
-        print("🐾 Getting pet inventory...")
-        local pets = self:getPetInventory()
-        
-        print("🥚 Getting egg inventory...")
-        local eggs = self:getEggInventory()
-        
-        print("🔢 Formatting numbers...")
-        local netWorthStr = self:formatNumber(netWorth)
-        local ticketStr = self:formatNumber(ticketCount)
-        print("💰 Formatted net worth:", netWorthStr)
-        print("🎫 Formatted tickets:", ticketStr)
-        
-        print("📝 Formatting text...")
-        local fruitText = self:formatFruitLine(fruits)
-        local petText = self:formatPetLine(pets, 15)
-        local eggText = self:formatPetLine(eggs, 10)
-        print("🍎 Fruit text length:", #fruitText)
-        print("🐾 Pet text length:", #petText)
-        print("🥚 Egg text length:", #eggText)
-        
-        print("🏗️ Building embed...")
-        local embed = {
-            title = "📊 Inventory Snapshot",
-            color = 16761095,
-            fields = {
-                {
-                    value = "💰 Net Worth: `" .. netWorthStr .. "`\n" .. self.emojis.Ticket .. " Ticket: `" .. ticketStr .. "`"
-                },
-                {
-                    name = "🪣 Fruits",
-                    value = fruitText
-                },
-                {
-                    name = "🐾 Pets",
-                    value = "```diff\n" .. petText .. "\n```",
-                    inline = true
-                },
-                {
-                    name = "🥚 Top Eggs",
-                    value = "```diff\n" .. eggText .. "\n```",
-                    inline = true
-                }
+        table.insert(eggLines, line)
+    end
+    
+    local eggValue = "```diff\n" .. table.concat(eggLines, "\n\n") .. "\n```"
+    
+    -- Create embed
+    local embed = {
+        title = "📊 Inventory Snapshot",
+        color = 16761095,
+        fields = {
+            {
+                value = "💰 Net Worth: `" .. self:formatNumber(netWorth) .. "`\n" .. (fruits["Ticket"] and (fruits["Ticket"].emoji .. " Ticket: `" .. self:formatNumber(fruits["Ticket"].count) .. "`") or "")
             },
-            footer = {
-                text = "Generated • Build A Zoo"
+            {
+                name = "🪣 Fruits",
+                value = fruitValue
+            },
+            {
+                name = "🐾 Pets",
+                value = petValue,
+                inline = true
+            },
+            {
+                name = "🥚 Top Eggs",
+                value = eggValue,
+                inline = true
             }
+        },
+        footer = {
+            text = "Generated • Build A Zoo"
         }
-        
-        print("📊 Sending inventory snapshot...")
-        local success, result = self:sendEmbed(embed)
-        if success then
-            print("✅ Inventory snapshot sent successfully!")
-        else
-            print("❌ Failed to send inventory snapshot:", result)
-        end
-        return success, result
-    end)
+    }
     
-    if not success then
-        print("❌ Error in sendInventorySnapshot:", error)
-    end
-    
-    return success, error
+    return self:sendEmbed(embed)
 end
 
 -- Cerberus detection
-function WebhookSystem:checkAndNotifyCerberus(node)
-    if not node then return end
-    if self.cerbNotifiedUID[node.Name] then return end
+function WebhookSystem:checkForCerberus()
+    if not self.config.cerberusAlert then return end
     
-    local attrs = node:GetAttributes()
-    local petType = tostring(attrs.T or "")
-    local nameLower = string.lower(node.Name)
+    local data = self:getPlayerData()
+    local pets = data and data:FindFirstChild("Pets")
+    if not pets then return end
     
-    if string.lower(petType) == "cerberus" or nameLower:find("cerberus") then
-        self.cerbNotifiedUID[node.Name] = true
-        
-        local mutation = attrs.M
-        if mutation == "Dino" then mutation = "Jurassic" end
-        
-        local desc = "🐾 " .. petType
-        if mutation then
-            desc = desc .. " [" .. mutation .. "]"
+    for _, petNode in ipairs(pets:GetChildren()) do
+        if petNode:IsA("Configuration") then
+            local attrs = petNode:GetAttributes()
+            local petType = attrs.T or ""
+            local petName = petNode.Name
+            
+            if (string.lower(petType) == "cerberus" or string.lower(petName):find("cerberus")) and not self.cerberusNotified[petName] then
+                self.cerberusNotified[petName] = true
+                
+                local embed = {
+                    title = "🐕 Cerberus Acquired!",
+                    description = "**Pet:** " .. petType .. "\n**UID:** " .. petName,
+                    color = 16776960,
+                    footer = {
+                        text = "Build A Zoo • Cerberus Alert"
+                    }
+                }
+                
+                self:sendEmbed(embed)
+                break
+            end
         end
-        desc = desc .. " (UID: " .. node.Name .. ")"
-        
-        local embed = {
-            title = "🎉 Cerberus Acquired!",
-            description = desc,
-            color = 16776960, -- Yellow
-            timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z")
-        }
-        
-        self:sendEmbed(embed)
     end
 end
 
-function WebhookSystem:startCerberusWatcher()
-    self:stopCerberusWatcher()
+-- Start cerberus monitoring
+function WebhookSystem:startCerberusMonitoring()
+    self:stopCerberusMonitoring()
+    
+    if not self.config.cerberusAlert then return end
     
     local data = self:getPlayerData()
     local pets = data and data:FindFirstChild("Pets")
     if not pets then return end
     
     -- Check existing pets
-    for _, petNode in ipairs(pets:GetChildren()) do
-        self:checkAndNotifyCerberus(petNode)
-    end
+    self:checkForCerberus()
     
-    -- Watch for new pets
-    self.cerbConnection = pets.ChildAdded:Connect(function(child)
-        self:checkAndNotifyCerberus(child)
+    -- Monitor new pets
+    self.cerberusConnection = pets.ChildAdded:Connect(function(petNode)
+        task.wait(0.1) -- Wait for attributes to load
+        self:checkForCerberus()
     end)
 end
 
-function WebhookSystem:stopCerberusWatcher()
-    if self.cerbConnection then
-        pcall(function() self.cerbConnection:Disconnect() end)
-        self.cerbConnection = nil
+-- Stop cerberus monitoring
+function WebhookSystem:stopCerberusMonitoring()
+    if self.cerberusConnection then
+        pcall(function() self.cerberusConnection:Disconnect() end)
+        self.cerberusConnection = nil
     end
 end
 
--- Trade notifications
-function WebhookSystem:logTrade(kind, type, mutation, uid, receiver, receiverId)
-    local entry = {
-        kind = kind,
-        type = type,
-        mutation = mutation,
-        uid = uid,
-        receiver = receiver,
-        receiverId = receiverId,
-        timestamp = os.time()
-    }
-    table.insert(self.tradeLog, entry)
+-- Trade logging
+function WebhookSystem:logTrade(tradeData)
+    if not tradeData then return end
+    
+    table.insert(self.tradeLog, {
+        timestamp = os.time(),
+        data = tradeData
+    })
     
     if self.config.tradeEach then
-        self:sendTradeNotification(entry)
+        self:sendTradeNotification(tradeData)
     end
 end
 
-function WebhookSystem:sendTradeNotification(entry)
-    local kindEmoji = entry.kind == "pet" and "🐾" or "🥚"
-    local mutationText = entry.mutation and (" [" .. entry.mutation .. "]") or ""
-    
+-- Send individual trade notification
+function WebhookSystem:sendTradeNotification(tradeData)
     local embed = {
-        title = "🤝 Trade Sent",
-        description = kindEmoji .. " " .. entry.type .. mutationText .. " → " .. entry.receiver,
-        color = 3447003, -- Blue
+        title = "🤝 Trade Completed",
+        color = 3447003,
         fields = {
             {
-                name = "📤 From",
-                value = LocalPlayer and LocalPlayer.Name or "Unknown",
+                name = "📤 From: " .. (LocalPlayer and LocalPlayer.Name or "Unknown"),
+                value = "```diff\n" .. tradeData.sent or "No items sent" .. "\n```",
                 inline = true
             },
             {
-                name = "📥 To",
-                value = entry.receiver,
+                name = "📥 To: " .. (tradeData.receiver or "Unknown"),
+                value = "```diff\n" .. tradeData.received or "No items received" .. "\n```",
                 inline = true
             }
         },
         footer = {
-            text = "Trade sent • " .. os.date("%B %d, %Y at %I:%M %p")
+            text = "Trade completed • " .. os.date("%B %d, %Y %I:%M %p")
         }
     }
     
-    self:sendEmbed(embed)
+    return self:sendEmbed(embed)
 end
 
+-- Send trade summary
 function WebhookSystem:sendTradeSummary()
     if #self.tradeLog == 0 then return end
     
-    local receiverMap = {}
-    local totalItems = 0
+    local totalTrades = #self.tradeLog
+    local receivers = {}
     
-    for _, entry in ipairs(self.tradeLog) do
-        local receiver = entry.receiver or "Unknown"
-        if not receiverMap[receiver] then
-            receiverMap[receiver] = {pets = {}, eggs = {}}
+    for _, trade in ipairs(self.tradeLog) do
+        local receiver = trade.data.receiver or "Unknown"
+        if not receivers[receiver] then
+            receivers[receiver] = { count = 0, items = {} }
         end
-        
-        local item = entry.type .. (entry.mutation and (" [" .. entry.mutation .. "]") or "")
-        if entry.kind == "pet" then
-            receiverMap[receiver].pets[item] = (receiverMap[receiver].pets[item] or 0) + 1
-        else
-            receiverMap[receiver].eggs[item] = (receiverMap[receiver].eggs[item] or 0) + 1
-        end
-        totalItems = totalItems + 1
+        receivers[receiver].count = receivers[receiver].count + 1
     end
     
-    local fields = {}
-    for receiver, data in pairs(receiverMap) do
-        local items = {}
-        
-        for item, count in pairs(data.pets) do
-            table.insert(items, "🐾 " .. item .. " × " .. count)
-        end
-        for item, count in pairs(data.eggs) do
-            table.insert(items, "🥚 " .. item .. " × " .. count)
-        end
-        
-        table.insert(fields, {
-            name = "📥 To: " .. receiver,
-            value = "```diff\n" .. table.concat(items, "\n") .. "\n```",
-            inline = true
-        })
-    end
+    local receiverCount = 0
+    for _ in pairs(receivers) do receiverCount = receiverCount + 1 end
     
     local embed = {
-        title = "🤝 Trade Session Summary",
-        description = "📊 Total items sent: " .. totalItems .. "\n👥 Players helped: " .. #fields,
-        color = 65280, -- Green
-        fields = fields,
+        title = "📊 Trade Session Summary",
+        description = "**Total Trades:** " .. totalTrades .. "\n**Players Helped:** " .. receiverCount,
+        color = 5763719,
+        fields = {},
         footer = {
-            text = "Session completed • " .. os.date("%B %d, %Y at %I:%M %p")
+            text = "Session completed • " .. os.date("%B %d, %Y %I:%M %p")
         }
     }
     
-    self:sendEmbed(embed)
+    local fieldCount = 0
+    for receiver, data in pairs(receivers) do
+        if fieldCount < 25 then
+            table.insert(embed.fields, {
+                name = "👤 " .. receiver,
+                value = "Trades: " .. data.count,
+                inline = true
+            })
+            fieldCount = fieldCount + 1
+        end
+    end
+    
+    return self:sendEmbed(embed)
 end
 
+-- Clear trade log
 function WebhookSystem:clearTradeLog()
     self.tradeLog = {}
-    self.sessionStartTime = 0
 end
 
 -- Initialize webhook system
 function WebhookSystem:init()
-    -- Auto-start cerberus watcher if enabled
+    -- Auto-start cerberus monitoring if enabled
     if self.config.cerberusAlert then
-        self:startCerberusWatcher()
+        self:startCerberusMonitoring()
     end
 end
 
