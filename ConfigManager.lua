@@ -72,8 +72,14 @@ end
 
 -- Element registration and management
 function ConfigManager:Register(elementName, element, customGetter, customSetter)
-    if not elementName or not element then
-        warn("ConfigManager: Invalid element registration")
+    if not elementName then
+        warn("ConfigManager: Invalid element registration - no elementName")
+        return
+    end
+    
+    -- Allow registration with custom getters/setters even if element is nil
+    if not element and not customGetter then
+        warn("ConfigManager: Invalid element registration - no element or customGetter for: " .. elementName)
         return
     end
     
@@ -82,6 +88,8 @@ function ConfigManager:Register(elementName, element, customGetter, customSetter
         customGet = customGetter,
         customSet = customSetter
     }
+    
+    print("📝 ConfigManager: Registered '" .. elementName .. "'")
 end
 
 function ConfigManager:GetElementValue(elementName)
