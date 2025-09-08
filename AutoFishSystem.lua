@@ -223,6 +223,7 @@ function AutoFishSystem.Init(dependencies)
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
         Default = FishingConfig.SelectedBait,
 		Callback = function(sel)
+			print("AutoFish bait callback triggered:", sel)
 			AutoFishSystem.SetBait(sel)
         end
     })
@@ -231,6 +232,7 @@ function AutoFishSystem.Init(dependencies)
 		Title = "Auto Fish",
         Value = FishingConfig.AutoFishEnabled,
         Callback = function(state)
+			print("AutoFish toggle callback triggered:", state)
 			AutoFishSystem.SetEnabled(state)
         end
     })
