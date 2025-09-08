@@ -129,16 +129,19 @@ function ConfigManager:GetElementValue(elementName)
         local value = registered.customGet()
         -- Handle table values properly
         if type(value) == "table" then
-            -- Convert table to array format for JSON serialization
+            -- Convert table to clean array format for JSON serialization
             local result = {}
             for k, v in pairs(value) do
+                -- Convert all values to strings to avoid module script references
+                local cleanValue = tostring(v)
                 if type(k) == "number" then
-                    result[k] = v
+                    result[k] = cleanValue
                 else
-                    table.insert(result, v)
+                    table.insert(result, cleanValue)
                 end
             end
-            return result
+            -- Return nil if empty table instead of empty array
+            return next(result) and result or nil
         end
         return value
     end
@@ -150,13 +153,16 @@ function ConfigManager:GetElementValue(elementName)
         if type(value) == "table" then
             local result = {}
             for k, v in pairs(value) do
+                -- Convert all values to strings to avoid module script references
+                local cleanValue = tostring(v)
                 if type(k) == "number" then
-                    result[k] = v
+                    result[k] = cleanValue
                 else
-                    table.insert(result, v)
+                    table.insert(result, cleanValue)
                 end
             end
-            return result
+            -- Return nil if empty table instead of empty array
+            return next(result) and result or nil
         end
         return value
     elseif element and element.Value then
@@ -164,13 +170,16 @@ function ConfigManager:GetElementValue(elementName)
         if type(value) == "table" then
             local result = {}
             for k, v in pairs(value) do
+                -- Convert all values to strings to avoid module script references
+                local cleanValue = tostring(v)
                 if type(k) == "number" then
-                    result[k] = v
+                    result[k] = cleanValue
                 else
-                    table.insert(result, v)
+                    table.insert(result, cleanValue)
                 end
             end
-            return result
+            -- Return nil if empty table instead of empty array
+            return next(result) and result or nil
         end
         return value
     end
