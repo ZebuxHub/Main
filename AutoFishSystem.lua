@@ -238,6 +238,14 @@ function AutoFishSystem.Init(dependencies)
 	return true
 end
 
+-- Get UI elements for external registration (like other working elements)
+function AutoFishSystem.GetUIElements()
+	return {
+		toggle = autoFishToggle,
+		dropdown = baitDropdown
+	}
+end
+
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
 	if not (autoFishToggle and baitDropdown) then 
