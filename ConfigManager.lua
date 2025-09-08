@@ -141,24 +141,33 @@ function ConfigManager:Save(configName)
     local configData = {
         metadata = {
             created = os.date("%Y-%m-%d %H:%M:%S"),
-            player = LocalPlayer.Name,
+            player = LocalPlayer and LocalPlayer.Name or "Unknown",
             version = "1.0"
         },
         settings = {}
     }
     
-    -- Collect all registered element values
+    -- Collect all registered element values with debug output
+    print("🔍 ConfigManager:Save - Collecting values for " .. #self:GetRegisteredElements() .. " elements:")
+    local collectedCount = 0
+    
     for elementName, _ in pairs(registeredElements) do
         local value = self:GetElementValue(elementName)
         if value ~= nil then
             configData.settings[elementName] = value
+            collectedCount = collectedCount + 1
+            print("  ✓ " .. elementName .. " = " .. tostring(value))
+        else
+            print("  ✗ " .. elementName .. " = nil (skipped)")
         end
     end
+    
+    print("📦 Final config data: " .. collectedCount .. " settings collected")
     
     local success = SaveFile(configName, configData)
     
     if success then
-        print("✅ Config saved: " .. configName)
+        print("✅ Config saved: " .. configName .. " (" .. collectedCount .. " settings)")
         return true
     else
         warn("❌ Failed to save config: " .. configName)
