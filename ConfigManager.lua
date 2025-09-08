@@ -36,7 +36,27 @@ local function SaveFile(fileName, data)
         local filePath = folderPath .. "/" .. fileName .. ".json"
         print("📄 Full file path: " .. filePath)
         
-        local jsonData = HttpService:JSONEncode(data)
+        -- Try to encode JSON with error handling
+        local jsonData
+        local encodeSuccess, encodeError = pcall(function()
+            jsonData = HttpService:JSONEncode(data)
+        end)
+        
+        if not encodeSuccess then
+            warn("❌ JSON encoding failed: " .. tostring(encodeError))
+            print("🔍 Problematic data structure:")
+            for k, v in pairs(data.settings) do
+                print("  " .. tostring(k) .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+                if type(v) == "table" then
+                    print("    Table contents:")
+                    for tk, tv in pairs(v) do
+                        print("      " .. tostring(tk) .. " = " .. tostring(tv) .. " (type: " .. type(tv) .. ")")
+                    end
+                end
+            end
+            error("JSON encoding failed")
+        end
+        
         print("📝 JSON data length: " .. #jsonData .. " characters")
         print("📝 JSON preview: " .. jsonData:sub(1, 100) .. "...")
         
@@ -98,6 +118,39 @@ local function DeleteFile(fileName)
     return success
 end
 
+-- Helper function to clean tables for JSON serialization
+local function cleanTableForJSON(tbl)
+    if type(tbl) ~= "table" then
+        return tbl
+    end
+    
+    local result = {}
+    local hasContent = false
+    
+    for k, v in pairs(tbl) do
+        local cleanKey = tostring(k)
+        local cleanValue
+        
+        if type(v) == "table" then
+            cleanValue = cleanTableForJSON(v)
+        else
+            cleanValue = tostring(v)
+        end
+        
+        -- Only add non-empty values
+        if cleanValue ~= nil and cleanValue ~= "" then
+            if type(k) == "number" then
+                table.insert(result, cleanValue)
+            else
+                result[cleanKey] = cleanValue
+            end
+            hasContent = true
+        end
+    end
+    
+    return hasContent and result or nil
+end
+
 -- Element registration and management
 function ConfigManager:Register(elementName, element, customGetter, customSetter)
     if not elementName then
@@ -129,19 +182,7 @@ function ConfigManager:GetElementValue(elementName)
         local value = registered.customGet()
         -- Handle table values properly
         if type(value) == "table" then
-            -- Convert table to clean array format for JSON serialization
-            local result = {}
-            for k, v in pairs(value) do
-                -- Convert all values to strings to avoid module script references
-                local cleanValue = tostring(v)
-                if type(k) == "number" then
-                    result[k] = cleanValue
-                else
-                    table.insert(result, cleanValue)
-                end
-            end
-            -- Return nil if empty table instead of empty array
-            return next(result) and result or nil
+            return cleanTableForJSON(value)
         end
         return value
     end
@@ -151,35 +192,13 @@ function ConfigManager:GetElementValue(elementName)
     if element and element.GetValue then
         local value = element:GetValue()
         if type(value) == "table" then
-            local result = {}
-            for k, v in pairs(value) do
-                -- Convert all values to strings to avoid module script references
-                local cleanValue = tostring(v)
-                if type(k) == "number" then
-                    result[k] = cleanValue
-                else
-                    table.insert(result, cleanValue)
-                end
-            end
-            -- Return nil if empty table instead of empty array
-            return next(result) and result or nil
+            return cleanTableForJSON(value)
         end
         return value
     elseif element and element.Value then
         local value = element.Value
         if type(value) == "table" then
-            local result = {}
-            for k, v in pairs(value) do
-                -- Convert all values to strings to avoid module script references
-                local cleanValue = tostring(v)
-                if type(k) == "number" then
-                    result[k] = cleanValue
-                else
-                    table.insert(result, cleanValue)
-                end
-            end
-            -- Return nil if empty table instead of empty array
-            return next(result) and result or nil
+            return cleanTableForJSON(value)
         end
         return value
     end
