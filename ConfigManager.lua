@@ -23,11 +23,39 @@ end)
 
 -- Utility functions
 local function SaveFile(fileName, data)
-    local success = pcall(function()
+    local success, error = pcall(function()
+        print("💾 SaveFile: Attempting to save " .. fileName .. ".json")
+        print("📁 Folder path: " .. folderPath)
+        
+        -- Ensure folder exists
+        if not isfolder(folderPath) then
+            print("📁 Creating folder: " .. folderPath)
+            makefolder(folderPath)
+        end
+        
         local filePath = folderPath .. "/" .. fileName .. ".json"
+        print("📄 Full file path: " .. filePath)
+        
         local jsonData = HttpService:JSONEncode(data)
+        print("📝 JSON data length: " .. #jsonData .. " characters")
+        print("📝 JSON preview: " .. jsonData:sub(1, 100) .. "...")
+        
         writefile(filePath, jsonData)
+        print("✅ File written successfully")
+        
+        -- Verify file was created
+        if isfile(filePath) then
+            local fileContent = readfile(filePath)
+            print("✅ File verified, size: " .. #fileContent .. " characters")
+        else
+            error("File was not created")
+        end
     end)
+    
+    if not success then
+        warn("❌ SaveFile error: " .. tostring(error))
+    end
+    
     return success
 end
 
@@ -98,15 +126,53 @@ function ConfigManager:GetElementValue(elementName)
     
     -- Use custom getter if provided
     if registered.customGet then
-        return registered.customGet()
+        local value = registered.customGet()
+        -- Handle table values properly
+        if type(value) == "table" then
+            -- Convert table to array format for JSON serialization
+            local result = {}
+            for k, v in pairs(value) do
+                if type(k) == "number" then
+                    result[k] = v
+                else
+                    table.insert(result, v)
+                end
+            end
+            return result
+        end
+        return value
     end
     
     -- Try standard WindUI methods
     local element = registered.element
     if element and element.GetValue then
-        return element:GetValue()
+        local value = element:GetValue()
+        if type(value) == "table" then
+            local result = {}
+            for k, v in pairs(value) do
+                if type(k) == "number" then
+                    result[k] = v
+                else
+                    table.insert(result, v)
+                end
+            end
+            return result
+        end
+        return value
     elseif element and element.Value then
-        return element.Value
+        local value = element.Value
+        if type(value) == "table" then
+            local result = {}
+            for k, v in pairs(value) do
+                if type(k) == "number" then
+                    result[k] = v
+                else
+                    table.insert(result, v)
+                end
+            end
+            return result
+        end
+        return value
     end
     
     return nil
@@ -156,7 +222,22 @@ function ConfigManager:Save(configName)
         if value ~= nil then
             configData.settings[elementName] = value
             collectedCount = collectedCount + 1
-            print("  ✓ " .. elementName .. " = " .. tostring(value))
+            
+            -- Better debug output for tables
+            if type(value) == "table" then
+                local tableStr = "{"
+                local count = 0
+                for k, v in pairs(value) do
+                    if count > 0 then tableStr = tableStr .. ", " end
+                    tableStr = tableStr .. tostring(k) .. "=" .. tostring(v)
+                    count = count + 1
+                    if count >= 3 then tableStr = tableStr .. "..." break end
+                end
+                tableStr = tableStr .. "}"
+                print("  ✓ " .. elementName .. " = " .. tableStr .. " (" .. count .. " items)")
+            else
+                print("  ✓ " .. elementName .. " = " .. tostring(value))
+            end
         else
             print("  ✗ " .. elementName .. " = nil (skipped)")
         end
