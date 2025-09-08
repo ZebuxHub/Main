@@ -240,40 +240,16 @@ end
 
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
-	if not (autoFishToggle and baitDropdown) then return {} end
+	if not (autoFishToggle and baitDropdown) then 
+		print("AutoFish UI elements not ready for config")
+		return {} 
+	end
 	
+	print("AutoFish returning UI elements directly")
 	return {
-		-- Auto Fish Toggle with custom Get/Set
-		autoFishToggleElement = {
-			Get = function() 
-				return AutoFishSystem.GetEnabled()
-			end,
-			Set = function(value) 
-				AutoFishSystem.SetEnabled(value)
-				-- Update UI toggle to match
-				if autoFishToggle and autoFishToggle.SetValue then
-					pcall(function()
-						autoFishToggle:SetValue(value)
-					end)
-				end
-			end
-		},
-		
-		-- Bait Selection with custom Get/Set  
-		autoFishBaitElement = {
-			Get = function() 
-				return AutoFishSystem.GetBait()
-			end,
-			Set = function(value) 
-				AutoFishSystem.SetBait(value or "FishingBait1")
-				-- Update UI dropdown to match
-				if baitDropdown and baitDropdown.SetValue then
-					pcall(function()
-						baitDropdown:SetValue(value or "FishingBait1")
-					end)
-				end
-			end
-		}
+		-- Register the actual UI elements directly
+		autoFishToggleElement = autoFishToggle,
+		autoFishBaitElement = baitDropdown
 	}
 end
 
