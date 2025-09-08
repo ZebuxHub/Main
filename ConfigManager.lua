@@ -181,24 +181,28 @@ function ConfigManager:GetElementValue(elementName)
 end
 
 function ConfigManager:SetElementValue(elementName, value)
-    local registered = self.registeredElements[elementName]
-    if not registered then return false end
-    
-    local element = registered.element
-    local elementType = registered.type
-    
-    local success = pcall(function()
-        if elementType == "custom" then
-            element.Set(value)
-        elseif elementType == "windui_element" then
-            element:SetValue(value)
-        elseif elementType == "value_object" then
-            element.Value = value
-        end
-        return true
-    end)
-    
-    return success
+	local registered = self.registeredElements[elementName]
+	if not registered then return false end
+	
+	local element = registered.element
+	local elementType = registered.type
+	
+	local success = pcall(function()
+		if elementType == "custom" then
+			if element.Set then
+				element.Set(value)
+			end
+		elseif elementType == "windui_element" then
+			if element.SetValue then
+				element:SetValue(value)
+			end
+		elseif elementType == "value_object" then
+			element.Value = value
+		end
+		return true
+	end)
+	
+	return success
 end
 
 -- Configuration operations
