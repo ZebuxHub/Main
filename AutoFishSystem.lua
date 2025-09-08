@@ -1,6 +1,6 @@
 -- AutoFishSystem.lua - Minimal continuous Focus -> Throw -> POUT loop
 -- Author: Zebux
--- Version: 2.0 (minimal casting)
+-- Version: 3.0 (WindUI Config Compatible)
 
 local AutoFishSystem = {}
 
@@ -13,8 +13,8 @@ local ContextActionService = game:GetService("ContextActionService")
 
 -- Module variables
 local WindUI = nil
-local Tabs = nil
-local Config = nil
+local FishTab = nil
+local ConfigManager = nil
 
 -- State
 local holdConn = nil
@@ -196,16 +196,28 @@ function AutoFishSystem.SetBait(baitId)
     end
 end
 
+-- Get current state (for config saving)
+function AutoFishSystem.GetEnabled()
+	return FishingConfig.AutoFishEnabled or false
+end
+
+function AutoFishSystem.GetBait()
+	return FishingConfig.SelectedBait or "FishingBait1"
+end
+
 -- UI integration
 function AutoFishSystem.Init(dependencies)
-	if not dependencies then return end
+	if not dependencies then return false end
     WindUI = dependencies.WindUI
-    Tabs = dependencies.Tabs
-	Config = dependencies.Config
-	if not (WindUI and Tabs and Tabs.FishTab) then return end
+    FishTab = dependencies.FishTab
+	ConfigManager = dependencies.ConfigManager
+	
+	if not (WindUI and FishTab) then return false end
+	
 	-- Silence notifications for smooth flow
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
-    baitDropdown = Tabs.FishTab:Dropdown({
+	
+    baitDropdown = FishTab:Dropdown({
 		Title = "Select Bait",
 		Desc = "Choose bait; loop is continuous.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
@@ -214,16 +226,55 @@ function AutoFishSystem.Init(dependencies)
 			AutoFishSystem.SetBait(sel)
         end
     })
-    autoFishToggle = Tabs.FishTab:Toggle({
+	
+    autoFishToggle = FishTab:Toggle({
 		Title = "Auto Fish",
-        Value = false,
+        Value = FishingConfig.AutoFishEnabled,
         Callback = function(state)
 			AutoFishSystem.SetEnabled(state)
         end
     })
-    if Config and autoFishToggle then
-		pcall(function() Config:Register("autoFishEnabled", autoFishToggle) end)
-	end
+	
+	return true
+end
+
+-- Get config elements for WindUI ConfigManager registration
+function AutoFishSystem.GetConfigElements()
+	if not (autoFishToggle and baitDropdown) then return {} end
+	
+	return {
+		-- Auto Fish Toggle with custom Get/Set
+		autoFishToggleElement = {
+			Get = function() 
+				return AutoFishSystem.GetEnabled()
+			end,
+			Set = function(value) 
+				AutoFishSystem.SetEnabled(value)
+				-- Update UI toggle to match
+				if autoFishToggle and autoFishToggle.SetValue then
+					pcall(function()
+						autoFishToggle:SetValue(value)
+					end)
+				end
+			end
+		},
+		
+		-- Bait Selection with custom Get/Set  
+		autoFishBaitElement = {
+			Get = function() 
+				return AutoFishSystem.GetBait()
+			end,
+			Set = function(value) 
+				AutoFishSystem.SetBait(value or "FishingBait1")
+				-- Update UI dropdown to match
+				if baitDropdown and baitDropdown.SetValue then
+					pcall(function()
+						baitDropdown:SetValue(value or "FishingBait1")
+					end)
+				end
+			end
+		}
+	}
 end
 
 function AutoFishSystem.Cleanup()
