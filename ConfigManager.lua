@@ -1,79 +1,114 @@
 -- ConfigManager.lua
--- Advanced configuration management for Best Auto script
--- Saves/loads all user selections to JSON files
+-- Advanced Configuration Management System for Build a Zoo
+-- Supports saving/loading all user settings to JSON files with ModuleScript integration
 
 local ConfigManager = {}
-
--- Services
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Config storage
-local folderPath = "BestAuto_Configs"
-local registeredElements = {}
-local currentConfigName = "Default"
+-- Configuration storage
+local folderPath = "BuildAZoo_Configs"
+local defaultConfigName = "DefaultConfig"
 
--- Ensure folder exists
+-- Initialize folder
 pcall(function()
-    if not isfolder(folderPath) then
-        makefolder(folderPath)
-    end
+    makefolder(folderPath)
 end)
 
--- Utility functions
-local function SaveFile(fileName, data)
-    local success, error = pcall(function()
-        print("💾 SaveFile: Attempting to save " .. fileName .. ".json")
-        print("📁 Folder path: " .. folderPath)
+-- State management
+ConfigManager.registeredElements = {}
+ConfigManager.currentConfig = nil
+ConfigManager.autoLoad = false
+ConfigManager.configName = defaultConfigName
+
+-- ModuleScript data cache
+ConfigManager.moduleData = {
+    ResEgg = nil,
+    ResMutate = nil,
+    ResPet = nil,
+    ResConveyor = nil,
+    ResBigPet = nil,
+    ResBigFish = nil
+}
+
+-- Initialize ModuleScript data
+function ConfigManager:LoadModuleData()
+    pcall(function()
+        local cfg = ReplicatedStorage:WaitForChild("Config")
+        self.moduleData.ResEgg = require(cfg:WaitForChild("ResEgg"))
+        self.moduleData.ResMutate = require(cfg:WaitForChild("ResMutate"))
+        self.moduleData.ResPet = require(cfg:WaitForChild("ResPet"))
+        self.moduleData.ResConveyor = require(cfg:WaitForChild("ResConveyor"))
         
-        -- Ensure folder exists
-        if not isfolder(folderPath) then
-            print("📁 Creating folder: " .. folderPath)
-            makefolder(folderPath)
-        end
-        
-        local filePath = folderPath .. "/" .. fileName .. ".json"
-        print("📄 Full file path: " .. filePath)
-        
-        local jsonData = HttpService:JSONEncode(data)
-        print("📝 JSON data length: " .. #jsonData .. " characters")
-        print("📝 JSON preview: " .. jsonData:sub(1, 100) .. "...")
-        
-        writefile(filePath, jsonData)
-        print("✅ File written successfully")
-        
-        -- Verify file was created
-        if isfile(filePath) then
-            local fileContent = readfile(filePath)
-            print("✅ File verified, size: " .. #fileContent .. " characters")
-        else
-            error("File was not created")
-        end
+        -- Optional modules
+        pcall(function()
+            self.moduleData.ResBigPet = require(cfg:WaitForChild("ResBigPetScale"))
+        end)
+        pcall(function()
+            self.moduleData.ResBigFish = require(cfg:WaitForChild("ResBigFishScale"))
+        end)
     end)
-    
-    if not success then
-        warn("❌ SaveFile error: " .. tostring(error))
-    end
-    
-    return success
 end
 
-local function LoadFile(fileName)
-    local success, data = pcall(function()
-        local filePath = folderPath .. "/" .. fileName .. ".json"
+-- Extract values from ModuleScript data for dropdowns
+function ConfigManager:ExtractModuleValues(moduleType)
+    local values = {}
+    local moduleData = self.moduleData[moduleType]
+    
+    if not moduleData then return values end
+    
+    for key, data in pairs(moduleData) do
+        local keyStr = tostring(key)
+        if not keyStr:match("^_") and keyStr ~= "_index" and keyStr ~= "__index" then
+            local name = keyStr
+            if type(data) == "table" then
+                name = data.Type or data.Name or data.ID or keyStr
+            end
+            table.insert(values, tostring(name))
+        end
+    end
+    
+    table.sort(values)
+    return values
+end
+
+-- Get all available dropdown values
+function ConfigManager:GetDropdownValues()
+    return {
+        eggs = self:ExtractModuleValues("ResEgg"),
+        pets = self:ExtractModuleValues("ResPet"),
+        mutations = self:ExtractModuleValues("ResMutate"),
+        conveyors = self:ExtractModuleValues("ResConveyor")
+    }
+end
+
+-- File operations
+function ConfigManager:SaveFile(fileName, data)
+    local filePath = folderPath .. "/" .. fileName .. ".json"
+    local success, result = pcall(function()
+        local jsonData = HttpService:JSONEncode(data)
+        writefile(filePath, jsonData)
+        return true
+    end)
+    return success, result
+end
+
+function ConfigManager:LoadFile(fileName)
+    local filePath = folderPath .. "/" .. fileName .. ".json"
+    local success, result = pcall(function()
         if isfile(filePath) then
             local jsonData = readfile(filePath)
             return HttpService:JSONDecode(jsonData)
         end
         return nil
     end)
-    return success and data or nil
+    return success, result
 end
 
-local function ListFiles()
+function ConfigManager:ListFiles()
     local files = {}
-    pcall(function()
+    local success, result = pcall(function()
         if isfolder(folderPath) then
             for _, file in ipairs(listfiles(folderPath)) do
                 local fileName = file:match("([^/\\]+)%.json$")
@@ -82,13 +117,14 @@ local function ListFiles()
                 end
             end
         end
+        return files
     end)
-    return files
+    return success and result or {}
 end
 
-local function DeleteFile(fileName)
+function ConfigManager:DeleteFile(fileName)
+    local filePath = folderPath .. "/" .. fileName .. ".json"
     local success = pcall(function()
-        local filePath = folderPath .. "/" .. fileName .. ".json"
         if isfile(filePath) then
             delfile(filePath)
             return true
@@ -98,361 +134,334 @@ local function DeleteFile(fileName)
     return success
 end
 
--- Element registration and management
-function ConfigManager:Register(elementName, element, customGetter, customSetter)
-    if not elementName then
-        warn("ConfigManager: Invalid element registration - no elementName")
-        return
-    end
+-- Element registration system
+function ConfigManager:Register(elementName, element)
+    if not elementName or not element then return false end
     
-    -- Allow registration with custom getters/setters even if element is nil
-    if not element and not customGetter then
-        warn("ConfigManager: Invalid element registration - no element or customGetter for: " .. elementName)
-        return
-    end
-    
-    registeredElements[elementName] = {
+    self.registeredElements[elementName] = {
         element = element,
-        customGet = customGetter,
-        customSet = customSetter
+        type = self:DetectElementType(element)
     }
-    
-    print("📝 ConfigManager: Registered '" .. elementName .. "'")
-end
-
-function ConfigManager:GetElementValue(elementName)
-    local registered = registeredElements[elementName]
-    if not registered then return nil end
-    
-    -- Use custom getter if provided
-    if registered.customGet then
-        local value = registered.customGet()
-        -- Handle table values properly
-        if type(value) == "table" then
-            -- Convert table to clean array format for JSON serialization
-            local result = {}
-            for k, v in pairs(value) do
-                -- Convert all values to strings to avoid module script references
-                local cleanValue = tostring(v)
-                if type(k) == "number" then
-                    result[k] = cleanValue
-                else
-                    table.insert(result, cleanValue)
-                end
-            end
-            -- Return nil if empty table instead of empty array
-            return next(result) and result or nil
-        end
-        return value
-    end
-    
-    -- Try standard WindUI methods
-    local element = registered.element
-    if element and element.GetValue then
-        local value = element:GetValue()
-        if type(value) == "table" then
-            local result = {}
-            for k, v in pairs(value) do
-                -- Convert all values to strings to avoid module script references
-                local cleanValue = tostring(v)
-                if type(k) == "number" then
-                    result[k] = cleanValue
-                else
-                    table.insert(result, cleanValue)
-                end
-            end
-            -- Return nil if empty table instead of empty array
-            return next(result) and result or nil
-        end
-        return value
-    elseif element and element.Value then
-        local value = element.Value
-        if type(value) == "table" then
-            local result = {}
-            for k, v in pairs(value) do
-                -- Convert all values to strings to avoid module script references
-                local cleanValue = tostring(v)
-                if type(k) == "number" then
-                    result[k] = cleanValue
-                else
-                    table.insert(result, cleanValue)
-                end
-            end
-            -- Return nil if empty table instead of empty array
-            return next(result) and result or nil
-        end
-        return value
-    end
-    
-    return nil
-end
-
-function ConfigManager:SetElementValue(elementName, value)
-    local registered = registeredElements[elementName]
-    if not registered then return false end
-    
-    -- Use custom setter if provided
-    if registered.customSet then
-        return registered.customSet(value)
-    end
-    
-    -- Try standard WindUI methods
-    local element = registered.element
-    if element and element.SetValue then
-        element:SetValue(value)
-        return true
-    elseif element and element.Select then
-        element:Select(value)
-        return true
-    end
-    
-    return false
-end
-
--- Config file operations
-function ConfigManager:Save(configName)
-    configName = configName or currentConfigName
-    
-    local configData = {
-        metadata = {
-            created = os.date("%Y-%m-%d %H:%M:%S"),
-            player = LocalPlayer and LocalPlayer.Name or "Unknown",
-            version = "1.0"
-        },
-        settings = {}
-    }
-    
-    -- Collect all registered element values with debug output
-    print("🔍 ConfigManager:Save - Collecting values for " .. #self:GetRegisteredElements() .. " elements:")
-    local collectedCount = 0
-    
-    for elementName, _ in pairs(registeredElements) do
-        print("🔍 Processing element: " .. elementName)
-        local registered = registeredElements[elementName]
-        
-        -- Debug the registration details
-        if registered.customGet then
-            print("  - Has custom getter")
-            local rawValue = registered.customGet()
-            print("  - Raw value type: " .. type(rawValue))
-            if type(rawValue) == "table" then
-                print("  - Raw table length: " .. #rawValue)
-                for i = 1, math.min(3, #rawValue) do
-                    print("    [" .. i .. "] = " .. tostring(rawValue[i]))
-                end
-            end
-        else
-            print("  - No custom getter, checking element")
-        end
-        
-        local value = self:GetElementValue(elementName)
-        print("  - Final processed value type: " .. type(value or "nil"))
-        
-        if value ~= nil then
-            configData.settings[elementName] = value
-            collectedCount = collectedCount + 1
-            
-            -- Better debug output for tables
-            if type(value) == "table" then
-                local tableStr = "{"
-                local count = 0
-                for k, v in pairs(value) do
-                    if count > 0 then tableStr = tableStr .. ", " end
-                    tableStr = tableStr .. tostring(k) .. "=" .. tostring(v)
-                    count = count + 1
-                    if count >= 3 then tableStr = tableStr .. "..." break end
-                end
-                tableStr = tableStr .. "}"
-                print("  ✓ " .. elementName .. " = " .. tableStr .. " (" .. count .. " items)")
-            else
-                print("  ✓ " .. elementName .. " = " .. tostring(value))
-            end
-        else
-            print("  ✗ " .. elementName .. " = nil (skipped)")
-        end
-    end
-    
-    print("📦 Final config data: " .. collectedCount .. " settings collected")
-    
-    local success = SaveFile(configName, configData)
-    
-    if success then
-        print("✅ Config saved: " .. configName .. " (" .. collectedCount .. " settings)")
-        return true
-    else
-        warn("❌ Failed to save config: " .. configName)
-        return false
-    end
-end
-
-function ConfigManager:Load(configName)
-    configName = configName or currentConfigName
-    
-    local configData = LoadFile(configName)
-    if not configData then
-        warn("❌ Config not found: " .. configName)
-        return false
-    end
-    
-    -- Apply loaded settings to elements
-    local loadedCount = 0
-    if configData.settings then
-        for elementName, value in pairs(configData.settings) do
-            if self:SetElementValue(elementName, value) then
-                loadedCount = loadedCount + 1
-            end
-        end
-    end
-    
-    print("✅ Config loaded: " .. configName .. " (" .. loadedCount .. " settings)")
     return true
 end
 
-function ConfigManager:Delete(configName)
-    if not configName or configName == "" then
-        warn("❌ Invalid config name for deletion")
-        return false
+function ConfigManager:DetectElementType(element)
+    if type(element) == "table" then
+        if element.Get and element.Set then
+            return "custom"
+        elseif element.GetValue and element.SetValue then
+            return "windui_element"
+        elseif element.Value ~= nil then
+            return "value_object"
+        end
     end
+    return "unknown"
+end
+
+-- Value extraction and setting
+function ConfigManager:GetElementValue(elementName)
+    local registered = self.registeredElements[elementName]
+    if not registered then return nil end
     
-    local success = DeleteFile(configName)
-    if success then
-        print("✅ Config deleted: " .. configName)
-    else
-        warn("❌ Failed to delete config: " .. configName)
-    end
+    local element = registered.element
+    local elementType = registered.type
+    
+    local success, value = pcall(function()
+        if elementType == "custom" then
+            return element.Get()
+        elseif elementType == "windui_element" then
+            return element:GetValue()
+        elseif elementType == "value_object" then
+            return element.Value
+        end
+        return nil
+    end)
+    
+    return success and value or nil
+end
+
+function ConfigManager:SetElementValue(elementName, value)
+    local registered = self.registeredElements[elementName]
+    if not registered then return false end
+    
+    local element = registered.element
+    local elementType = registered.type
+    
+    local success = pcall(function()
+        if elementType == "custom" then
+            element.Set(value)
+        elseif elementType == "windui_element" then
+            element:SetValue(value)
+        elseif elementType == "value_object" then
+            element.Value = value
+        end
+        return true
+    end)
+    
     return success
 end
 
-function ConfigManager:List()
-    return ListFiles()
-end
-
-function ConfigManager:Exists(configName)
-    local files = self:List()
-    for _, fileName in ipairs(files) do
-        if fileName == configName then
-            return true
+-- Configuration operations
+function ConfigManager:SaveConfig(configName)
+    configName = configName or self.configName or defaultConfigName
+    
+    local configData = {
+        metadata = {
+            version = "1.0",
+            created = os.date("%Y-%m-%d %H:%M:%S"),
+            game = "Build a Zoo",
+            player = Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"
+        },
+        settings = {},
+        moduleData = {
+            timestamp = tick(),
+            values = self:GetDropdownValues()
+        }
+    }
+    
+    -- Save all registered elements
+    for elementName, _ in pairs(self.registeredElements) do
+        local value = self:GetElementValue(elementName)
+        if value ~= nil then
+            configData.settings[elementName] = value
         end
     end
-    return false
-end
-
-function ConfigManager:SetCurrentConfig(configName)
-    currentConfigName = configName or "Default"
-end
-
-function ConfigManager:GetCurrentConfig()
-    return currentConfigName
-end
-
--- Auto-save functionality
-local autoSaveEnabled = false
-local autoSaveInterval = 30 -- seconds
-
-function ConfigManager:EnableAutoSave(interval)
-    autoSaveEnabled = true
-    autoSaveInterval = interval or 30
     
-    task.spawn(function()
-        while autoSaveEnabled do
-            task.wait(autoSaveInterval)
-            if autoSaveEnabled then
-                self:Save(currentConfigName)
+    local success, error = self:SaveFile(configName, configData)
+    return success, error, configData
+end
+
+function ConfigManager:LoadConfig(configName)
+    configName = configName or self.configName or defaultConfigName
+    
+    local success, configData = self:LoadFile(configName)
+    if not success or not configData then
+        return false, "Failed to load config file"
+    end
+    
+    -- Validate config structure
+    if not configData.settings then
+        return false, "Invalid config file structure"
+    end
+    
+    -- Load settings
+    local loadedCount = 0
+    local failedCount = 0
+    
+    for elementName, value in pairs(configData.settings) do
+        if self:SetElementValue(elementName, value) then
+            loadedCount = loadedCount + 1
+        else
+            failedCount = failedCount + 1
+        end
+    end
+    
+    self.currentConfig = configName
+    return true, string.format("Loaded %d settings (%d failed)", loadedCount, failedCount), configData
+end
+
+-- Auto-load functionality
+function ConfigManager:SetAutoLoad(enabled)
+    self.autoLoad = enabled
+    if enabled and self.configName then
+        task.spawn(function()
+            task.wait(1) -- Small delay to ensure all elements are registered
+            self:LoadConfig(self.configName)
+        end)
+    end
+end
+
+function ConfigManager:SetConfigName(name)
+    self.configName = name or defaultConfigName
+end
+
+-- Configuration presets
+function ConfigManager:CreatePreset(presetName, description, settings)
+    local presetData = {
+        metadata = {
+            version = "1.0",
+            created = os.date("%Y-%m-%d %H:%M:%S"),
+            type = "preset",
+            name = presetName,
+            description = description or "",
+            game = "Build a Zoo"
+        },
+        settings = settings or {},
+        moduleData = {
+            timestamp = tick(),
+            values = self:GetDropdownValues()
+        }
+    }
+    
+    return self:SaveFile("preset_" .. presetName, presetData)
+end
+
+-- Built-in presets
+function ConfigManager:GetBuiltInPresets()
+    return {
+        {
+            name = "Beginner Setup",
+            description = "Basic automation for new players",
+            settings = {
+                buyEnabled = true,
+                autoHatchEnabled = true,
+                autoClaimEnabled = true,
+                placeEnabled = true,
+                placeMode = "Egg",
+                placeSpeedMin = 0,
+                recallEnabled = false,
+                shopUpgrade = true,
+                shopFruit = false,
+                shopFeed = false
+            }
+        },
+        {
+            name = "Advanced Farming",
+            description = "High-end farming with mutations",
+            settings = {
+                buyEnabled = true,
+                autoHatchEnabled = true,
+                autoClaimEnabled = true,
+                placeEnabled = true,
+                placeMode = "Both",
+                placeSpeedMin = 100,
+                recallEnabled = true,
+                recallMinProduce = 50,
+                shopUpgrade = true,
+                shopFruit = true,
+                shopFeed = true
+            }
+        },
+        {
+            name = "Mutation Focus",
+            description = "Focus on mutated pets only",
+            settings = {
+                buyEnabled = true,
+                autoHatchEnabled = true,
+                autoClaimEnabled = true,
+                placeEnabled = true,
+                placeMode = "Both",
+                recallEnabled = true,
+                recallNonMutatedOnly = true,
+                shopUpgrade = true,
+                shopFruit = true,
+                shopFeed = true
+            }
+        }
+    }
+end
+
+function ConfigManager:ApplyPreset(presetName)
+    local presets = self:GetBuiltInPresets()
+    for _, preset in ipairs(presets) do
+        if preset.name == presetName then
+            local loadedCount = 0
+            for elementName, value in pairs(preset.settings) do
+                if self:SetElementValue(elementName, value) then
+                    loadedCount = loadedCount + 1
+                end
             end
-        end
-    end)
-    
-    print("✅ Auto-save enabled (every " .. autoSaveInterval .. "s)")
-end
-
-function ConfigManager:DisableAutoSave()
-    autoSaveEnabled = false
-    print("⏹️ Auto-save disabled")
-end
-
--- Backup functionality
-function ConfigManager:CreateBackup(configName)
-    configName = configName or currentConfigName
-    local backupName = configName .. "_backup_" .. os.date("%Y%m%d_%H%M%S")
-    
-    local originalData = LoadFile(configName)
-    if originalData then
-        local success = SaveFile(backupName, originalData)
-        if success then
-            print("✅ Backup created: " .. backupName)
-            return backupName
+            return true, string.format("Applied preset: %s (%d settings)", presetName, loadedCount)
         end
     end
-    
-    warn("❌ Failed to create backup for: " .. configName)
-    return nil
+    return false, "Preset not found: " .. presetName
+end
+
+-- Backup and restore
+function ConfigManager:CreateBackup()
+    local backupName = "backup_" .. os.date("%Y%m%d_%H%M%S")
+    return self:SaveConfig(backupName)
+end
+
+function ConfigManager:ListBackups()
+    local files = self:ListFiles()
+    local backups = {}
+    for _, file in ipairs(files) do
+        if file:match("^backup_") then
+            table.insert(backups, file)
+        end
+    end
+    return backups
 end
 
 -- Export/Import functionality
-function ConfigManager:Export(configName)
-    configName = configName or currentConfigName
-    local configData = LoadFile(configName)
+function ConfigManager:ExportConfig(configName, includeModuleData)
+    configName = configName or self.configName
+    local success, configData = self:LoadFile(configName)
     
-    if configData then
-        local exportString = HttpService:JSONEncode(configData)
-        pcall(function()
-            setclipboard(exportString)
-        end)
-        print("✅ Config exported to clipboard: " .. configName)
-        return exportString
+    if success and configData then
+        if not includeModuleData then
+            configData.moduleData = nil
+        end
+        
+        local exportData = HttpService:JSONEncode(configData)
+        return true, exportData
     end
     
-    warn("❌ Failed to export config: " .. configName)
-    return nil
+    return false, "Failed to export config"
 end
 
-function ConfigManager:Import(configName, importString)
-    if not configName or not importString then
-        warn("❌ Invalid import parameters")
-        return false
-    end
-    
+function ConfigManager:ImportConfig(configName, importData)
     local success, configData = pcall(function()
-        return HttpService:JSONDecode(importString)
+        return HttpService:JSONDecode(importData)
     end)
     
     if success and configData then
-        local saveSuccess = SaveFile(configName, configData)
-        if saveSuccess then
-            print("✅ Config imported: " .. configName)
-            return true
+        return self:SaveFile(configName, configData)
+    end
+    
+    return false, "Invalid import data"
+end
+
+-- Configuration validation
+function ConfigManager:ValidateConfig(configData)
+    if type(configData) ~= "table" then
+        return false, "Config data is not a table"
+    end
+    
+    if not configData.settings then
+        return false, "Missing settings section"
+    end
+    
+    if not configData.metadata then
+        return false, "Missing metadata section"
+    end
+    
+    return true, "Configuration is valid"
+end
+
+-- Initialize the ConfigManager
+function ConfigManager:Init()
+    self:LoadModuleData()
+    return self
+end
+
+-- Statistics and info
+function ConfigManager:GetStats()
+    local files = self:ListFiles()
+    local configFiles = 0
+    local presetFiles = 0
+    local backupFiles = 0
+    
+    for _, file in ipairs(files) do
+        if file:match("^preset_") then
+            presetFiles = presetFiles + 1
+        elseif file:match("^backup_") then
+            backupFiles = backupFiles + 1
+        else
+            configFiles = configFiles + 1
         end
     end
     
-    warn("❌ Failed to import config: " .. configName)
-    return false
+    return {
+        totalFiles = #files,
+        configFiles = configFiles,
+        presetFiles = presetFiles,
+        backupFiles = backupFiles,
+        registeredElements = table.getn and table.getn(self.registeredElements) or 0,
+        currentConfig = self.currentConfig,
+        autoLoad = self.autoLoad
+    }
 end
 
--- Reset functionality
-function ConfigManager:Reset()
-    registeredElements = {}
-    print("🔄 ConfigManager reset - all registrations cleared")
-end
-
-function ConfigManager:GetRegisteredElements()
-    local elementNames = {}
-    for name, _ in pairs(registeredElements) do
-        table.insert(elementNames, name)
-    end
-    return elementNames
-end
-
--- Debug functionality
-function ConfigManager:Debug()
-    print("🔍 ConfigManager Debug Info:")
-    print("  Current Config: " .. currentConfigName)
-    print("  Registered Elements: " .. #self:GetRegisteredElements())
-    print("  Available Configs: " .. #self:List())
-    
-    for i, name in ipairs(self:GetRegisteredElements()) do
-        local value = self:GetElementValue(name)
-        print("    " .. i .. ". " .. name .. " = " .. tostring(value))
-    end
-end
-
-return ConfigManager
+return ConfigManager:Init()
