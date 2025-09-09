@@ -664,17 +664,32 @@ local function updateTileCache()
     local availableRegularTiles = {}
     local availableWaterTiles = {}
     
+    -- Process tiles in smaller batches with yields to prevent lag
+    local batchSize = 15
+    local processed = 0
+    
     for _, part in ipairs(regularParts) do
         if not isTileOccupied(part) then
             regularAvailable = regularAvailable + 1
             table.insert(availableRegularTiles, part)
         end
+        processed = processed + 1
+        if processed >= batchSize then
+            processed = 0
+            task.wait() -- Yield to prevent lag
+        end
     end
     
+    processed = 0
     for _, part in ipairs(waterParts) do
         if not isTileOccupied(part) then
             waterAvailable = waterAvailable + 1
             table.insert(availableWaterTiles, part)
+        end
+        processed = processed + 1
+        if processed >= batchSize then
+            processed = 0
+            task.wait() -- Yield to prevent lag
         end
     end
     
@@ -1063,8 +1078,12 @@ local function attemptPlacement()
         waitJitter(0.2)
         local success = placePet(tileInfo, petInfo.uid)
         if success then
-            tileCache.lastUpdate = 0
+            -- Only invalidate pet cache since we placed a pet
             petCache.lastUpdate = 0
+            -- Mark specific tile as occupied instead of full tile rescan
+            if tileInfo then
+                tileCache.lastUpdate = time() - (CACHE_DURATION - 2) -- Partial refresh in 2 seconds
+            end
             
             -- Verify pet speed and auto-delete if needed
             local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate)
@@ -1122,9 +1141,12 @@ local function attemptPlacement()
     local success = placePet(tileInfo, eggInfo.uid)
     
     if success then
-        -- Invalidate cache after successful placement
-        tileCache.lastUpdate = 0
+        -- Only invalidate egg cache since we placed an egg
         eggCache.lastUpdate = 0
+        -- Mark specific tile as occupied instead of full tile rescan
+        if tileInfo then
+            tileCache.lastUpdate = time() - (CACHE_DURATION - 2) -- Partial refresh in 2 seconds
+        end
         placementStats.lastReason = "Placed " .. (eggInfo.mutation and (eggInfo.mutation .. " ") or "") .. eggInfo.type
         if eggInfo.mutation then
             placementStats.mutationPlacements = placementStats.mutationPlacements + 1
@@ -1182,10 +1204,19 @@ local function exitDormantMode(trigger)
     
     print("[AutoPlace] Exiting dormant mode, triggered by:", trigger)
     
-    -- Invalidate caches and attempt placement
-    eggCache.lastUpdate = 0
-    petCache.lastUpdate = 0
-    tileCache.lastUpdate = 0
+    -- Only invalidate what might have changed based on trigger
+    if trigger:find("eggs") then
+        eggCache.lastUpdate = 0
+    elseif trigger:find("pets") then
+        petCache.lastUpdate = 0
+    elseif trigger:find("tile") then
+        tileCache.lastUpdate = 0
+    else
+        -- Unknown trigger, invalidate all (safe fallback)
+        eggCache.lastUpdate = 0
+        petCache.lastUpdate = 0
+        tileCache.lastUpdate = 0
+    end
     
     task.spawn(attemptPlacement)
 end
@@ -1270,8 +1301,8 @@ local function runAutoPlace()
                 placementStats.lastPlacement = os.time()
                 consecutiveFailures = 0
                 
-                -- Quick retry after success
-                waitJitter(0.8)
+                -- Longer wait after success to reduce lag
+                waitJitter(2.0)
             else
                 consecutiveFailures = consecutiveFailures + 1
                 
