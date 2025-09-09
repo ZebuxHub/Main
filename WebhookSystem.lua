@@ -438,79 +438,33 @@ local function runAutoAlert()
     end
 end
 
--- Function to create UI
-local function CreateUI()
-    if not Tab then return end
+-- Core initialization without UI (called from main file)
+function WebhookSystem.InitCore(dependencies)
+    WindUI = dependencies.WindUI
+    Window = dependencies.Window
+    Config = dependencies.Config
     
-    -- Webhook URL Input
-    Tab:Input({
-        Title = "Discord Webhook URL",
-        Desc = "Enter your Discord webhook URL",
-        Value = webhookUrl,
-        Placeholder = "https://discord.com/api/webhooks/...",
-        Callback = function(input)
-            webhookUrl = input
-        end
-    })
+    return WebhookSystem
+end
+
+-- Public methods for UI integration
+function WebhookSystem.SetWebhookUrl(url)
+    webhookUrl = url or ""
+end
+
+function WebhookSystem.SetAutoAlert(enabled)
+    autoAlertEnabled = enabled
     
-    -- Send Inventory Button
-    Tab:Button({
-        Title = "Send Inventory",
-        Desc = "Send current inventory snapshot to Discord",
-        Icon = "send",
-        Callback = function()
-            sendInventory()
-        end
-    })
-    
-    Tab:Divider()
-    
-    -- Auto Alert Toggle
-    Tab:Toggle({
-        Title = "Auto Alert",
-        Desc = "Automatically send alerts for trades and desired items",
-        Icon = "bell",
-        Value = autoAlertEnabled,
-        Callback = function(state)
-            autoAlertEnabled = state
-            
-            if state and not autoAlertThread then
-                autoAlertThread = task.spawn(function()
-                    runAutoAlert()
-                    autoAlertThread = nil
-                end)
-                WindUI:Notify({
-                    Title = "Auto Alert",
-                    Content = "Auto alert system started",
-                    Duration = 3
-                })
-            elseif not state and autoAlertThread then
-                WindUI:Notify({
-                    Title = "Auto Alert",
-                    Content = "Auto alert system stopped",
-                    Duration = 3
-                })
-            end
-        end
-    })
-    
-    -- Session Stats Display
-    Tab:Paragraph({
-        Title = "Session Statistics",
-        Desc = "Current session tracking data",
-        Image = "bar-chart",
-        ImageSize = 16
-    })
-    
-    -- Test Alert Button
-    Tab:Button({
-        Title = "Test Alert",
-        Desc = "Send a test alert to verify webhook",
-        Icon = "zap",
-        Callback = function()
-            sendAlert("Test Alert", "This is a test alert from the webhook system.")
-        end
-    })
+    if enabled and not autoAlertThread then
+        autoAlertThread = task.spawn(function()
+            runAutoAlert()
+            autoAlertThread = nil
+        end)
+    end
+end
+
+function WebhookSystem.SendInventory()
+    sendInventory()
 end
 
 -- Public API functions
@@ -547,14 +501,25 @@ function WebhookSystem.LoadConfig(config)
     end
 end
 
--- Initialization function
+-- Function to create UI (kept for legacy compatibility)
+local function CreateUI()
+    if not Tab then return end
+    
+    -- Legacy UI creation code removed - UI is now in main file
+    -- This function is kept for backward compatibility but does nothing
+end
+
+-- Legacy initialization function (for backward compatibility)
 function WebhookSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
     Tab = dependencies.Tab
     
-    CreateUI()
+    -- Only create UI if Tab is provided (legacy mode)
+    if Tab then
+        CreateUI()
+    end
     
     return WebhookSystem
 end
