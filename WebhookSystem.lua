@@ -311,6 +311,8 @@ local function createInventoryEmbed()
     end
     table.sort(sortedFruits, function(a, b) return a.count > b.count end)
     
+    local itemsInCurrentLine = 0
+    
     for _, fruitData in ipairs(sortedFruits) do
         local fruitName = fruitData.name
         local count = fruitData.count
@@ -322,17 +324,21 @@ local function createInventoryEmbed()
             currentLine = currentLine .. "  "
         end
         currentLine = currentLine .. fruitText
-        fruitCount = fruitCount + 1
+        itemsInCurrentLine = itemsInCurrentLine + 1
         
         -- Break line every 5 fruits
-        if fruitCount % 5 == 0 then
+        if itemsInCurrentLine == 5 then
             table.insert(fruitLines, currentLine)
             currentLine = ""
-            -- Add empty line after every 10 fruits (2 rows)
-            if fruitCount % 10 == 0 and fruitCount < #sortedFruits then
+            itemsInCurrentLine = 0
+            
+            -- Add empty line after every 2 rows (10 fruits total)
+            if #fruitLines % 2 == 0 and fruitCount + 1 < #sortedFruits then
                 table.insert(fruitLines, "")
             end
         end
+        
+        fruitCount = fruitCount + 1
     end
     
     if currentLine ~= "" then
