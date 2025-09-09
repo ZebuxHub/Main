@@ -195,22 +195,21 @@ local function getPetInventory()
     
     for _, child in ipairs(petContainer:GetChildren()) do
         totalChildren = totalChildren + 1
-        print("[PETS DEBUG] Child:", child.Name, "Type:", child.ClassName)
         
-        if child:IsA("Folder") or child:IsA("Configuration") then
+        -- Scan ALL Configuration objects
+        if child:IsA("Configuration") then
             local dAttr = child:GetAttribute("D")
             local petType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
             
-            print("[PETS DEBUG] - D attribute:", dAttr)
-            print("[PETS DEBUG] - T attribute:", petType)
-            print("[PETS DEBUG] - M attribute:", mutation)
+            print("[PETS DEBUG] Config:", child.Name)
+            print("[PETS DEBUG] - D:", dAttr, "T:", petType, "M:", mutation)
             
             -- Only count pets WITHOUT D attribute (unplaced pets)
             if not dAttr then
                 if petType then
                     validPets = validPets + 1
-                    print("[PETS DEBUG] ✅ Valid pet:", petType, "Mutation:", mutation)
+                    print("[PETS DEBUG] ✅ Valid pet:", petType, "Mutation:", mutation or "none")
                     
                     -- Handle Dino -> Jurassic conversion
                     if mutation == "Dino" then
@@ -232,11 +231,9 @@ local function getPetInventory()
                         end
                         pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
                     end
-                else
-                    print("[PETS DEBUG] ❌ No T attribute for:", child.Name)
                 end
             else
-                print("[PETS DEBUG] ⏭️ Skipped (has D attribute):", child.Name)
+                print("[PETS DEBUG] ⏭️ Skipped (D =", dAttr, ")")
             end
         end
     end
@@ -278,22 +275,21 @@ local function getEggInventory()
     
     for _, child in ipairs(eggContainer:GetChildren()) do
         totalChildren = totalChildren + 1
-        print("[EGGS DEBUG] Child:", child.Name, "Type:", child.ClassName)
         
-        if child:IsA("Folder") or child:IsA("Configuration") then
+        -- Scan ALL Configuration objects
+        if child:IsA("Configuration") then
             local dAttr = child:GetAttribute("D")
             local eggType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
             
-            print("[EGGS DEBUG] - D attribute:", dAttr)
-            print("[EGGS DEBUG] - T attribute:", eggType)
-            print("[EGGS DEBUG] - M attribute:", mutation)
+            print("[EGGS DEBUG] Config:", child.Name)
+            print("[EGGS DEBUG] - D:", dAttr, "T:", eggType, "M:", mutation)
             
             -- Only count eggs WITHOUT D attribute (unhatched eggs)
             if not dAttr then
                 if eggType then
                     validEggs = validEggs + 1
-                    print("[EGGS DEBUG] ✅ Valid egg:", eggType, "Mutation:", mutation)
+                    print("[EGGS DEBUG] ✅ Valid egg:", eggType, "Mutation:", mutation or "none")
                     
                     -- Handle Dino -> Jurassic conversion
                     if mutation == "Dino" then
@@ -315,11 +311,9 @@ local function getEggInventory()
                         end
                         eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
                     end
-                else
-                    print("[EGGS DEBUG] ❌ No T attribute for:", child.Name)
                 end
             else
-                print("[EGGS DEBUG] ⏭️ Skipped (has D attribute):", child.Name)
+                print("[EGGS DEBUG] ⏭️ Skipped (D =", dAttr, ")")
             end
         end
     end
