@@ -550,9 +550,7 @@ end
 
 -- Public methods for UI integration
 function WebhookSystem.SetWebhookUrl(url)
-    print("[DEBUG] SetWebhookUrl called with:", url)
     webhookUrl = url or ""
-    print("[DEBUG] webhookUrl set to:", webhookUrl)
 end
 
 function WebhookSystem.SetAutoAlert(enabled)
