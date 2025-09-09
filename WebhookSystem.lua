@@ -414,7 +414,7 @@ local function sendWebhook(embedData)
     -- Method 4: Try http_request (common executor function)
     if not success and http_request then
         success, result = pcall(function()
-            return http_request({
+            local response = http_request({
                 Url = webhookUrl,
                 Method = "POST",
                 Headers = {
@@ -422,9 +422,22 @@ local function sendWebhook(embedData)
                 },
                 Body = game:GetService("HttpService"):JSONEncode(embedData)
             })
+            print("[DEBUG] http_request response:", response)
+            if response then
+                print("[DEBUG] http_request status code:", response.StatusCode)
+                print("[DEBUG] http_request body:", response.Body)
+            end
+            return response
         end)
-        if success then
-            print("[DEBUG] http_request method succeeded")
+        if success and result then
+            print("[DEBUG] http_request method succeeded with status:", result.StatusCode or "unknown")
+            -- Consider 200-299 status codes as success
+            if result.StatusCode and result.StatusCode >= 200 and result.StatusCode < 300 then
+                success = true
+            else
+                success = false
+                result = "HTTP Error: " .. (result.StatusCode or "unknown status")
+            end
         else
             print("[DEBUG] http_request method failed:", result)
         end
