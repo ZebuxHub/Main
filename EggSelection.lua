@@ -119,27 +119,27 @@ local EggData = {
 local MutationData = {
     Golden = {
         Name = "Golden",
-        Icon = "✨",
+        Icon = "rbxassetid://12924452910",
         Rarity = 10
     },
     Diamond = {
         Name = "Diamond", 
-        Icon = "💎",
+        Icon = "rbxassetid://11937098975",
         Rarity = 20
     },
     Electirc = {
         Name = "Electric",
-        Icon = "⚡",
+        Icon = "rbxassetid://16749221391",
         Rarity = 50
     },
     Fire = {
         Name = "Fire",
-        Icon = "🔥",
+        Icon = "rbxassetid://16633305205",
         Rarity = 100
     },
     Jurassic = {
         Name = "Jurassic",
-        Icon = "🦕",
+        Icon = "rbxassetid://93073511262401",
         Rarity = 100
     }
 }
@@ -150,6 +150,8 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ScreenGui = nil
 local MainFrame = nil
 local selectedItems = {}
+local selectionOrder = {} -- Track order of selections for priority
+local priorityNumbers = {} -- Display priority numbers on mutations
 local isDragging = false
 local dragStart = nil
 local startPos = nil
@@ -339,24 +341,14 @@ local function createItemCard(itemId, itemData, parent)
     stroke.Thickness = 1
     stroke.Parent = card
     
-    -- Create Icon (ImageLabel for eggs, TextLabel for mutations)
-    local icon
-    if currentPage == "eggs" then
-        icon = Instance.new("ImageLabel")
-        icon.Image = itemData.Icon
-        icon.ScaleType = Enum.ScaleType.Fit
-    else
-        icon = Instance.new("TextLabel")
-        icon.Text = itemData.Icon
-        icon.TextSize = 32
-        icon.Font = Enum.Font.GothamBold
-        icon.TextColor3 = getRarityColor(itemData.Rarity)
-    end
-    
+    -- Create Icon (ImageLabel for both eggs and mutations now)
+    local icon = Instance.new("ImageLabel")
     icon.Name = "Icon"
     icon.Size = UDim2.new(0, 50, 0, 50)
     icon.Position = UDim2.new(0.5, -25, 0.2, 0)
     icon.BackgroundTransparency = 1
+    icon.Image = itemData.Icon
+    icon.ScaleType = Enum.ScaleType.Fit
     icon.Parent = card
     
     local name = Instance.new("TextLabel")
@@ -401,10 +393,39 @@ local function createItemCard(itemId, itemData, parent)
     checkmark.Visible = false
     checkmark.Parent = card
     
+    -- Priority number for mutations (shows selection order)
+    local priorityLabel = nil
+    if currentPage == "mutations" then
+        priorityLabel = Instance.new("TextLabel")
+        priorityLabel.Name = "PriorityLabel"
+        priorityLabel.Size = UDim2.new(0, 20, 0, 20)
+        priorityLabel.Position = UDim2.new(0, 4, 0, 4)
+        priorityLabel.BackgroundColor3 = colors.primary
+        priorityLabel.BorderSizePixel = 0
+        priorityLabel.Text = ""
+        priorityLabel.TextSize = 12
+        priorityLabel.Font = Enum.Font.GothamBold
+        priorityLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        priorityLabel.TextXAlignment = Enum.TextXAlignment.Center
+        priorityLabel.TextYAlignment = Enum.TextYAlignment.Center
+        priorityLabel.Visible = false
+        priorityLabel.Parent = card
+        
+        local priorityCorner = Instance.new("UICorner")
+        priorityCorner.CornerRadius = UDim.new(0.5, 0)
+        priorityCorner.Parent = priorityLabel
+    end
+    
     -- Set initial selection state
     if selectedItems[itemId] then
         checkmark.Visible = true
         card.BackgroundColor3 = colors.selected
+        
+        -- Show priority number for mutations
+        if priorityLabel and priorityNumbers[itemId] then
+            priorityLabel.Text = tostring(priorityNumbers[itemId])
+            priorityLabel.Visible = true
+        end
     end
     
     -- Hover effect
@@ -420,20 +441,66 @@ local function createItemCard(itemId, itemData, parent)
         end
     end)
     
-    -- Click effect
+    -- Click effect with priority tracking
     card.MouseButton1Click:Connect(function()
         if selectedItems[itemId] then
+            -- Deselecting item
             selectedItems[itemId] = nil
             checkmark.Visible = false
             TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+            
+            -- Remove from selection order and update priorities
+            for i, orderedItem in ipairs(selectionOrder) do
+                if orderedItem == itemId then
+                    table.remove(selectionOrder, i)
+                    break
+                end
+            end
+            
+            -- Hide priority label for mutations
+            if priorityLabel then
+                priorityLabel.Visible = false
+                priorityNumbers[itemId] = nil
+            end
+            
+            -- Update priority numbers for remaining mutations
+            if currentPage == "mutations" then
+                for i, orderedItem in ipairs(selectionOrder) do
+                    if MutationData[orderedItem] then
+                        priorityNumbers[orderedItem] = i
+                    end
+                end
+                -- Refresh content to update all priority displays
+                EggSelection.RefreshContent()
+            end
         else
+            -- Selecting item
             selectedItems[itemId] = true
             checkmark.Visible = true
             TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            
+            -- Add to selection order
+            table.insert(selectionOrder, itemId)
+            
+            -- Set priority number for mutations
+            if priorityLabel and currentPage == "mutations" then
+                local priorityNum = 0
+                for i, orderedItem in ipairs(selectionOrder) do
+                    if MutationData[orderedItem] then
+                        priorityNum = priorityNum + 1
+                        if orderedItem == itemId then
+                            priorityNumbers[itemId] = priorityNum
+                            priorityLabel.Text = tostring(priorityNum)
+                            priorityLabel.Visible = true
+                            break
+                        end
+                    end
+                end
+            end
         end
         
         if onSelectionChanged then
-            onSelectionChanged(selectedItems)
+            onSelectionChanged(selectedItems, selectionOrder)
         end
     end)
     
@@ -858,20 +925,46 @@ function EggSelection.RefreshContent()
 end
 
 -- Public Functions
-function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations)
+function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations, savedOrder)
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
+    
+    -- Clear previous data
+    selectedItems = {}
+    selectionOrder = {}
+    priorityNumbers = {}
     
     -- Apply saved selections if provided
     if savedEggs then
         for eggId, _ in pairs(savedEggs) do
             selectedItems[eggId] = true
+            table.insert(selectionOrder, eggId)
         end
     end
     
     if savedMutations then
         for mutationId, _ in pairs(savedMutations) do
             selectedItems[mutationId] = true
+            table.insert(selectionOrder, mutationId)
+        end
+    end
+    
+    -- Apply saved selection order if provided
+    if savedOrder then
+        selectionOrder = {}
+        for _, itemId in ipairs(savedOrder) do
+            if selectedItems[itemId] then
+                table.insert(selectionOrder, itemId)
+            end
+        end
+    end
+    
+    -- Calculate priority numbers for mutations
+    local mutationPriority = 1
+    for _, itemId in ipairs(selectionOrder) do
+        if MutationData[itemId] then
+            priorityNumbers[itemId] = mutationPriority
+            mutationPriority = mutationPriority + 1
         end
     end
     
@@ -926,18 +1019,48 @@ function EggSelection.GetCurrentSelections()
     return selectedItems
 end
 
-function EggSelection.UpdateSelections(eggs, mutations)
+function EggSelection.GetSelectionOrder()
+    return selectionOrder
+end
+
+function EggSelection.GetPriorityNumbers()
+    return priorityNumbers
+end
+
+function EggSelection.UpdateSelections(eggs, mutations, order)
     selectedItems = {}
+    selectionOrder = {}
+    priorityNumbers = {}
     
     if eggs then
         for eggId, _ in pairs(eggs) do
             selectedItems[eggId] = true
+            table.insert(selectionOrder, eggId)
         end
     end
     
     if mutations then
         for mutationId, _ in pairs(mutations) do
             selectedItems[mutationId] = true
+            table.insert(selectionOrder, mutationId)
+        end
+    end
+    
+    if order then
+        selectionOrder = {}
+        for _, itemId in ipairs(order) do
+            if selectedItems[itemId] then
+                table.insert(selectionOrder, itemId)
+            end
+        end
+    end
+    
+    -- Calculate priority numbers for mutations
+    local mutationPriority = 1
+    for _, itemId in ipairs(selectionOrder) do
+        if MutationData[itemId] then
+            priorityNumbers[itemId] = mutationPriority
+            mutationPriority = mutationPriority + 1
         end
     end
     
