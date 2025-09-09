@@ -32,6 +32,9 @@ local tradeTracking = {
     maxSessionTrades = 10
 }
 
+-- Prevent duplicate session summaries
+local sessionSummarySent = false
+
 -- Services
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -863,19 +866,12 @@ function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems
     
     -- Send the individual trade webhook
     sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
-    
-    -- Check if session is complete and send summary
-    if tradeTracking.sessionTradeCount >= tradeTracking.maxSessionTrades then
-        task.spawn(function()
-            task.wait(1) -- Small delay to ensure individual trade webhook is sent first
-            sendTradeSessionSummary()
-        end)
-    end
 end
 
 -- Public method to manually send trade session summary
 function WebhookSystem.SendTradeSessionSummary(summaryLogs)
     if not autoAlertEnabled then return end
+    if sessionSummarySent then return end
     -- If summaryLogs are provided, build a nicer description
     if type(summaryLogs) == "table" and #summaryLogs > 0 then
         -- Build a compact map per receiver
@@ -911,11 +907,13 @@ function WebhookSystem.SendTradeSessionSummary(summaryLogs)
         end
     end
     sendTradeSessionSummary()
+    sessionSummarySent = true
 end
 
 -- Public method to reset trade session count
 function WebhookSystem.ResetTradeCount()
     tradeTracking.sessionTradeCount = 0
+    sessionSummarySent = false
 end
 
 -- Public method to set max trades per session
@@ -930,6 +928,9 @@ function WebhookSystem.SyncTradeCounters(currentCount, maxCount)
     end
     if type(maxCount) == "number" then
         tradeTracking.maxSessionTrades = math.max(1, math.floor(maxCount))
+    end
+    if tradeTracking.sessionTradeCount < tradeTracking.maxSessionTrades then
+        sessionSummarySent = false
     end
 end
 
