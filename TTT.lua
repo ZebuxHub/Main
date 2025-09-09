@@ -1177,11 +1177,13 @@ function AutoPlaceSystem.CreateUI()
     -- Egg filters section
     Tabs.PlaceTab:Section({
         Title = "Egg filters",
+        Icon = "egg"
     })
 
     -- Egg selection dropdown
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🥚 Pick Egg Types",
+        Title = "Pick Egg Types",
+        Icon = "egg",
         Desc = "Pick eggs to place (🌊 needs water tile)",
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
@@ -1201,7 +1203,8 @@ function AutoPlaceSystem.CreateUI()
     
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🧬 Pick Mutations",
+        Title = "Pick Mutations",
+        Icon = "zap",
         Desc = "Pick mutations (empty = any)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
@@ -1213,19 +1216,29 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Statistics title (simplified)
+    -- Statistics section with live updates
     Tabs.PlaceTab:Section({
         Title = "Placement Statistics",
+        Icon = "activity"
+    })
+    
+    -- Stats display label
+    local statsLabel = Tabs.PlaceTab:Paragraph({
+        Title = "Stats",
+        Desc = "Waiting for placement data...",
+        Icon = "bar-chart-3"
     })
 
     -- Mode & behavior section
     Tabs.PlaceTab:Section({
         Title = "What to place",
+        Icon = "settings"
     })
 
     -- Replace toggle with multi-select dropdown for placement sources
     local placeModeDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Place Sources (Multi)",
+        Icon = "layers",
         Desc = "Choose what to place (can pick both)",
         Values = {"Eggs","Pets"},
         Value = {"Eggs"},
@@ -1243,12 +1256,14 @@ function AutoPlaceSystem.CreateUI()
     -- Pet settings section
     Tabs.PlaceTab:Section({
         Title = "Pet placement settings",
+        Icon = "heart"
     })
 
     -- Removed "mutations only" toggle per user request
 
     Tabs.PlaceTab:Slider({
-        Title = "Pets: Min Speed",
+        Title = "Min Speed",
+        Icon = "zap",
         Desc = "Only place pets ≥ this rate",
         Value = {
             Min = 0,
@@ -1266,7 +1281,8 @@ function AutoPlaceSystem.CreateUI()
     
     -- Replace toggle with dropdown sort order
     Tabs.PlaceTab:Dropdown({
-        Title = "Pets: Sort Order",
+        Title = "Sort Order",
+        Icon = "arrow-up-down",
         Desc = "Order by rate",
         Values = {"Low → High","High → Low"},
         Value = "Low → High",
@@ -1283,13 +1299,38 @@ function AutoPlaceSystem.CreateUI()
     -- Run section
     Tabs.PlaceTab:Section({
         Title = "Run",
+        Icon = "play"
     })
-
-    -- (Debug input removed by user request)
+    
+    -- Stats update function
+    local function updateStats()
+        if not statsLabel then return end
+        
+        local lastPlacementText = ""
+        if placementStats.lastPlacement then
+            local timeSince = os.time() - placementStats.lastPlacement
+            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
+            lastPlacementText = " | Last: " .. timeText
+        end
+        local rAvail, wAvail = updateTileCache()
+        local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
+        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s", 
+            placementStats.totalPlacements, 
+            placementStats.mutationPlacements,
+            rAvail or 0,
+            wAvail or 0,
+            reasonText,
+            lastPlacementText)
+        
+        if statsLabel.SetDesc then
+            statsLabel:SetDesc(statsText)
+        end
+    end
 
     -- Main auto place toggle
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
-        Title = "🏠 Auto Place Pets (Revamped)",
+        Title = "Auto Place",
+        Icon = "home",
         Desc = "Smart auto placement",
         Value = false,
         Callback = function(state)
@@ -1299,6 +1340,14 @@ function AutoPlaceSystem.CreateUI()
                 autoPlaceThread = task.spawn(function()
                     runAutoPlace()
                     autoPlaceThread = nil
+                end)
+                
+                -- Start stats update loop
+                task.spawn(function()
+                    while autoPlaceEnabled do
+                        updateStats()
+                        task.wait(3)
+                    end
                 end)
                 
                 WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 2 })
