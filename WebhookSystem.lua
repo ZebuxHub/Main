@@ -585,6 +585,54 @@ local function createAlertEmbed(alertType, details)
     return embed
 end
 
+-- Function to create trade session summary embed
+local function createTradeSessionSummaryEmbed()
+    local username = LocalPlayer and LocalPlayer.Name or "Unknown"
+    local sessionTime = os.time() - sessionStats.sessionStart
+    local sessionText = sessionTime < 60 and (sessionTime .. "s") or (math.floor(sessionTime/60) .. "m")
+    
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "🎯 Trade Session Completed",
+                color = 65280, -- Green color
+                fields = {
+                    {
+                        name = "User: " .. username,
+                        value = "✅ **Trade session finished successfully!**\n" ..
+                               "📊 **" .. tradeTracking.sessionTradeCount .. "/" .. tradeTracking.maxSessionTrades .. "** trades completed"
+                    },
+                    {
+                        name = "📈 Session Summary",
+                        value = "🔄 Total Trades: `" .. tradeTracking.sessionTradeCount .. "`\n" ..
+                               "⏱️ Session Duration: `" .. sessionText .. "`\n" ..
+                               "🎯 Trade Limit: `" .. tradeTracking.maxSessionTrades .. "`\n" ..
+                               "✨ Status: `Session Complete`"
+                    }
+                },
+                footer = {
+                    text = "Trade Session Summary • Build A Zoo"
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }
+        },
+        attachments = {}
+    }
+    
+    return embed
+end
+
+-- Function to send trade session summary
+local function sendTradeSessionSummary()
+    if not webhookUrl or webhookUrl == "" then
+        return
+    end
+    
+    local embedData = createTradeSessionSummaryEmbed()
+    sendWebhook(embedData)
+end
+
 -- Function to send alert
 local function sendAlert(alertType, details)
     if not autoAlertEnabled or not webhookUrl or webhookUrl == "" then
@@ -775,8 +823,15 @@ local function detectTradeCompletion()
                         tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
                         sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
                         
-                        -- Send webhook
+                        -- Send individual trade webhook
                         sendTradeWebhook(LocalPlayer.Name, lastTargetPlayer.Name, tradedItems, {})
+                        
+                        -- Check if session is complete
+                        if tradeTracking.sessionTradeCount >= tradeTracking.maxSessionTrades then
+                            -- Send session summary webhook
+                            task.wait(1) -- Small delay to ensure individual trade webhook is sent first
+                            sendTradeSessionSummary()
+                        end
                         
                         lastTargetPlayer = nil
                     end
@@ -890,8 +945,22 @@ function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems
     tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
     sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
     
-    -- Send the webhook
+    -- Send the individual trade webhook
     sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+    
+    -- Check if session is complete and send summary
+    if tradeTracking.sessionTradeCount >= tradeTracking.maxSessionTrades then
+        task.spawn(function()
+            task.wait(1) -- Small delay to ensure individual trade webhook is sent first
+            sendTradeSessionSummary()
+        end)
+    end
+end
+
+-- Public method to manually send trade session summary
+function WebhookSystem.SendTradeSessionSummary()
+    if not autoAlertEnabled then return end
+    sendTradeSessionSummary()
 end
 
 -- Public method to reset trade session count
