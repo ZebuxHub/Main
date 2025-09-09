@@ -7,6 +7,18 @@ local AutoSellSystem = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
+-- Config modules for speed calculation
+local ResPet, ResMutate, ResBigPet, ResBigFish
+pcall(function()
+	local Config = ReplicatedStorage:WaitForChild("Config", 5)
+	if Config then
+		ResPet = require(Config:WaitForChild("ResPet"))
+		ResMutate = require(Config:WaitForChild("ResMutate"))
+		ResBigPet = require(Config:WaitForChild("ResBigPetScale"))
+		ResBigFish = require(Config:WaitForChild("ResBigFishScale"))
+	end
+end)
+
 -- Dependencies (injected via Init)
 local WindUI, Tabs, MainTab, Config
 
@@ -19,6 +31,7 @@ local autoSellEnabled = false
 local autoSellThread = nil
 local sellMutations = false -- false = keep mutated (do not sell), true = sell mutated
 local sellMode = "Pets Only" -- "Pets Only", "Eggs Only", "Both Pets & Eggs"
+local speedThreshold = 0 -- 0 = disabled, >0 = minimum speed required
 local sessionLimit = 0 -- 0 = unlimited
 local sessionSold = 0
 
@@ -26,6 +39,7 @@ local sessionSold = 0
 local statusParagraph
 local mutationDropdown
 local sellModeDropdown
+local speedThresholdInput
 local autoSellToggle
 local sessionLimitInput
 
@@ -52,8 +66,10 @@ end
 
 local function isAvailableEgg(eggNode)
 	if not eggNode then return false end
-	-- Eggs are available if they have no children (not being hatched)
-	return #eggNode:GetChildren() == 0
+	-- Eggs are available if they have no children (not being hatched) AND no "D" attribute
+	local d = eggNode:GetAttribute("D")
+	local hasChildren = #eggNode:GetChildren() > 0
+	return (d == nil or tostring(d) == "") and not hasChildren
 end
 
 local function isMutated(node)
@@ -71,13 +87,127 @@ local function sellPetByUid(petUid)
 end
 
 local function sellEggByUid(eggUid)
-	-- Try CharacterRE for egg selling (common pattern in Build A Zoo)
-	local CharacterRE = Remotes and Remotes:FindFirstChild("CharacterRE")
-	if not CharacterRE then return false end
+	-- Use PetRE with correct parameters for egg selling
+	if not PetRE then return false end
 	local ok = pcall(function()
-		CharacterRE:FireServer("SellEgg", eggUid)
+		local args = {
+			"Sell",
+			eggUid,
+			true -- Third parameter indicates it's an egg
+		}
+		PetRE:FireServer(unpack(args))
 	end)
 	return ok == true
+end
+
+-- Speed calculation functions (based on user's formula)
+local function getBigLevel(exp, typ)
+	if not ResBigPet or not ResBigFish then return 0, nil end
+	local tbl = (typ == "Fish") and ResBigFish or ResBigPet
+	if not tbl or not tbl.__index then return 0, nil end
+	
+	local stage, def = 0, nil
+	for _, idx in pairs(tbl.__index) do
+		local row = tbl[idx]
+		if row and row.EXP and row.EXP <= exp then
+			stage, def = idx, row
+		else
+			break
+		end
+	end
+	return stage, def
+end
+
+local function calculateNormalPetSpeed(def, attrs, benefitMax, externalMult)
+	if not def or not attrs then return 0 end
+	
+	local base = tonumber(def.ProduceRate) or 0
+	local v = tonumber(attrs.V) or 0 -- 0..10000
+	local grow = ((benefitMax - 1) * ((v * 1e-4) ^ 2.24) + 1)
+	
+	local mut = 1
+	local M = attrs.M
+	if M and ResMutate and ResMutate[M] and ResMutate[M].ProduceRate then
+		mut = ResMutate[M].ProduceRate
+	end
+	
+	externalMult = externalMult or 1
+	local final = math.floor(base * grow * mut * externalMult + 1e-9)
+	return final
+end
+
+local function calculateBigPetSpeed(petNode, attrs)
+	if not petNode or not attrs then return 0 end
+	
+	local _, def = getBigLevel(tonumber(attrs.BPV) or 0, attrs.BPT or "Normal")
+	if not def then return 0 end
+	
+	local base = tonumber(def.Produce) or 0
+	local bigRate = 1
+	
+	-- Find MT_* attributes and get highest BigRate
+	for name, _ in pairs(petNode:GetAttributes()) do
+		if string.sub(name, 1, 3) == "MT_" then
+			local id = string.split(name, "_")[2]
+			if ResMutate and ResMutate[id] and ResMutate[id].BigRate then
+				bigRate = math.max(bigRate, ResMutate[id].BigRate)
+			end
+		end
+	end
+	
+	-- Big pets don't floor and don't multiply by v71
+	local final = base * bigRate
+	return final
+end
+
+local function getPetSpeed(petNode)
+	if not petNode then return 0 end
+	
+	local attrs = petNode:GetAttributes()
+	if not attrs or not attrs.T then return 0 end
+	
+	if not ResPet or not ResPet[attrs.T] then return 0 end
+	local def = ResPet[attrs.T]
+	
+	-- Check if it's a big pet
+	if attrs.BPV then
+		return calculateBigPetSpeed(petNode, attrs)
+	else
+		-- Normal pet calculation
+		local benefitMax = 10 -- Default BenfitMax value
+		local externalMult = 1 -- Default external multiplier
+		return calculateNormalPetSpeed(def, attrs, benefitMax, externalMult)
+	end
+end
+
+-- Helper function to parse speed threshold with K/M/B/T suffixes
+local function parseSpeedThreshold(text)
+	if not text or type(text) ~= "string" then return 0 end
+	
+	local cleanText = text:gsub("[$€£¥₹/s,]", ""):gsub("^%s*(.-)%s*$", "%1")
+	local number, suffix = cleanText:match("^([%d%.]+)([KkMmBbTt]?)$")
+	
+	if not number then
+		number = cleanText:match("([%d%.]+)")
+	end
+	
+	local numValue = tonumber(number)
+	if not numValue then return 0 end
+	
+	if suffix then
+		local lowerSuffix = string.lower(suffix)
+		if lowerSuffix == "k" then
+			numValue = numValue * 1000
+		elseif lowerSuffix == "m" then
+			numValue = numValue * 1000000
+		elseif lowerSuffix == "b" then
+			numValue = numValue * 1000000000
+		elseif lowerSuffix == "t" then
+			numValue = numValue * 1000000000000
+		end
+	end
+	
+	return numValue
 end
 
 -- Status
@@ -88,6 +218,7 @@ local sellStats = {
 	lastAction = "Idle",
 	lastSold = nil,
 	skippedMutations = 0,
+	skippedSpeed = 0,
 	scannedPets = 0,
 	scannedEggs = 0,
 }
@@ -95,13 +226,16 @@ local sellStats = {
 local function updateStatus()
 	if not statusParagraph then return end
 	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
+	local speedText = speedThreshold > 0 and ("Speed≥" .. tostring(speedThreshold) .. " | ") or ""
 	local desc = string.format(
-		"Sold: %d (P:%d E:%d) | Scanned: %d | Skipped M: %d\nMode: %s | Session: %d/%s%s",
+		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d | %sMode: %s\nSession: %d/%s%s",
 		sellStats.totalSold,
 		sellStats.petsSold,
 		sellStats.eggsSold,
 		totalScanned,
 		sellStats.skippedMutations,
+		sellStats.skippedSpeed,
+		speedText,
 		sellMode,
 		sessionSold,
 		tostring(sessionLimit == 0 and "∞" or sessionLimit),
@@ -116,6 +250,7 @@ local function scanAndSell()
 	sellStats.scannedPets = 0
 	sellStats.scannedEggs = 0
 	sellStats.skippedMutations = 0
+	sellStats.skippedSpeed = 0
 
 	-- Scan pets if mode allows
 	if sellMode == "Pets Only" or sellMode == "Both Pets & Eggs" then
@@ -140,16 +275,27 @@ local function scanAndSell()
 		end
 		sellStats.scannedPets += 1
 
-		local uid = node.Name
-		local unplaced = isUnplacedPet(node)
-		if unplaced then
-			local mutated = isMutated(node)
-			if mutated and not sellMutations then
-				sellStats.skippedMutations += 1
-				sellStats.lastAction = "Skipped mutated pet " .. uid
-				updateStatus()
-				continue
-			end
+				local uid = node.Name
+				local unplaced = isUnplacedPet(node)
+				if unplaced then
+					local mutated = isMutated(node)
+					if mutated and not sellMutations then
+						sellStats.skippedMutations += 1
+						sellStats.lastAction = "Skipped mutated pet " .. uid
+						updateStatus()
+						continue
+					end
+
+					-- Check speed threshold if enabled
+					if speedThreshold > 0 then
+						local petSpeed = getPetSpeed(node)
+						if petSpeed < speedThreshold then
+							sellStats.skippedSpeed += 1
+							sellStats.lastAction = "Skipped slow pet " .. uid .. " (speed: " .. tostring(petSpeed) .. ")"
+							updateStatus()
+							continue
+						end
+					end
 
 			local ok = sellPetByUid(uid)
 			if ok then
@@ -294,6 +440,17 @@ function AutoSellSystem.CreateUI()
 		Callback = function(selection)
 			if type(selection) == "table" then selection = selection[1] end
 			sellMutations = (selection == "Sell mutated pets")
+		end
+	})
+
+	speedThresholdInput = MainTab:Input({
+		Title = "⚡ Speed Threshold",
+		Desc = "Only sell pets below this speed (0 = disabled, supports K/M/B/T)",
+		Value = "0",
+		Callback = function(value)
+			local parsedValue = parseSpeedThreshold(value)
+			speedThreshold = parsedValue
+			updateStatus()
 		end
 	})
 
