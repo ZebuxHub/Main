@@ -1,193 +1,237 @@
--- Build A Zoo Webhook System
--- Handles Discord webhook notifications for inventory and alerts
+-- WebhookSystem.lua
+-- Discord Webhook Integration for Build A Zoo
 
 local WebhookSystem = {}
+
+-- Dependencies (injected from main script)
+local WindUI
+local Window
+local Config
+local Tab
+
+-- State variables
+local webhookUrl = ""
+local autoAlertEnabled = false
+local autoAlertThread = nil
+
+-- Session tracking
+local sessionStats = {
+    tradesCompleted = 0,
+    desiredEggsFound = 0,
+    desiredPetsFound = 0,
+    desiredFruitsFound = 0,
+    sessionStart = os.time()
+}
 
 -- Services
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- Variables
 local LocalPlayer = Players.LocalPlayer
-local webhookUrl = ""
-local autoAlertEnabled = false
-local sessionAlerts = {
-    trades = 0,
-    desiredEggs = 0,
-    desiredPets = 0,
-    desiredFruits = 0
-}
 
--- UI References
-local WindUI, Window, Config
-local webhookUrlInput, sendInventoryButton, autoAlertToggle
-
--- Emoji mappings for Discord
-local fruitEmojis = {
-    Apple = "<:Apple:1414278364042232040>",
-    Banana = "<:Banana:1414278394849267823>",
-    Blueberry = "<:Blueberry:1414278423119007744>",
-    Watermelon = "<:Watermelon:1414278523903803402>",
-    Strawberry = "<:Strawberry:1414278519382605874>",
-    Orange = "<:Orange:1414278509769261219>",
-    Corn = "<:Corn:1414278452315684954>",
-    Pear = "<:Pear:1414278513632219256>",
-    Pineapple = "<:Pineapple:1414278517302100008>",
-    Grape = "<:Grape:1414278507005083849>",
-    GoldMango = "<:GoldMango:1414278503440060516>",
-    BloodstoneCycad = "<:BloodstoneCycad:1414278408988528725>",
-    ColossalPinecone = "<:ColossalPinecone:1414278437052616865>",
-    VoltGinkgo = "<:VoltGinkgo:1414278521681088543>",
-    DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>"
-}
-
-local mutationEmojis = {
-    Golden = "🧬",
-    Diamond = "🧬", 
-    Electric = "⚡",
-    Fire = "🔥",
-    Dino = "🧬"
-}
-
--- Helper Functions
+-- Helper function to format numbers
 local function formatNumber(num)
     if type(num) == "string" then
         num = tonumber(num) or 0
     end
-    if num >= 1000000000000 then
-        return string.format("%.2fT", num / 1000000000000)
-    elseif num >= 1000000000 then
-        return string.format("%.2fB", num / 1000000000)
-    elseif num >= 1000000 then
-        return string.format("%.2fM", num / 1000000)
-    elseif num >= 1000 then
-        return string.format("%.2fK", num / 1000)
+    
+    if num >= 1e12 then
+        return string.format("%.2fT", num / 1e12)
+    elseif num >= 1e9 then
+        return string.format("%.2fB", num / 1e9)
+    elseif num >= 1e6 then
+        return string.format("%.2fM", num / 1e6)
+    elseif num >= 1e3 then
+        return string.format("%.2fK", num / 1e3)
     else
         return tostring(math.floor(num))
     end
 end
 
+-- Helper function to get player net worth
 local function getPlayerNetWorth()
     if not LocalPlayer then return 0 end
     local attrValue = LocalPlayer:GetAttribute("NetWorth")
-    return tonumber(attrValue) or 0
+    if type(attrValue) == "number" then return attrValue end
+    if type(attrValue) == "string" then return tonumber(attrValue) or 0 end
+    return 0
 end
 
+-- Helper function to get player tickets
 local function getPlayerTickets()
     if not LocalPlayer then return 0 end
     local attrValue = LocalPlayer:GetAttribute("Ticket")
-    return tonumber(attrValue) or 0
+    if type(attrValue) == "number" then return attrValue end
+    if type(attrValue) == "string" then return tonumber(attrValue) or 0 end
+    return 0
 end
 
--- Get player's fruit inventory
+-- Function to get fruit inventory
 local function getFruitInventory()
     local fruits = {}
-    local fruitContainer = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if fruitContainer then
-        fruitContainer = fruitContainer:FindFirstChild("Fruit")
-        if fruitContainer then
-            for _, fruitNode in ipairs(fruitContainer:GetChildren()) do
-                if fruitNode:IsA("IntValue") then
-                    local fruitName = fruitNode.Name
-                    local count = fruitNode.Value
-                    if count > 0 then
-                        fruits[fruitName] = count
-                    end
-                end
+    
+    if not LocalPlayer then return fruits end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return fruits end
+    
+    local dataFolder = playerGui:FindFirstChild("Data")
+    if not dataFolder then return fruits end
+    
+    local fruitFolder = dataFolder:FindFirstChild("Fruit")
+    if not fruitFolder then return fruits end
+    
+    for _, fruitNode in ipairs(fruitFolder:GetChildren()) do
+        if fruitNode:IsA("Folder") then
+            local fruitName = fruitNode.Name
+            local count = #fruitNode:GetChildren()
+            if count > 0 then
+                fruits[fruitName] = count
             end
         end
     end
+    
     return fruits
 end
 
--- Get player's pet inventory with mutations
+-- Function to get pet inventory
 local function getPetInventory()
     local pets = {}
-    local petContainer = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if petContainer then
-        petContainer = petContainer:FindFirstChild("Pets")
-        if petContainer then
-            for _, petNode in ipairs(petContainer:GetChildren()) do
-                if petNode:IsA("Folder") then
-                    local petType = petNode:GetAttribute("T") or petNode.Name
-                    local mutation = petNode:GetAttribute("M")
-                    
-                    if not pets[petType] then
-                        pets[petType] = { total = 0, mutations = {} }
-                    end
-                    
-                    pets[petType].total = pets[petType].total + 1
-                    
-                    if mutation then
-                        if not pets[petType].mutations[mutation] then
-                            pets[petType].mutations[mutation] = 0
-                        end
-                        pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
-                    end
+    
+    if not LocalPlayer then return pets end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return pets end
+    
+    local dataFolder = playerGui:FindFirstChild("Data")
+    if not dataFolder then return pets end
+    
+    local petFolder = dataFolder:FindFirstChild("Pets")
+    if not petFolder then return pets end
+    
+    for _, petNode in ipairs(petFolder:GetChildren()) do
+        if petNode:IsA("Folder") then
+            local petType = petNode:GetAttribute("T") or "Unknown"
+            local mutation = petNode:GetAttribute("M")
+            
+            if not pets[petType] then
+                pets[petType] = {
+                    total = 0,
+                    mutations = {}
+                }
+            end
+            
+            pets[petType].total = pets[petType].total + 1
+            
+            if mutation then
+                if not pets[petType].mutations[mutation] then
+                    pets[petType].mutations[mutation] = 0
                 end
+                pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
             end
         end
     end
+    
     return pets
 end
 
--- Get player's egg inventory with mutations
+-- Function to get egg inventory
 local function getEggInventory()
     local eggs = {}
-    local eggContainer = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if eggContainer then
-        eggContainer = eggContainer:FindFirstChild("Egg")
-        if eggContainer then
-            for _, eggNode in ipairs(eggContainer:GetChildren()) do
-                if eggNode:IsA("Folder") and #eggNode:GetChildren() == 0 then
-                    local eggType = eggNode:GetAttribute("Type") or eggNode.Name
-                    local mutation = eggNode:GetAttribute("M")
-                    
-                    if not eggs[eggType] then
-                        eggs[eggType] = { total = 0, mutations = {} }
-                    end
-                    
-                    eggs[eggType].total = eggs[eggType].total + 1
-                    
-                    if mutation then
-                        if not eggs[eggType].mutations[mutation] then
-                            eggs[eggType].mutations[mutation] = 0
-                        end
-                        eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
-                    end
+    
+    if not LocalPlayer then return eggs end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return eggs end
+    
+    local dataFolder = playerGui:FindFirstChild("Data")
+    if not dataFolder then return eggs end
+    
+    local eggFolder = dataFolder:FindFirstChild("Egg")
+    if not eggFolder then return eggs end
+    
+    for _, eggNode in ipairs(eggFolder:GetChildren()) do
+        if eggNode:IsA("Folder") and #eggNode:GetChildren() == 0 then -- Only count unhatched eggs
+            local eggType = eggNode:GetAttribute("Type") or "Unknown"
+            local mutation = eggNode:GetAttribute("M")
+            
+            if not eggs[eggType] then
+                eggs[eggType] = {
+                    total = 0,
+                    mutations = {}
+                }
+            end
+            
+            eggs[eggType].total = eggs[eggType].total + 1
+            
+            if mutation then
+                if not eggs[eggType].mutations[mutation] then
+                    eggs[eggType].mutations[mutation] = 0
                 end
+                eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
             end
         end
     end
+    
     return eggs
 end
 
--- Format fruits for Discord embed
-local function formatFruits(fruits)
-    if not fruits or not next(fruits) then
-        return "No fruits available"
-    end
+-- Function to create inventory embed
+local function createInventoryEmbed()
+    local netWorth = getPlayerNetWorth()
+    local tickets = getPlayerTickets()
+    local username = LocalPlayer and LocalPlayer.Name or "Unknown"
     
+    -- Get inventories
+    local fruits = getFruitInventory()
+    local pets = getPetInventory()
+    local eggs = getEggInventory()
+    
+    -- Build fruit field
+    local fruitValue = ""
+    local fruitCount = 0
     local fruitLines = {}
     local currentLine = ""
-    local itemsInLine = 0
+    
+    -- Fruit emojis mapping (using provided format)
+    local fruitEmojis = {
+        Apple = "<:Apple:1414278364042232040>",
+        Banana = "<:Banana:1414278394849267823>",
+        Blueberry = "<:Blueberry:1414278423119007744>",
+        Watermelon = "<:Watermelon:1414278523903803402>",
+        Strawberry = "<:Strawberry:1414278519382605874>",
+        Orange = "<:Orange:1414278509769261219>",
+        Corn = "<:Corn:1414278452315684954>",
+        Pear = "<:Pear:1414278513632219256>",
+        Pineapple = "<:Pineapple:1414278517302100008>",
+        Grape = "<:Grape:1414278507005083849>",
+        GoldMango = "<:GoldMango:1414278503440060516>",
+        BloodstoneCycad = "<:BloodstoneCycad:1414278408988528725>",
+        ColossalPinecone = "<:ColossalPinecone:1414278437052616865>",
+        VoltGinkgo = "<:VoltGinkgo:1414278521681088543>",
+        DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>"
+    }
     
     for fruitName, count in pairs(fruits) do
         local emoji = fruitEmojis[fruitName] or "🍎"
-        local fruitText = string.format("%s `%s`", emoji, formatNumber(count))
+        local fruitText = emoji .. " `" .. count .. "`"
         
-        if itemsInLine >= 5 then
+        if #currentLine + #fruitText + 2 > 80 then -- Line length limit
             table.insert(fruitLines, currentLine)
             currentLine = fruitText
-            itemsInLine = 1
         else
             if currentLine ~= "" then
-                currentLine = currentLine .. "  " .. fruitText
-            else
-                currentLine = fruitText
+                currentLine = currentLine .. "  "
             end
-            itemsInLine = itemsInLine + 1
+            currentLine = currentLine .. fruitText
+        end
+        fruitCount = fruitCount + 1
+        
+        if fruitCount % 5 == 0 then
+            table.insert(fruitLines, currentLine)
+            currentLine = ""
+            if fruitCount < 15 then
+                table.insert(fruitLines, "")
+            end
         end
     end
     
@@ -195,314 +239,324 @@ local function formatFruits(fruits)
         table.insert(fruitLines, currentLine)
     end
     
-    return table.concat(fruitLines, "\n\n")
-end
-
--- Format pets for Discord embed
-local function formatPets(pets, maxPets)
-    if not pets or not next(pets) then
-        return "No pets available"
-    end
+    fruitValue = table.concat(fruitLines, "\n")
+    if fruitValue == "" then fruitValue = "No fruits found" end
     
-    local petLines = {}
-    local count = 0
-    
-    -- Sort pets by total count (descending)
-    local sortedPets = {}
-    for petType, data in pairs(pets) do
-        table.insert(sortedPets, {name = petType, data = data})
-    end
-    table.sort(sortedPets, function(a, b) return a.data.total > b.data.total end)
-    
-    for _, petInfo in ipairs(sortedPets) do
-        if count >= (maxPets or 10) then break end
+    -- Build pet field
+    local petValue = "```diff\n"
+    local petCount = 0
+    for petType, petData in pairs(pets) do
+        if petCount >= 5 then break end -- Limit to top 5 pets
         
-        local petType = petInfo.name
-        local data = petInfo.data
-        
-        local line = string.format("🐾 %s × %d", petType, data.total)
+        petValue = petValue .. "🐾 " .. petType .. " × " .. petData.total .. "\n"
         
         -- Add mutations
-        if data.mutations and next(data.mutations) then
-            for mutation, mutCount in pairs(data.mutations) do
-                local emoji = mutationEmojis[mutation] or "🔸"
-                line = line .. string.format("\nL %s %s × %d", emoji, mutation, mutCount)
+        for mutation, count in pairs(petData.mutations) do
+            local mutationIcon = "🧬"
+            if mutation == "Fire" then mutationIcon = "🔥"
+            elseif mutation == "Electric" then mutationIcon = "⚡"
             end
+            petValue = petValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
         end
         
-        table.insert(petLines, line)
-        count = count + 1
-        
-        if count < (maxPets or 10) and count < #sortedPets then
-            table.insert(petLines, "")
-        end
+        petValue = petValue .. "\n"
+        petCount = petCount + 1
+    end
+    petValue = petValue .. "```"
+    
+    if petCount == 0 then
+        petValue = "```diff\nNo pets found```"
     end
     
-    return "```diff\n" .. table.concat(petLines, "\n") .. "\n```"
-end
-
--- Format eggs for Discord embed
-local function formatEggs(eggs, maxEggs)
-    if not eggs or not next(eggs) then
-        return "No eggs available"
-    end
-    
-    local eggLines = {}
-    local count = 0
-    
-    -- Sort eggs by total count (descending)
-    local sortedEggs = {}
-    for eggType, data in pairs(eggs) do
-        table.insert(sortedEggs, {name = eggType, data = data})
-    end
-    table.sort(sortedEggs, function(a, b) return a.data.total > b.data.total end)
-    
-    for _, eggInfo in ipairs(sortedEggs) do
-        if count >= (maxEggs or 5) then break end
+    -- Build egg field
+    local eggValue = "```diff\n"
+    local eggCount = 0
+    for eggType, eggData in pairs(eggs) do
+        if eggCount >= 2 then break end -- Limit to top 2 eggs
         
-        local eggType = eggInfo.name
-        local data = eggInfo.data
-        
-        local line = string.format("🏆 %s × %d", eggType, data.total)
+        eggValue = eggValue .. "🏆 " .. eggType .. " × " .. eggData.total .. "\n"
         
         -- Add mutations
-        if data.mutations and next(data.mutations) then
-            for mutation, mutCount in pairs(data.mutations) do
-                local emoji = mutationEmojis[mutation] or "🔸"
-                line = line .. string.format("\nL %s %s × %d", emoji, mutation, mutCount)
+        for mutation, count in pairs(eggData.mutations) do
+            local mutationIcon = "🧬"
+            if mutation == "Fire" then mutationIcon = "🔥"
+            elseif mutation == "Electric" then mutationIcon = "⚡"
             end
+            eggValue = eggValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
         end
         
-        table.insert(eggLines, line)
-        count = count + 1
-        
-        if count < (maxEggs or 5) and count < #sortedEggs then
-            table.insert(eggLines, "")
-        end
+        eggValue = eggValue .. "\n"
+        eggCount = eggCount + 1
+    end
+    eggValue = eggValue .. "```"
+    
+    if eggCount == 0 then
+        eggValue = "```diff\nNo eggs found```"
     end
     
-    return "```diff\n" .. table.concat(eggLines, "\n") .. "\n```"
-end
-
--- Send webhook message
-local function sendWebhook(embed)
-    print("🔄 Webhook: sendWebhook called")
-    print("🔄 Webhook: URL exists:", webhookUrl and "YES" or "NO")
-    
-    if not webhookUrl or webhookUrl == "" then
-        print("❌ Webhook: No URL set")
-        WindUI:Notify({ Title = "Webhook Error", Content = "Please set a Discord webhook URL first", Duration = 3 })
-        return false
-    end
-    
-    local payload = {
-        content = nil,
-        embeds = { embed },
-        attachments = {}
-    }
-    
-    print("🔄 Webhook: Payload created, sending HTTP request...")
-    local success, response = pcall(function()
-        return HttpService:PostAsync(webhookUrl, HttpService:JSONEncode(payload), Enum.HttpContentType.ApplicationJson)
-    end)
-    
-    print("🔄 Webhook: HTTP request result - Success:", success)
-    if success then
-        print("✅ Webhook: Message sent successfully")
-        WindUI:Notify({ Title = "Webhook Success", Content = "Message sent to Discord!", Duration = 3 })
-        return true
-    else
-        print("❌ Webhook: Error:", tostring(response))
-        WindUI:Notify({ Title = "Webhook Error", Content = "Failed to send message: " .. tostring(response), Duration = 5 })
-        return false
-    end
-end
-
--- Create inventory embed
-local function createInventoryEmbed()
-    print("🔄 Webhook: Getting player data...")
-    local playerName = LocalPlayer.Name
-    local netWorth = getPlayerNetWorth()
-    local tickets = getPlayerTickets()
-    
-    print("🔄 Webhook: Player:", playerName, "NetWorth:", netWorth, "Tickets:", tickets)
-    
-    print("🔄 Webhook: Getting inventory data...")
-    local fruits = getFruitInventory()
-    local pets = getPetInventory()
-    local eggs = getEggInventory()
-    
-    print("🔄 Webhook: Fruits count:", fruits and #fruits or "nil")
-    print("🔄 Webhook: Pets count:", pets and #pets or "nil")
-    print("🔄 Webhook: Eggs count:", eggs and #eggs or "nil")
-    
+    -- Create embed
     local embed = {
-        title = "📊 Inventory Snapshot",
-        color = 16761095, -- Orange color
-        fields = {
+        content = nil,
+        embeds = {
             {
-                name = "User: " .. playerName,
-                value = string.format("💰 Net Worth:  `%s`\n<:Ticket:1414283452659798167> Ticket: `%s`", 
-                    formatNumber(netWorth), formatNumber(tickets))
-            },
-            {
-                name = "🪣 Fruits",
-                value = formatFruits(fruits)
-            },
-            {
-                name = "🐾 Pets",
-                value = formatPets(pets, 8),
-                inline = true
-            },
-            {
-                name = "🥚 Top Eggs",
-                value = formatEggs(eggs, 3),
-                inline = true
+                title = "📊 Inventory Snapshot",
+                color = 16761095,
+                fields = {
+                    {
+                        name = "User: " .. username,
+                        value = "💰 Net Worth:  `" .. formatNumber(netWorth) .. "`\n<:Ticket:1414283452659798167> Ticket: `" .. formatNumber(tickets) .. "`"
+                    },
+                    {
+                        name = "🪣 Fruits",
+                        value = fruitValue
+                    },
+                    {
+                        name = "🐾 Pets",
+                        value = petValue,
+                        inline = true
+                    },
+                    {
+                        name = "🥚 Top Eggs",
+                        value = eggValue,
+                        inline = true
+                    }
+                },
+                footer = {
+                    text = "Generated • Build A Zoo"
+                }
             }
         },
-        footer = {
-            text = "Generated • Build A Zoo"
-        }
+        attachments = {}
     }
     
     return embed
 end
 
--- Send inventory report
-local function sendInventoryReport()
-    print("🔄 Webhook: Starting inventory report...")
-    
+-- Function to send webhook
+local function sendWebhook(embedData)
     if not webhookUrl or webhookUrl == "" then
-        WindUI:Notify({ Title = "Webhook Error", Content = "Please set a Discord webhook URL first", Duration = 3 })
+        WindUI:Notify({
+            Title = "Webhook Error",
+            Content = "No webhook URL configured",
+            Duration = 3
+        })
+        return false
+    end
+    
+    local success, result = pcall(function()
+        return game:GetService("HttpService"):PostAsync(webhookUrl, HttpService:JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
+    end)
+    
+    if success then
+        WindUI:Notify({
+            Title = "Webhook Sent",
+            Content = "Inventory sent to Discord successfully",
+            Duration = 3
+        })
+        return true
+    else
+        WindUI:Notify({
+            Title = "Webhook Failed",
+            Content = "Failed to send: " .. tostring(result),
+            Duration = 5
+        })
+        return false
+    end
+end
+
+-- Function to send inventory
+local function sendInventory()
+    local embedData = createInventoryEmbed()
+    sendWebhook(embedData)
+end
+
+-- Function to create alert embed
+local function createAlertEmbed(alertType, details)
+    local username = LocalPlayer and LocalPlayer.Name or "Unknown"
+    local sessionTime = os.time() - sessionStats.sessionStart
+    local sessionText = sessionTime < 60 and (sessionTime .. "s") or (math.floor(sessionTime/60) .. "m")
+    
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "🚨 Alert: " .. alertType,
+                color = 3447003, -- Blue color
+                fields = {
+                    {
+                        name = "User: " .. username,
+                        value = details
+                    },
+                    {
+                        name = "📊 Session Stats",
+                        value = "🔄 Trades: `" .. sessionStats.tradesCompleted .. "`\n" ..
+                               "🥚 Desired Eggs: `" .. sessionStats.desiredEggsFound .. "`\n" ..
+                               "🐾 Desired Pets: `" .. sessionStats.desiredPetsFound .. "`\n" ..
+                               "🍎 Desired Fruits: `" .. sessionStats.desiredFruitsFound .. "`\n" ..
+                               "⏱️ Session: `" .. sessionText .. "`"
+                    }
+                },
+                footer = {
+                    text = "Auto Alert • Build A Zoo"
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }
+        },
+        attachments = {}
+    }
+    
+    return embed
+end
+
+-- Function to send alert
+local function sendAlert(alertType, details)
+    if not autoAlertEnabled or not webhookUrl or webhookUrl == "" then
         return
     end
     
-    print("🔄 Webhook: Creating embed...")
-    local embed = createInventoryEmbed()
-    print("🔄 Webhook: Embed created, sending...")
-    sendWebhook(embed)
-end
-
--- Auto alert functions
-local function checkForDesiredItems()
-    -- This would be expanded based on user's desired items
-    -- For now, it's a placeholder for the alert system
-    if autoAlertEnabled then
-        -- Check for trades, desired eggs, pets, fruits
-        -- Increment sessionAlerts counters as needed
-        -- Send alerts when items are found
+    local embedData = createAlertEmbed(alertType, details)
+    
+    local success, result = pcall(function()
+        return game:GetService("HttpService"):PostAsync(webhookUrl, HttpService:JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
+    end)
+    
+    if not success then
+        print("Alert webhook failed:", result)
     end
 end
 
--- Create UI
-local function CreateUI(tab)
+-- Auto alert monitoring function
+local function runAutoAlert()
+    -- This would monitor for trades, desired items, etc.
+    -- Implementation would depend on the game's specific events and data structure
+    while autoAlertEnabled do
+        -- Monitor for trade completions
+        -- Monitor for desired eggs/pets/fruits
+        -- Send alerts when conditions are met
+        
+        task.wait(5) -- Check every 5 seconds
+    end
+end
+
+-- Function to create UI
+local function CreateUI()
+    if not Tab then return end
+    
     -- Webhook URL Input
-    webhookUrlInput = tab:Input({
+    Tab:Input({
         Title = "Discord Webhook URL",
-        Desc = "Enter your Discord channel webhook URL",
+        Desc = "Enter your Discord webhook URL",
+        Value = webhookUrl,
         Placeholder = "https://discord.com/api/webhooks/...",
-        Callback = function(value)
-            print("🔄 Webhook: URL input changed to:", value)
-            webhookUrl = value
-            if Config then
-                Config:Set("webhookUrl", value)
-                print("🔄 Webhook: URL saved to config")
-            end
+        Callback = function(input)
+            webhookUrl = input
         end
     })
     
     -- Send Inventory Button
-    sendInventoryButton = tab:Button({
-        Title = "📊 Send Inventory",
+    Tab:Button({
+        Title = "Send Inventory",
         Desc = "Send current inventory snapshot to Discord",
+        Icon = "send",
         Callback = function()
-            print("🔄 Webhook: Send Inventory button clicked!")
-            sendInventoryReport()
+            sendInventory()
         end
     })
+    
+    Tab:Divider()
     
     -- Auto Alert Toggle
-    autoAlertToggle = tab:Toggle({
-        Title = "🔔 Auto Alert",
+    Tab:Toggle({
+        Title = "Auto Alert",
         Desc = "Automatically send alerts for trades and desired items",
-        Value = false,
+        Icon = "bell",
+        Value = autoAlertEnabled,
         Callback = function(state)
             autoAlertEnabled = state
-            if Config then
-                Config:Set("autoAlertEnabled", state)
-            end
             
-            if state then
-                WindUI:Notify({ Title = "Auto Alert", Content = "Auto alerts enabled!", Duration = 3 })
-            else
-                WindUI:Notify({ Title = "Auto Alert", Content = "Auto alerts disabled", Duration = 3 })
+            if state and not autoAlertThread then
+                autoAlertThread = task.spawn(function()
+                    runAutoAlert()
+                    autoAlertThread = nil
+                end)
+                WindUI:Notify({
+                    Title = "Auto Alert",
+                    Content = "Auto alert system started",
+                    Duration = 3
+                })
+            elseif not state and autoAlertThread then
+                WindUI:Notify({
+                    Title = "Auto Alert",
+                    Content = "Auto alert system stopped",
+                    Duration = 3
+                })
             end
         end
     })
     
-    -- Session Stats (Read-only display)
-    tab:Paragraph({
-        Title = "📈 Session Statistics",
-        Desc = string.format("Trades: %d | Desired Eggs: %d | Desired Pets: %d | Desired Fruits: %d", 
-            sessionAlerts.trades, sessionAlerts.desiredEggs, sessionAlerts.desiredPets, sessionAlerts.desiredFruits),
-        Image = "bar-chart-3"
+    -- Session Stats Display
+    Tab:Paragraph({
+        Title = "Session Statistics",
+        Desc = "Current session tracking data",
+        Image = "bar-chart",
+        ImageSize = 16
+    })
+    
+    -- Test Alert Button
+    Tab:Button({
+        Title = "Test Alert",
+        Desc = "Send a test alert to verify webhook",
+        Icon = "zap",
+        Callback = function()
+            sendAlert("Test Alert", "This is a test alert from the webhook system.")
+        end
     })
 end
 
--- Load configuration
-local function loadConfig()
-    if Config then
-        local savedWebhookUrl = Config:Get("webhookUrl", "")
-        local savedAutoAlert = Config:Get("autoAlertEnabled", false)
-        
-        if savedWebhookUrl and savedWebhookUrl ~= "" then
-            webhookUrl = savedWebhookUrl
-            if webhookUrlInput then
-                webhookUrlInput:SetValue(savedWebhookUrl)
-            end
-        end
-        
-        if savedAutoAlert then
-            autoAlertEnabled = savedAutoAlert
-            if autoAlertToggle then
-                autoAlertToggle:SetValue(savedAutoAlert)
-            end
-        end
+-- Public API functions
+function WebhookSystem.SendAlert(alertType, details)
+    sendAlert(alertType, details)
+end
+
+function WebhookSystem.UpdateSessionStats(statType, increment)
+    increment = increment or 1
+    if statType == "trades" then
+        sessionStats.tradesCompleted = sessionStats.tradesCompleted + increment
+    elseif statType == "eggs" then
+        sessionStats.desiredEggsFound = sessionStats.desiredEggsFound + increment
+    elseif statType == "pets" then
+        sessionStats.desiredPetsFound = sessionStats.desiredPetsFound + increment
+    elseif statType == "fruits" then
+        sessionStats.desiredFruitsFound = sessionStats.desiredFruitsFound + increment
     end
 end
 
--- Initialize the system
+function WebhookSystem.GetConfigElements()
+    return {
+        webhookUrl = webhookUrl,
+        autoAlertEnabled = autoAlertEnabled
+    }
+end
+
+function WebhookSystem.LoadConfig(config)
+    if config.webhookUrl then
+        webhookUrl = config.webhookUrl
+    end
+    if config.autoAlertEnabled ~= nil then
+        autoAlertEnabled = config.autoAlertEnabled
+    end
+end
+
+-- Initialization function
 function WebhookSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
-    local Tab = dependencies.Tab
+    Tab = dependencies.Tab
     
-    if Tab then
-        CreateUI(Tab)
-        
-        -- Load saved configuration
-        task.wait(0.5) -- Wait for UI to be ready
-        loadConfig()
-        
-        -- Start auto alert monitoring if enabled
-        if autoAlertEnabled then
-            task.spawn(function()
-                while autoAlertEnabled do
-                    checkForDesiredItems()
-                    task.wait(5) -- Check every 5 seconds
-                end
-            end)
-        end
-    end
-end
-
--- Get config elements for registration
-function WebhookSystem.GetConfigElements()
-    return {
-        webhookUrl = webhookUrlInput,
-        autoAlertEnabled = autoAlertToggle
-    }
+    CreateUI()
+    
+    return WebhookSystem
 end
 
 return WebhookSystem
