@@ -1366,6 +1366,13 @@ local function runAutoPlace()
 end
 
 -- ============ Auto Unlock Helper Functions ============
+local autoUnlockEnabled = false
+local autoUnlockThread = nil
+local autoDeleteEnabled = false
+local autoDeleteTileFilter = "Both"
+local autoDeleteThread = nil
+local deleteSpeedThreshold = 100
+
 local function getLockedTilesForCurrentIsland()
     local lockedTiles = {}
     local islandName = getAssignedIslandName()
@@ -1674,9 +1681,6 @@ function AutoPlaceSystem.CreateUI()
         Icon = "unlock"
     })
     
-    local autoUnlockEnabled = false
-    local autoUnlockThread = nil
-    
     local autoUnlockToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Unlock Tiles",
         Desc = "Unlock tiles when you have enough money",
@@ -1701,11 +1705,6 @@ function AutoPlaceSystem.CreateUI()
         Title = "Auto Delete Settings",
         Icon = "trash-2"
     })
-    
-    local autoDeleteEnabled = false
-    local autoDeleteTileFilter = "Both"
-    local autoDeleteThread = nil
-    local deleteSpeedThreshold = 100
     
     local autoDeleteTileDropdown = Tabs.DeleteTab:Dropdown({
         Title = "Tile Filter",
