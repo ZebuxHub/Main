@@ -21,7 +21,6 @@ local placeEggsEnabled = true
 local placePetsEnabled = false
 local minPetRateFilter = 0
 local petSortAscending = true
-local tileFocusMode = "Water First" -- Water First, Regular First, Balanced
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -171,60 +170,6 @@ local tileCache = {
     regularAvailable = 0,
     waterAvailable = 0
 }
-
--- ============ Queue-based Processing System ============
-local processingQueue = {
-    tasks = {},
-    isProcessing = false,
-    maxTasksPerFrame = 3 -- Process max 3 tasks per frame to prevent lag
-}
-
-local function addToQueue(taskFunction, taskName, priority)
-    priority = priority or 1
-    table.insert(processingQueue.tasks, {
-        func = taskFunction,
-        name = taskName,
-        priority = priority,
-        timestamp = tick()
-    })
-    
-    -- Sort by priority (higher first)
-    table.sort(processingQueue.tasks, function(a, b)
-        return a.priority > b.priority
-    end)
-end
-
-local function processQueue()
-    if processingQueue.isProcessing or #processingQueue.tasks == 0 then
-        return
-    end
-    
-    processingQueue.isProcessing = true
-    local tasksProcessed = 0
-    
-    while #processingQueue.tasks > 0 and tasksProcessed < processingQueue.maxTasksPerFrame do
-        local task = table.remove(processingQueue.tasks, 1)
-        
-        -- Execute task with error protection
-        local success, result = pcall(task.func)
-        if not success then
-            warn("Queue task failed:", task.name, result)
-        end
-        
-        tasksProcessed = tasksProcessed + 1
-        -- Yield after each task
-        if tasksProcessed < processingQueue.maxTasksPerFrame then
-            task.wait()
-        end
-    end
-    
-    processingQueue.isProcessing = false
-    
-    -- Continue processing next frame if more tasks remain
-    if #processingQueue.tasks > 0 then
-        task.spawn(processQueue)
-    end
-end
 
 local eggCache = {
     lastUpdate = 0,
@@ -693,7 +638,7 @@ local function isTileOccupied(farmPart)
     return false
 end
 
--- Enhanced tile cache system with queue-based processing
+-- Enhanced tile cache system
 local function updateTileCache()
     local currentTime = time()
     if currentTime - tileCache.lastUpdate < CACHE_DURATION then
@@ -713,51 +658,27 @@ local function updateTileCache()
     local regularParts = getFarmParts(islandNumber, false)
     local waterParts = getFarmParts(islandNumber, true)
     
-    -- Count available tiles with queue-based processing for large tile sets
+    -- Count available tiles
     local regularAvailable = 0
     local waterAvailable = 0
     local availableRegularTiles = {}
     local availableWaterTiles = {}
     
-    -- Process regular tiles in batches
-    local batchSize = 5
-    for i = 1, #regularParts, batchSize do
-        local batch = {}
-        for j = i, math.min(i + batchSize - 1, #regularParts) do
-            table.insert(batch, regularParts[j])
+    for _, part in ipairs(regularParts) do
+        if not isTileOccupied(part) then
+            regularAvailable = regularAvailable + 1
+            table.insert(availableRegularTiles, part)
         end
-        
-        addToQueue(function()
-            for _, part in ipairs(batch) do
-                if not isTileOccupied(part) then
-                    regularAvailable = regularAvailable + 1
-                    table.insert(availableRegularTiles, part)
-                end
-            end
-        end, "RegularTileBatch_" .. i, 2)
     end
     
-    -- Process water tiles in batches
-    for i = 1, #waterParts, batchSize do
-        local batch = {}
-        for j = i, math.min(i + batchSize - 1, #waterParts) do
-            table.insert(batch, waterParts[j])
+    for _, part in ipairs(waterParts) do
+        if not isTileOccupied(part) then
+            waterAvailable = waterAvailable + 1
+            table.insert(availableWaterTiles, part)
         end
-        
-        addToQueue(function()
-            for _, part in ipairs(batch) do
-                if not isTileOccupied(part) then
-                    waterAvailable = waterAvailable + 1
-                    table.insert(availableWaterTiles, part)
-                end
-            end
-        end, "WaterTileBatch_" .. i, 2)
     end
     
-    -- Start queue processing
-    task.spawn(processQueue)
-    
-    -- Update cache immediately with current values (will be updated as queue processes)
+    -- Update cache
     tileCache.lastUpdate = currentTime
     tileCache.regularTiles = availableRegularTiles
     tileCache.waterTiles = availableWaterTiles
@@ -989,6 +910,11 @@ local function getNextBestPet()
         return nil, nil, "no_pets"
     end
     
+    -- Early exit if no tiles available at all
+    if regularAvailable == 0 and waterAvailable == 0 then
+        return nil, nil, "no_tiles_available"
+    end
+    
     -- Sequential placement: start from current index and find next valid pet
     local startIndex = petCache.currentIndex
     local found = false
@@ -1002,15 +928,21 @@ local function getNextBestPet()
         if currentCandidate then
             -- Double-check pet is still not placed
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
-                -- Check if we have appropriate tiles for this pet
-                if currentCandidate.isOcean and waterAvailable > 0 then
-                    selectedCandidate = currentCandidate
-                    found = true
-                    break
-                elseif not currentCandidate.isOcean and regularAvailable > 0 then
-                    selectedCandidate = currentCandidate
-                    found = true
-                    break
+                -- Check tile availability for this specific pet type
+                if currentCandidate.isOcean then
+                    -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
+                    if waterAvailable > 0 or regularAvailable > 0 then
+                        selectedCandidate = currentCandidate
+                        found = true
+                        break
+                    end
+                else
+                    -- Regular pets: ONLY regular tiles
+                    if regularAvailable > 0 then
+                        selectedCandidate = currentCandidate
+                        found = true
+                        break
+                    end
                 end
             end
         end
@@ -1030,7 +962,7 @@ local function getNextBestPet()
     end
     
     if not found then
-        -- No valid pets found, check why
+        -- No valid pets found, check why and provide specific reason
         local hasOcean = false
         local hasRegular = false
         for _, cand in ipairs(candidates) do
@@ -1040,10 +972,14 @@ local function getNextBestPet()
             end
         end
         
-        if hasOcean and not hasRegular and waterAvailable == 0 then
-            return nil, nil, "skip_ocean"
+        if hasOcean and not hasRegular and waterAvailable == 0 and regularAvailable == 0 then
+            return nil, nil, "ocean_pets_no_tiles"
+        elseif hasRegular and not hasOcean and regularAvailable == 0 then
+            return nil, nil, "regular_pets_no_regular_tiles"
+        elseif hasOcean and hasRegular then
+            return nil, nil, "mixed_pets_insufficient_tiles"
         else
-            return nil, nil, "no_space"
+            return nil, nil, "no_suitable_pets"
         end
     end
     
@@ -1053,43 +989,23 @@ local function getNextBestPet()
         petCache.currentIndex = 1 -- Wrap around
     end
     
-    -- Return selected pet and appropriate tile with correct placement logic
+    -- Return selected pet and appropriate tile with smart tile selection
     if selectedCandidate.isOcean then
-        -- Ocean pets MUST go on water tiles only
+        -- Ocean pets: water first, then regular fallback
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
+        elseif regularAvailable > 0 then
+            return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular_fallback"
         else
-            return nil, nil, "skip_ocean"
+            return nil, nil, "ocean_pet_no_tiles"
         end
     else
-        -- Regular pets - apply tile focus mode
-        if tileFocusMode == "Water First" then
-            -- Try water tiles first for ocean pets, then regular tiles
-            if waterAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
-            elseif regularAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
-            end
-        elseif tileFocusMode == "Regular First" then
-            -- Prioritize regular tiles for regular pets
-            if regularAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
-            elseif waterAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
-            end
-        else -- Balanced
-            -- Balanced mode: distribute evenly
-            local useWater = math.random() > 0.5
-            if useWater and waterAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
-            elseif regularAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
-            elseif waterAvailable > 0 then
-                return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
-            end
+        -- Regular pets: ONLY regular tiles
+        if regularAvailable > 0 then
+            return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
+        else
+            return nil, nil, "regular_pet_no_regular_tiles"
         end
-        
-        return nil, nil, "no_space"
     end
 end
 
@@ -1100,24 +1016,31 @@ local function attemptPlacement()
     if willPlacePet then
         local petInfo, tileInfo, reason = getNextBestPet()
         if not petInfo or not tileInfo then
-            if reason == "skip_ocean" then
-                placementStats.lastReason = "Ocean pets skipped (no water farms)"
-                return false, placementStats.lastReason
-            elseif reason == "no_space" then
-                placementStats.lastReason = "No available tiles for pets"
-                return false, placementStats.lastReason
-            elseif reason == "no_pets" then
+            if reason == "no_pets" then
                 placementStats.lastReason = "No pets pass filters"
+                return false, placementStats.lastReason
+            elseif reason == "no_tiles_available" then
+                placementStats.lastReason = "No tiles available"
+                return false, placementStats.lastReason
+            elseif reason == "ocean_pets_no_tiles" then
+                placementStats.lastReason = "Ocean pets need water/regular tiles"
+                return false, placementStats.lastReason
+            elseif reason == "regular_pets_no_regular_tiles" then
+                placementStats.lastReason = "Regular pets need regular tiles"
+                return false, placementStats.lastReason
+            elseif reason == "mixed_pets_insufficient_tiles" then
+                placementStats.lastReason = "Not enough tiles for pet types"
+                return false, placementStats.lastReason
+            elseif reason == "ocean_pet_no_tiles" then
+                placementStats.lastReason = "Ocean pet: no water/regular tiles"
+                return false, placementStats.lastReason
+            elseif reason == "regular_pet_no_regular_tiles" then
+                placementStats.lastReason = "Regular pet: no regular tiles"
                 return false, placementStats.lastReason
             else
                 placementStats.lastReason = "No suitable pets found"
                 return false, placementStats.lastReason
             end
-        end
-
-        if petInfo.isOcean and tileInfo and tileInfo.Name ~= "WaterFarm_split_0_0_0" then
-            placementStats.lastReason = "Blocked ocean pet on regular tile"
-            return false, placementStats.lastReason
         end
 
         -- Skip if already placed (D attribute present)
@@ -1250,11 +1173,29 @@ local function runAutoPlace()
             consecutiveFailures = consecutiveFailures + 1
             
             -- Adaptive waiting based on failure reason
-            if message:find("skip") or message:find("no water") or message:find("Ocean") then
-                -- Ocean eggs/pets skipped - wait much longer to reduce CPU
+            if message:find("no_tiles_available") or message:find("No tiles available") then
+                -- No tiles at all - wait very long to reduce CPU
+                waitJitter(20)
+            elseif message:find("ocean_pets_no_tiles") or message:find("Ocean pets need") then
+                -- Ocean pets can't find appropriate tiles - wait long
+                waitJitter(15)
+            elseif message:find("regular_pets_no_regular_tiles") or message:find("Regular pets need") then
+                -- Regular pets need regular tiles - wait long
+                waitJitter(15)
+            elseif message:find("mixed_pets_insufficient_tiles") or message:find("Not enough tiles") then
+                -- Mixed pet types, insufficient tiles - wait long
+                waitJitter(15)
+            elseif message:find("ocean_pet_no_tiles") or message:find("Ocean pet: no") then
+                -- Specific ocean pet can't find tiles - wait long
+                waitJitter(15)
+            elseif message:find("regular_pet_no_regular_tiles") or message:find("Regular pet: no") then
+                -- Specific regular pet can't find tiles - wait long
+                waitJitter(15)
+            elseif message:find("skip") or message:find("no water") or message:find("Ocean") then
+                -- Legacy ocean skip messages - wait long
                 waitJitter(15)
             elseif message:find("No available tiles") or message:find("no_space") then
-                -- No space - wait longer
+                -- General no space - wait long
                 waitJitter(12)
             elseif message:find("already placed") then
                 -- Candidate was already placed; rescan quickly
@@ -1264,7 +1205,7 @@ local function runAutoPlace()
                 waitJitter(8)
             elseif consecutiveFailures >= maxFailures then
                 -- Too many failures - much longer wait
-                waitJitter(20)
+                waitJitter(25)
                 consecutiveFailures = 0
             else
                 -- Normal failure - moderate wait
@@ -1394,24 +1335,6 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(v)
             petSortAscending = (v == "Low → High")
             petCache.lastUpdate = 0
-        end
-    })
-    
-    -- Tile focus section
-    Tabs.PlaceTab:Section({
-        Title = "Tile Focus",
-        Icon = "target"
-    })
-    
-    Tabs.PlaceTab:Dropdown({
-        Title = "Focus Mode",
-        Desc = "Which tiles to prioritize",
-        Values = {"Water First","Regular First","Balanced"},
-        Value = "Water First",
-        Multi = false,
-        AllowNone = false,
-        Callback = function(v)
-            tileFocusMode = v
         end
     })
     
