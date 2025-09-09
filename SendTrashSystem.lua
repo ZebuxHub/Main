@@ -1297,9 +1297,33 @@ local function processTrash()
 		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
 		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
 
-		if #petInventory == 0 and #eggInventory == 0 then
+		-- Check if any items match the current selectors
+		local matchingPets = 0
+		local matchingEggs = 0
+		
+		if sendMode == "Pets" or sendMode == "Both" then
+			for _, pet in ipairs(petInventory) do
+				pet = refreshItemFromData(pet.uid, false, pet)
+				if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
+					matchingPets = matchingPets + 1
+				end
+			end
+		end
+		
+		if sendMode == "Eggs" or sendMode == "Both" then
+			for _, egg in ipairs(eggInventory) do
+				egg = refreshItemFromData(egg.uid, true, egg)
+				local tList = selectedEggTypes or {}
+				local mList = selectedEggMuts or {}
+				if shouldSendItem(egg, tList, mList) then
+					matchingEggs = matchingEggs + 1
+				end
+			end
+		end
+		
+		if matchingPets == 0 and matchingEggs == 0 then
 			if not keepTrackingWhenEmpty then
-				-- Stop immediately if nothing matches (no fallback behavior)
+				-- Stop immediately if nothing matches selectors (no fallback behavior)
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 				WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
@@ -1307,7 +1331,7 @@ local function processTrash()
 			else
 				-- Keep tracking mode: wait and continue monitoring
 				updateStatus()
-				task.wait(2.0) -- Wait longer when no items available
+				task.wait(2.0) -- Wait longer when no items match selectors
 				continue
 			end
 		end
