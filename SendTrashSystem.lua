@@ -445,23 +445,11 @@ end
 local function refreshPlayerList()
     local playerList = {"Random Player"}
     
-    -- Get all players except local player
-    local allPlayers = Players:GetPlayers()
-    
-    for _, player in ipairs(allPlayers) do
-        if player ~= LocalPlayer and player.Name then
-            -- Add username
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
             table.insert(playerList, player.Name)
-            
-            -- Also add display name if different from username
-            if player.DisplayName and player.DisplayName ~= player.Name then
-                table.insert(playerList, player.DisplayName .. " (@" .. player.Name .. ")")
-            end
         end
     end
-    
-    -- Debug: Print player count
-    print("[SendTrash] Found " .. (#playerList - 1) .. " players in server")
     
     return playerList
 end
@@ -469,22 +457,12 @@ end
 -- Resolve target player by either Username or DisplayName (case-insensitive)
 local function resolveTargetPlayerByName(name)
     if not name or name == "" then return nil end
-    
-    -- Handle display name format: "DisplayName (@Username)"
-    local actualName = name
-    if string.find(name, " %(@") then
-        -- Extract username from format "DisplayName (@Username)"
-        actualName = string.match(name, "%(@(.+)%)$") or name
-    end
-    
     for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name == name or p.DisplayName == name or p.Name == actualName then
+        if p.Name == name or p.DisplayName == name then
             return p
         end
         -- case-insensitive fallback
-        if string.lower(p.Name) == string.lower(name) or 
-           string.lower(p.DisplayName) == string.lower(name) or 
-           string.lower(p.Name) == string.lower(actualName) then
+        if string.lower(p.Name) == string.lower(name) or string.lower(p.DisplayName) == string.lower(name) then
             return p
         end
     end
@@ -1330,7 +1308,7 @@ local function processTrash()
 					end)
 				end
 				trashEnabled = false
-				if trashToggle then pcall(function() trashToggle:Refresh(false) end) end
+				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 			else
 				WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
 			end
@@ -1444,7 +1422,7 @@ local function processTrash()
 			sessionLimits.sendPetCount = 0
 			sessionLimits.limitReachedNotified = false
 			trashEnabled = false
-			if trashToggle then pcall(function() trashToggle:Refresh(false) end) end
+			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 		end
 
 		updateStatus()
@@ -1638,20 +1616,20 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Manually refresh player and pet lists",
         Callback = function()
             -- Refresh all dropdowns
-            if targetPlayerDropdown and targetPlayerDropdown.Refreshs then
-                pcall(function() targetPlayerDropdown:Refreshs(refreshPlayerList()) end)
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
             end
-            if sendPetTypeDropdown and sendPetTypeDropdown.Refreshs then
-                pcall(function() sendPetTypeDropdown:Refreshs(getAllPetTypes()) end)
+            if sendPetTypeDropdown and sendPetTypeDropdown.SetValues then
+                pcall(function() sendPetTypeDropdown:SetValues(getAllPetTypes()) end)
             end
-            if sendPetMutationDropdown and sendPetMutationDropdown.Refreshs then
-                pcall(function() sendPetMutationDropdown:Refreshs(getAllMutations()) end)
+            if sendPetMutationDropdown and sendPetMutationDropdown.SetValues then
+                pcall(function() sendPetMutationDropdown:SetValues(getAllMutations()) end)
             end
-            if sendEggTypeDropdown and sendEggTypeDropdown.Refreshs then
-                pcall(function() sendEggTypeDropdown:Refreshs(getAllEggTypes()) end)
+            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
+                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
             end
-            if sendEggMutationDropdown and sendEggMutationDropdown.Refreshs then
-                pcall(function() sendEggMutationDropdown:Refreshs(getAllMutations()) end)
+            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
+                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
             end
             -- Selling UI removed
             
@@ -1710,76 +1688,6 @@ function SendTrashSystem.Init(dependencies)
         syncSelectorsFromControls()
         updateStatus()
     end)
-end
-
--- Export data functions for external UI integration
-function SendTrashSystem.RefreshPlayerList()
-    return refreshPlayerList()
-end
-
-function SendTrashSystem.GetAllPetTypes()
-    return getAllPetTypes()
-end
-
-function SendTrashSystem.GetAllEggTypes()
-    return getAllEggTypes()
-end
-
-function SendTrashSystem.GetAllMutations()
-    return getAllMutations()
-end
-
--- Initialize data-only mode (for external UI)
-function SendTrashSystem.InitDataOnly(dependencies)
-    -- Just set up the basic dependencies without creating UI
-    WindUI = dependencies.WindUI
-    Config = dependencies.Config
-    
-    -- Start data watchers
-    startDataWatchers()
-end
-
--- Start the send trash system with external state
-function SendTrashSystem.StartSendTrash(externalState, externalStatusParagraph)
-    -- Use external state instead of internal variables
-    trashEnabled = externalState.enabled
-    selectedTargetName = externalState.selectedTargetName
-    selectedPetTypes = externalState.selectedPetTypes
-    selectedPetMuts = externalState.selectedPetMuts
-    selectedEggTypes = externalState.selectedEggTypes
-    selectedEggMuts = externalState.selectedEggMuts
-    autoDeleteMinSpeed = externalState.minSpeed
-    actionCounter = externalState.actionCounter
-    lastReceiverName = externalState.lastReceiverName
-    lastReceiverId = externalState.lastReceiverId
-    stopRequested = externalState.stopRequested
-    statusParagraph = externalStatusParagraph
-    
-    -- Start the main processing loop
-    task.spawn(function()
-        processTrash()
-    end)
-end
-
--- Cleanup function
-function SendTrashSystem.Cleanup()
-    trashEnabled = false
-    stopRequested = true
-    
-    -- Disconnect data watchers
-    for _, conn in pairs(dataWatch.petConns) do
-        disconnectConn(conn)
-    end
-    for _, conn in pairs(dataWatch.eggConns) do
-        disconnectConn(conn)
-    end
-    for _, conn in pairs(dataWatch.rootConns) do
-        disconnectConn(conn)
-    end
-    
-    dataWatch.petConns = {}
-    dataWatch.eggConns = {}
-    dataWatch.rootConns = {}
 end
 
 return SendTrashSystem
