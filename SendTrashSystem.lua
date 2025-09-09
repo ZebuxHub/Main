@@ -48,6 +48,7 @@ local sendEggMutationDropdown
 local speedThresholdSlider
 local sessionLimitInput
 local statusParagraph
+local keepTrackingToggle
 
 -- State variables
 local trashEnabled = false
@@ -57,6 +58,7 @@ local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 local stopRequested = false -- graceful stop flag
+local keepTrackingWhenEmpty = false -- new setting to control stop behavior
 
 -- Random target state (for "Random Player" mode)
 local randomTargetState = { current = nil, fails = 0 }
@@ -1252,12 +1254,14 @@ local function updateStatus()
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
         "⚡ Auto-delete speed threshold: %s\n" ..
-        "🔄 Actions performed: %d",
+        "🔄 Actions performed: %d\n" ..
+        "📡 Keep tracking when empty: %s",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
-        actionCounter
+        actionCounter,
+        keepTrackingWhenEmpty and "Enabled" or "Disabled"
     )
 
     -- Append blacklist info
@@ -1294,11 +1298,18 @@ local function processTrash()
 		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
 
 		if #petInventory == 0 and #eggInventory == 0 then
-			-- Stop immediately if nothing matches (no fallback behavior)
-			trashEnabled = false
-			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-			WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
-			break
+			if not keepTrackingWhenEmpty then
+				-- Stop immediately if nothing matches (no fallback behavior)
+				trashEnabled = false
+				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+				WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
+				break
+			else
+				-- Keep tracking mode: wait and continue monitoring
+				updateStatus()
+				task.wait(2.0) -- Wait longer when no items available
+				continue
+			end
 		end
 
 		-- Determine targets with sticky preference
@@ -1451,6 +1462,21 @@ function SendTrashSystem.Init(dependencies)
         ImageSize = 22
     })
     
+    -- Keep tracking toggle
+    keepTrackingToggle = TrashTab:Toggle({
+        Title = "🔄 Keep Tracking When Empty",
+        Desc = "Continue monitoring inventory even when no items match filters (instead of stopping)",
+        Value = false,
+        Callback = function(state)
+            keepTrackingWhenEmpty = state
+            if state then
+                WindUI:Notify({ Title = "🔄 Keep Tracking", Content = "System will keep monitoring when no items available", Duration = 3 })
+            else
+                WindUI:Notify({ Title = "🛑 Stop When Empty", Content = "System will stop when no items match filters", Duration = 3 })
+            end
+        end
+    })
+    
     
     -- Session limit input
     sessionLimitInput = TrashTab:Input({
@@ -1540,7 +1566,7 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Update player list from server",
         Callback = function()
             if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:Refresh(refreshPlayerList()) end)
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
             end
         end
     })
@@ -1645,6 +1671,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
+        Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
         -- webhook config removed
         -- Selling config removed
         Config:Register("speedThreshold", speedThresholdSlider)
