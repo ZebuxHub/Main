@@ -293,14 +293,27 @@ local function createInventoryEmbed()
         Pear = "<:Pear:1414278513632219256>",
         Pineapple = "<:Pineapple:1414278517302100008>",
         Grape = "<:Grape:1414278507005083849>",
+        ["Gold Mango"] = "<:GoldMango:1414278503440060516>",
         GoldMango = "<:GoldMango:1414278503440060516>",
+        ["Bloodstone Cycad"] = "<:BloodstoneCycad:1414278408988528725>",
         BloodstoneCycad = "<:BloodstoneCycad:1414278408988528725>",
+        ["Colossal Pinecone"] = "<:ColossalPinecone:1414278437052616865>",
         ColossalPinecone = "<:ColossalPinecone:1414278437052616865>",
+        ["Volt Ginkgo"] = "<:VoltGinkgo:1414278521681088543>",
         VoltGinkgo = "<:VoltGinkgo:1414278521681088543>",
         DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>"
     }
     
+    -- Sort fruits for consistent display
+    local sortedFruits = {}
     for fruitName, count in pairs(fruits) do
+        table.insert(sortedFruits, {name = fruitName, count = count})
+    end
+    table.sort(sortedFruits, function(a, b) return a.count > b.count end)
+    
+    for _, fruitData in ipairs(sortedFruits) do
+        local fruitName = fruitData.name
+        local count = fruitData.count
         local emoji = fruitEmojis[fruitName] or "🍎"
         local fruitText = emoji .. " `" .. count .. "`"
         
