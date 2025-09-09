@@ -1540,7 +1540,7 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Update player list from server",
         Callback = function()
             if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+                pcall(function() targetPlayerDropdown:Refresh(refreshPlayerList()) end)
             end
         end
     })
