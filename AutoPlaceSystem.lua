@@ -16,10 +16,11 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI, Tabs, Config
 local selectedEggTypes = {}
 local selectedMutations = {}
-local fallbackToRegularWhenNoWater = false
-local usePetPlacementMode = false
+local fallbackToRegularWhenNoWater = true
+local placeEggsEnabled = true
+local placePetsEnabled = false
 local minPetRateFilter = 0
-local petAscendingOrder = false
+local petSortAscending = true
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -474,7 +475,7 @@ local function updateAvailablePets()
     
     -- Sort pets for sequential placement
     table.sort(out, function(a, b)
-        if petAscendingOrder then
+        if petSortAscending then
             -- Sort by speed first, then by UID for consistent ordering
             if a.effectiveRate == b.effectiveRate then
                 return a.uid < b.uid -- Stable sort by UID
@@ -663,17 +664,32 @@ local function updateTileCache()
     local availableRegularTiles = {}
     local availableWaterTiles = {}
     
+    -- Process tiles in smaller batches with yields to prevent lag
+    local batchSize = 15
+    local processed = 0
+    
     for _, part in ipairs(regularParts) do
         if not isTileOccupied(part) then
             regularAvailable = regularAvailable + 1
             table.insert(availableRegularTiles, part)
         end
+        processed = processed + 1
+        if processed >= batchSize then
+            processed = 0
+            task.wait() -- Yield to prevent lag
+        end
     end
     
+    processed = 0
     for _, part in ipairs(waterParts) do
         if not isTileOccupied(part) then
             waterAvailable = waterAvailable + 1
             table.insert(availableWaterTiles, part)
+        end
+        processed = processed + 1
+        if processed >= batchSize then
+            processed = 0
+            task.wait() -- Yield to prevent lag
         end
     end
     
@@ -909,6 +925,11 @@ local function getNextBestPet()
         return nil, nil, "no_pets"
     end
     
+    -- Early exit if no tiles available at all
+    if regularAvailable == 0 and waterAvailable == 0 then
+        return nil, nil, "no_tiles_available"
+    end
+    
     -- Sequential placement: start from current index and find next valid pet
     local startIndex = petCache.currentIndex
     local found = false
@@ -922,15 +943,21 @@ local function getNextBestPet()
         if currentCandidate then
             -- Double-check pet is still not placed
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
-                -- Check if we have appropriate tiles for this pet
-                if currentCandidate.isOcean and waterAvailable > 0 then
-                    selectedCandidate = currentCandidate
-                    found = true
-                    break
-                elseif not currentCandidate.isOcean and regularAvailable > 0 then
-                    selectedCandidate = currentCandidate
-                    found = true
-                    break
+                -- Check tile availability for this specific pet type
+                if currentCandidate.isOcean then
+                    -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
+                    if waterAvailable > 0 or regularAvailable > 0 then
+                        selectedCandidate = currentCandidate
+                        found = true
+                        break
+                    end
+                else
+                    -- Regular pets: ONLY regular tiles
+                    if regularAvailable > 0 then
+                        selectedCandidate = currentCandidate
+                        found = true
+                        break
+                    end
                 end
             end
         end
@@ -950,7 +977,7 @@ local function getNextBestPet()
     end
     
     if not found then
-        -- No valid pets found, check why
+        -- No valid pets found, check why and provide specific reason
         local hasOcean = false
         local hasRegular = false
         for _, cand in ipairs(candidates) do
@@ -960,10 +987,14 @@ local function getNextBestPet()
             end
         end
         
-        if hasOcean and not hasRegular and waterAvailable == 0 then
-            return nil, nil, "skip_ocean"
+        if hasOcean and not hasRegular and waterAvailable == 0 and regularAvailable == 0 then
+            return nil, nil, "ocean_pets_no_tiles"
+        elseif hasRegular and not hasOcean and regularAvailable == 0 then
+            return nil, nil, "regular_pets_no_regular_tiles"
+        elseif hasOcean and hasRegular then
+            return nil, nil, "mixed_pets_insufficient_tiles"
         else
-            return nil, nil, "no_space"
+            return nil, nil, "no_suitable_pets"
         end
     end
     
@@ -973,36 +1004,58 @@ local function getNextBestPet()
         petCache.currentIndex = 1 -- Wrap around
     end
     
-    -- Return selected pet and appropriate tile
+    -- Return selected pet and appropriate tile with smart tile selection
     if selectedCandidate.isOcean then
-        return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
+        -- Ocean pets: water first, then regular fallback
+        if waterAvailable > 0 then
+            return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
+        elseif regularAvailable > 0 then
+            return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular_fallback"
+        else
+            return nil, nil, "ocean_pet_no_tiles"
+        end
     else
-        return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
+        -- Regular pets: ONLY regular tiles
+        if regularAvailable > 0 then
+            return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
+        else
+            return nil, nil, "regular_pet_no_regular_tiles"
+        end
     end
 end
 
 local function attemptPlacement()
-    if usePetPlacementMode then
+    local willPlacePet = placePetsEnabled
+    local willPlaceEgg = placeEggsEnabled
+    -- If both selected, try pet first for variety; alternate could be added later
+    if willPlacePet then
         local petInfo, tileInfo, reason = getNextBestPet()
         if not petInfo or not tileInfo then
-            if reason == "skip_ocean" then
-                placementStats.lastReason = "Ocean pets skipped (no water farms)"
-                return false, placementStats.lastReason
-            elseif reason == "no_space" then
-                placementStats.lastReason = "No available tiles for pets"
-                return false, placementStats.lastReason
-            elseif reason == "no_pets" then
+            if reason == "no_pets" then
                 placementStats.lastReason = "No pets pass filters"
+                return false, placementStats.lastReason
+            elseif reason == "no_tiles_available" then
+                placementStats.lastReason = "No tiles available"
+                return false, placementStats.lastReason
+            elseif reason == "ocean_pets_no_tiles" then
+                placementStats.lastReason = "Ocean pets need water/regular tiles"
+                return false, placementStats.lastReason
+            elseif reason == "regular_pets_no_regular_tiles" then
+                placementStats.lastReason = "Regular pets need regular tiles"
+                return false, placementStats.lastReason
+            elseif reason == "mixed_pets_insufficient_tiles" then
+                placementStats.lastReason = "Not enough tiles for pet types"
+                return false, placementStats.lastReason
+            elseif reason == "ocean_pet_no_tiles" then
+                placementStats.lastReason = "Ocean pet: no water/regular tiles"
+                return false, placementStats.lastReason
+            elseif reason == "regular_pet_no_regular_tiles" then
+                placementStats.lastReason = "Regular pet: no regular tiles"
                 return false, placementStats.lastReason
             else
                 placementStats.lastReason = "No suitable pets found"
                 return false, placementStats.lastReason
             end
-        end
-
-        if petInfo.isOcean and tileInfo and tileInfo.Name ~= "WaterFarm_split_0_0_0" then
-            placementStats.lastReason = "Blocked ocean pet on regular tile"
-            return false, placementStats.lastReason
         end
 
         -- Skip if already placed (D attribute present)
@@ -1025,8 +1078,12 @@ local function attemptPlacement()
         waitJitter(0.2)
         local success = placePet(tileInfo, petInfo.uid)
         if success then
-            tileCache.lastUpdate = 0
+            -- Only invalidate pet cache since we placed a pet
             petCache.lastUpdate = 0
+            -- Mark specific tile as occupied instead of full tile rescan
+            if tileInfo then
+                tileCache.lastUpdate = time() - (CACHE_DURATION - 2) -- Partial refresh in 2 seconds
+            end
             
             -- Verify pet speed and auto-delete if needed
             local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate)
@@ -1050,6 +1107,10 @@ local function attemptPlacement()
             placementStats.lastReason = "Failed to place pet " .. petInfo.type
             return false, placementStats.lastReason
         end
+    end
+
+    if not willPlaceEgg then
+        return false, "Egg placement disabled"
     end
 
     local eggInfo, tileInfo, reason = getNextBestEgg()
@@ -1080,9 +1141,12 @@ local function attemptPlacement()
     local success = placePet(tileInfo, eggInfo.uid)
     
     if success then
-        -- Invalidate cache after successful placement
-        tileCache.lastUpdate = 0
+        -- Only invalidate egg cache since we placed an egg
         eggCache.lastUpdate = 0
+        -- Mark specific tile as occupied instead of full tile rescan
+        if tileInfo then
+            tileCache.lastUpdate = time() - (CACHE_DURATION - 2) -- Partial refresh in 2 seconds
+        end
         placementStats.lastReason = "Placed " .. (eggInfo.mutation and (eggInfo.mutation .. " ") or "") .. eggInfo.type
         if eggInfo.mutation then
             placementStats.mutationPlacements = placementStats.mutationPlacements + 1
@@ -1113,43 +1177,192 @@ end
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 
-local function runAutoPlace()
-    local consecutiveFailures = 0
-    local maxFailures = 5
+-- ============ Event-Driven Placement System ============
+local placementState = {
+    isDormant = false,
+    lastAttemptTime = 0,
+    connections = {},
+    dormantReason = ""
+}
+
+local function enterDormantMode(reason)
+    if placementState.isDormant then return end
     
-    while autoPlaceEnabled do
-        local success, message = attemptPlacement()
-        
-        if success then
-            placementStats.totalPlacements = placementStats.totalPlacements + 1
-            placementStats.lastPlacement = os.time()
-            consecutiveFailures = 0
-            
-            -- Shorter wait after successful placement
-            waitJitter(1.5)
-        else
-            consecutiveFailures = consecutiveFailures + 1
-            
-            -- Adaptive waiting based on failure reason
-            if message:find("skip") or message:find("no water") then
-                -- Ocean eggs skipped - wait longer
-                waitJitter(5)
-            elseif message:find("No available tiles") then
-                -- No space - wait longer
-                waitJitter(8)
-            elseif message:find("already placed") then
-                -- Candidate was already placed; rescan quickly
-                waitJitter(0.25)
-            elseif consecutiveFailures >= maxFailures then
-                -- Too many failures - longer wait
-                waitJitter(10)
-                consecutiveFailures = 0
-            else
-                -- Normal failure - short wait
-                waitJitter(2)
-            end
+    placementState.isDormant = true
+    placementState.dormantReason = reason
+    placementStats.lastReason = "Dormant: " .. reason
+    
+    print("[AutoPlace] Entering dormant mode:", reason)
+end
+
+local function exitDormantMode(trigger)
+    if not placementState.isDormant then return end
+    
+    placementState.isDormant = false
+    placementState.dormantReason = ""
+    placementStats.lastReason = "Reactivated by: " .. trigger
+    
+    print("[AutoPlace] Exiting dormant mode, triggered by:", trigger)
+    
+    -- Only invalidate what might have changed based on trigger
+    if trigger:find("eggs") then
+        eggCache.lastUpdate = 0
+    elseif trigger:find("pets") then
+        petCache.lastUpdate = 0
+    elseif trigger:find("tile") then
+        tileCache.lastUpdate = 0
+    else
+        -- Unknown trigger, invalidate all (safe fallback)
+        eggCache.lastUpdate = 0
+        petCache.lastUpdate = 0
+        tileCache.lastUpdate = 0
+    end
+    
+    task.spawn(attemptPlacement)
+end
+
+local function setupEventMonitoring()
+    -- Clear existing connections
+    for _, connection in ipairs(placementState.connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
         end
     end
+    placementState.connections = {}
+    
+    -- Monitor for new eggs (triggers reactivation)
+    local eggContainer = getEggContainer()
+    if eggContainer then
+        local function onEggChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.1) -- Brief wait for attributes
+            exitDormantMode("new eggs available")
+        end
+        
+        table.insert(placementState.connections, eggContainer.ChildAdded:Connect(onEggChanged))
+        table.insert(placementState.connections, eggContainer.ChildRemoved:Connect(onEggChanged))
+    end
+    
+    -- Monitor for new pets (triggers reactivation)
+    local petContainer = getPetContainer()
+    if petContainer then
+        local function onPetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.1)
+            exitDormantMode("new pets available")
+        end
+        
+        table.insert(placementState.connections, petContainer.ChildAdded:Connect(onPetChanged))
+        table.insert(placementState.connections, petContainer.ChildRemoved:Connect(onPetChanged))
+    end
+    
+    -- Monitor workspace pets (tiles becoming available)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        local function onWorkspacePetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2) -- Wait for tile to be properly freed
+            exitDormantMode("tile freed")
+        end
+        
+        table.insert(placementState.connections, workspacePets.ChildAdded:Connect(onWorkspacePetChanged))
+        table.insert(placementState.connections, workspacePets.ChildRemoved:Connect(onWorkspacePetChanged))
+    end
+    
+    -- Monitor PlayerBuiltBlocks (new tiles built)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        local function onBlockChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            exitDormantMode("new tiles built")
+        end
+        
+        table.insert(placementState.connections, playerBuiltBlocks.ChildAdded:Connect(onBlockChanged))
+        table.insert(placementState.connections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
+    end
+end
+
+local function runAutoPlace()
+    local consecutiveFailures = 0
+    local maxFailures = 3
+    
+    -- Setup event monitoring
+    setupEventMonitoring()
+    
+    while autoPlaceEnabled do
+        -- Skip processing if dormant
+        if not placementState.isDormant then
+            local success, message = attemptPlacement()
+            placementState.lastAttemptTime = time()
+            
+            if success then
+                placementStats.totalPlacements = placementStats.totalPlacements + 1
+                placementStats.lastPlacement = os.time()
+                consecutiveFailures = 0
+                
+                -- Longer wait after success to reduce lag
+                waitJitter(2.0)
+            else
+                consecutiveFailures = consecutiveFailures + 1
+                
+                -- Determine if we should enter dormant mode
+                local shouldGoDormant = false
+                local dormantReason = ""
+                
+                if message:find("no_tiles_available") or message:find("No tiles available") then
+                    shouldGoDormant = true
+                    dormantReason = "No tiles available"
+                elseif message:find("ocean_pets_no_tiles") or message:find("Ocean pets need") then
+                    shouldGoDormant = true
+                    dormantReason = "Ocean pets need water/regular tiles"
+                elseif message:find("regular_pets_no_regular_tiles") or message:find("Regular pets need") then
+                    shouldGoDormant = true
+                    dormantReason = "Regular pets need regular tiles"
+                elseif message:find("mixed_pets_insufficient_tiles") or message:find("Not enough tiles") then
+                    shouldGoDormant = true
+                    dormantReason = "Insufficient tiles for pet mix"
+                elseif message:find("ocean_pet_no_tiles") or message:find("Ocean pet: no") then
+                    shouldGoDormant = true
+                    dormantReason = "No tiles for ocean pets"
+                elseif message:find("regular_pet_no_regular_tiles") or message:find("Regular pet: no") then
+                    shouldGoDormant = true
+                    dormantReason = "No regular tiles for regular pets"
+                elseif message:find("no_pets") or message:find("No pets pass filters") then
+                    shouldGoDormant = true
+                    dormantReason = "No pets pass filters"
+                elseif consecutiveFailures >= maxFailures then
+                    shouldGoDormant = true
+                    dormantReason = "Too many consecutive failures"
+                    consecutiveFailures = 0
+                end
+                
+                if shouldGoDormant then
+                    enterDormantMode(dormantReason)
+                else
+                    -- Normal retry delays for temporary issues
+                    if message:find("already placed") then
+                        waitJitter(0.3)
+                    elseif message:find("disabled") then
+                        waitJitter(5)
+                    else
+                        waitJitter(2)
+                    end
+                end
+            end
+        else
+            -- Dormant mode - just wait and check periodically
+            waitJitter(5)
+        end
+    end
+    
+    -- Cleanup connections when stopping
+    for _, connection in ipairs(placementState.connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
+        end
+    end
+    placementState.connections = {}
 end
 
 -- ============ Public API ============
@@ -1167,17 +1380,15 @@ end
 
 function AutoPlaceSystem.CreateUI()
     -- Egg filters section
-    Tabs.PlaceTab:Paragraph({
-        Title = "🥚 Egg filters",
-        Desc = "Select which egg types and mutations to place when not using pet mode.",
-        Image = "filter",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "Egg Filters",
+        Icon = "egg"
     })
 
     -- Egg selection dropdown
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🥚 Pick Egg Types",
-        Desc = "Choose which eggs to place (🌊 ocean eggs require water farm)",
+        Title = "Egg Types",
+        Desc = "Pick eggs to place (🌊 needs water)",
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
             "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
@@ -1190,74 +1401,67 @@ function AutoPlaceSystem.CreateUI()
         AllowNone = true,
         Callback = function(selection)
             selectedEggTypes = selection
-            eggCache.lastUpdate = 0 -- Invalidate cache
+            eggCache.lastUpdate = 0
         end
     })
     
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "🧬 Pick Mutations",
-        Desc = "Choose which mutations to place (leave empty for all mutations)",
+        Title = "Mutations",
+        Desc = "Pick mutations (empty = any)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
         Multi = true,
         AllowNone = true,
         Callback = function(selection)
             selectedMutations = selection
-            eggCache.lastUpdate = 0 -- Invalidate cache
+            eggCache.lastUpdate = 0
         end
     })
     
-    -- Statistics display
+    -- Statistics section with live stats
+    Tabs.PlaceTab:Section({
+        Title = "Statistics",
+        Icon = "activity"
+    })
+    
     local statsLabel = Tabs.PlaceTab:Paragraph({
-        Title = "📊 Placement Statistics",
-        Desc = "Starting up...",
-        Image = "activity",
-        ImageSize = 16,
+        Title = "Stats",
+        Desc = "Waiting for placement data..."
     })
 
     -- Mode & behavior section
-    Tabs.PlaceTab:Paragraph({
-        Title = "🧭 Mode & behavior",
-        Desc = "Choose pet/egg mode and global behavior.",
-        Image = "settings",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "What to Place",
+        Icon = "layers"
     })
 
-    -- Behavior toggle: fallback to regular eggs when no water farms
-    Tabs.PlaceTab:Toggle({
-        Title = "Fallback to regular eggs when no water farms",
-        Desc = "Egg mode only: if only ocean eggs are selected but water=0, place any regular egg.",
-        Value = true,
-        Callback = function(state)
-            fallbackToRegularWhenNoWater = state
-        end
-    })
-
-    -- Pet placement mode and filters
-    Tabs.PlaceTab:Toggle({
-        Title = "Place Pets (use inventory pets instead of eggs)",
-        Desc = "ON = use pets; OFF = use eggs.",
-        Value = false,
-        Callback = function(state)
-            usePetPlacementMode = state
+    -- Replace toggle with multi-select dropdown for placement sources
+    local placeModeDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "Sources",
+        Desc = "Choose what to place",
+        Values = {"Eggs","Pets"},
+        Value = {"Eggs"},
+        Multi = true,
+        AllowNone = false,
+        Callback = function(selection)
+            local set = {}
+            for _, v in ipairs(selection or {}) do set[v] = true end
+            placeEggsEnabled = set["Eggs"] == true
+            placePetsEnabled = set["Pets"] == true
             petCache.lastUpdate = 0
         end
     })
 
     -- Pet settings section
-    Tabs.PlaceTab:Paragraph({
-        Title = "🐾 Pet placement settings",
-        Desc = "These settings are used only when pet mode is ON.",
-        Image = "sliders-horizontal",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "Pet Settings",
+        Icon = "heart"
     })
 
-    -- Removed "mutations only" toggle per user request
-
     Tabs.PlaceTab:Slider({
-        Title = "Pets: Min Speed",
-        Desc = "Filter pets below this effective production rate.",
+        Title = "Min Speed",
+        Desc = "Only place pets ≥ this rate",
         Value = {
             Min = 0,
             Max = 50000,
@@ -1270,37 +1474,27 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Excluding Big pets is enforced automatically in selection (no UI toggle)
-    
-    Tabs.PlaceTab:Toggle({
-        Title = "Pets: Ascending order (low → high)",
-        Desc = "Place lower produce rates first. Turn off for highest first.",
-        Value = true,
-        Callback = function(state)
-            petAscendingOrder = state
+    -- Replace toggle with dropdown sort order
+    Tabs.PlaceTab:Dropdown({
+        Title = "Sort Order",
+        Desc = "Order by rate",
+        Values = {"Low → High","High → Low"},
+        Value = "Low → High",
+        Multi = false,
+        AllowNone = false,
+        Callback = function(v)
+            petSortAscending = (v == "Low → High")
             petCache.lastUpdate = 0
         end
     })
     
-    -- Blacklist management
-    Tabs.PlaceTab:Button({
-        Title = "🗑️ Clear Pet Blacklist",
-        Desc = "Remove all pets from blacklist (pets that failed speed verification)",
-        Callback = function()
-            clearPetBlacklist()
-        end
+    -- Run section
+    Tabs.PlaceTab:Section({
+        Title = "Run",
+        Icon = "play"
     })
     
-    -- Run section
-    Tabs.PlaceTab:Paragraph({
-        Title = "▶️ Run",
-        Desc = "Start or stop the auto placement loop.",
-        Image = "play",
-        ImageSize = 14,
-    })
-
-    -- (Debug input removed by user request)
-
+    -- Stats update function
     local function updateStats()
         if not statsLabel then return end
         
@@ -1308,27 +1502,29 @@ function AutoPlaceSystem.CreateUI()
         if placementStats.lastPlacement then
             local timeSince = os.time() - placementStats.lastPlacement
             local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
-            lastPlacementText = " | 🕒 Last: " .. timeText
+            lastPlacementText = " | Last: " .. timeText
         end
         local rAvail, wAvail = updateTileCache()
-        local reasonText = placementStats.lastReason and (" | ℹ️ " .. placementStats.lastReason) or ""
-        local statsText = string.format("✅ Placed: %d | 🦄 Mutations: %d | 🧱 Tiles R/W: %d/%d%s%s", 
+        local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
+        local dormantText = placementState.isDormant and " 💤" or ""
+        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s%s", 
             placementStats.totalPlacements, 
             placementStats.mutationPlacements,
             rAvail or 0,
             wAvail or 0,
             reasonText,
-            lastPlacementText)
+            lastPlacementText,
+            dormantText)
         
         if statsLabel.SetDesc then
             statsLabel:SetDesc(statsText)
         end
     end
-    
+
     -- Main auto place toggle
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
-        Title = "🏠 Auto Place Pets (Revamped)",
-        Desc = "Smart placement with ocean egg skipping and focus-first logic!",
+        Title = "Auto Place",
+        Desc = "Smart placement system",
         Value = false,
         Callback = function(state)
             autoPlaceEnabled = state
@@ -1347,9 +1543,9 @@ function AutoPlaceSystem.CreateUI()
                     end
                 end)
                 
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Revamped system started! 🎉", Duration = 3 })
+                WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 2 })
             elseif not state and autoPlaceThread then
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
+                WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 2 })
             end
         end
     })
