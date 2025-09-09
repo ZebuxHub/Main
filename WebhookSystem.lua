@@ -334,23 +334,36 @@ end
 
 -- Function to send webhook
 local function sendWebhook(embedData)
+    print("[DEBUG] sendWebhook called")
+    print("[DEBUG] webhookUrl:", webhookUrl)
+    print("[DEBUG] webhookUrl length:", webhookUrl and #webhookUrl or "nil")
+    
     if not webhookUrl or webhookUrl == "" then
+        print("[DEBUG] No webhook URL configured")
         WindUI:Notify({
             Title = "Webhook Error",
-            Content = "No webhook URL configured",
-            Duration = 3
+            Content = "No webhook URL configured - Please enter your Discord webhook URL first",
+            Duration = 5
         })
         return false
     end
     
+    print("[DEBUG] Attempting to send webhook...")
+    print("[DEBUG] Embed data:", game:GetService("HttpService"):JSONEncode(embedData))
+    
     local success, result = pcall(function()
-        return game:GetService("HttpService"):PostAsync(webhookUrl, HttpService:JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
+        return game:GetService("HttpService"):PostAsync(webhookUrl, game:GetService("HttpService"):JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
     end)
+    
+    print("[DEBUG] Webhook send success:", success)
+    if not success then
+        print("[DEBUG] Webhook error:", result)
+    end
     
     if success then
         WindUI:Notify({
             Title = "Webhook Sent",
-            Content = "Inventory sent to Discord successfully",
+            Content = "Message sent to Discord successfully! 🎉",
             Duration = 3
         })
         return true
@@ -449,7 +462,9 @@ end
 
 -- Public methods for UI integration
 function WebhookSystem.SetWebhookUrl(url)
+    print("[DEBUG] SetWebhookUrl called with:", url)
     webhookUrl = url or ""
+    print("[DEBUG] webhookUrl set to:", webhookUrl)
 end
 
 function WebhookSystem.SetAutoAlert(enabled)
