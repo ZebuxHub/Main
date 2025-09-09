@@ -1187,6 +1187,16 @@ local function sendItemToPlayer(item, target, itemType)
 
 	if success then
 		WindUI:Notify({ Title = "✅ Sent Successfully", Content = itemType:gsub("^%l", string.upper) .. " " .. (item.type or "Unknown") .. " → " .. targetPlayerObj.Name, Duration = 2 })
+		
+		-- Send webhook notification for successful trade
+		if _G.WebhookSystem and _G.WebhookSystem.SendTradeWebhook then
+			local fromItems = {{
+				type = logged and logged.type or item.type,
+				mutation = (logged and logged.mutation) and logged.mutation or ((item.mutation ~= nil and item.mutation ~= "" and item.mutation) or ""),
+				count = 1
+			}}
+			_G.WebhookSystem.SendTradeWebhook(LocalPlayer.Name, targetPlayerObj.Name, fromItems, {})
+		end
 	else
 		-- silent fail (no spam)
 	end
