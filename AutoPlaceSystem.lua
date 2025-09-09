@@ -1365,6 +1365,186 @@ local function runAutoPlace()
     placementState.connections = {}
 end
 
+-- ============ Auto Unlock Helper Functions ============
+local function getLockedTilesForCurrentIsland()
+    local lockedTiles = {}
+    local islandName = getAssignedIslandName()
+    if not islandName then return lockedTiles end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return lockedTiles end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return lockedTiles end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return lockedTiles end
+    
+    local locksFolder = env:FindFirstChild("Locks")
+    if not locksFolder then return lockedTiles end
+    
+    for _, lockModel in ipairs(locksFolder:GetChildren()) do
+        if lockModel:IsA("Model") then
+            local farmPart = lockModel:FindFirstChild("Farm")
+            if farmPart and farmPart:IsA("BasePart") and farmPart.Transparency == 0 then
+                local lockCost = farmPart:GetAttribute("LockCost") or 0
+                table.insert(lockedTiles, {
+                    modelName = lockModel.Name,
+                    farmPart = farmPart,
+                    cost = lockCost,
+                    model = lockModel
+                })
+            end
+        end
+    end
+    
+    return lockedTiles
+end
+
+local function unlockTile(lockInfo)
+    if not lockInfo or not lockInfo.farmPart then return false end
+    
+    local args = { "Unlock", lockInfo.farmPart }
+    local success = pcall(function()
+        if CharacterRE then
+            CharacterRE:FireServer(unpack(args))
+        end
+    end)
+    
+    return success
+end
+
+local function getPlayerNetWorth()
+    if not LocalPlayer then return 0 end
+    local attrValue = LocalPlayer:GetAttribute("NetWorth")
+    if type(attrValue) == "number" then return attrValue end
+    return 0
+end
+
+local function runAutoUnlock()
+    while autoUnlockEnabled do
+        local ok, err = pcall(function()
+            local lockedTiles = getLockedTilesForCurrentIsland()
+            if #lockedTiles == 0 then
+                task.wait(2)
+                return
+            end
+            
+            table.sort(lockedTiles, function(a, b)
+                return (a.cost or 0) < (b.cost or 0)
+            end)
+            
+            for _, lockInfo in ipairs(lockedTiles) do
+                if not autoUnlockEnabled then break end
+                local netWorth = getPlayerNetWorth()
+                if netWorth >= (lockInfo.cost or 0) then
+                    if unlockTile(lockInfo) then
+                        task.wait(0.5)
+                    end
+                end
+            end
+            
+            task.wait(3)
+        end)
+        
+        if not ok then
+            warn("Auto Unlock error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
+-- ============ Auto Delete Helper Functions ============
+local function parseNumberWithSuffix(text)
+    if not text or type(text) ~= "string" then return nil end
+    
+    local cleanText = text:gsub("[$€£¥₹/s,]", ""):gsub("^%s*(.-)%s*$", "%1")
+    local number, suffix = cleanText:match("^([%d%.]+)([KkMmBbTt]?)$")
+    
+    if not number then
+        number = cleanText:match("([%d%.]+)")
+    end
+    
+    local numValue = tonumber(number)
+    if not numValue then return nil end
+    
+    if suffix then
+        local lowerSuffix = string.lower(suffix)
+        if lowerSuffix == "k" then
+            numValue = numValue * 1000
+        elseif lowerSuffix == "m" then
+            numValue = numValue * 1000000
+        elseif lowerSuffix == "b" then
+            numValue = numValue * 1000000000
+        elseif lowerSuffix == "t" then
+            numValue = numValue * 1000000000000
+        end
+    end
+    
+    return numValue
+end
+
+local function runAutoDelete()
+    while autoDeleteEnabled do
+        local ok, err = pcall(function()
+            local petsFolder = workspace:FindFirstChild("Pets")
+            if not petsFolder then
+                task.wait(1)
+                return
+            end
+            
+            local playerUserId = LocalPlayer.UserId
+            local petsToDelete = {}
+            
+            for _, pet in ipairs(petsFolder:GetChildren()) do
+                if not autoDeleteEnabled then break end
+                
+                if pet:IsA("Model") then
+                    local petUserId = pet:GetAttribute("UserId")
+                    if petUserId and tonumber(petUserId) == playerUserId then
+                        local rootPart = pet:FindFirstChild("RootPart")
+                        if rootPart then
+                            local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
+                            if idleGUI then
+                                local speedText = idleGUI:FindFirstChild("Speed")
+                                if speedText and speedText:IsA("TextLabel") then
+                                    local speedValue = parseNumberWithSuffix(speedText.Text)
+                                    if speedValue and speedValue < deleteSpeedThreshold then
+                                        table.insert(petsToDelete, { name = pet.Name })
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            for _, petInfo in ipairs(petsToDelete) do
+                if not autoDeleteEnabled then break end
+                
+                local success = pcall(function()
+                    if CharacterRE then
+                        CharacterRE:FireServer("Del", petInfo.name)
+                    end
+                end)
+                
+                if success then
+                    task.wait(0.5)
+                else
+                    task.wait(0.2)
+                end
+            end
+            
+            task.wait(3)
+        end)
+        
+        if not ok then
+            warn("Auto Delete error: " .. tostring(err))
+            task.wait(1)
+        end
+    end
+end
+
 -- ============ Public API ============
 function AutoPlaceSystem.Init(dependencies)
     WindUI = dependencies.WindUI
@@ -1488,6 +1668,88 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
+    -- Tile Management section
+    Tabs.PlaceTab:Section({
+        Title = "Tile Management",
+        Icon = "unlock"
+    })
+    
+    local autoUnlockEnabled = false
+    local autoUnlockThread = nil
+    
+    local autoUnlockToggle = Tabs.PlaceTab:Toggle({
+        Title = "Auto Unlock Tiles",
+        Desc = "Unlock tiles when you have enough money",
+        Value = false,
+        Callback = function(state)
+            autoUnlockEnabled = state
+            
+            if state and not autoUnlockThread then
+                autoUnlockThread = task.spawn(function()
+                    runAutoUnlock()
+                    autoUnlockThread = nil
+                end)
+                WindUI:Notify({ Title = "Auto Unlock", Content = "Started", Duration = 2 })
+            elseif not state and autoUnlockThread then
+                WindUI:Notify({ Title = "Auto Unlock", Content = "Stopped", Duration = 2 })
+            end
+        end
+    })
+    
+    -- Auto Delete section
+    Tabs.DeleteTab:Section({
+        Title = "Auto Delete Settings",
+        Icon = "trash-2"
+    })
+    
+    local autoDeleteEnabled = false
+    local autoDeleteTileFilter = "Both"
+    local autoDeleteThread = nil
+    local deleteSpeedThreshold = 100
+    
+    local autoDeleteTileDropdown = Tabs.DeleteTab:Dropdown({
+        Title = "Tile Filter",
+        Desc = "Delete pets on specific tile types",
+        Values = {"Both", "Regular", "Ocean"},
+        Value = "Both",
+        Callback = function(value)
+            autoDeleteTileFilter = value or "Both"
+        end
+    })
+    
+    local autoDeleteSpeedSlider = Tabs.DeleteTab:Input({
+        Title = "Speed Threshold",
+        Desc = "Delete pets below this speed (supports K/M/B/T)",
+        Value = "100",
+        Callback = function(value)
+            local parsedValue = parseNumberWithSuffix(value)
+            if parsedValue and parsedValue > 0 then
+                deleteSpeedThreshold = parsedValue
+            else
+                deleteSpeedThreshold = tonumber(value) or 100
+            end
+        end
+    })
+    
+    local autoDeleteToggle = Tabs.DeleteTab:Toggle({
+        Title = "Auto Delete",
+        Desc = "Delete slow pets automatically (your pets only)",
+        Value = false,
+        Callback = function(state)
+            autoDeleteEnabled = state
+            
+            if state and not autoDeleteThread then
+                autoDeleteThread = task.spawn(function()
+                    runAutoDelete()
+                    autoDeleteThread = nil
+                end)
+                WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 2 })
+            elseif not state and autoDeleteThread then
+                WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 2 })
+            end
+        end
+    })
+
     -- Run section
     Tabs.PlaceTab:Section({
         Title = "Run",
