@@ -317,21 +317,19 @@ local function createInventoryEmbed()
         local emoji = fruitEmojis[fruitName] or "🍎"
         local fruitText = emoji .. " `" .. count .. "`"
         
-        if #currentLine + #fruitText + 2 > 80 then -- Line length limit
-            table.insert(fruitLines, currentLine)
-            currentLine = fruitText
-        else
-            if currentLine ~= "" then
-                currentLine = currentLine .. "  "
-            end
-            currentLine = currentLine .. fruitText
+        -- Add to current line
+        if currentLine ~= "" then
+            currentLine = currentLine .. "  "
         end
+        currentLine = currentLine .. fruitText
         fruitCount = fruitCount + 1
         
+        -- Break line every 5 fruits
         if fruitCount % 5 == 0 then
             table.insert(fruitLines, currentLine)
             currentLine = ""
-            if fruitCount < 15 then
+            -- Add empty line after every 10 fruits (2 rows)
+            if fruitCount % 10 == 0 and fruitCount < #sortedFruits then
                 table.insert(fruitLines, "")
             end
         end
