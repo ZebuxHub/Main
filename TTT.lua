@@ -1182,7 +1182,7 @@ function AutoPlaceSystem.CreateUI()
     -- Egg selection dropdown
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
         Title = "🥚 Pick Egg Types",
-        Desc = "Choose which eggs to place (🌊 ocean eggs require water farm)",
+        Desc = "Pick eggs to place (🌊 needs water tile)",
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
             "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
@@ -1202,7 +1202,7 @@ function AutoPlaceSystem.CreateUI()
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
         Title = "🧬 Pick Mutations",
-        Desc = "Choose which mutations to place (leave empty for all mutations)",
+        Desc = "Pick mutations (empty = any)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
         Multi = true,
@@ -1226,7 +1226,7 @@ function AutoPlaceSystem.CreateUI()
     -- Replace toggle with multi-select dropdown for placement sources
     local placeModeDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Place Sources (Multi)",
-        Desc = "Select what to place: Eggs, Pets (both allowed)",
+        Desc = "Choose what to place (can pick both)",
         Values = {"Eggs","Pets"},
         Value = {"Eggs"},
         Multi = true,
@@ -1249,7 +1249,7 @@ function AutoPlaceSystem.CreateUI()
 
     Tabs.PlaceTab:Slider({
         Title = "Pets: Min Speed",
-        Desc = "Filter pets below this effective production rate.",
+        Desc = "Only place pets ≥ this rate",
         Value = {
             Min = 0,
             Max = 50000,
@@ -1267,7 +1267,7 @@ function AutoPlaceSystem.CreateUI()
     -- Replace toggle with dropdown sort order
     Tabs.PlaceTab:Dropdown({
         Title = "Pets: Sort Order",
-        Desc = "Choose placement order by effective rate",
+        Desc = "Order by rate",
         Values = {"Low → High","High → Low"},
         Value = "Low → High",
         Multi = false,
@@ -1290,7 +1290,7 @@ function AutoPlaceSystem.CreateUI()
     -- Main auto place toggle
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         Title = "🏠 Auto Place Pets (Revamped)",
-        Desc = "Smart placement with ocean egg skipping and focus-first logic!",
+        Desc = "Smart auto placement",
         Value = false,
         Callback = function(state)
             autoPlaceEnabled = state
@@ -1301,9 +1301,9 @@ function AutoPlaceSystem.CreateUI()
                     autoPlaceThread = nil
                 end)
                 
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Revamped system started! 🎉", Duration = 3 })
+                WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 2 })
             elseif not state and autoPlaceThread then
-                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Stopped", Duration = 3 })
+                WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 2 })
             end
         end
     })
