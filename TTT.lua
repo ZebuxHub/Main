@@ -35,6 +35,56 @@ local placementStats = {
     lastReason = nil
 }
 
+-- ============ Performance Profiler ============
+local performanceStats = {
+    enabled = false,
+    timings = {},
+    lagSpikes = {},
+    maxLagThreshold = 0.1, -- 100ms threshold for lag spike detection
+}
+
+local function startTimer(name)
+    if not performanceStats.enabled then return end
+    performanceStats.timings[name] = tick()
+end
+
+local function endTimer(name)
+    if not performanceStats.enabled or not performanceStats.timings[name] then return end
+    local elapsed = tick() - performanceStats.timings[name]
+    performanceStats.timings[name] = nil
+    
+    -- Log if it's a lag spike
+    if elapsed > performanceStats.maxLagThreshold then
+        table.insert(performanceStats.lagSpikes, {
+            function_name = name,
+            duration = elapsed,
+            timestamp = os.time()
+        })
+        
+        -- Keep only last 10 lag spikes
+        if #performanceStats.lagSpikes > 10 then
+            table.remove(performanceStats.lagSpikes, 1)
+        end
+        
+        print(string.format("⚠️ LAG SPIKE: %s took %.3fs", name, elapsed))
+    end
+    
+    return elapsed
+end
+
+local function getPerformanceReport()
+    local report = "=== AutoPlace Performance Report ===\n"
+    report = report .. string.format("Profiling: %s\n", performanceStats.enabled and "ON" or "OFF")
+    report = report .. string.format("Recent lag spikes (%d):\n", #performanceStats.lagSpikes)
+    
+    for i = #performanceStats.lagSpikes, math.max(1, #performanceStats.lagSpikes - 5), -1 do
+        local spike = performanceStats.lagSpikes[i]
+        report = report .. string.format("  %s: %.3fs\n", spike.function_name, spike.duration)
+    end
+    
+    return report
+end
+
 -- ============ Pet Blacklist System ============
 local petBlacklist = {} -- UIDs that failed speed verification and should never be placed again
 
@@ -443,13 +493,20 @@ local function computeEffectiveRate(petType, mutation, petNode)
 end
 
 local function updateAvailablePets()
+    startTimer("updateAvailablePets")
     local currentTime = time()
     if currentTime - petCache.lastUpdate < CACHE_DURATION then
+        endTimer("updateAvailablePets")
         return petCache.candidates
     end
+    
+    startTimer("getPetContainer")
     local container = getPetContainer()
+    endTimer("getPetContainer")
+    
     local out = {}
     if container then
+        startTimer("petLoop")
         for _, child in ipairs(container:GetChildren()) do
             local petType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
@@ -458,7 +515,9 @@ local function updateAvailablePets()
             end
             if petType and not isPetAlreadyPlacedByUid(child.Name) and not petBlacklist[child.Name] then
                 if (not isBigPet(petType)) then
+                    startTimer("computeEffectiveRate")
                     local rate = computeEffectiveRate(petType, mutation, child)
+                    endTimer("computeEffectiveRate")
                     if rate >= (minPetRateFilter or 0) then
                         table.insert(out, {
                             uid = child.Name,
@@ -471,9 +530,11 @@ local function updateAvailablePets()
                 end
             end
         end
+        endTimer("petLoop")
     end
     
     -- Sort pets for sequential placement
+    startTimer("petSort")
     table.sort(out, function(a, b)
         if petSortAscending then
             -- Sort by speed first, then by UID for consistent ordering
@@ -488,11 +549,13 @@ local function updateAvailablePets()
             return a.effectiveRate > b.effectiveRate
         end
     end)
+    endTimer("petSort")
     
     petCache.lastUpdate = currentTime
     petCache.candidates = out
     -- Reset index when pet list changes
     petCache.currentIndex = 1
+    endTimer("updateAvailablePets")
     return out
 end
 
@@ -595,6 +658,7 @@ end
 
 -- Optimized tile availability checking with 8x8 grid alignment
 local function isTileOccupied(farmPart)
+    startTimer("isTileOccupied")
     local center = farmPart.Position
     -- Use grid-snapped position for consistent detection
     local surfacePosition = Vector3.new(
@@ -603,45 +667,60 @@ local function isTileOccupied(farmPart)
         math.floor(center.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
     )
     
-    -- Check PlayerBuiltBlocks
+    -- Check PlayerBuiltBlocks (limit iterations to prevent lag)
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
     if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+        local children = playerBuiltBlocks:GetChildren()
+        local maxCheck = math.min(#children, 100) -- Limit to 100 checks max
+        for i = 1, maxCheck do
+            local model = children[i]
             if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                local xzDistance = math.sqrt((modelPos.X - surfacePosition.X)^2 + (modelPos.Z - surfacePosition.Z)^2)
-                local yDistance = math.abs(modelPos.Y - surfacePosition.Y)
-                
-                if xzDistance < 4.0 and yDistance < 12.0 then
-                    return true
+                local ok, modelPos = pcall(function() return model:GetPivot().Position end)
+                if ok then
+                    local xzDistance = math.sqrt((modelPos.X - surfacePosition.X)^2 + (modelPos.Z - surfacePosition.Z)^2)
+                    local yDistance = math.abs(modelPos.Y - surfacePosition.Y)
+                    
+                    if xzDistance < 4.0 and yDistance < 12.0 then
+                        endTimer("isTileOccupied")
+                        return true
+                    end
                 end
             end
         end
     end
     
-    -- Check workspace.Pets
+    -- Check workspace.Pets (limit iterations to prevent lag)
     local workspacePets = workspace:FindFirstChild("Pets")
     if workspacePets then
-        for _, pet in ipairs(workspacePets:GetChildren()) do
+        local children = workspacePets:GetChildren()
+        local maxCheck = math.min(#children, 50) -- Limit to 50 checks max
+        for i = 1, maxCheck do
+            local pet = children[i]
             if pet:IsA("Model") then
-                local petPos = pet:GetPivot().Position
-                local xzDistance = math.sqrt((petPos.X - surfacePosition.X)^2 + (petPos.Z - surfacePosition.Z)^2)
-                local yDistance = math.abs(petPos.Y - surfacePosition.Y)
-                
-                if xzDistance < 4.0 and yDistance < 12.0 then
-                    return true
+                local ok, petPos = pcall(function() return pet:GetPivot().Position end)
+                if ok then
+                    local xzDistance = math.sqrt((petPos.X - surfacePosition.X)^2 + (petPos.Z - surfacePosition.Z)^2)
+                    local yDistance = math.abs(petPos.Y - surfacePosition.Y)
+                    
+                    if xzDistance < 4.0 and yDistance < 12.0 then
+                        endTimer("isTileOccupied")
+                        return true
+                    end
                 end
             end
         end
     end
     
+    endTimer("isTileOccupied")
     return false
 end
 
 -- Enhanced tile cache system
 local function updateTileCache()
+    startTimer("updateTileCache")
     local currentTime = time()
     if currentTime - tileCache.lastUpdate < CACHE_DURATION then
+        endTimer("updateTileCache")
         return tileCache.regularAvailable, tileCache.waterAvailable
     end
     
@@ -651,12 +730,15 @@ local function updateTileCache()
     if not islandNumber then
         tileCache.regularAvailable = 0
         tileCache.waterAvailable = 0
+        endTimer("updateTileCache")
         return 0, 0
     end
     
     -- Get farm parts
+    startTimer("getFarmParts")
     local regularParts = getFarmParts(islandNumber, false)
     local waterParts = getFarmParts(islandNumber, true)
+    endTimer("getFarmParts")
     
     -- Count available tiles
     local regularAvailable = 0
@@ -664,6 +746,7 @@ local function updateTileCache()
     local availableRegularTiles = {}
     local availableWaterTiles = {}
     
+    startTimer("tileOccupancyCheck")
     for _, part in ipairs(regularParts) do
         if not isTileOccupied(part) then
             regularAvailable = regularAvailable + 1
@@ -677,6 +760,7 @@ local function updateTileCache()
             table.insert(availableWaterTiles, part)
         end
     end
+    endTimer("tileOccupancyCheck")
     
     -- Update cache
     tileCache.lastUpdate = currentTime
@@ -685,6 +769,7 @@ local function updateTileCache()
     tileCache.regularAvailable = regularAvailable
     tileCache.waterAvailable = waterAvailable
     
+    endTimer("updateTileCache")
     return regularAvailable, waterAvailable
 end
 
@@ -983,6 +1068,7 @@ local function getNextBestPet()
 end
 
 local function attemptPlacement()
+    startTimer("attemptPlacement")
     local willPlacePet = placePetsEnabled
     local willPlaceEgg = placeEggsEnabled
     -- If both selected, try pet first for variety; alternate could be added later
@@ -1110,9 +1196,11 @@ local function attemptPlacement()
             })
         end
         
+        endTimer("attemptPlacement")
         return true, "Successfully placed " .. eggInfo.type
     else
         placementStats.lastReason = "Failed to place " .. eggInfo.type
+        endTimer("attemptPlacement")
         return false, placementStats.lastReason
     end
 end
@@ -1286,6 +1374,37 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
+    -- Debug section
+    Tabs.PlaceTab:Section({
+        Title = "Debug Tools",
+        Icon = "bug"
+    })
+    
+    Tabs.PlaceTab:Toggle({
+        Title = "Performance Profiler",
+        Desc = "Track lag spikes and performance",
+        Value = false,
+        Callback = function(enabled)
+            performanceStats.enabled = enabled
+            if enabled then
+                performanceStats.lagSpikes = {}
+                WindUI:Notify({Title = "Profiler", Content = "Performance tracking enabled", Duration = 2})
+            else
+                WindUI:Notify({Title = "Profiler", Content = "Performance tracking disabled", Duration = 2})
+            end
+        end
+    })
+    
+    Tabs.PlaceTab:Button({
+        Title = "Performance Report",
+        Desc = "Show lag spike analysis",
+        Callback = function()
+            local report = getPerformanceReport()
+            print(report)
+            WindUI:Notify({Title = "Performance Report", Content = "Check console for detailed report", Duration = 3})
+        end
+    })
+
     -- Run section
     Tabs.PlaceTab:Section({
         Title = "Run",
