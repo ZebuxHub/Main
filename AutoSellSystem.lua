@@ -8,7 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 -- Dependencies (injected via Init)
-local WindUI, Tabs, Config
+local WindUI, Tabs, MainTab, Config
 
 -- Remotes (cached)
 local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
@@ -67,7 +67,7 @@ local sellStats = {
 local function updateStatus()
 	if not statusParagraph then return end
 	local desc = string.format(
-		"Sold: %d | Scanned: %d | Skipped Mutated: %d\nSession: %d/%s%s",
+		"Sold: %d | Scanned: %d | Skipped M: %d\nSession: %d/%s%s",
 		sellStats.totalSold,
 		sellStats.scanned,
 		sellStats.skippedMutations,
@@ -165,12 +165,12 @@ end
 
 -- UI
 function AutoSellSystem.CreateUI()
-	-- Create new tab
-	Tabs.SellTab = Tabs.MainSection:Tab({ Title = "💸 | Auto Sell" })
+	-- Create Auto Sell section in MainTab
+	MainTab:Section({ Title = "Auto Sell Pets", Icon = "dollar-sign" })
 
-	mutationDropdown = Tabs.SellTab:Dropdown({
+	mutationDropdown = MainTab:Dropdown({
 		Title = "🧬 Mutations",
-		Desc = "Choose whether to sell mutated pets.",
+		Desc = "Choose whether to sell mutated pets (M attribute).",
 		Values = { "Sell mutated pets", "Keep mutated (don't sell)" },
 		Value = "Keep mutated (don't sell)",
 		Multi = false,
@@ -181,7 +181,7 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	sessionLimitInput = Tabs.SellTab:Input({
+	sessionLimitInput = MainTab:Input({
 		Title = "Session Sell Limit",
 		Desc = "Max sells this session (0 = unlimited)",
 		Value = "0",
@@ -197,16 +197,16 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	statusParagraph = Tabs.SellTab:Paragraph({
+	statusParagraph = MainTab:Paragraph({
 		Title = "Status",
 		Desc = "Idle",
 		Image = "activity",
 		ImageSize = 16,
 	})
 
-	autoSellToggle = Tabs.SellTab:Toggle({
+	autoSellToggle = MainTab:Toggle({
 		Title = "💸 Auto Sell Unplaced Pets",
-		Desc = "Automatically sell pets (not placed).",
+		Desc = "Automatically sell pets without 'D' attribute (not placed).",
 		Value = false,
 		Callback = function(state)
 			autoSellEnabled = state
@@ -247,6 +247,7 @@ end
 function AutoSellSystem.Init(dependencies)
 	WindUI = dependencies.WindUI
 	Tabs = dependencies.Tabs
+	MainTab = dependencies.MainTab
 	Config = dependencies.Config
 
 	AutoSellSystem.CreateUI()
