@@ -162,7 +162,7 @@ local function getFruitInventory()
     return fruits
 end
 
--- Function to get pet inventory (based on AutoPlaceSystem.lua)
+-- Function to get pet inventory (only pets without D attribute - unplaced pets)
 local function getPetInventory()
     local pets = {}
     
@@ -179,28 +179,34 @@ local function getPetInventory()
     
     for _, child in ipairs(petContainer:GetChildren()) do
         if child:IsA("Folder") then
-            local petType = child:GetAttribute("T") or "Unknown"
-            local mutation = child:GetAttribute("M")
-            
-            -- Handle Dino -> Jurassic conversion (from AutoPlaceSystem.lua)
-            if mutation == "Dino" then
-                mutation = "Jurassic"
-            end
-            
-            if not pets[petType] then
-                pets[petType] = {
-                    total = 0,
-                    mutations = {}
-                }
-            end
-            
-            pets[petType].total = pets[petType].total + 1
-            
-            if mutation then
-                if not pets[petType].mutations[mutation] then
-                    pets[petType].mutations[mutation] = 0
+            -- Only count pets WITHOUT D attribute (unplaced pets)
+            local dAttr = child:GetAttribute("D")
+            if dAttr == nil or dAttr == "" then
+                local petType = child:GetAttribute("T")
+                local mutation = child:GetAttribute("M")
+                
+                if petType then
+                    -- Handle Dino -> Jurassic conversion
+                    if mutation == "Dino" then
+                        mutation = "Jurassic"
+                    end
+                    
+                    if not pets[petType] then
+                        pets[petType] = {
+                            total = 0,
+                            mutations = {}
+                        }
+                    end
+                    
+                    pets[petType].total = pets[petType].total + 1
+                    
+                    if mutation then
+                        if not pets[petType].mutations[mutation] then
+                            pets[petType].mutations[mutation] = 0
+                        end
+                        pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
+                    end
                 end
-                pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
             end
         end
     end
@@ -208,7 +214,7 @@ local function getPetInventory()
     return pets
 end
 
--- Function to get egg inventory (based on AutoPlaceSystem.lua)
+-- Function to get egg inventory (only eggs without D attribute - unhatched eggs)
 local function getEggInventory()
     local eggs = {}
     
@@ -223,38 +229,36 @@ local function getEggInventory()
     local eggContainer = data:FindFirstChild("Egg")
     if not eggContainer then return eggs end
     
-    -- Helper function to get egg mutation (from AutoPlaceSystem.lua)
-    local function getEggMutation(eggUID)
-        local eggConfig = eggContainer:FindFirstChild(eggUID)
-        if not eggConfig then return nil end
-        
-        local mutation = eggConfig:GetAttribute("M")
-        if mutation == "Dino" then
-            mutation = "Jurassic"
-        end
-        
-        return mutation
-    end
-    
     for _, child in ipairs(eggContainer:GetChildren()) do
-        if child:IsA("Folder") and #child:GetChildren() == 0 then -- Only count unhatched eggs (no subfolder = available)
-            local eggType = child:GetAttribute("T") or "Unknown"
-            local mutation = getEggMutation(child.Name)
-            
-            if not eggs[eggType] then
-                eggs[eggType] = {
-                    total = 0,
-                    mutations = {}
-                }
-            end
-            
-            eggs[eggType].total = eggs[eggType].total + 1
-            
-            if mutation then
-                if not eggs[eggType].mutations[mutation] then
-                    eggs[eggType].mutations[mutation] = 0
+        if child:IsA("Folder") then
+            -- Only count eggs WITHOUT D attribute (unhatched eggs)
+            local dAttr = child:GetAttribute("D")
+            if dAttr == nil or dAttr == "" then
+                local eggType = child:GetAttribute("T")
+                local mutation = child:GetAttribute("M")
+                
+                if eggType then
+                    -- Handle Dino -> Jurassic conversion
+                    if mutation == "Dino" then
+                        mutation = "Jurassic"
+                    end
+                    
+                    if not eggs[eggType] then
+                        eggs[eggType] = {
+                            total = 0,
+                            mutations = {}
+                        }
+                    end
+                    
+                    eggs[eggType].total = eggs[eggType].total + 1
+                    
+                    if mutation then
+                        if not eggs[eggType].mutations[mutation] then
+                            eggs[eggType].mutations[mutation] = 0
+                        end
+                        eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
+                    end
                 end
-                eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
             end
         end
     end
