@@ -244,7 +244,7 @@ local function waitForInventoryRemoval(itemUID, isEgg, timeoutSecs)
     return removed
 end
 
--- Webhook/session reporting
+-- Webhook removed
 local webhookUrl = ""
 local sessionLogs = {}
 local webhookSent = false
@@ -286,14 +286,10 @@ local EggIconMap = {
 }
 
 local function robloxIconUrl(assetId)
-    if not assetId then return nil end
-    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. tostring(assetId) .. "&width=420&height=420&format=png"
+    return nil
 end
 
 local function getIconUrlFor(kind, typeName)
-    if kind == "egg" and typeName and EggIconMap[typeName] then
-        return robloxIconUrl(EggIconMap[typeName])
-    end
     return nil
 end
 
@@ -325,117 +321,11 @@ local EggEmojiMap = {
 }
 
 local function getAvatarUrl(userId)
-    if not userId or userId == "" then return nil end
-    local userIdStr = tostring(userId)
-    if userIdStr == "nil" then return nil end
-    return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userIdStr .. "&width=180&height=180&format=png"
+    return nil
 end
 
 local function sendWebhookSummary()
-    if webhookSent or webhookUrl == "" or #sessionLogs == 0 then return end
-    local totalSent = #sessionLogs
-
-    -- Group events by receiver and by type/mutation for readable blocks
-    local byReceiver = {}
-    for _, it in ipairs(sessionLogs) do
-        local r = it.receiver or "?"
-        byReceiver[r] = byReceiver[r] or { list = {}, counts = {}, total = 0 }
-        local key = (it.type or it.uid or "?") .. "|" .. (it.mutation or "None") .. "|" .. (it.kind or "?")
-        local rec = byReceiver[r]
-        rec.counts[key] = (rec.counts[key] or 0) + 1
-        rec.list[key] = { type = it.type, mutation = it.mutation or "None", kind = it.kind }
-        rec.total = rec.total + 1
-    end
-
-    -- Build organized description for better readability
-    local lines = {}
-    local playerName = Players.LocalPlayer and Players.LocalPlayer.Name or "Player"
-    
-    -- Header section
-    table.insert(lines, "## 🎁 " .. playerName .. "'s Send Session")
-    table.insert(lines, "")
-    
-    -- Summary section
-    local totalReceivers = 0
-    for _ in pairs(byReceiver) do totalReceivers = totalReceivers + 1 end
-    
-    table.insert(lines, "📊 **Session Summary:**")
-    table.insert(lines, string.format("• Total items sent: **%d**", totalSent))
-    table.insert(lines, string.format("• Players helped: **%d**", totalReceivers))
-    table.insert(lines, "")
-    
-    -- Detailed breakdown by receiver
-    table.insert(lines, "🎯 **Recipients & Items:**")
-    
-    -- Sort receivers for consistent display
-    local sortedReceivers = {}
-    for receiver, rec in pairs(byReceiver) do
-        table.insert(sortedReceivers, {name = receiver, data = rec})
-    end
-    table.sort(sortedReceivers, function(a, b) return a.data.total > b.data.total end)
-    
-    for _, receiverInfo in ipairs(sortedReceivers) do
-        local receiver = receiverInfo.name
-        local rec = receiverInfo.data
-        
-        table.insert(lines, "")
-        table.insert(lines, string.format("**👤 %s** (%d items)", receiver, rec.total))
-        
-        -- Sort items by type and count for better organization
-        local sortedItems = {}
-        for key, count in pairs(rec.counts) do
-            local entry = rec.list[key]
-            table.insert(sortedItems, {
-                key = key,
-                entry = entry,
-                count = count,
-                sortOrder = (entry.kind == "pet" and "1" or "2") .. entry.type .. (entry.mutation or "")
-            })
-        end
-        table.sort(sortedItems, function(a, b) 
-            if a.count ~= b.count then return a.count > b.count end
-            return a.sortOrder < b.sortOrder
-        end)
-        
-        for _, item in ipairs(sortedItems) do
-            local entry = item.entry
-            local count = item.count
-            local emoji = (entry.kind == "egg" and EggEmojiMap[entry.type or ""]) or 
-                         (entry.kind == "pet" and "🐾") or "📦"
-            local mutationText = (entry.mutation and entry.mutation ~= "None" and entry.mutation ~= "") 
-                               and (" [" .. entry.mutation .. "]") or ""
-            table.insert(lines, string.format("  %s %s%s × %d", emoji, entry.type or "Unknown", mutationText, count))
-        end
-    end
-    
-    local description = table.concat(lines, "\n")
-
-    -- Visuals
-    local last = sessionLogs[#sessionLogs]
-    local thumb = last and getIconUrlFor(last.kind, last.type) or nil
-    -- remove author info from embed
-
-    -- Use the improved embed format
-    local payload = {
-        embeds = {
-            {
-                title = "ZEBUX | https://discord.gg/yXPpRCgTQY",
-                description = description,
-                color = 5814783,
-                fields = { { name = "Total Sent", value = tostring(totalSent), inline = true } },
-                thumbnail = thumb and { url = thumb } or nil,
-                author = nil,
-                footer = { text = "Build A Zoo" },
-                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-            }
-        }
-    }
-    local json = HttpService:JSONEncode(payload)
-    http_request = http_request or request or (syn and syn.request)
-    if http_request then
-        http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
-        webhookSent = true
-    end
+    -- disabled
 end
 
 
@@ -555,11 +445,23 @@ end
 local function refreshPlayerList()
     local playerList = {"Random Player"}
     
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
+    -- Get all players except local player
+    local allPlayers = Players:GetPlayers()
+    
+    for _, player in ipairs(allPlayers) do
+        if player ~= LocalPlayer and player.Name then
+            -- Add username
             table.insert(playerList, player.Name)
+            
+            -- Also add display name if different from username
+            if player.DisplayName and player.DisplayName ~= player.Name then
+                table.insert(playerList, player.DisplayName .. " (@" .. player.Name .. ")")
+            end
         end
     end
+    
+    -- Debug: Print player count
+    print("[SendTrash] Found " .. (#playerList - 1) .. " players in server")
     
     return playerList
 end
@@ -567,12 +469,22 @@ end
 -- Resolve target player by either Username or DisplayName (case-insensitive)
 local function resolveTargetPlayerByName(name)
     if not name or name == "" then return nil end
+    
+    -- Handle display name format: "DisplayName (@Username)"
+    local actualName = name
+    if string.find(name, " %(@") then
+        -- Extract username from format "DisplayName (@Username)"
+        actualName = string.match(name, "%(@(.+)%)$") or name
+    end
+    
     for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name == name or p.DisplayName == name then
+        if p.Name == name or p.DisplayName == name or p.Name == actualName then
             return p
         end
         -- case-insensitive fallback
-        if string.lower(p.Name) == string.lower(name) or string.lower(p.DisplayName) == string.lower(name) then
+        if string.lower(p.Name) == string.lower(name) or 
+           string.lower(p.DisplayName) == string.lower(name) or 
+           string.lower(p.Name) == string.lower(actualName) then
             return p
         end
     end
@@ -875,14 +787,7 @@ end
 
 --- Send current inventory webhook
 local function sendCurrentInventoryWebhook()
-    if webhookUrl == "" then
-        WindUI:Notify({
-            Title = "⚠️ No Webhook",
-            Content = "Please set a webhook URL first",
-            Duration = 3
-        })
-        return
-    end
+    -- disabled
 
     -- Small helpers
     local function compactNumber(n)
@@ -1099,14 +1004,7 @@ local function sendCurrentInventoryWebhook()
         }
     }
 
-    local json = HttpService:JSONEncode(payload)
-    http_request = http_request or request or (syn and syn.request)
-    if http_request then
-        http_request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = json })
-        WindUI:Notify({ Title = "📤 Inventory Sent", Content = "Current inventory sent to Discord!", Duration = 3 })
-    else
-        WindUI:Notify({ Title = "❌ Webhook Failed", Content = "HTTP request function not available", Duration = 3 })
-    end
+    -- webhook disabled
 end
 
 -- Refresh live attributes (T/M/locked/placed) for a given uid directly from PlayerGui.Data
@@ -1569,14 +1467,7 @@ function SendTrashSystem.Init(dependencies)
     Config = dependencies.Config
     
     -- Load saved webhook URL from config
-    local loadedWebhook = loadWebhookUrl()
-    if loadedWebhook and WindUI then
-        WindUI:Notify({
-            Title = "📥 Webhook Loaded",
-            Content = "Saved webhook URL loaded from config",
-            Duration = 2
-        })
-    end
+    -- webhook load disabled
     
     -- Start precise event-driven watchers for T/M replication
     startDataWatchers()
@@ -1736,26 +1627,10 @@ function SendTrashSystem.Init(dependencies)
     TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
     
     -- Webhook input (optional) - Auto-saves to config
-    local webhookInput = TrashTab:Input({
-        Title = "📡 Webhook URL (auto-saved)",
-        Desc = "Discord webhook to receive session summary - automatically saved to config",
-        Default = webhookUrl,
-        Numeric = false,
-        Finished = true,
-        Callback = function(value)
-            local newUrl = tostring(value or "")
-            -- Only save if the URL actually changed
-            if newUrl ~= webhookUrl then
-                saveWebhookUrl(newUrl)
-                webhookSent = false -- Reset webhook sent flag for new URL
-            end
-        end,
-    })
+    -- webhook UI removed
     
     -- Ensure the loaded webhook URL is displayed in the input field
-    if webhookUrl and webhookUrl ~= "" then
-        webhookInput:SetValue(webhookUrl)
-    end
+    --
     
     -- Manual refresh button
     TrashTab:Button({
@@ -1810,13 +1685,7 @@ function SendTrashSystem.Init(dependencies)
     -- Removed: Fix Unknown Items and Force Resolve Names buttons
 
     -- Send current inventory webhook button
-    TrashTab:Button({
-        Title = "📤 Send Inventory",
-        Desc = "Send current pets/eggs inventory to Discord webhook",
-        Callback = function()
-            task.spawn(sendCurrentInventoryWebhook)
-        end
-    })
+    -- webhook send button removed
     
     
     -- Register UI elements with config
@@ -1828,7 +1697,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
-        Config:Register("webhookInput", webhookInput)
+        -- webhook config removed
         -- Selling config removed
         Config:Register("speedThreshold", speedThresholdSlider)
         Config:Register("sessionLimit", sessionLimitInput)
@@ -1841,6 +1710,76 @@ function SendTrashSystem.Init(dependencies)
         syncSelectorsFromControls()
         updateStatus()
     end)
+end
+
+-- Export data functions for external UI integration
+function SendTrashSystem.RefreshPlayerList()
+    return refreshPlayerList()
+end
+
+function SendTrashSystem.GetAllPetTypes()
+    return getAllPetTypes()
+end
+
+function SendTrashSystem.GetAllEggTypes()
+    return getAllEggTypes()
+end
+
+function SendTrashSystem.GetAllMutations()
+    return getAllMutations()
+end
+
+-- Initialize data-only mode (for external UI)
+function SendTrashSystem.InitDataOnly(dependencies)
+    -- Just set up the basic dependencies without creating UI
+    WindUI = dependencies.WindUI
+    Config = dependencies.Config
+    
+    -- Start data watchers
+    startDataWatchers()
+end
+
+-- Start the send trash system with external state
+function SendTrashSystem.StartSendTrash(externalState, externalStatusParagraph)
+    -- Use external state instead of internal variables
+    trashEnabled = externalState.enabled
+    selectedTargetName = externalState.selectedTargetName
+    selectedPetTypes = externalState.selectedPetTypes
+    selectedPetMuts = externalState.selectedPetMuts
+    selectedEggTypes = externalState.selectedEggTypes
+    selectedEggMuts = externalState.selectedEggMuts
+    autoDeleteMinSpeed = externalState.minSpeed
+    actionCounter = externalState.actionCounter
+    lastReceiverName = externalState.lastReceiverName
+    lastReceiverId = externalState.lastReceiverId
+    stopRequested = externalState.stopRequested
+    statusParagraph = externalStatusParagraph
+    
+    -- Start the main processing loop
+    task.spawn(function()
+        processTrash()
+    end)
+end
+
+-- Cleanup function
+function SendTrashSystem.Cleanup()
+    trashEnabled = false
+    stopRequested = true
+    
+    -- Disconnect data watchers
+    for _, conn in pairs(dataWatch.petConns) do
+        disconnectConn(conn)
+    end
+    for _, conn in pairs(dataWatch.eggConns) do
+        disconnectConn(conn)
+    end
+    for _, conn in pairs(dataWatch.rootConns) do
+        disconnectConn(conn)
+    end
+    
+    dataWatch.petConns = {}
+    dataWatch.eggConns = {}
+    dataWatch.rootConns = {}
 end
 
 return SendTrashSystem
