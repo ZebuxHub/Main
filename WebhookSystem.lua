@@ -652,6 +652,40 @@ function WebhookSystem.SetAutoAlert(enabled)
 end
 
 function WebhookSystem.SendInventory()
+    -- Debug: Check what data is being collected
+    local fruits = getFruitInventory()
+    local pets = getPetInventory()
+    local eggs = getEggInventory()
+    
+    print("=== WEBHOOK DEBUG DATA ===")
+    print("Fruits found:", next(fruits) and "YES" or "NO")
+    if next(fruits) then
+        for name, count in pairs(fruits) do
+            print("  " .. name .. ": " .. count)
+        end
+    end
+    
+    print("Pets found:", next(pets) and "YES" or "NO")
+    if next(pets) then
+        for petType, data in pairs(pets) do
+            print("  " .. petType .. ": " .. data.total .. " total")
+            for mutation, count in pairs(data.mutations) do
+                print("    " .. mutation .. ": " .. count)
+            end
+        end
+    end
+    
+    print("Eggs found:", next(eggs) and "YES" or "NO")
+    if next(eggs) then
+        for eggType, data in pairs(eggs) do
+            print("  " .. eggType .. ": " .. data.total .. " total")
+            for mutation, count in pairs(data.mutations) do
+                print("    " .. mutation .. ": " .. count)
+            end
+        end
+    end
+    print("========================")
+    
     sendInventory()
 end
 
