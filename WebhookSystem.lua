@@ -671,34 +671,124 @@ end
 
 -- Function to detect and parse trade completion
 local function detectTradeCompletion()
-    -- Monitor for trade completion events
-    -- This will need to be adapted based on the specific game's trade system
-    
-    local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     
-    -- Look for trade-related RemoteEvents or signals
-    local function onTradeCompleted(tradeData)
-        if not tradeData then return end
+    -- Track recent trades to avoid duplicates
+    local recentTrades = {}
+    local tradeTimeout = 5 -- seconds
+    
+    -- Get item details from configuration
+    local function getItemDetails(conf)
+        if not conf or not conf:IsA("Configuration") then return nil end
+        local itemType = conf:GetAttribute("T")
+        local mutation = conf:GetAttribute("M")
+        if not itemType then return nil end
         
-        -- Increment session trade count
-        tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
-        sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
-        
-        -- Parse trade data (this will need to be adapted to the game's format)
-        local fromPlayer = tradeData.fromPlayer or LocalPlayer.Name
-        local toPlayer = tradeData.toPlayer or "Unknown"
-        local fromItems = tradeData.fromItems or {}
-        local toItems = tradeData.toItems or {}
-        
-        -- Send webhook notification
-        sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+        return {
+            type = itemType,
+            mutation = mutation or "",
+            count = 1
+        }
     end
     
-    -- Monitor for trade events (this will need to be customized for the specific game)
-    -- Example: Look for specific RemoteEvents or GUI changes that indicate trade completion
+    -- Monitor inventory changes to detect successful trades
+    local function monitorInventoryChanges()
+        local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
+        if not dataRoot then return end
+        
+        local petsFolder = dataRoot:FindFirstChild("Pets")
+        local eggsFolder = dataRoot:FindFirstChild("Egg")
+        
+        -- Track items before trade attempt
+        local preTradeItems = {pets = {}, eggs = {}}
+        
+        local function captureCurrentInventory()
+            preTradeItems.pets = {}
+            preTradeItems.eggs = {}
+            
+            if petsFolder then
+                for _, conf in ipairs(petsFolder:GetChildren()) do
+                    if conf:IsA("Configuration") then
+                        local details = getItemDetails(conf)
+                        if details then
+                            preTradeItems.pets[conf.Name] = details
+                        end
+                    end
+                end
+            end
+            
+            if eggsFolder then
+                for _, conf in ipairs(eggsFolder:GetChildren()) do
+                    if conf:IsA("Configuration") then
+                        local details = getItemDetails(conf)
+                        if details then
+                            preTradeItems.eggs[conf.Name] = details
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Check for removed items (successful trades)
+        local function checkForTradedItems()
+            local tradedItems = {}
+            
+            -- Check pets
+            if petsFolder then
+                for uid, details in pairs(preTradeItems.pets) do
+                    if not petsFolder:FindFirstChild(uid) then
+                        table.insert(tradedItems, details)
+                    end
+                end
+            end
+            
+            -- Check eggs
+            if eggsFolder then
+                for uid, details in pairs(preTradeItems.eggs) do
+                    if not eggsFolder:FindFirstChild(uid) then
+                        table.insert(tradedItems, details)
+                    end
+                end
+            end
+            
+            return tradedItems
+        end
+        
+        -- Monitor for GiftRE calls (trade attempts)
+        local giftRE = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE")
+        local lastTargetPlayer = nil
+        
+        -- Hook into GiftRE to detect trade attempts
+        local originalFireServer = giftRE.FireServer
+        giftRE.FireServer = function(self, targetPlayer)
+            if targetPlayer and targetPlayer:IsA("Player") then
+                lastTargetPlayer = targetPlayer
+                captureCurrentInventory()
+                
+                -- Wait a bit then check for successful trade
+                task.spawn(function()
+                    task.wait(0.5) -- Wait for trade to complete
+                    local tradedItems = checkForTradedItems()
+                    
+                    if #tradedItems > 0 and lastTargetPlayer then
+                        -- Successful trade detected
+                        tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
+                        sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
+                        
+                        -- Send webhook
+                        sendTradeWebhook(LocalPlayer.Name, lastTargetPlayer.Name, tradedItems, {})
+                        
+                        lastTargetPlayer = nil
+                    end
+                end)
+            end
+            
+            -- Call original function
+            return originalFireServer(self, targetPlayer)
+        end
+    end
     
-    return onTradeCompleted
+    return monitorInventoryChanges
 end
 
 -- Function to start trade monitoring
@@ -708,22 +798,11 @@ local function startTradeMonitoring()
     tradeTracking.isMonitoring = true
     
     -- Set up trade detection
-    local onTradeCompleted = detectTradeCompletion()
+    local monitorInventoryChanges = detectTradeCompletion()
     
-    -- Monitor for trade completion signals
-    -- This is a placeholder - will need to be adapted to the specific game's trade system
+    -- Start monitoring
     task.spawn(function()
-        while tradeTracking.isMonitoring and autoAlertEnabled do
-            -- Check for trade completion indicators
-            -- This could monitor GUI changes, RemoteEvent calls, or inventory changes
-            
-            -- Example placeholder logic:
-            -- if someTradeCompletionCondition then
-            --     onTradeCompleted(tradeData)
-            -- end
-            
-            task.wait(1) -- Check every second
-        end
+        monitorInventoryChanges()
     end)
 end
 
