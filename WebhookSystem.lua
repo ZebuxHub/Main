@@ -23,6 +23,15 @@ local sessionStats = {
     sessionStart = os.time()
 }
 
+-- Trade tracking
+local tradeTracking = {
+    isMonitoring = false,
+    currentTrade = nil,
+    tradeConnection = nil,
+    sessionTradeCount = 0,
+    maxSessionTrades = 10
+}
+
 -- Services
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -593,6 +602,140 @@ local function sendAlert(alertType, details)
     end
 end
 
+-- Function to create trade completion embed
+local function createTradeEmbed(fromPlayer, toPlayer, fromItems, toItems)
+    local tradeCount = tradeTracking.sessionTradeCount
+    local maxTrades = tradeTracking.maxSessionTrades
+    
+    -- Build items text for "From" player
+    local fromValue = "```diff\n"
+    for _, item in ipairs(fromItems) do
+        local icon = "🐾"
+        if string.find(item.type or "", "Egg") then
+            icon = "🥚"
+        end
+        fromValue = fromValue .. icon .. " " .. (item.type or "Unknown") .. " × " .. (item.count or 1) .. "\n"
+    end
+    fromValue = fromValue .. "```"
+    
+    -- Build items text for "To" player
+    local toValue = "```diff\n"
+    for _, item in ipairs(toItems) do
+        local icon = "🐾"
+        if string.find(item.type or "", "Egg") then
+            icon = "🥚"
+        end
+        toValue = toValue .. icon .. " " .. (item.type or "Unknown") .. " × " .. (item.count or 1) .. "\n"
+    end
+    toValue = toValue .. "```"
+    
+    -- Create embed with exact format
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "🤝 Trade Completed (" .. tradeCount .. "/" .. maxTrades .. ")",
+                color = 3447003,
+                fields = {
+                    {
+                        name = "📤 From: " .. (fromPlayer or "Unknown"),
+                        value = fromValue,
+                        inline = true
+                    },
+                    {
+                        name = "📥 To: " .. (toPlayer or "Unknown"),
+                        value = toValue,
+                        inline = true
+                    }
+                },
+                footer = {
+                    text = "Trade completed • " .. os.date("%B %d, %Y at %I:%M %p")
+                }
+            }
+        },
+        attachments = {}
+    }
+    
+    return embed
+end
+
+-- Function to send trade completion webhook
+local function sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+    if not webhookUrl or webhookUrl == "" then
+        return
+    end
+    
+    local embedData = createTradeEmbed(fromPlayer, toPlayer, fromItems, toItems)
+    sendWebhook(embedData)
+end
+
+-- Function to detect and parse trade completion
+local function detectTradeCompletion()
+    -- Monitor for trade completion events
+    -- This will need to be adapted based on the specific game's trade system
+    
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    
+    -- Look for trade-related RemoteEvents or signals
+    local function onTradeCompleted(tradeData)
+        if not tradeData then return end
+        
+        -- Increment session trade count
+        tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
+        sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
+        
+        -- Parse trade data (this will need to be adapted to the game's format)
+        local fromPlayer = tradeData.fromPlayer or LocalPlayer.Name
+        local toPlayer = tradeData.toPlayer or "Unknown"
+        local fromItems = tradeData.fromItems or {}
+        local toItems = tradeData.toItems or {}
+        
+        -- Send webhook notification
+        sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+    end
+    
+    -- Monitor for trade events (this will need to be customized for the specific game)
+    -- Example: Look for specific RemoteEvents or GUI changes that indicate trade completion
+    
+    return onTradeCompleted
+end
+
+-- Function to start trade monitoring
+local function startTradeMonitoring()
+    if tradeTracking.isMonitoring then return end
+    
+    tradeTracking.isMonitoring = true
+    
+    -- Set up trade detection
+    local onTradeCompleted = detectTradeCompletion()
+    
+    -- Monitor for trade completion signals
+    -- This is a placeholder - will need to be adapted to the specific game's trade system
+    task.spawn(function()
+        while tradeTracking.isMonitoring and autoAlertEnabled do
+            -- Check for trade completion indicators
+            -- This could monitor GUI changes, RemoteEvent calls, or inventory changes
+            
+            -- Example placeholder logic:
+            -- if someTradeCompletionCondition then
+            --     onTradeCompleted(tradeData)
+            -- end
+            
+            task.wait(1) -- Check every second
+        end
+    end)
+end
+
+-- Function to stop trade monitoring
+local function stopTradeMonitoring()
+    tradeTracking.isMonitoring = false
+    if tradeTracking.tradeConnection then
+        tradeTracking.tradeConnection:Disconnect()
+        tradeTracking.tradeConnection = nil
+    end
+end
+
 -- Auto alert monitoring function
 local function runAutoAlert()
     -- This would monitor for trades, desired items, etc.
@@ -623,11 +766,18 @@ end
 function WebhookSystem.SetAutoAlert(enabled)
     autoAlertEnabled = enabled
     
-    if enabled and not autoAlertThread then
-        autoAlertThread = task.spawn(function()
-            runAutoAlert()
-            autoAlertThread = nil
-        end)
+    if enabled then
+        if not autoAlertThread then
+            autoAlertThread = task.spawn(function()
+                runAutoAlert()
+                autoAlertThread = nil
+            end)
+        end
+        -- Start trade monitoring when auto alert is enabled
+        startTradeMonitoring()
+    else
+        -- Stop trade monitoring when auto alert is disabled
+        stopTradeMonitoring()
     end
 end
 
@@ -651,6 +801,28 @@ function WebhookSystem.UpdateSessionStats(statType, increment)
     elseif statType == "fruits" then
         sessionStats.desiredFruitsFound = sessionStats.desiredFruitsFound + increment
     end
+end
+
+-- Public method to manually trigger trade webhook (for external integration)
+function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+    if not autoAlertEnabled then return end
+    
+    -- Increment trade count
+    tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
+    sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
+    
+    -- Send the webhook
+    sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+end
+
+-- Public method to reset trade session count
+function WebhookSystem.ResetTradeCount()
+    tradeTracking.sessionTradeCount = 0
+end
+
+-- Public method to set max trades per session
+function WebhookSystem.SetMaxTrades(maxTrades)
+    tradeTracking.maxSessionTrades = maxTrades or 10
 end
 
 function WebhookSystem.GetConfigElements()
