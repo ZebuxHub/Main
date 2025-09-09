@@ -181,7 +181,7 @@ local function getPetInventory()
         if child:IsA("Folder") then
             -- Only count pets WITHOUT D attribute (unplaced pets)
             local dAttr = child:GetAttribute("D")
-            if dAttr == nil or dAttr == "" then
+            if not dAttr then  -- Changed: only check if D attribute doesn't exist
                 local petType = child:GetAttribute("T")
                 local mutation = child:GetAttribute("M")
                 
@@ -233,7 +233,7 @@ local function getEggInventory()
         if child:IsA("Folder") then
             -- Only count eggs WITHOUT D attribute (unhatched eggs)
             local dAttr = child:GetAttribute("D")
-            if dAttr == nil or dAttr == "" then
+            if not dAttr then  -- Changed: only check if D attribute doesn't exist
                 local eggType = child:GetAttribute("T")
                 local mutation = child:GetAttribute("M")
                 
