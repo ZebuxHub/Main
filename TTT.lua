@@ -1155,64 +1155,183 @@ end
 local autoPlaceEnabled = false
 local autoPlaceThread = nil
 
-local function runAutoPlace()
-    local consecutiveFailures = 0
-    local maxFailures = 5
+-- ============ Event-Driven Placement System ============
+local placementState = {
+    isDormant = false,
+    lastAttemptTime = 0,
+    connections = {},
+    dormantReason = ""
+}
+
+local function enterDormantMode(reason)
+    if placementState.isDormant then return end
     
-    while autoPlaceEnabled do
-        local success, message = attemptPlacement()
-        
-        if success then
-            placementStats.totalPlacements = placementStats.totalPlacements + 1
-            placementStats.lastPlacement = os.time()
-            consecutiveFailures = 0
-            
-            -- Shorter wait after successful placement
-            waitJitter(1.5)
-        else
-            consecutiveFailures = consecutiveFailures + 1
-            
-            -- Adaptive waiting based on failure reason
-            if message:find("no_tiles_available") or message:find("No tiles available") then
-                -- No tiles at all - wait very long to reduce CPU
-                waitJitter(20)
-            elseif message:find("ocean_pets_no_tiles") or message:find("Ocean pets need") then
-                -- Ocean pets can't find appropriate tiles - wait long
-                waitJitter(15)
-            elseif message:find("regular_pets_no_regular_tiles") or message:find("Regular pets need") then
-                -- Regular pets need regular tiles - wait long
-                waitJitter(15)
-            elseif message:find("mixed_pets_insufficient_tiles") or message:find("Not enough tiles") then
-                -- Mixed pet types, insufficient tiles - wait long
-                waitJitter(15)
-            elseif message:find("ocean_pet_no_tiles") or message:find("Ocean pet: no") then
-                -- Specific ocean pet can't find tiles - wait long
-                waitJitter(15)
-            elseif message:find("regular_pet_no_regular_tiles") or message:find("Regular pet: no") then
-                -- Specific regular pet can't find tiles - wait long
-                waitJitter(15)
-            elseif message:find("skip") or message:find("no water") or message:find("Ocean") then
-                -- Legacy ocean skip messages - wait long
-                waitJitter(15)
-            elseif message:find("No available tiles") or message:find("no_space") then
-                -- General no space - wait long
-                waitJitter(12)
-            elseif message:find("already placed") then
-                -- Candidate was already placed; rescan quickly
-                waitJitter(0.5)
-            elseif message:find("disabled") then
-                -- Placement mode disabled - wait longer
-                waitJitter(8)
-            elseif consecutiveFailures >= maxFailures then
-                -- Too many failures - much longer wait
-                waitJitter(25)
-                consecutiveFailures = 0
-            else
-                -- Normal failure - moderate wait
-                waitJitter(4)
-            end
+    placementState.isDormant = true
+    placementState.dormantReason = reason
+    placementStats.lastReason = "Dormant: " .. reason
+    
+    print("[AutoPlace] Entering dormant mode:", reason)
+end
+
+local function exitDormantMode(trigger)
+    if not placementState.isDormant then return end
+    
+    placementState.isDormant = false
+    placementState.dormantReason = ""
+    placementStats.lastReason = "Reactivated by: " .. trigger
+    
+    print("[AutoPlace] Exiting dormant mode, triggered by:", trigger)
+    
+    -- Invalidate caches and attempt placement
+    eggCache.lastUpdate = 0
+    petCache.lastUpdate = 0
+    tileCache.lastUpdate = 0
+    
+    task.spawn(attemptPlacement)
+end
+
+local function setupEventMonitoring()
+    -- Clear existing connections
+    for _, connection in ipairs(placementState.connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
         end
     end
+    placementState.connections = {}
+    
+    -- Monitor for new eggs (triggers reactivation)
+    local eggContainer = getEggContainer()
+    if eggContainer then
+        local function onEggChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.1) -- Brief wait for attributes
+            exitDormantMode("new eggs available")
+        end
+        
+        table.insert(placementState.connections, eggContainer.ChildAdded:Connect(onEggChanged))
+        table.insert(placementState.connections, eggContainer.ChildRemoved:Connect(onEggChanged))
+    end
+    
+    -- Monitor for new pets (triggers reactivation)
+    local petContainer = getPetContainer()
+    if petContainer then
+        local function onPetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.1)
+            exitDormantMode("new pets available")
+        end
+        
+        table.insert(placementState.connections, petContainer.ChildAdded:Connect(onPetChanged))
+        table.insert(placementState.connections, petContainer.ChildRemoved:Connect(onPetChanged))
+    end
+    
+    -- Monitor workspace pets (tiles becoming available)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        local function onWorkspacePetChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2) -- Wait for tile to be properly freed
+            exitDormantMode("tile freed")
+        end
+        
+        table.insert(placementState.connections, workspacePets.ChildAdded:Connect(onWorkspacePetChanged))
+        table.insert(placementState.connections, workspacePets.ChildRemoved:Connect(onWorkspacePetChanged))
+    end
+    
+    -- Monitor PlayerBuiltBlocks (new tiles built)
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        local function onBlockChanged()
+            if not autoPlaceEnabled then return end
+            task.wait(0.2)
+            exitDormantMode("new tiles built")
+        end
+        
+        table.insert(placementState.connections, playerBuiltBlocks.ChildAdded:Connect(onBlockChanged))
+        table.insert(placementState.connections, playerBuiltBlocks.ChildRemoved:Connect(onBlockChanged))
+    end
+end
+
+local function runAutoPlace()
+    local consecutiveFailures = 0
+    local maxFailures = 3
+    
+    -- Setup event monitoring
+    setupEventMonitoring()
+    
+    while autoPlaceEnabled do
+        -- Skip processing if dormant
+        if not placementState.isDormant then
+            local success, message = attemptPlacement()
+            placementState.lastAttemptTime = time()
+            
+            if success then
+                placementStats.totalPlacements = placementStats.totalPlacements + 1
+                placementStats.lastPlacement = os.time()
+                consecutiveFailures = 0
+                
+                -- Quick retry after success
+                waitJitter(0.8)
+            else
+                consecutiveFailures = consecutiveFailures + 1
+                
+                -- Determine if we should enter dormant mode
+                local shouldGoDormant = false
+                local dormantReason = ""
+                
+                if message:find("no_tiles_available") or message:find("No tiles available") then
+                    shouldGoDormant = true
+                    dormantReason = "No tiles available"
+                elseif message:find("ocean_pets_no_tiles") or message:find("Ocean pets need") then
+                    shouldGoDormant = true
+                    dormantReason = "Ocean pets need water/regular tiles"
+                elseif message:find("regular_pets_no_regular_tiles") or message:find("Regular pets need") then
+                    shouldGoDormant = true
+                    dormantReason = "Regular pets need regular tiles"
+                elseif message:find("mixed_pets_insufficient_tiles") or message:find("Not enough tiles") then
+                    shouldGoDormant = true
+                    dormantReason = "Insufficient tiles for pet mix"
+                elseif message:find("ocean_pet_no_tiles") or message:find("Ocean pet: no") then
+                    shouldGoDormant = true
+                    dormantReason = "No tiles for ocean pets"
+                elseif message:find("regular_pet_no_regular_tiles") or message:find("Regular pet: no") then
+                    shouldGoDormant = true
+                    dormantReason = "No regular tiles for regular pets"
+                elseif message:find("no_pets") or message:find("No pets pass filters") then
+                    shouldGoDormant = true
+                    dormantReason = "No pets pass filters"
+                elseif consecutiveFailures >= maxFailures then
+                    shouldGoDormant = true
+                    dormantReason = "Too many consecutive failures"
+                    consecutiveFailures = 0
+                end
+                
+                if shouldGoDormant then
+                    enterDormantMode(dormantReason)
+                else
+                    -- Normal retry delays for temporary issues
+                    if message:find("already placed") then
+                        waitJitter(0.3)
+                    elseif message:find("disabled") then
+                        waitJitter(5)
+                    else
+                        waitJitter(2)
+                    end
+                end
+            end
+        else
+            -- Dormant mode - just wait and check periodically
+            waitJitter(5)
+        end
+    end
+    
+    -- Cleanup connections when stopping
+    for _, connection in ipairs(placementState.connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
+        end
+    end
+    placementState.connections = {}
 end
 
 -- ============ Public API ============
@@ -1356,13 +1475,15 @@ function AutoPlaceSystem.CreateUI()
         end
         local rAvail, wAvail = updateTileCache()
         local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
-        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s", 
+        local dormantText = placementState.isDormant and " 💤" or ""
+        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s%s", 
             placementStats.totalPlacements, 
             placementStats.mutationPlacements,
             rAvail or 0,
             wAvail or 0,
             reasonText,
-            lastPlacementText)
+            lastPlacementText,
+            dormantText)
         
         if statsLabel.SetDesc then
             statsLabel:SetDesc(statsText)
