@@ -1139,22 +1139,25 @@ local function runAutoPlace()
             consecutiveFailures = consecutiveFailures + 1
             
             -- Adaptive waiting based on failure reason
-            if message:find("skip") or message:find("no water") then
-                -- Ocean eggs skipped - wait longer
-                waitJitter(5)
-            elseif message:find("No available tiles") then
+            if message:find("skip") or message:find("no water") or message:find("Ocean") then
+                -- Ocean eggs/pets skipped - wait much longer to reduce CPU
+                waitJitter(15)
+            elseif message:find("No available tiles") or message:find("no_space") then
                 -- No space - wait longer
-                waitJitter(8)
+                waitJitter(12)
             elseif message:find("already placed") then
                 -- Candidate was already placed; rescan quickly
-                waitJitter(0.25)
+                waitJitter(0.5)
+            elseif message:find("disabled") then
+                -- Placement mode disabled - wait longer
+                waitJitter(8)
             elseif consecutiveFailures >= maxFailures then
-                -- Too many failures - longer wait
-                waitJitter(10)
+                -- Too many failures - much longer wait
+                waitJitter(20)
                 consecutiveFailures = 0
             else
-                -- Normal failure - short wait
-                waitJitter(2)
+                -- Normal failure - moderate wait
+                waitJitter(4)
             end
         end
     end
@@ -1176,15 +1179,14 @@ end
 function AutoPlaceSystem.CreateUI()
     -- Egg filters section
     Tabs.PlaceTab:Section({
-        Title = "Egg filters",
+        Title = "Egg Filters",
         Icon = "egg"
     })
 
     -- Egg selection dropdown
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "Pick Egg Types",
-        Icon = "egg",
-        Desc = "Pick eggs to place (🌊 needs water tile)",
+        Title = "Egg Types",
+        Desc = "Pick eggs to place (🌊 needs water)",
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
             "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
@@ -1197,14 +1199,13 @@ function AutoPlaceSystem.CreateUI()
         AllowNone = true,
         Callback = function(selection)
             selectedEggTypes = selection
-            eggCache.lastUpdate = 0 -- Invalidate cache
+            eggCache.lastUpdate = 0
         end
     })
     
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "Pick Mutations",
-        Icon = "zap",
+        Title = "Mutations",
         Desc = "Pick mutations (empty = any)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
@@ -1212,17 +1213,16 @@ function AutoPlaceSystem.CreateUI()
         AllowNone = true,
         Callback = function(selection)
             selectedMutations = selection
-            eggCache.lastUpdate = 0 -- Invalidate cache
+            eggCache.lastUpdate = 0
         end
     })
     
-    -- Statistics section with live updates
+    -- Statistics section with live stats
     Tabs.PlaceTab:Section({
-        Title = "Placement Statistics",
+        Title = "Statistics",
         Icon = "activity"
     })
     
-    -- Stats display label
     local statsLabel = Tabs.PlaceTab:Paragraph({
         Title = "Stats",
         Desc = "Waiting for placement data..."
@@ -1230,15 +1230,14 @@ function AutoPlaceSystem.CreateUI()
 
     -- Mode & behavior section
     Tabs.PlaceTab:Section({
-        Title = "What to place",
-        Icon = "settings"
+        Title = "What to Place",
+        Icon = "layers"
     })
 
     -- Replace toggle with multi-select dropdown for placement sources
     local placeModeDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "Place Sources (Multi)",
-        Icon = "layers",
-        Desc = "Choose what to place (can pick both)",
+        Title = "Sources",
+        Desc = "Choose what to place",
         Values = {"Eggs","Pets"},
         Value = {"Eggs"},
         Multi = true,
@@ -1254,15 +1253,12 @@ function AutoPlaceSystem.CreateUI()
 
     -- Pet settings section
     Tabs.PlaceTab:Section({
-        Title = "Pet placement settings",
+        Title = "Pet Settings",
         Icon = "heart"
     })
 
-    -- Removed "mutations only" toggle per user request
-
     Tabs.PlaceTab:Slider({
         Title = "Min Speed",
-        Icon = "zap",
         Desc = "Only place pets ≥ this rate",
         Value = {
             Min = 0,
@@ -1276,12 +1272,9 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Excluding Big pets is enforced automatically in selection (no UI toggle)
-    
     -- Replace toggle with dropdown sort order
     Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
-        Icon = "arrow-up-down",
         Desc = "Order by rate",
         Values = {"Low → High","High → Low"},
         Value = "Low → High",
@@ -1292,8 +1285,6 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    
-    -- Blacklist management button removed by request
     
     -- Run section
     Tabs.PlaceTab:Section({
@@ -1329,7 +1320,7 @@ function AutoPlaceSystem.CreateUI()
     -- Main auto place toggle
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Place",
-        Icon = "home",
+        Desc = "Smart placement system",
         Value = false,
         Callback = function(state)
             autoPlaceEnabled = state
