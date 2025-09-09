@@ -1755,6 +1755,55 @@ function AutoPlaceSystem.CreateUI()
         Icon = "play"
     })
     
+    -- Auto Delete section
+    Tabs.PlaceTab:Section({
+        Title = "Auto Delete Settings",
+        Icon = "trash-2"
+    })
+    
+    local autoDeleteTileDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "Tile Filter",
+        Desc = "Delete pets on specific tile types",
+        Values = {"Both", "Regular", "Ocean"},
+        Value = "Both",
+        Callback = function(value)
+            autoDeleteTileFilter = value or "Both"
+        end
+    })
+    
+    local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
+        Title = "Speed Threshold",
+        Desc = "Delete pets below this speed (supports K/M/B/T)",
+        Value = "100",
+        Callback = function(value)
+            local parsedValue = parseNumberWithSuffix(value)
+            if parsedValue and parsedValue > 0 then
+                deleteSpeedThreshold = parsedValue
+            else
+                deleteSpeedThreshold = tonumber(value) or 100
+            end
+        end
+    })
+    
+    local autoDeleteToggle = Tabs.PlaceTab:Toggle({
+        Title = "Auto Delete",
+        Desc = "Delete slow pets automatically (your pets only)",
+        Value = false,
+        Callback = function(state)
+            autoDeleteEnabled = state
+            
+            if state and not autoDeleteThread then
+                autoDeleteThread = task.spawn(function()
+                    runAutoDelete()
+                    autoDeleteThread = nil
+                end)
+                WindUI:Notify({ Title = "Auto Delete", Content = "Started deleting slow pets", Duration = 2 })
+            elseif not state and autoDeleteThread then
+                WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 2 })
+            end
+        end
+    })
+
     -- Stats update function
     local function updateStats()
         if not statsLabel then return end
