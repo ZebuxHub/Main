@@ -1282,6 +1282,31 @@ function AutoPlaceSystem.CreateUI()
         ImageSize = 16,
     })
 
+    -- Statistics update function
+    local function updateStats()
+        if not statsLabel then return end
+        
+        local lastPlacementText = ""
+        if placementStats.lastPlacement then
+            local timeSince = os.time() - placementStats.lastPlacement
+            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
+            lastPlacementText = " | Last: " .. timeText
+        end
+        local rAvail, wAvail = updateTileCache()
+        local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
+        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s", 
+            placementStats.totalPlacements, 
+            placementStats.mutationPlacements,
+            rAvail or 0,
+            wAvail or 0,
+            reasonText,
+            lastPlacementText)
+        
+        if statsLabel.SetDesc then
+            statsLabel:SetDesc(statsText)
+        end
+    end
+
     -- Main controls
     Tabs.PlaceTab:Section({ Title = "Controls", Icon = "play" })
     
@@ -1312,30 +1337,6 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
-
-    local function updateStats()
-        if not statsLabel then return end
-        
-        local lastPlacementText = ""
-        if placementStats.lastPlacement then
-            local timeSince = os.time() - placementStats.lastPlacement
-            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
-            lastPlacementText = " | Last: " .. timeText
-        end
-        local rAvail, wAvail = updateTileCache()
-        local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
-        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s", 
-            placementStats.totalPlacements, 
-            placementStats.mutationPlacements,
-            rAvail or 0,
-            wAvail or 0,
-            reasonText,
-            lastPlacementText)
-        
-        if statsLabel.SetDesc then
-            statsLabel:SetDesc(statsText)
-        end
-    end
     
     -- Store references for external access
     AutoPlaceSystem.Toggle = autoPlaceToggle
