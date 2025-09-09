@@ -1443,6 +1443,7 @@ function SendTrashSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
+    local providedTab = dependencies.Tab
     
     -- Load saved webhook URL from config
     -- webhook load disabled
@@ -1450,8 +1451,8 @@ function SendTrashSystem.Init(dependencies)
     -- Start precise event-driven watchers for T/M replication
     startDataWatchers()
     
-    -- Create the Send Trash tab
-    local TrashTab = Window:Tab({ Title = "🗑️ | Send Trash"})
+    -- Create the Send Trash tab (or reuse provided Tab from main script)
+    local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Send Trash"})
     
     -- Status display
     statusParagraph = TrashTab:Paragraph({
@@ -1544,6 +1545,17 @@ function SendTrashSystem.Init(dependencies)
         end
     })
     
+    -- Refresh Target List button (placed directly below target dropdown)
+    TrashTab:Button({
+        Title = "🔄 Refresh Target List",
+        Desc = "Update player list from server",
+        Callback = function()
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            end
+        end
+    })
+    
     TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
     
     -- Send pet type filter (now include-only)
@@ -1610,38 +1622,7 @@ function SendTrashSystem.Init(dependencies)
     -- Ensure the loaded webhook URL is displayed in the input field
     --
     
-    -- Manual refresh button
-    TrashTab:Button({
-        Title = "🔄 Refresh Lists", 
-        Desc = "Manually refresh player and pet lists",
-        Callback = function()
-            -- Refresh all dropdowns
-            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
-            end
-            if sendPetTypeDropdown and sendPetTypeDropdown.SetValues then
-                pcall(function() sendPetTypeDropdown:SetValues(getAllPetTypes()) end)
-            end
-            if sendPetMutationDropdown and sendPetMutationDropdown.SetValues then
-                pcall(function() sendPetMutationDropdown:SetValues(getAllMutations()) end)
-            end
-            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
-            end
-            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
-            end
-            -- Selling UI removed
-            
-            updateStatus()
-            
-            WindUI:Notify({
-                Title = "🔄 Refresh Complete",
-                Content = "All lists refreshed!",
-                Duration = 2
-            })
-        end
-    })
+    -- Removed generic "Refresh Lists" button (target-specific refresh placed under target dropdown)
     
     -- Cache refresh button
     TrashTab:Button({
