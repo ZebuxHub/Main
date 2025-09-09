@@ -479,7 +479,6 @@ function AutoSellSystem.CreateUI()
 
 	autoSellToggle = MainTab:Toggle({
 		Title = "💸 Auto Sell Unplaced Pets",
-		Desc = "Automatically sell pets without 'D' attribute (not placed).",
 		Value = false,
 		Callback = function(state)
 			autoSellEnabled = state
