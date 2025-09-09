@@ -351,9 +351,84 @@ local function sendWebhook(embedData)
     print("[DEBUG] Attempting to send webhook...")
     print("[DEBUG] Embed data:", game:GetService("HttpService"):JSONEncode(embedData))
     
-    local success, result = pcall(function()
-        return game:GetService("HttpService"):PostAsync(webhookUrl, game:GetService("HttpService"):JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
-    end)
+    -- Check available HTTP methods
+    print("[DEBUG] Available HTTP methods:")
+    print("[DEBUG] - HttpService:PostAsync:", game:GetService("HttpService").PostAsync ~= nil)
+    print("[DEBUG] - _G.request:", _G.request ~= nil)
+    print("[DEBUG] - syn.request:", syn and syn.request ~= nil)
+    print("[DEBUG] - http_request:", http_request ~= nil)
+    
+    -- Try different methods to send HTTP request
+    local success, result = false, "No method available"
+    
+    -- Method 1: Try HttpService (works in Studio/some executors)
+    if not success then
+        success, result = pcall(function()
+            return game:GetService("HttpService"):PostAsync(webhookUrl, game:GetService("HttpService"):JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
+        end)
+        if success then
+            print("[DEBUG] HttpService method succeeded")
+        else
+            print("[DEBUG] HttpService method failed:", result)
+        end
+    end
+    
+    -- Method 2: Try request function (common in executors)
+    if not success and _G.request then
+        success, result = pcall(function()
+            return _G.request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = game:GetService("HttpService"):JSONEncode(embedData)
+            })
+        end)
+        if success then
+            print("[DEBUG] _G.request method succeeded")
+        else
+            print("[DEBUG] _G.request method failed:", result)
+        end
+    end
+    
+    -- Method 3: Try syn.request (Synapse X)
+    if not success and syn and syn.request then
+        success, result = pcall(function()
+            return syn.request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = game:GetService("HttpService"):JSONEncode(embedData)
+            })
+        end)
+        if success then
+            print("[DEBUG] syn.request method succeeded")
+        else
+            print("[DEBUG] syn.request method failed:", result)
+        end
+    end
+    
+    -- Method 4: Try http_request (common executor function)
+    if not success and http_request then
+        success, result = pcall(function()
+            return http_request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = game:GetService("HttpService"):JSONEncode(embedData)
+            })
+        end)
+        if success then
+            print("[DEBUG] http_request method succeeded")
+        else
+            print("[DEBUG] http_request method failed:", result)
+        end
+    end
     
     print("[DEBUG] Webhook send success:", success)
     if not success then
