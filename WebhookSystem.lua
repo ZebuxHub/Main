@@ -166,26 +166,52 @@ end
 local function getPetInventory()
     local pets = {}
     
-    if not LocalPlayer then return pets end
+    if not LocalPlayer then 
+        print("[PETS DEBUG] No LocalPlayer")
+        return pets 
+    end
     
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return pets end
+    if not playerGui then 
+        print("[PETS DEBUG] No PlayerGui")
+        return pets 
+    end
     
     local data = playerGui:FindFirstChild("Data")
-    if not data then return pets end
+    if not data then 
+        print("[PETS DEBUG] No Data folder")
+        return pets 
+    end
     
     local petContainer = data:FindFirstChild("Pets")
-    if not petContainer then return pets end
+    if not petContainer then 
+        print("[PETS DEBUG] No Pets folder")
+        return pets 
+    end
+    
+    print("[PETS DEBUG] Found Pets folder, checking children...")
+    local totalChildren = 0
+    local validPets = 0
     
     for _, child in ipairs(petContainer:GetChildren()) do
+        totalChildren = totalChildren + 1
+        print("[PETS DEBUG] Child:", child.Name, "Type:", child.ClassName)
+        
         if child:IsA("Folder") then
-            -- Only count pets WITHOUT D attribute (unplaced pets)
             local dAttr = child:GetAttribute("D")
-            if not dAttr then  -- Changed: only check if D attribute doesn't exist
-                local petType = child:GetAttribute("T")
-                local mutation = child:GetAttribute("M")
-                
+            local petType = child:GetAttribute("T")
+            local mutation = child:GetAttribute("M")
+            
+            print("[PETS DEBUG] - D attribute:", dAttr)
+            print("[PETS DEBUG] - T attribute:", petType)
+            print("[PETS DEBUG] - M attribute:", mutation)
+            
+            -- Only count pets WITHOUT D attribute (unplaced pets)
+            if not dAttr then
                 if petType then
+                    validPets = validPets + 1
+                    print("[PETS DEBUG] ✅ Valid pet:", petType, "Mutation:", mutation)
+                    
                     -- Handle Dino -> Jurassic conversion
                     if mutation == "Dino" then
                         mutation = "Jurassic"
@@ -206,11 +232,16 @@ local function getPetInventory()
                         end
                         pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
                     end
+                else
+                    print("[PETS DEBUG] ❌ No T attribute for:", child.Name)
                 end
+            else
+                print("[PETS DEBUG] ⏭️ Skipped (has D attribute):", child.Name)
             end
         end
     end
     
+    print("[PETS DEBUG] Total children:", totalChildren, "Valid pets:", validPets)
     return pets
 end
 
@@ -218,26 +249,52 @@ end
 local function getEggInventory()
     local eggs = {}
     
-    if not LocalPlayer then return eggs end
+    if not LocalPlayer then 
+        print("[EGGS DEBUG] No LocalPlayer")
+        return eggs 
+    end
     
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return eggs end
+    if not playerGui then 
+        print("[EGGS DEBUG] No PlayerGui")
+        return eggs 
+    end
     
     local data = playerGui:FindFirstChild("Data")
-    if not data then return eggs end
+    if not data then 
+        print("[EGGS DEBUG] No Data folder")
+        return eggs 
+    end
     
     local eggContainer = data:FindFirstChild("Egg")
-    if not eggContainer then return eggs end
+    if not eggContainer then 
+        print("[EGGS DEBUG] No Egg folder")
+        return eggs 
+    end
+    
+    print("[EGGS DEBUG] Found Egg folder, checking children...")
+    local totalChildren = 0
+    local validEggs = 0
     
     for _, child in ipairs(eggContainer:GetChildren()) do
+        totalChildren = totalChildren + 1
+        print("[EGGS DEBUG] Child:", child.Name, "Type:", child.ClassName)
+        
         if child:IsA("Folder") then
-            -- Only count eggs WITHOUT D attribute (unhatched eggs)
             local dAttr = child:GetAttribute("D")
-            if not dAttr then  -- Changed: only check if D attribute doesn't exist
-                local eggType = child:GetAttribute("T")
-                local mutation = child:GetAttribute("M")
-                
+            local eggType = child:GetAttribute("T")
+            local mutation = child:GetAttribute("M")
+            
+            print("[EGGS DEBUG] - D attribute:", dAttr)
+            print("[EGGS DEBUG] - T attribute:", eggType)
+            print("[EGGS DEBUG] - M attribute:", mutation)
+            
+            -- Only count eggs WITHOUT D attribute (unhatched eggs)
+            if not dAttr then
                 if eggType then
+                    validEggs = validEggs + 1
+                    print("[EGGS DEBUG] ✅ Valid egg:", eggType, "Mutation:", mutation)
+                    
                     -- Handle Dino -> Jurassic conversion
                     if mutation == "Dino" then
                         mutation = "Jurassic"
@@ -258,11 +315,16 @@ local function getEggInventory()
                         end
                         eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
                     end
+                else
+                    print("[EGGS DEBUG] ❌ No T attribute for:", child.Name)
                 end
+            else
+                print("[EGGS DEBUG] ⏭️ Skipped (has D attribute):", child.Name)
             end
         end
     end
     
+    print("[EGGS DEBUG] Total children:", totalChildren, "Valid eggs:", validEggs)
     return eggs
 end
 
@@ -399,7 +461,7 @@ local function createInventoryEmbed()
                     },
                     {
                         name = "🪣 Fruits",
-                        value = fruitValue
+                        value = fruitValue,
                     },
                     {
                         name = "🐾 Pets",
