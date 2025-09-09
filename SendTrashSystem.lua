@@ -1542,6 +1542,7 @@ function SendTrashSystem.Init(dependencies)
             sessionLimits.maxSendPet = numValue
             sessionLimits.limitReachedNotified = false -- Reset notification
             print("Session limits updated: " .. numValue .. " items per session")
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
         end,
     })
 
@@ -1557,6 +1558,7 @@ function SendTrashSystem.Init(dependencies)
             actionCounter = 0
             updateStatus()
             WindUI:Notify({ Title = "🔄 Session Reset", Content = "Send/sell limits reset!", Duration = 2 })
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
         end
     })
 
@@ -1572,6 +1574,7 @@ function SendTrashSystem.Init(dependencies)
 				-- Start of a new run/session: do not reset logs, only reset webhookSent
 				webhookSent = false
 				stopRequested = false
+				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
 				task.spawn(function()
 					syncSelectorsFromControls()
 					processTrash()
