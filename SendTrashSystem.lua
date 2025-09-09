@@ -1456,9 +1456,12 @@ local function processTrash()
 				-- Build compact logs for this session
 				local logs = {}
 				for _, log in ipairs(sessionLogs) do table.insert(logs, log) end
-				task.spawn(function()
-					_G.WebhookSystem.SendTradeSessionSummary(logs)
-				end)
+				if not _G.__ZEBUX_SENT_SESSION_SUMMARY then
+					_G.__ZEBUX_SENT_SESSION_SUMMARY = true
+					task.spawn(function()
+						_G.WebhookSystem.SendTradeSessionSummary(logs)
+					end)
+				end
 			end
 			-- (Legacy) Local webhook summary is deprecated
 			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
@@ -1474,6 +1477,7 @@ local function processTrash()
 			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
 			-- Also clear per-item progress trackers to avoid duplicates
 			clearSendProgress()
+			_G.__ZEBUX_SENT_SESSION_SUMMARY = nil
 		end
 
 		updateStatus()
