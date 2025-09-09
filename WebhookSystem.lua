@@ -357,30 +357,40 @@ local function createInventoryEmbed()
     fruitValue = table.concat(fruitLines, "\n")
     if fruitValue == "" then fruitValue = "No fruits found" end
     
-    -- Build pet field
+    -- Build pet field (top 5 sorted, with top 5 mutations)
     local petValue = "```diff\n"
-    local petCount = 0
+    local petArr = {}
     for petType, petData in pairs(pets) do
-        if petCount >= 5 then break end -- Limit to top 5 pets
-        
-        petValue = petValue .. "🐾 " .. petType .. " × " .. petData.total .. "\n"
-        
-        -- Add mutations
-        for mutation, count in pairs(petData.mutations) do
+        table.insert(petArr, { name = petType, total = petData.total or 0, mutations = petData.mutations or {} })
+    end
+    table.sort(petArr, function(a, b)
+        if a.total ~= b.total then return a.total > b.total end
+        return (a.name or "") < (b.name or "")
+    end)
+    local pLimit = math.min(5, #petArr)
+    for i = 1, pLimit do
+        local it = petArr[i]
+        petValue = petValue .. "🐾 " .. it.name .. " × " .. tostring(it.total or 0) .. "\n"
+        local mutsArr = {}
+        for m, c in pairs(it.mutations or {}) do table.insert(mutsArr, { m = m, c = c }) end
+        table.sort(mutsArr, function(a, b)
+            if a.c ~= b.c then return a.c > b.c end
+            return (a.m or "") < (b.m or "")
+        end)
+        local mLimit = math.min(5, #mutsArr)
+        for j = 1, mLimit do
+            local mutation = mutsArr[j].m
+            local count = mutsArr[j].c
             local mutationIcon = "🧬"
-            if mutation == "Fire" then mutationIcon = "🔥"
-            elseif mutation == "Electric" then mutationIcon = "⚡"
-            end
+            if mutation == "Fire" then mutationIcon = "🔥" elseif mutation == "Electric" then mutationIcon = "⚡" end
             petValue = petValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
         end
-        
-        petValue = petValue .. "\n"
-        petCount = petCount + 1
+        if i < pLimit then petValue = petValue .. "\n" end
     end
-    petValue = petValue .. "```"
-    
-    if petCount == 0 then
+    if pLimit == 0 then
         petValue = "```diff\nNo pets found```"
+    else
+        petValue = petValue .. "```"
     end
     
     -- Build egg field (top 5 like pets list)
