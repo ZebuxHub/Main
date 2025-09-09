@@ -286,7 +286,11 @@ end
 
 -- Send webhook message
 local function sendWebhook(embed)
+    print("🔄 Webhook: sendWebhook called")
+    print("🔄 Webhook: URL exists:", webhookUrl and "YES" or "NO")
+    
     if not webhookUrl or webhookUrl == "" then
+        print("❌ Webhook: No URL set")
         WindUI:Notify({ Title = "Webhook Error", Content = "Please set a Discord webhook URL first", Duration = 3 })
         return false
     end
@@ -297,14 +301,18 @@ local function sendWebhook(embed)
         attachments = {}
     }
     
+    print("🔄 Webhook: Payload created, sending HTTP request...")
     local success, response = pcall(function()
         return HttpService:PostAsync(webhookUrl, HttpService:JSONEncode(payload), Enum.HttpContentType.ApplicationJson)
     end)
     
+    print("🔄 Webhook: HTTP request result - Success:", success)
     if success then
+        print("✅ Webhook: Message sent successfully")
         WindUI:Notify({ Title = "Webhook Success", Content = "Message sent to Discord!", Duration = 3 })
         return true
     else
+        print("❌ Webhook: Error:", tostring(response))
         WindUI:Notify({ Title = "Webhook Error", Content = "Failed to send message: " .. tostring(response), Duration = 5 })
         return false
     end
@@ -312,13 +320,21 @@ end
 
 -- Create inventory embed
 local function createInventoryEmbed()
+    print("🔄 Webhook: Getting player data...")
     local playerName = LocalPlayer.Name
     local netWorth = getPlayerNetWorth()
     local tickets = getPlayerTickets()
     
+    print("🔄 Webhook: Player:", playerName, "NetWorth:", netWorth, "Tickets:", tickets)
+    
+    print("🔄 Webhook: Getting inventory data...")
     local fruits = getFruitInventory()
     local pets = getPetInventory()
     local eggs = getEggInventory()
+    
+    print("🔄 Webhook: Fruits count:", fruits and #fruits or "nil")
+    print("🔄 Webhook: Pets count:", pets and #pets or "nil")
+    print("🔄 Webhook: Eggs count:", eggs and #eggs or "nil")
     
     local embed = {
         title = "📊 Inventory Snapshot",
@@ -354,7 +370,16 @@ end
 
 -- Send inventory report
 local function sendInventoryReport()
+    print("🔄 Webhook: Starting inventory report...")
+    
+    if not webhookUrl or webhookUrl == "" then
+        WindUI:Notify({ Title = "Webhook Error", Content = "Please set a Discord webhook URL first", Duration = 3 })
+        return
+    end
+    
+    print("🔄 Webhook: Creating embed...")
     local embed = createInventoryEmbed()
+    print("🔄 Webhook: Embed created, sending...")
     sendWebhook(embed)
 end
 
@@ -377,9 +402,11 @@ local function CreateUI(tab)
         Desc = "Enter your Discord channel webhook URL",
         Placeholder = "https://discord.com/api/webhooks/...",
         Callback = function(value)
+            print("🔄 Webhook: URL input changed to:", value)
             webhookUrl = value
             if Config then
                 Config:Set("webhookUrl", value)
+                print("🔄 Webhook: URL saved to config")
             end
         end
     })
@@ -389,6 +416,7 @@ local function CreateUI(tab)
         Title = "📊 Send Inventory",
         Desc = "Send current inventory snapshot to Discord",
         Callback = function()
+            print("🔄 Webhook: Send Inventory button clicked!")
             sendInventoryReport()
         end
     })
