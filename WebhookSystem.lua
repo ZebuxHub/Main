@@ -14,10 +14,6 @@ local webhookUrl = ""
 local autoAlertEnabled = false
 local autoAlertThread = nil
 
--- Inventory display sort mode
--- Values: "most_count", "least_count", "egg_mutation_most", "pet_highest_speed"
-local inventorySortMode = "most_count"
-
 -- Session tracking
 local sessionStats = {
     tradesCompleted = 0,
@@ -33,8 +29,7 @@ local tradeTracking = {
     currentTrade = nil,
     tradeConnection = nil,
     sessionTradeCount = 0,
-    maxSessionTrades = 10,
-    sessionSummarySent = false
+    maxSessionTrades = 10
 }
 
 -- Services
@@ -197,7 +192,6 @@ local function getPetInventory()
             local dAttr = child:GetAttribute("D")
             local petType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
-            local speed = child:GetAttribute("Speed")
             
             -- Only count pets WITHOUT D attribute (unplaced pets)
             if not dAttr and petType then
@@ -209,15 +203,11 @@ local function getPetInventory()
                 if not pets[petType] then
                     pets[petType] = {
                         total = 0,
-                        mutations = {},
-                        speedSum = 0
+                        mutations = {}
                     }
                 end
                 
                 pets[petType].total = pets[petType].total + 1
-                if type(speed) == "number" then
-                    pets[petType].speedSum = pets[petType].speedSum + speed
-                end
                 
                 if mutation then
                     if not pets[petType].mutations[mutation] then
@@ -367,97 +357,66 @@ local function createInventoryEmbed()
     fruitValue = table.concat(fruitLines, "\n")
     if fruitValue == "" then fruitValue = "No fruits found" end
     
-    -- Build pet field with sorting based on inventorySortMode
+    -- Build pet field
     local petValue = "```diff\n"
-    do
-        local mode = _G and _G.WebhookInventorySortMode or inventorySortMode
-        local arr = {}
-        for name, data in pairs(pets) do
-            table.insert(arr, { name = name, total = data.total, speedAvg = (data.speedSum or 0) / math.max(1, data.total), mutations = data.mutations })
-        end
-        if mode == "pet_highest_speed" then
-            table.sort(arr, function(a,b)
-                if a.speedAvg ~= b.speedAvg then return a.speedAvg > b.speedAvg end
-                return a.name < b.name
-            end)
-        elseif mode == "least_count" then
-            table.sort(arr, function(a,b)
-                if a.total ~= b.total then return a.total < b.total end
-                return a.name < b.name
-            end)
-        else -- most_count (default)
-            table.sort(arr, function(a,b)
-                if a.total ~= b.total then return a.total > b.total end
-                return a.name < b.name
-            end)
-        end
-        local shown = 0
-        for _, row in ipairs(arr) do
-            if shown >= 5 then break end
-            petValue = petValue .. "🐾 " .. row.name .. " × " .. row.total .. "\n"
-            for mutation, count in pairs(row.mutations or {}) do
-                local mutationIcon = "🧬"
-                if mutation == "Fire" then mutationIcon = "🔥" elseif mutation == "Electric" then mutationIcon = "⚡" end
-                petValue = petValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
+    local petCount = 0
+    for petType, petData in pairs(pets) do
+        if petCount >= 5 then break end -- Limit to top 5 pets
+        
+        petValue = petValue .. "🐾 " .. petType .. " × " .. petData.total .. "\n"
+        
+        -- Add mutations
+        for mutation, count in pairs(petData.mutations) do
+            local mutationIcon = "🧬"
+            if mutation == "Fire" then mutationIcon = "🔥"
+            elseif mutation == "Electric" then mutationIcon = "⚡"
             end
-            petValue = petValue .. "\n"
-            shown = shown + 1
+            petValue = petValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
         end
-        if shown == 0 then petValue = petValue .. "No pets found\n" end
-        petValue = petValue .. "```"
+        
+        petValue = petValue .. "\n"
+        petCount = petCount + 1
+    end
+    petValue = petValue .. "```"
+    
+    if petCount == 0 then
+        petValue = "```diff\nNo pets found```"
     end
     
-    -- Build egg field: show more eggs and add mutation-most mode
+    -- Build egg field (top 5 like pets list)
     local eggValue = "```diff\n"
-    do
-        local mode = _G and _G.WebhookInventorySortMode or inventorySortMode
-        local arr = {}
-        for name, data in pairs(eggs) do
-            local topMutCount = 0
-            for _, c in pairs(data.mutations or {}) do if c > topMutCount then topMutCount = c end end
-            table.insert(arr, { name = name, total = data.total, topMut = topMutCount, mutations = data.mutations })
+    local eggArr = {}
+    for eggType, eggData in pairs(eggs) do
+        table.insert(eggArr, { name = eggType, total = eggData.total or 0, mutations = eggData.mutations or {} })
+    end
+    table.sort(eggArr, function(a, b)
+        if a.total ~= b.total then return a.total > b.total end
+        return (a.name or "") < (b.name or "")
+    end)
+    local limit = math.min(5, #eggArr)
+    for i = 1, limit do
+        local it = eggArr[i]
+        eggValue = eggValue .. "🏆 " .. it.name .. " × " .. tostring(it.total or 0) .. "\n"
+        -- sort mutations by count desc then name
+        local mutsArr = {}
+        for m, c in pairs(it.mutations or {}) do table.insert(mutsArr, { m = m, c = c }) end
+        table.sort(mutsArr, function(a, b)
+            if a.c ~= b.c then return a.c > b.c end
+            return (a.m or "") < (b.m or "")
+        end)
+        local mLimit = math.min(5, #mutsArr)
+        for j = 1, mLimit do
+            local mutation = mutsArr[j].m
+            local count = mutsArr[j].c
+            local mutationIcon = "🧬"
+            if mutation == "Fire" then mutationIcon = "🔥" elseif mutation == "Electric" then mutationIcon = "⚡" end
+            eggValue = eggValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
         end
-        if mode == "egg_mutation_most" then
-            table.sort(arr, function(a,b)
-                if a.topMut ~= b.topMut then return a.topMut > b.topMut end
-                return a.name < b.name
-            end)
-        elseif mode == "least_count" then
-            table.sort(arr, function(a,b)
-                if a.total ~= b.total then return a.total < b.total end
-                return a.name < b.name
-            end)
-        else -- most_count (default)
-            table.sort(arr, function(a,b)
-                if a.total ~= b.total then return a.total > b.total end
-                return a.name < b.name
-            end)
-        end
-        local shown = 0
-        for _, row in ipairs(arr) do
-            if shown >= 8 then break end -- show up to 8 egg types
-            eggValue = eggValue .. "🏆 " .. row.name .. " × " .. row.total .. "\n"
-            -- show top 3 mutations per egg type
-            local mutsArr = {}
-            for mutation, count in pairs(row.mutations or {}) do
-                table.insert(mutsArr, {m = mutation, c = count})
-            end
-            table.sort(mutsArr, function(a,b)
-                if a.c ~= b.c then return a.c > b.c end
-                return a.m < b.m
-            end)
-            local limit = math.min(3, #mutsArr)
-            for i = 1, limit do
-                local mutation = mutsArr[i].m
-                local count = mutsArr[i].c
-                local mutationIcon = "🧬"
-                if mutation == "Fire" then mutationIcon = "🔥" elseif mutation == "Electric" then mutationIcon = "⚡" end
-                eggValue = eggValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
-            end
-            eggValue = eggValue .. "\n"
-            shown = shown + 1
-        end
-        if shown == 0 then eggValue = eggValue .. "No eggs found\n" end
+        if i < limit then eggValue = eggValue .. "\n" end
+    end
+    if limit == 0 then
+        eggValue = "```diff\nNo eggs found```"
+    else
         eggValue = eggValue .. "```"
     end
     
@@ -691,8 +650,6 @@ local function sendTradeSessionSummary()
     
     local embedData = createTradeSessionSummaryEmbed()
     sendWebhook(embedData)
-    -- Mark as sent to avoid duplicates
-    tradeTracking.sessionSummarySent = true
 end
 
 -- Function to send alert
@@ -841,20 +798,6 @@ function WebhookSystem.SetWebhookUrl(url)
     webhookUrl = url or ""
 end
 
-function WebhookSystem.SetInventorySortMode(mode)
-    local allowed = {
-        most_count = true,
-        least_count = true,
-        egg_mutation_most = true,
-        pet_highest_speed = true,
-    }
-    if allowed[mode] then
-        inventorySortMode = mode
-    else
-        inventorySortMode = "most_count"
-    end
-end
-
 function WebhookSystem.SetAutoAlert(enabled)
     autoAlertEnabled = enabled
     
@@ -914,11 +857,8 @@ function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems
     -- Check if session is complete and send summary
     if tradeTracking.sessionTradeCount >= tradeTracking.maxSessionTrades then
         task.spawn(function()
-            if not tradeTracking.sessionSummarySent then
-                tradeTracking.sessionSummarySent = true
-                task.wait(1) -- Small delay to ensure individual trade webhook is sent first
-                sendTradeSessionSummary()
-            end
+            task.wait(1) -- Small delay to ensure individual trade webhook is sent first
+            sendTradeSessionSummary()
         end)
     end
 end
@@ -966,13 +906,11 @@ end
 -- Public method to reset trade session count
 function WebhookSystem.ResetTradeCount()
     tradeTracking.sessionTradeCount = 0
-    tradeTracking.sessionSummarySent = false
 end
 
 -- Public method to set max trades per session
 function WebhookSystem.SetMaxTrades(maxTrades)
     tradeTracking.maxSessionTrades = maxTrades or 10
-    tradeTracking.sessionSummarySent = false
 end
 
 -- Sync counters from external systems (e.g., SendTrashSystem)
@@ -983,16 +921,12 @@ function WebhookSystem.SyncTradeCounters(currentCount, maxCount)
     if type(maxCount) == "number" then
         tradeTracking.maxSessionTrades = math.max(1, math.floor(maxCount))
     end
-    if tradeTracking.sessionTradeCount < tradeTracking.maxSessionTrades then
-        tradeTracking.sessionSummarySent = false
-    end
 end
 
 function WebhookSystem.GetConfigElements()
     return {
         webhookUrl = webhookUrl,
-        autoAlertEnabled = autoAlertEnabled,
-        webhookInventorySortMode = inventorySortMode
+        autoAlertEnabled = autoAlertEnabled
     }
 end
 
@@ -1002,9 +936,6 @@ function WebhookSystem.LoadConfig(config)
     end
     if config.autoAlertEnabled ~= nil then
         autoAlertEnabled = config.autoAlertEnabled
-    end
-    if config.webhookInventorySortMode then
-        inventorySortMode = tostring(config.webhookInventorySortMode)
     end
 end
 
