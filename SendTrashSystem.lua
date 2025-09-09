@@ -1446,6 +1446,21 @@ local function processTrash()
 		end
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+			-- Clamp internal counters and sync with WebhookSystem to avoid overshoot
+			sessionLimits.sendPetCount = sessionLimits.maxSendPet
+			if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then
+				_G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet)
+			end
+			-- Trigger Discord session summary via global WebhookSystem (if available)
+			if _G.WebhookSystem and _G.WebhookSystem.SendTradeSessionSummary then
+				-- Build compact logs for this session
+				local logs = {}
+				for _, log in ipairs(sessionLogs) do table.insert(logs, log) end
+				task.spawn(function()
+					_G.WebhookSystem.SendTradeSessionSummary(logs)
+				end)
+			end
+			-- (Legacy) Local webhook summary is deprecated
 			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
 				task.spawn(function()
 					sendWebhookSummary()
@@ -1457,6 +1472,8 @@ local function processTrash()
 			sessionLimits.limitReachedNotified = false
 			trashEnabled = false
 			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			-- Also clear per-item progress trackers to avoid duplicates
+			clearSendProgress()
 		end
 
 		updateStatus()
