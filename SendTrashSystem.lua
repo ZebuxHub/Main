@@ -1131,16 +1131,10 @@ local function sendItemToPlayer(item, target, itemType)
 
 	local success = false
 
-	-- If item is placed on ground, remove it first
+	-- Skip placed items; do not auto-remove from ground
 	if item.placed then
-		local removeSuccess = removeFromGround(itemUID)
-		if removeSuccess then
-			task.wait(0.05)
-			if not verifyItemExists(itemUID, isEgg) then
-				sendInProgress[itemUID] = nil
-				return false
-			end
-		end
+		sendInProgress[itemUID] = nil
+		return false
 	end
 
 	-- Focus the item first (REQUIRED)
@@ -1300,20 +1294,11 @@ local function processTrash()
 		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
 
 		if #petInventory == 0 and #eggInventory == 0 then
-			if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-				-- Ensure summary is sent even if toggle callback doesn't fire
-				if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-					task.spawn(function()
-						sendWebhookSummary()
-					end)
-				end
-				trashEnabled = false
-				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-			else
-				WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
-			end
-			wait(1)
-			continue
+			-- Stop immediately if nothing matches (no fallback behavior)
+			trashEnabled = false
+			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
+			break
 		end
 
 		-- Determine targets with sticky preference
@@ -1331,7 +1316,11 @@ local function processTrash()
 				if tp and not targetBlacklist[tp.UserId] then
 					targets = { tp }
 				else
-					targets = getRandomTargets(5)
+					-- Non-random target invalid → stop immediately
+					trashEnabled = false
+					if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+					WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "Target unavailable.", Duration = 4 })
+					break
 				end
 			end
 		end
