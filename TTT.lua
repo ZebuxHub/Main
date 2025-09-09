@@ -21,7 +21,7 @@ local placeEggsEnabled = true
 local placePetsEnabled = false
 local minPetRateFilter = 0
 local petSortAscending = true
-local tileFocusMode = "Regular First" -- Water First, Regular First, Balanced
+local tileFocusMode = "Water First" -- Water First, Regular First, Balanced
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -1053,9 +1053,9 @@ local function getNextBestPet()
         petCache.currentIndex = 1 -- Wrap around
     end
     
-    -- Return selected pet and appropriate tile with focus system
+    -- Return selected pet and appropriate tile with correct placement logic
     if selectedCandidate.isOcean then
-        -- Ocean pets MUST go on water tiles
+        -- Ocean pets MUST go on water tiles only
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
         else
@@ -1064,7 +1064,7 @@ local function getNextBestPet()
     else
         -- Regular pets - apply tile focus mode
         if tileFocusMode == "Water First" then
-            -- Prioritize water tiles for regular pets
+            -- Try water tiles first for ocean pets, then regular tiles
             if waterAvailable > 0 then
                 return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
             elseif regularAvailable > 0 then
@@ -1362,24 +1362,6 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    -- Tile focus section
-    Tabs.PlaceTab:Section({
-        Title = "Tile Focus",
-        Icon = "target"
-    })
-    
-    Tabs.PlaceTab:Dropdown({
-        Title = "Focus Mode",
-        Desc = "Which tiles to prioritize",
-        Values = {"Regular First","Water First","Balanced"},
-        Value = "Regular First",
-        Multi = false,
-        AllowNone = false,
-        Callback = function(v)
-            tileFocusMode = v
-        end
-    })
-
     -- Pet settings section
     Tabs.PlaceTab:Section({
         Title = "Pet Settings",
@@ -1412,6 +1394,24 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(v)
             petSortAscending = (v == "Low → High")
             petCache.lastUpdate = 0
+        end
+    })
+    
+    -- Tile focus section
+    Tabs.PlaceTab:Section({
+        Title = "Tile Focus",
+        Icon = "target"
+    })
+    
+    Tabs.PlaceTab:Dropdown({
+        Title = "Focus Mode",
+        Desc = "Which tiles to prioritize",
+        Values = {"Water First","Regular First","Balanced"},
+        Value = "Water First",
+        Multi = false,
+        AllowNone = false,
+        Callback = function(v)
+            tileFocusMode = v
         end
     })
     
