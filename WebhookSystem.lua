@@ -425,12 +425,8 @@ end
 
 -- Function to send webhook
 local function sendWebhook(embedData)
-    print("[DEBUG] sendWebhook called")
-    print("[DEBUG] webhookUrl:", webhookUrl)
-    print("[DEBUG] webhookUrl length:", webhookUrl and #webhookUrl or "nil")
     
     if not webhookUrl or webhookUrl == "" then
-        print("[DEBUG] No webhook URL configured")
         WindUI:Notify({
             Title = "Webhook Error",
             Content = "No webhook URL configured - Please enter your Discord webhook URL first",
@@ -439,15 +435,6 @@ local function sendWebhook(embedData)
         return false
     end
     
-    print("[DEBUG] Attempting to send webhook...")
-    print("[DEBUG] Embed data:", game:GetService("HttpService"):JSONEncode(embedData))
-    
-    -- Check available HTTP methods
-    print("[DEBUG] Available HTTP methods:")
-    print("[DEBUG] - HttpService:PostAsync:", game:GetService("HttpService").PostAsync ~= nil)
-    print("[DEBUG] - _G.request:", _G.request ~= nil)
-    print("[DEBUG] - syn.request:", syn and syn.request ~= nil)
-    print("[DEBUG] - http_request:", http_request ~= nil)
     
     -- Try different methods to send HTTP request
     local success, result = false, "No method available"
@@ -457,11 +444,6 @@ local function sendWebhook(embedData)
         success, result = pcall(function()
             return game:GetService("HttpService"):PostAsync(webhookUrl, game:GetService("HttpService"):JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
         end)
-        if success then
-            print("[DEBUG] HttpService method succeeded")
-        else
-            print("[DEBUG] HttpService method failed:", result)
-        end
     end
     
     -- Method 2: Try request function (common in executors)
@@ -476,11 +458,6 @@ local function sendWebhook(embedData)
                 Body = game:GetService("HttpService"):JSONEncode(embedData)
             })
         end)
-        if success then
-            print("[DEBUG] _G.request method succeeded")
-        else
-            print("[DEBUG] _G.request method failed:", result)
-        end
     end
     
     -- Method 3: Try syn.request (Synapse X)
@@ -495,11 +472,6 @@ local function sendWebhook(embedData)
                 Body = game:GetService("HttpService"):JSONEncode(embedData)
             })
         end)
-        if success then
-            print("[DEBUG] syn.request method succeeded")
-        else
-            print("[DEBUG] syn.request method failed:", result)
-        end
     end
     
     -- Method 4: Try http_request (common executor function)
@@ -513,15 +485,9 @@ local function sendWebhook(embedData)
                 },
                 Body = game:GetService("HttpService"):JSONEncode(embedData)
             })
-            print("[DEBUG] http_request response:", response)
-            if response then
-                print("[DEBUG] http_request status code:", response.StatusCode)
-                print("[DEBUG] http_request body:", response.Body)
-            end
             return response
         end)
         if success and result then
-            print("[DEBUG] http_request method succeeded with status:", result.StatusCode or "unknown")
             -- Consider 200-299 status codes as success
             if result.StatusCode and result.StatusCode >= 200 and result.StatusCode < 300 then
                 success = true
@@ -530,14 +496,9 @@ local function sendWebhook(embedData)
                 result = "HTTP Error: " .. (result.StatusCode or "unknown status")
             end
         else
-            print("[DEBUG] http_request method failed:", result)
         end
     end
     
-    print("[DEBUG] Webhook send success:", success)
-    if not success then
-        print("[DEBUG] Webhook error:", result)
-    end
     
     if success then
         WindUI:Notify({
@@ -656,40 +617,6 @@ function WebhookSystem.SetAutoAlert(enabled)
 end
 
 function WebhookSystem.SendInventory()
-    -- Debug: Check what data is being collected
-    local fruits = getFruitInventory()
-    local pets = getPetInventory()
-    local eggs = getEggInventory()
-    
-    print("=== WEBHOOK DEBUG DATA ===")
-    print("Fruits found:", next(fruits) and "YES" or "NO")
-    if next(fruits) then
-        for name, count in pairs(fruits) do
-            print("  " .. name .. ": " .. count)
-        end
-    end
-    
-    print("Pets found:", next(pets) and "YES" or "NO")
-    if next(pets) then
-        for petType, data in pairs(pets) do
-            print("  " .. petType .. ": " .. data.total .. " total")
-            for mutation, count in pairs(data.mutations) do
-                print("    " .. mutation .. ": " .. count)
-            end
-        end
-    end
-    
-    print("Eggs found:", next(eggs) and "YES" or "NO")
-    if next(eggs) then
-        for eggType, data in pairs(eggs) do
-            print("  " .. eggType .. ": " .. data.total .. " total")
-            for mutation, count in pairs(data.mutations) do
-                print("    " .. mutation .. ": " .. count)
-            end
-        end
-    end
-    print("========================")
-    
     sendInventory()
 end
 
