@@ -1225,8 +1225,7 @@ function AutoPlaceSystem.CreateUI()
     -- Stats display label
     local statsLabel = Tabs.PlaceTab:Paragraph({
         Title = "Stats",
-        Desc = "Waiting for placement data...",
-        Icon = "bar-chart-3"
+        Desc = "Waiting for placement data..."
     })
 
     -- Mode & behavior section
@@ -1331,7 +1330,6 @@ function AutoPlaceSystem.CreateUI()
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Place",
         Icon = "home",
-        Desc = "Smart auto placement",
         Value = false,
         Callback = function(state)
             autoPlaceEnabled = state
