@@ -40,7 +40,7 @@ local performanceStats = {
     enabled = false,
     timings = {},
     lagSpikes = {},
-    maxLagThreshold = 0.1, -- 100ms threshold for lag spike detection
+    maxLagThreshold = 0.05, -- 50ms threshold for lag spike detection (more sensitive)
 }
 
 local function startTimer(name)
@@ -507,7 +507,16 @@ local function updateAvailablePets()
     local out = {}
     if container then
         startTimer("petLoop")
-        for _, child in ipairs(container:GetChildren()) do
+        local children = container:GetChildren()
+        local processedCount = 0
+        
+        for _, child in ipairs(children) do
+            -- Yield every 10 pets to prevent frame drops
+            processedCount = processedCount + 1
+            if processedCount % 10 == 0 then
+                task.wait() -- Yield to prevent lag spikes
+            end
+            
             local petType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
             if mutation == "Dino" then
@@ -671,16 +680,19 @@ local function isTileOccupied(farmPart)
     local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
     if playerBuiltBlocks then
         local children = playerBuiltBlocks:GetChildren()
-        local maxCheck = math.min(#children, 100) -- Limit to 100 checks max
+        local maxCheck = math.min(#children, 30) -- Reduced from 100 to 30
         for i = 1, maxCheck do
             local model = children[i]
             if model:IsA("Model") then
                 local ok, modelPos = pcall(function() return model:GetPivot().Position end)
                 if ok then
-                    local xzDistance = math.sqrt((modelPos.X - surfacePosition.X)^2 + (modelPos.Z - surfacePosition.Z)^2)
+                    -- Use faster distance calculation (avoid sqrt)
+                    local xDiff = modelPos.X - surfacePosition.X
+                    local zDiff = modelPos.Z - surfacePosition.Z
+                    local xzDistanceSquared = xDiff * xDiff + zDiff * zDiff
                     local yDistance = math.abs(modelPos.Y - surfacePosition.Y)
                     
-                    if xzDistance < 4.0 and yDistance < 12.0 then
+                    if xzDistanceSquared < 16.0 and yDistance < 12.0 then -- 16.0 = 4.0^2
                         endTimer("isTileOccupied")
                         return true
                     end
@@ -693,16 +705,19 @@ local function isTileOccupied(farmPart)
     local workspacePets = workspace:FindFirstChild("Pets")
     if workspacePets then
         local children = workspacePets:GetChildren()
-        local maxCheck = math.min(#children, 50) -- Limit to 50 checks max
+        local maxCheck = math.min(#children, 20) -- Reduced from 50 to 20
         for i = 1, maxCheck do
             local pet = children[i]
             if pet:IsA("Model") then
                 local ok, petPos = pcall(function() return pet:GetPivot().Position end)
                 if ok then
-                    local xzDistance = math.sqrt((petPos.X - surfacePosition.X)^2 + (petPos.Z - surfacePosition.Z)^2)
+                    -- Use faster distance calculation (avoid sqrt)
+                    local xDiff = petPos.X - surfacePosition.X
+                    local zDiff = petPos.Z - surfacePosition.Z
+                    local xzDistanceSquared = xDiff * xDiff + zDiff * zDiff
                     local yDistance = math.abs(petPos.Y - surfacePosition.Y)
                     
-                    if xzDistance < 4.0 and yDistance < 12.0 then
+                    if xzDistanceSquared < 16.0 and yDistance < 12.0 then -- 16.0 = 4.0^2
                         endTimer("isTileOccupied")
                         return true
                     end
@@ -747,7 +762,15 @@ local function updateTileCache()
     local availableWaterTiles = {}
     
     startTimer("tileOccupancyCheck")
+    local checkedCount = 0
+    
     for _, part in ipairs(regularParts) do
+        -- Yield every 5 tiles to prevent frame drops
+        checkedCount = checkedCount + 1
+        if checkedCount % 5 == 0 then
+            task.wait() -- Yield to prevent lag spikes
+        end
+        
         if not isTileOccupied(part) then
             regularAvailable = regularAvailable + 1
             table.insert(availableRegularTiles, part)
@@ -755,6 +778,12 @@ local function updateTileCache()
     end
     
     for _, part in ipairs(waterParts) do
+        -- Continue counting for yielding
+        checkedCount = checkedCount + 1
+        if checkedCount % 5 == 0 then
+            task.wait() -- Yield to prevent lag spikes
+        end
+        
         if not isTileOccupied(part) then
             waterAvailable = waterAvailable + 1
             table.insert(availableWaterTiles, part)
@@ -1402,6 +1431,33 @@ function AutoPlaceSystem.CreateUI()
             local report = getPerformanceReport()
             print(report)
             WindUI:Notify({Title = "Performance Report", Content = "Check console for detailed report", Duration = 3})
+        end
+    })
+    
+    local performanceMode = "Balanced"
+    Tabs.PlaceTab:Dropdown({
+        Title = "Performance Mode",
+        Desc = "Adjust speed vs smoothness",
+        Values = {"Fast", "Balanced", "Smooth"},
+        Value = "Balanced",
+        Multi = false,
+        AllowNone = false,
+        Callback = function(mode)
+            performanceMode = mode
+            -- Adjust cache duration based on mode
+            if mode == "Fast" then
+                CACHE_DURATION = 3 -- Faster updates, more work
+            elseif mode == "Balanced" then
+                CACHE_DURATION = 5 -- Default
+            else -- Smooth
+                CACHE_DURATION = 8 -- Longer cache, less frequent updates
+            end
+            
+            -- Clear caches to apply new settings
+            petCache.lastUpdate = 0
+            tileCache.lastUpdate = 0
+            
+            WindUI:Notify({Title = "Performance", Content = "Mode set to " .. mode, Duration = 2})
         end
     })
 
