@@ -1330,7 +1330,7 @@ local function processTrash()
 					end)
 				end
 				trashEnabled = false
-				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+				if trashToggle then pcall(function() trashToggle:Refresh(false) end) end
 			else
 				WindUI:Notify({ Title = "ℹ️ No Items", Content = "No items matched your selectors.", Duration = 3 })
 			end
@@ -1444,7 +1444,7 @@ local function processTrash()
 			sessionLimits.sendPetCount = 0
 			sessionLimits.limitReachedNotified = false
 			trashEnabled = false
-			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			if trashToggle then pcall(function() trashToggle:Refresh(false) end) end
 		end
 
 		updateStatus()
@@ -1638,20 +1638,20 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Manually refresh player and pet lists",
         Callback = function()
             -- Refresh all dropdowns
-            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            if targetPlayerDropdown and targetPlayerDropdown.Refreshs then
+                pcall(function() targetPlayerDropdown:Refreshs(refreshPlayerList()) end)
             end
-            if sendPetTypeDropdown and sendPetTypeDropdown.SetValues then
-                pcall(function() sendPetTypeDropdown:SetValues(getAllPetTypes()) end)
+            if sendPetTypeDropdown and sendPetTypeDropdown.Refreshs then
+                pcall(function() sendPetTypeDropdown:Refreshs(getAllPetTypes()) end)
             end
-            if sendPetMutationDropdown and sendPetMutationDropdown.SetValues then
-                pcall(function() sendPetMutationDropdown:SetValues(getAllMutations()) end)
+            if sendPetMutationDropdown and sendPetMutationDropdown.Refreshs then
+                pcall(function() sendPetMutationDropdown:Refreshs(getAllMutations()) end)
             end
-            if sendEggTypeDropdown and sendEggTypeDropdown.SetValues then
-                pcall(function() sendEggTypeDropdown:SetValues(getAllEggTypes()) end)
+            if sendEggTypeDropdown and sendEggTypeDropdown.Refreshs then
+                pcall(function() sendEggTypeDropdown:Refreshs(getAllEggTypes()) end)
             end
-            if sendEggMutationDropdown and sendEggMutationDropdown.SetValues then
-                pcall(function() sendEggMutationDropdown:SetValues(getAllMutations()) end)
+            if sendEggMutationDropdown and sendEggMutationDropdown.Refreshs then
+                pcall(function() sendEggMutationDropdown:Refreshs(getAllMutations()) end)
             end
             -- Selling UI removed
             
