@@ -197,7 +197,7 @@ local function getPetInventory()
         totalChildren = totalChildren + 1
         print("[PETS DEBUG] Child:", child.Name, "Type:", child.ClassName)
         
-        if child:IsA("Folder") then
+        if child:IsA("Folder") or child:IsA("Configuration") then
             local dAttr = child:GetAttribute("D")
             local petType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
@@ -280,7 +280,7 @@ local function getEggInventory()
         totalChildren = totalChildren + 1
         print("[EGGS DEBUG] Child:", child.Name, "Type:", child.ClassName)
         
-        if child:IsA("Folder") then
+        if child:IsA("Folder") or child:IsA("Configuration") then
             local dAttr = child:GetAttribute("D")
             local eggType = child:GetAttribute("T")
             local mutation = child:GetAttribute("M")
