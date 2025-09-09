@@ -65,7 +65,7 @@ local function getPlayerTickets()
     return 0
 end
 
--- Function to get fruit inventory
+-- Function to get fruit inventory (based on FeedFruitSelection.lua)
 local function getFruitInventory()
     local fruits = {}
     
@@ -74,18 +74,87 @@ local function getFruitInventory()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return fruits end
     
-    local dataFolder = playerGui:FindFirstChild("Data")
-    if not dataFolder then return fruits end
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return fruits end
     
-    local fruitFolder = dataFolder:FindFirstChild("Fruit")
-    if not fruitFolder then return fruits end
+    local asset = data:FindFirstChild("Asset")
+    if not asset then return fruits end
     
-    for _, fruitNode in ipairs(fruitFolder:GetChildren()) do
-        if fruitNode:IsA("Folder") then
-            local fruitName = fruitNode.Name
-            local count = #fruitNode:GetChildren()
-            if count > 0 then
-                fruits[fruitName] = count
+    -- Hardcoded fruit data for mapping (from FeedFruitSelection.lua)
+    local FruitData = {
+        Strawberry = { Name = "Strawberry" },
+        Blueberry = { Name = "Blueberry" },
+        Watermelon = { Name = "Watermelon" },
+        Apple = { Name = "Apple" },
+        Orange = { Name = "Orange" },
+        Corn = { Name = "Corn" },
+        Banana = { Name = "Banana" },
+        Grape = { Name = "Grape" },
+        Pear = { Name = "Pear" },
+        Pineapple = { Name = "Pineapple" },
+        GoldMango = { Name = "Gold Mango" },
+        BloodstoneCycad = { Name = "Bloodstone Cycad" },
+        ColossalPinecone = { Name = "Colossal Pinecone" },
+        VoltGinkgo = { Name = "Volt Ginkgo" },
+        DeepseaPearlFruit = { Name = "DeepseaPearlFruit" }
+    }
+    
+    -- Name normalization helper
+    local function normalizeFruitName(name)
+        if type(name) ~= "string" then return "" end
+        local lowered = string.lower(name)
+        lowered = lowered:gsub("[%s_%-%./]", "")
+        return lowered
+    end
+    
+    -- Build canonical name map
+    local FRUIT_CANONICAL = {}
+    for id, item in pairs(FruitData) do
+        local display = item.Name or id
+        FRUIT_CANONICAL[normalizeFruitName(id)] = display
+        FRUIT_CANONICAL[normalizeFruitName(display)] = display
+    end
+    
+    -- Read from Attributes on Asset (primary source)
+    local attrMap = {}
+    local ok, attrs = pcall(function()
+        return asset:GetAttributes()
+    end)
+    if ok and type(attrs) == "table" then
+        attrMap = attrs
+    end
+    
+    for id, item in pairs(FruitData) do
+        local display = item.Name or id
+        local amount = attrMap[display] or attrMap[id]
+        if amount == nil then
+            -- Fallback by normalized key search
+            local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
+            for k, v in pairs(attrMap) do
+                local nk = normalizeFruitName(k)
+                if nk == wantA or nk == wantB then
+                    amount = v
+                    break
+                end
+            end
+        end
+        if type(amount) == "string" then amount = tonumber(amount) or 0 end
+        if type(amount) == "number" and amount > 0 then
+            fruits[display] = amount
+        end
+    end
+    
+    -- Also support legacy children-based values as fallback/merge
+    for _, child in pairs(asset:GetChildren()) do
+        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+            local normalized = normalizeFruitName(child.Name)
+            local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
+            if canonical then
+                local amount = child.Value
+                if type(amount) == "string" then amount = tonumber(amount) or 0 end
+                if type(amount) == "number" and amount > 0 then
+                    fruits[canonical] = amount
+                end
             end
         end
     end
@@ -93,7 +162,7 @@ local function getFruitInventory()
     return fruits
 end
 
--- Function to get pet inventory
+-- Function to get pet inventory (based on AutoPlaceSystem.lua)
 local function getPetInventory()
     local pets = {}
     
@@ -102,16 +171,21 @@ local function getPetInventory()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return pets end
     
-    local dataFolder = playerGui:FindFirstChild("Data")
-    if not dataFolder then return pets end
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return pets end
     
-    local petFolder = dataFolder:FindFirstChild("Pets")
-    if not petFolder then return pets end
+    local petContainer = data:FindFirstChild("Pets")
+    if not petContainer then return pets end
     
-    for _, petNode in ipairs(petFolder:GetChildren()) do
-        if petNode:IsA("Folder") then
-            local petType = petNode:GetAttribute("T") or "Unknown"
-            local mutation = petNode:GetAttribute("M")
+    for _, child in ipairs(petContainer:GetChildren()) do
+        if child:IsA("Folder") then
+            local petType = child:GetAttribute("T") or "Unknown"
+            local mutation = child:GetAttribute("M")
+            
+            -- Handle Dino -> Jurassic conversion (from AutoPlaceSystem.lua)
+            if mutation == "Dino" then
+                mutation = "Jurassic"
+            end
             
             if not pets[petType] then
                 pets[petType] = {
@@ -134,7 +208,7 @@ local function getPetInventory()
     return pets
 end
 
--- Function to get egg inventory
+-- Function to get egg inventory (based on AutoPlaceSystem.lua)
 local function getEggInventory()
     local eggs = {}
     
@@ -143,16 +217,29 @@ local function getEggInventory()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return eggs end
     
-    local dataFolder = playerGui:FindFirstChild("Data")
-    if not dataFolder then return eggs end
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return eggs end
     
-    local eggFolder = dataFolder:FindFirstChild("Egg")
-    if not eggFolder then return eggs end
+    local eggContainer = data:FindFirstChild("Egg")
+    if not eggContainer then return eggs end
     
-    for _, eggNode in ipairs(eggFolder:GetChildren()) do
-        if eggNode:IsA("Folder") and #eggNode:GetChildren() == 0 then -- Only count unhatched eggs
-            local eggType = eggNode:GetAttribute("Type") or "Unknown"
-            local mutation = eggNode:GetAttribute("M")
+    -- Helper function to get egg mutation (from AutoPlaceSystem.lua)
+    local function getEggMutation(eggUID)
+        local eggConfig = eggContainer:FindFirstChild(eggUID)
+        if not eggConfig then return nil end
+        
+        local mutation = eggConfig:GetAttribute("M")
+        if mutation == "Dino" then
+            mutation = "Jurassic"
+        end
+        
+        return mutation
+    end
+    
+    for _, child in ipairs(eggContainer:GetChildren()) do
+        if child:IsA("Folder") and #child:GetChildren() == 0 then -- Only count unhatched eggs (no subfolder = available)
+            local eggType = child:GetAttribute("T") or "Unknown"
+            local mutation = getEggMutation(child.Name)
             
             if not eggs[eggType] then
                 eggs[eggType] = {
