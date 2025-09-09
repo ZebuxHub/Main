@@ -1175,11 +1175,8 @@ end
 
 function AutoPlaceSystem.CreateUI()
     -- Egg filters section
-    Tabs.PlaceTab:Paragraph({
-        Title = "🥚 Egg filters",
-        Desc = "Select which egg types and mutations to place when not using pet mode.",
-        Image = "filter",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "Egg filters",
     })
 
     -- Egg selection dropdown
@@ -1216,20 +1213,14 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Statistics display
-    local statsLabel = Tabs.PlaceTab:Paragraph({
-        Title = "📊 Placement Statistics",
-        Desc = "Starting up...",
-        Image = "activity",
-        ImageSize = 16,
+    -- Statistics title (simplified)
+    Tabs.PlaceTab:Section({
+        Title = "Placement Statistics",
     })
 
     -- Mode & behavior section
-    Tabs.PlaceTab:Paragraph({
-        Title = "🧭 What to place",
-        Desc = "Choose to place eggs and/or pets together.",
-        Image = "settings",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "What to place",
     })
 
     -- Replace toggle with multi-select dropdown for placement sources
@@ -1250,11 +1241,8 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Pet settings section
-    Tabs.PlaceTab:Paragraph({
-        Title = "🐾 Pet placement settings",
-        Desc = "These settings are used only when pet mode is ON.",
-        Image = "sliders-horizontal",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "Pet placement settings",
     })
 
     -- Removed "mutations only" toggle per user request
@@ -1290,49 +1278,15 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Blacklist management
-    Tabs.PlaceTab:Button({
-        Title = "🗑️ Clear Pet Blacklist",
-        Desc = "Remove all pets from blacklist (pets that failed speed verification)",
-        Callback = function()
-            clearPetBlacklist()
-        end
-    })
+    -- Blacklist management button removed by request
     
     -- Run section
-    Tabs.PlaceTab:Paragraph({
-        Title = "▶️ Run",
-        Desc = "Start or stop the auto placement loop.",
-        Image = "play",
-        ImageSize = 14,
+    Tabs.PlaceTab:Section({
+        Title = "Run",
     })
 
     -- (Debug input removed by user request)
 
-    local function updateStats()
-        if not statsLabel then return end
-        
-        local lastPlacementText = ""
-        if placementStats.lastPlacement then
-            local timeSince = os.time() - placementStats.lastPlacement
-            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
-            lastPlacementText = " | 🕒 Last: " .. timeText
-        end
-        local rAvail, wAvail = updateTileCache()
-        local reasonText = placementStats.lastReason and (" | ℹ️ " .. placementStats.lastReason) or ""
-        local statsText = string.format("✅ Placed: %d | 🦄 Mutations: %d | 🧱 Tiles R/W: %d/%d%s%s", 
-            placementStats.totalPlacements, 
-            placementStats.mutationPlacements,
-            rAvail or 0,
-            wAvail or 0,
-            reasonText,
-            lastPlacementText)
-        
-        if statsLabel.SetDesc then
-            statsLabel:SetDesc(statsText)
-        end
-    end
-    
     -- Main auto place toggle
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
         Title = "🏠 Auto Place Pets (Revamped)",
@@ -1345,14 +1299,6 @@ function AutoPlaceSystem.CreateUI()
                 autoPlaceThread = task.spawn(function()
                     runAutoPlace()
                     autoPlaceThread = nil
-                end)
-                
-                -- Start stats update loop
-                task.spawn(function()
-                    while autoPlaceEnabled do
-                        updateStats()
-                        task.wait(3)
-                    end
                 end)
                 
                 WindUI:Notify({ Title = "🏠 Auto Place", Content = "Revamped system started! 🎉", Duration = 3 })
