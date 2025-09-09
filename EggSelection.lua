@@ -118,29 +118,104 @@ local EggData = {
 
 local MutationData = {
     Golden = {
+        ID = "Golden", 
         Name = "Golden",
-        Icon = "rbxassetid://12924452910",
-        Rarity = 10
-    },
+        ProduceRate = 2, 
+        SellRate = 2, 
+        BuyRate = 3, 
+        BigRate = 2, 
+        TextColor = "ffc518", 
+        Color1 = "204, 180, 61", 
+        Color2 = "229, 229, 114", 
+        Color3 = "216, 209, 130", 
+        Neon1 = "", 
+        Neon2 = "", 
+        Neon3 = "", 
+        RarityNum = 10, 
+        Rarity = 10,
+        HatchTimeScale = 2, 
+        MinHatchTime = 180, 
+        Icon = "rbxassetid://12924452910"
+    }, 
     Diamond = {
-        Name = "Diamond", 
-        Icon = "rbxassetid://11937098975",
-        Rarity = 20
-    },
+        ID = "Diamond", 
+        Name = "Diamond",
+        ProduceRate = 3, 
+        SellRate = 3, 
+        BuyRate = 10, 
+        BigRate = 3, 
+        TextColor = "07e6ff", 
+        Color1 = "76, 133, 153", 
+        Color2 = "151, 184, 216", 
+        Color3 = "153, 178, 191", 
+        Neon1 = "", 
+        Neon2 = "", 
+        Neon3 = "", 
+        RarityNum = 20, 
+        Rarity = 20,
+        HatchTimeScale = 3, 
+        MinHatchTime = 240, 
+        Icon = "rbxassetid://11937098975"
+    }, 
     Electirc = {
+        ID = "Electirc", 
         Name = "Electric",
-        Icon = "rbxassetid://16749221391",
-        Rarity = 50
-    },
+        ProduceRate = 5, 
+        SellRate = 5, 
+        BuyRate = 20, 
+        BigRate = 4, 
+        TextColor = "aa55ff", 
+        Color1 = "12, 29, 63", 
+        Color2 = "113, 57, 191", 
+        Color3 = "38, 63, 127", 
+        Neon1 = "", 
+        Neon2 = "", 
+        Neon3 = "", 
+        RarityNum = 50, 
+        Rarity = 50,
+        HatchTimeScale = 4, 
+        MinHatchTime = 300, 
+        Icon = "rbxassetid://16749221391"
+    }, 
     Fire = {
+        ID = "Fire", 
         Name = "Fire",
-        Icon = "rbxassetid://16633305205",
-        Rarity = 100
-    },
+        ProduceRate = 10, 
+        SellRate = 10, 
+        BuyRate = 50, 
+        BigRate = 5, 
+        TextColor = "ff3d02", 
+        Color1 = "204, 35, 20", 
+        Color2 = "242, 86, 72", 
+        Color3 = "229, 124, 114", 
+        Neon1 = "", 
+        Neon2 = "", 
+        Neon3 = "", 
+        RarityNum = 100, 
+        Rarity = 100,
+        HatchTimeScale = 4, 
+        MinHatchTime = 360, 
+        Icon = "rbxassetid://16633305205"
+    }, 
     Jurassic = {
+        ID = "Jurassic", 
         Name = "Jurassic",
-        Icon = "rbxassetid://93073511262401",
-        Rarity = 100
+        ProduceRate = 12, 
+        SellRate = 10, 
+        BuyRate = 50, 
+        BigRate = 8, 
+        TextColor = "AE75E7", 
+        Color1 = "", 
+        Color2 = "96, 77, 199", 
+        Color3 = "", 
+        Neon1 = "", 
+        Neon2 = 1, 
+        Neon3 = "", 
+        RarityNum = 100, 
+        Rarity = 100,
+        HatchTimeScale = 4, 
+        MinHatchTime = 360, 
+        Icon = "rbxassetid://93073511262401"
     }
 }
 
@@ -743,6 +818,11 @@ function EggSelection.CreateUI()
     local maximizeBtn = windowControls.MaximizeBtn
     
     closeBtn.MouseButton1Click:Connect(function()
+        -- Save current selections and order before closing
+        if onSelectionChanged then
+            onSelectionChanged(selectedItems, selectionOrder)
+        end
+        
         if onToggleChanged then
             onToggleChanged(false)
         end
@@ -949,11 +1029,25 @@ function EggSelection.Show(callback, toggleCallback, savedEggs, savedMutations, 
         end
     end
     
-    -- Apply saved selection order if provided
+    -- Apply saved selection order if provided (priority preservation)
     if savedOrder then
         selectionOrder = {}
+        -- First, add items from saved order that are still selected
         for _, itemId in ipairs(savedOrder) do
             if selectedItems[itemId] then
+                table.insert(selectionOrder, itemId)
+            end
+        end
+        -- Then add any newly selected items that weren't in the saved order
+        for itemId, _ in pairs(selectedItems) do
+            local found = false
+            for _, orderedItem in ipairs(selectionOrder) do
+                if orderedItem == itemId then
+                    found = true
+                    break
+                end
+            end
+            if not found then
                 table.insert(selectionOrder, itemId)
             end
         end
@@ -981,6 +1075,10 @@ end
 
 function EggSelection.Hide()
     if ScreenGui then
+        -- Save current selections and order before hiding
+        if onSelectionChanged then
+            onSelectionChanged(selectedItems, selectionOrder)
+        end
         ScreenGui.Enabled = false
     end
 end
