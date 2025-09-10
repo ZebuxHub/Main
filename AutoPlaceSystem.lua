@@ -391,46 +391,31 @@ local petCache = {
     currentIndex = 1 -- Track which pet to place next for sequential placement
 }
 
+-- Fetch displayed pet value from UI: ScreenStorage.Frame.ContentPet.ScrollingFrame[uid].BTN.Stat.Price.Value.Text
+local function getPetValueFromUI(petUID)
+    local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local screenStorage = pg:FindFirstChild("ScreenStorage")
+    local frame = screenStorage and screenStorage:FindFirstChild("Frame")
+    local contentPet = frame and frame:FindFirstChild("ContentPet")
+    local sf = contentPet and contentPet:FindFirstChild("ScrollingFrame")
+    local cell = sf and sf:FindFirstChild(petUID)
+    local btn = cell and cell:FindFirstChild("BTN")
+    local stat = btn and btn:FindFirstChild("Stat")
+    local price = stat and stat:FindFirstChild("Price")
+    local valueLabel = price and price:FindFirstChild("Value")
+    local text = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+    if not text then return nil end
+    -- Text format: "$X,XXX" → parse to number
+    local num = tonumber((text:gsub("[%$,]", "")))
+    return num
+end
+
 local function computeEffectiveRate(petType, mutation, petNode)
-    -- Game-accurate produce calculation
-    local def = getPetBaseData(petType)
-    if not def then return 0 end
-    local bpv = petNode and petNode:GetAttribute("BPV")
-    if bpv then
-        -- Big Pet branch: final = Produce * max(BigRate), no floor, no v71 multiplier
-        local levelDef = getBigLevelDefFromExp(tonumber(bpv) or 0)
-        if not levelDef then return 0 end
-        local baseProduce = tonumber(levelDef.Produce) or 0
-        local maxBigRate = 1
-        local ok, attrs = pcall(function() return petNode:GetAttributes() end)
-        if ok and type(attrs) == "table" then
-            for key, _ in pairs(attrs) do
-                if type(key) == "string" and key:sub(1,3) == "MT_" then
-                    local id = key:sub(4)
-                    local mdef = getMutationData(id)
-                    if mdef and tonumber(mdef.BigRate) then
-                        maxBigRate = math.max(maxBigRate, tonumber(mdef.BigRate))
-                    end
-                end
-            end
-        end
-        return baseProduce * maxBigRate
-    end
-    -- Normal pet branch: floor(base * grow * mut * v71)
-    local baseProduce = tonumber(def.ProduceRate) or 0
-    local v = petNode and tonumber(petNode:GetAttribute("V")) or 0
-    local bm = getUtilPetAttribute("BenfitMax", 1)
-    local grow = ((bm - 1) * ((v * 1e-4) ^ 2.24) + 1)
-    local mutMul = 1
-    if mutation then
-        local m = getMutationData(mutation)
-        if m and tonumber(m.ProduceRate) then
-            mutMul = tonumber(m.ProduceRate)
-        end
-    end
-    local v71 = 1 -- external multiplier if any
-    local final = math.floor(baseProduce * grow * mutMul * v71 + 1e-9)
-    return final
+    local uid = petNode and petNode.Name
+    if not uid then return 0 end
+    local v = getPetValueFromUI(uid)
+    return tonumber(v) or 0
 end
 
 local function updateAvailablePets()
