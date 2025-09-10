@@ -188,11 +188,11 @@ local function runAutoLike(statusParagraph)
 		local likes, dailyComplete, weeklyLikes, weeklyComplete = getLikeProgress()
 		if statusParagraph and statusParagraph.SetDesc then
 			local msg = string.format("Daily Like: %d/3 | Weekly Like: %d/20", likes, weeklyLikes)
-			if dailyComplete or weeklyComplete then msg = msg .. " (complete)" end
+			if weeklyComplete then msg = msg .. " (complete)" end
 			statusParagraph:SetDesc(msg)
 		end
-		-- Continue until BOTH daily and weekly are complete
-		if dailyComplete and weeklyComplete then break end
+		-- Continue until weekly requirement is reached
+		if weeklyComplete then break end
 		local targetId = getRandomOtherUserId()
 		if not targetId then
 			-- everyone liked already; wait a bit
