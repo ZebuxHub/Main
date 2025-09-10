@@ -1733,60 +1733,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Auto Delete section
-    Tabs.DeleteTab:Section({
-        Title = "Auto Delete Settings",
-        Icon = "trash-2"
-    })
-    
-    local autoDeleteTileDropdown = Tabs.DeleteTab:Dropdown({
-        Title = "Tile Filter",
-        Desc = "Delete on: Normal or Ocean tiles",
-        Values = {"Both", "Normal", "Ocean"},
-        Value = "Both",
-        Callback = function(value)
-            if value == "Normal" then
-                autoDeleteTileFilter = "Regular"
-            elseif value == "Ocean" then
-                autoDeleteTileFilter = "Ocean"
-            else
-                autoDeleteTileFilter = "Both"
-            end
-        end
-    })
-    
-    local autoDeleteSpeedSlider = Tabs.DeleteTab:Input({
-        Title = "Speed Threshold",
-        Desc = "Delete pets below this speed",
-        Value = "100",
-        Callback = function(value)
-            local parsedValue = parseNumberWithSuffix(value)
-            if parsedValue and parsedValue > 0 then
-                deleteSpeedThreshold = parsedValue
-            else
-                deleteSpeedThreshold = tonumber(value) or 100
-            end
-        end
-    })
-    
-    local autoDeleteToggle = Tabs.DeleteTab:Toggle({
-        Title = "Auto Delete",
-        Desc = "Automatically delete slow pets",
-        Value = false,
-        Callback = function(state)
-            autoDeleteEnabled = state
-            
-            if state and not autoDeleteThread then
-                autoDeleteThread = task.spawn(function()
-                    runAutoDelete()
-                    autoDeleteThread = nil
-                end)
-                WindUI:Notify({ Title = "Auto Delete", Content = "Started", Duration = 2 })
-            elseif not state and autoDeleteThread then
-                WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 2 })
-            end
-        end
-    })
+    -- (Removed) Auto Delete tab controls are consolidated under PlaceTab
     
     -- Auto Delete controls under the same section as Tile Management
     
