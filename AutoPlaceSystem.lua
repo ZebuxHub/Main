@@ -1673,9 +1673,32 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    -- Forward declare for use below
-    local updateStats
-    updateStats = function() end
+    -- Stats update function (defined before usage)
+    local function updateStats()
+        if not statsLabel then return end
+        
+        local lastPlacementText = ""
+        if placementStats.lastPlacement then
+            local timeSince = os.time() - placementStats.lastPlacement
+            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
+            lastPlacementText = " | Last: " .. timeText
+        end
+        local rAvail, wAvail = updateTileCache()
+        local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
+        local dormantText = placementState.isDormant and " 💤" or ""
+        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s%s", 
+            placementStats.totalPlacements, 
+            placementStats.mutationPlacements,
+            rAvail or 0,
+            wAvail or 0,
+            reasonText,
+            lastPlacementText,
+            dormantText)
+        
+        if statsLabel.SetDesc then
+            statsLabel:SetDesc(statsText)
+        end
+    end
 
     -- Auto Place toggle (moved here under Sort Order)
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
@@ -1787,32 +1810,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    -- Stats update function
-    local function updateStats()
-        if not statsLabel then return end
-        
-        local lastPlacementText = ""
-        if placementStats.lastPlacement then
-            local timeSince = os.time() - placementStats.lastPlacement
-            local timeText = timeSince < 60 and (timeSince .. "s ago") or (math.floor(timeSince/60) .. "m ago")
-            lastPlacementText = " | Last: " .. timeText
-        end
-        local rAvail, wAvail = updateTileCache()
-        local reasonText = placementStats.lastReason and (" | " .. placementStats.lastReason) or ""
-        local dormantText = placementState.isDormant and " 💤" or ""
-        local statsText = string.format("Placed: %d | Mutations: %d | Tiles R/W: %d/%d%s%s%s", 
-            placementStats.totalPlacements, 
-            placementStats.mutationPlacements,
-            rAvail or 0,
-            wAvail or 0,
-            reasonText,
-            lastPlacementText,
-            dormantText)
-        
-        if statsLabel.SetDesc then
-            statsLabel:SetDesc(statsText)
-        end
-    end
+    -- Stats update function (moved earlier in CreateUI)
 
     -- Main auto place toggle (keep the new one only)
     local autoPlaceToggle = AutoPlaceSystem.Toggle -- will be set earlier
