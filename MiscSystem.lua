@@ -15,6 +15,12 @@ local autoLikeEnabled = false
 local autoLikeThread = nil
 local selectedPotions = {}
 local likedUserIds = {} -- session memory to avoid repeating targets
+local autoLotteryEnabled = false
+-- Forward refs for UI controls that we may need to flip programmatically
+local potionToggleRef = nil
+
+local lotteryAttrConn = nil
+local lotteryPollThread = nil
 
 -- Helpers
 local function getAssetFolder()
@@ -41,6 +47,43 @@ local function fireLotteryUseAll()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("LotteryRE"):FireServer(unpack(args))
 	end)
 	return ok, err
+end
+
+local function startAutoLottery(onStatus)
+	local function consume()
+		if not autoLotteryEnabled then return end
+		local c = getAssetCount("LotteryTicket")
+		if c > 0 then
+			fireLotteryUseAll()
+		end
+		if onStatus then onStatus() end
+	end
+
+	-- Attribute listener (fires immediately when LotteryTicket changes)
+	local asset = getAssetFolder()
+	if asset then
+		pcall(function()
+			lotteryAttrConn = asset:GetAttributeChangedSignal("LotteryTicket"):Connect(function()
+				consume()
+			end)
+		end)
+	end
+
+	-- Lightweight fallback poller (in case attribute signal misses)
+	lotteryPollThread = task.spawn(function()
+		while autoLotteryEnabled do
+			consume()
+			task.wait(3)
+		end
+	end)
+end
+
+local function stopAutoLottery()
+	autoLotteryEnabled = false
+	if lotteryAttrConn then pcall(function() lotteryAttrConn:Disconnect() end) end
+	lotteryAttrConn = nil
+	if lotteryPollThread then pcall(function() task.cancel(lotteryPollThread) end) end
+	lotteryPollThread = nil
 end
 
 local function getAllPotionIds()
@@ -74,11 +117,22 @@ local function getLikeProgress()
 	local data = pg and pg:FindFirstChild("Data")
 	local seasonPass = data and data:FindFirstChild("SeasonPass")
 	local season1 = seasonPass and seasonPass:FindFirstChild("Season1")
-	if not season1 then return 0, false end
+	if not season1 then return 0, false, 0, false end
 	local likes = tonumber(season1:GetAttribute("D_LikeZoo")) or 0
+	local weeklyLikes = tonumber(season1:GetAttribute("W_LikeZoo")) or 0
 	local ccDaily = tonumber(season1:GetAttribute("CC_DailyTask2")) or 0
-	local complete = (likes >= 3) or (ccDaily == 1)
-	return likes, complete
+	local dailyComplete = (likes >= 3) or (ccDaily == 1)
+	local weeklyComplete = (weeklyLikes >= 20)
+	return likes, dailyComplete, weeklyLikes, weeklyComplete
+end
+
+local function getPotionWeeklyUse()
+	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	local seasonPass = data and data:FindFirstChild("SeasonPass")
+	local season1 = seasonPass and seasonPass:FindFirstChild("Season1")
+	if not season1 then return 0 end
+	return tonumber(season1:GetAttribute("W_UsePotion")) or 0
 end
 
 local function getRandomOtherUserId()
@@ -105,6 +159,14 @@ end
 -- Threads
 local function runAutoPotion()
 	while autoPotionEnabled do
+		-- Stop condition based on weekly usage
+		local weeklyUse = getPotionWeeklyUse()
+		if weeklyUse >= 10 then
+			autoPotionEnabled = false
+			if potionToggleRef and potionToggleRef.SetValue then pcall(function() potionToggleRef:SetValue(false) end) end
+			if WindUI then pcall(function() WindUI:Notify({ Title = "Auto Potion", Content = "Stopped (weekly use reached 10)", Duration = 3 }) end) end
+			break
+		end
 		local ownedAny = false
 		for potionId, enabled in pairs(selectedPotions) do
 			if enabled then
@@ -123,11 +185,13 @@ end
 
 local function runAutoLike(statusParagraph)
 	while autoLikeEnabled do
-		local likes, complete = getLikeProgress()
+		local likes, dailyComplete, weeklyLikes, weeklyComplete = getLikeProgress()
 		if statusParagraph and statusParagraph.SetDesc then
-			statusParagraph:SetDesc("Daily Like Progress: " .. tostring(likes) .. "/3" .. (complete and " (complete)" or ""))
+			local msg = string.format("Daily Like: %d/3 | Weekly Like: %d/20", likes, weeklyLikes)
+			if dailyComplete or weeklyComplete then msg = msg .. " (complete)" end
+			statusParagraph:SetDesc(msg)
 		end
-		if complete then break end
+		if dailyComplete or weeklyComplete then break end
 		local targetId = getRandomOtherUserId()
 		if not targetId then
 			-- everyone liked already; wait a bit
@@ -157,12 +221,17 @@ function MiscSystem.Init(deps)
 			lotteryStatus:SetDesc("LotteryTicket: " .. tostring(c))
 		end
 	end
-	MiscTab:Button({
-		Title = "Use Lottery Tickets",
-		Desc = "Use all available tickets",
-		Callback = function()
-			local ok = fireLotteryUseAll()
-			refreshLottery()
+	local lotteryToggle = MiscTab:Toggle({
+		Title = "Auto Use Tickets",
+		Desc = "Use LotteryTicket automatically on change",
+		Value = false,
+		Callback = function(state)
+			autoLotteryEnabled = state
+			if state then
+				startAutoLottery(refreshLottery)
+			else
+				stopAutoLottery()
+			end
 		end
 	})
 	refreshLottery()
@@ -198,10 +267,11 @@ function MiscSystem.Init(deps)
 			end
 		end
 	})
+	potionToggleRef = potionToggle
 
 	-- Auto Like section
 	MiscTab:Section({ Title = "Auto Like", Icon = "thumbs-up" })
-	local likeStatus = MiscTab:Paragraph({ Title = "Status", Desc = "Daily Like Progress: 0/3" })
+	local likeStatus = MiscTab:Paragraph({ Title = "Status", Desc = "Daily Like: 0/3 | Weekly Like: 0/20" })
 	local likeToggle = MiscTab:Toggle({
 		Title = "Auto Like Other Zoos",
 		Desc = "Automatically like others until complete",
@@ -221,6 +291,7 @@ function MiscSystem.Init(deps)
 	-- Config registration (optional)
 	if Config then
 		pcall(function()
+			Config:Register("misc_lottery_toggle", lotteryToggle)
 			Config:Register("misc_potion_toggle", potionToggle)
 			Config:Register("misc_potion_dropdown", potionDropdown)
 			Config:Register("misc_like_toggle", likeToggle)
