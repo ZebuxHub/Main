@@ -1788,11 +1788,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     
-    -- Auto Delete section (duplicate controls in Place tab)
-    Tabs.PlaceTab:Section({
-        Title = "Auto Delete Settings",
-        Icon = "trash-2"
-    })
+    -- Auto Delete controls under the same section as Tile Management
     
     local autoDeleteTileDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Tile Filter",
@@ -1870,37 +1866,39 @@ function AutoPlaceSystem.CreateUI()
         end
     end
 
-    -- Main auto place toggle
-    local autoPlaceToggle = Tabs.PlaceTab:Toggle({
-        Title = "Auto Place",
-        Desc = "Smart placement system",
-        Value = false,
-        Callback = function(state)
-            autoPlaceEnabled = state
-            
-            if state and not autoPlaceThread then
-                autoPlaceThread = task.spawn(function()
-                    runAutoPlace()
-                    autoPlaceThread = nil
-                end)
+    -- Main auto place toggle (keep the new one only)
+    local autoPlaceToggle = AutoPlaceSystem.Toggle -- will be set earlier
+    if not autoPlaceToggle then
+        autoPlaceToggle = Tabs.PlaceTab:Toggle({
+            Title = "Auto Place",
+            Desc = "Automatically place pets/eggs",
+            Value = false,
+            Callback = function(state)
+                autoPlaceEnabled = state
                 
-                -- Start stats update loop
-                task.spawn(function()
-                    while autoPlaceEnabled do
-                        updateStats()
-                        task.wait(3)
-                    end
-                end)
-                
-                WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 2 })
-            elseif not state and autoPlaceThread then
-                WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 2 })
+                if state and not autoPlaceThread then
+                    autoPlaceThread = task.spawn(function()
+                        runAutoPlace()
+                        autoPlaceThread = nil
+                    end)
+                    
+                    task.spawn(function()
+                        while autoPlaceEnabled do
+                            updateStats()
+                            task.wait(3)
+                        end
+                    end)
+                    
+                    WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 2 })
+                elseif not state and autoPlaceThread then
+                    WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 2 })
+                end
             end
-        end
-    })
+        })
+        AutoPlaceSystem.Toggle = autoPlaceToggle
+    end
     
     -- Store references for external access
-    AutoPlaceSystem.Toggle = autoPlaceToggle
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
 end
