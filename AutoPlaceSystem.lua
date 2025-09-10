@@ -124,12 +124,18 @@ local function getBigLevelDefFromExp(totalExp)
 end
 
 local function isOceanPet(petType)
+    -- Prefer authoritative data from ResPet; fall back to name heuristic only if missing
     local base = getPetBaseData(petType)
-    local category = base and base.Category
-    if typeof(category) == "string" then
-        local c = string.lower(category)
-        if string.find(c, "ocean") or string.find(c, "water") or string.find(c, "sea") then
-            return true
+    if base then
+        local category = base.Category
+        local limited = base.LimitedTag
+        if typeof(category) == "string" then
+            local c = string.lower(category)
+            if c == "ocean" then return true end
+        end
+        if typeof(limited) == "string" then
+            local l = string.lower(limited)
+            if l == "ocean" then return true end
         end
     end
     -- Fallback heuristic on type name
@@ -457,17 +463,19 @@ local function updateAvailablePets()
                 mutation = "Jurassic"
             end
             if petType and not isPetAlreadyPlacedByUid(child.Name) and not petBlacklist[child.Name] then
-                if (not isBigPet(petType)) then
-                    local rate = computeEffectiveRate(petType, mutation, child)
-                    if rate >= (minPetRateFilter or 0) then
-                        table.insert(out, {
-                            uid = child.Name,
-                            type = petType,
-                            mutation = mutation,
-                            effectiveRate = rate,
-                            isOcean = isOceanPet(petType)
-                        })
-                    end
+                -- Always compute effective rate (even for big pets) but filter big pets out for placement decisions
+                local rate = computeEffectiveRate(petType, mutation, child)
+                local ocean = isOceanPet(petType)
+                local big = isBigPet(petType)
+                if rate >= (minPetRateFilter or 0) then
+                    table.insert(out, {
+                        uid = child.Name,
+                        type = petType,
+                        mutation = mutation,
+                        effectiveRate = rate,
+                        isOcean = ocean,
+                        isBig = big
+                    })
                 end
             end
         end
@@ -943,10 +951,14 @@ local function getNextBestPet()
         if currentCandidate then
             -- Double-check pet is still not placed
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
-                -- Check tile availability for this specific pet type
+                -- Step 1: filter out big pets early
+                if currentCandidate.isBig then
+                    -- Skip big pets (user requested exclude)
+                else
+                -- Step 2: Check tile availability for this specific pet type
                 if currentCandidate.isOcean then
                     -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
-                    if waterAvailable > 0 or regularAvailable > 0 then
+                    if waterAvailable > 0 or (fallbackToRegularWhenNoWater and regularAvailable > 0) then
                         selectedCandidate = currentCandidate
                         found = true
                         break
@@ -958,6 +970,7 @@ local function getNextBestPet()
                         found = true
                         break
                     end
+                end
                 end
             end
         end
@@ -1009,7 +1022,7 @@ local function getNextBestPet()
         -- Ocean pets: water first, then regular fallback
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
-        elseif regularAvailable > 0 then
+        elseif fallbackToRegularWhenNoWater and regularAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular_fallback"
         else
             return nil, nil, "ocean_pet_no_tiles"
