@@ -124,19 +124,17 @@ local function getBigLevelDefFromExp(totalExp)
 end
 
 local function isOceanPet(petType)
-    -- Prefer authoritative data from ResPet; fall back to name heuristic only if missing
     local base = getPetBaseData(petType)
-    if base then
-        local category = base.Category
-        local limited = base.LimitedTag
-        if typeof(category) == "string" then
-            local c = string.lower(category)
-            if c == "ocean" then return true end
+    local category = base and base.Category
+    if typeof(category) == "string" then
+        local c = string.lower(category)
+        if string.find(c, "ocean") or string.find(c, "water") or string.find(c, "sea") then
+            return true
         end
-        if typeof(limited) == "string" then
-            local l = string.lower(limited)
-            if l == "ocean" then return true end
-        end
+    end
+    local limitedTag = base and base.LimitedTag
+    if typeof(limitedTag) == "string" and string.lower(limitedTag) == "ocean" then
+        return true
     end
     -- Fallback heuristic on type name
     if typeof(petType) == "string" then
@@ -391,31 +389,29 @@ local petCache = {
     currentIndex = 1 -- Track which pet to place next for sequential placement
 }
 
--- Fetch displayed pet value from UI: ScreenStorage.Frame.ContentPet.ScrollingFrame[uid].BTN.Stat.Price.Value.Text
-local function getPetValueFromUI(petUID)
-    local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    local screenStorage = pg:FindFirstChild("ScreenStorage")
+local function computeEffectiveRate(petType, mutation, petNode)
+    -- Fetch pet value directly from PlayerGui ScreenStorage UI (Price.Value.Text: "$X,XXX")
+    local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local screenStorage = pg and pg:FindFirstChild("ScreenStorage")
     local frame = screenStorage and screenStorage:FindFirstChild("Frame")
     local contentPet = frame and frame:FindFirstChild("ContentPet")
-    local sf = contentPet and contentPet:FindFirstChild("ScrollingFrame")
-    local cell = sf and sf:FindFirstChild(petUID)
-    local btn = cell and cell:FindFirstChild("BTN")
+    local scrolling = contentPet and contentPet:FindFirstChild("ScrollingFrame")
+    local node = scrolling and petNode and scrolling:FindFirstChild(petNode.Name)
+    local btn = node and node:FindFirstChild("BTN")
     local stat = btn and btn:FindFirstChild("Stat")
     local price = stat and stat:FindFirstChild("Price")
     local valueLabel = price and price:FindFirstChild("Value")
-    local text = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
-    if not text then return nil end
-    -- Text format: "$X,XXX" → parse to number
-    local num = tonumber((text:gsub("[%$,]", "")))
-    return num
-end
-
-local function computeEffectiveRate(petType, mutation, petNode)
-    local uid = petNode and petNode.Name
-    if not uid then return 0 end
-    local v = getPetValueFromUI(uid)
-    return tonumber(v) or 0
+    local txt = nil
+    if valueLabel and valueLabel:IsA("TextLabel") then
+        txt = valueLabel.Text
+    elseif price and price:IsA("TextLabel") then
+        txt = price.Text
+    end
+    if txt then
+        local numeric = tonumber((txt:gsub("[^%d]", ""))) or 0
+        return numeric
+    end
+    return 0
 end
 
 local function updateAvailablePets()
@@ -433,19 +429,17 @@ local function updateAvailablePets()
                 mutation = "Jurassic"
             end
             if petType and not isPetAlreadyPlacedByUid(child.Name) and not petBlacklist[child.Name] then
-                -- Always compute effective rate (even for big pets) but filter big pets out for placement decisions
-                local rate = computeEffectiveRate(petType, mutation, child)
-                local ocean = isOceanPet(petType)
-                local big = isBigPet(petType)
-                if rate >= (minPetRateFilter or 0) then
-                    table.insert(out, {
-                        uid = child.Name,
-                        type = petType,
-                        mutation = mutation,
-                        effectiveRate = rate,
-                        isOcean = ocean,
-                        isBig = big
-                    })
+                if (not isBigPet(petType)) then
+                    local rate = computeEffectiveRate(petType, mutation, child)
+                    if rate >= (minPetRateFilter or 0) then
+                        table.insert(out, {
+                            uid = child.Name,
+                            type = petType,
+                            mutation = mutation,
+                            effectiveRate = rate,
+                            isOcean = isOceanPet(petType)
+                        })
+                    end
                 end
             end
         end
@@ -878,16 +872,10 @@ local function getNextBestEgg()
         -- Regular farms available, use regular eggs
         return regularEggs[1], getRandomFromList(tileCache.regularTiles), "regular"
     elseif waterAvailable > 0 and #oceanEggs > 0 then
-        -- Water farms available, prioritize ocean eggs
+        -- Water farms available, use ocean eggs
         return oceanEggs[1], getRandomFromList(tileCache.waterTiles), "water"
     elseif regularAvailable > 0 and #oceanEggs > 0 then
-        -- Only regular farms available but we have ocean eggs - optionally fallback
-        if fallbackToRegularWhenNoWater then
-            local anyRegular = findAnyAvailableRegularEgg()
-            if anyRegular and tileCache.regularTiles and #tileCache.regularTiles > 0 then
-                return anyRegular, getRandomFromList(tileCache.regularTiles), "fallback_regular"
-            end
-        end
+        -- Do NOT fallback ocean eggs to regular tiles
         return nil, nil, "skip_ocean"
     end
     
@@ -921,26 +909,21 @@ local function getNextBestPet()
         if currentCandidate then
             -- Double-check pet is still not placed
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
-                -- Step 1: filter out big pets early
-                if currentCandidate.isBig then
-                    -- Skip big pets (user requested exclude)
-                else
-                -- Step 2: Check tile availability for this specific pet type
+                -- Check tile availability for this specific pet type
                 if currentCandidate.isOcean then
-                    -- Ocean pets: STRICT → require water tiles; do not fallback to regular when water is full
-                    if waterAvailable > 0 then
+                    -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
+                    if waterAvailable > 0 or regularAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
                         break
                     end
                 else
-                    -- Regular pets: STRICT → require regular tiles
+                    -- Regular pets: ONLY regular tiles
                     if regularAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
                         break
                     end
-                end
                 end
             end
         end
@@ -989,14 +972,14 @@ local function getNextBestPet()
     
     -- Return selected pet and appropriate tile with smart tile selection
     if selectedCandidate.isOcean then
-        -- Ocean pets: require water tile; never pull if water is full
+        -- Ocean pets: place on water only; if water full, DO NOT place
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
         else
             return nil, nil, "ocean_pet_no_tiles"
         end
     else
-        -- Regular pets: require regular tile; never place on water-only
+        -- Regular pets: place on regular only; if full, DO NOT place
         if regularAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
         else
