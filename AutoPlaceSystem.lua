@@ -1675,6 +1675,7 @@ function AutoPlaceSystem.CreateUI()
 
     -- Forward declare for use below
     local updateStats
+    updateStats = function() end
 
     -- Auto Place toggle (moved here under Sort Order)
     local autoPlaceToggle = Tabs.PlaceTab:Toggle({
