@@ -61,15 +61,9 @@ local stopRequested = false -- graceful stop flag
 local keepTrackingWhenEmpty = false -- new setting to control stop behavior
 
 -- Random target state (for "Random Player" mode)
-local randomTargetState = { current = nil, fails = 0 }
+local randomTargetState = { rrIndex = 1 }
 
--- Target blacklist (userId -> true)
-local targetBlacklist = {}
-local blacklistedNames = {} -- userId -> name for status display
-
--- Sticky target (preferred receiver after a successful send)
-local stickyTarget = nil
-local stickyFails = 0
+-- Blacklist & sticky removed per request; using round-robin random dispatch
 
 -- Inventory Cache System (like auto place)
 local inventoryCache = {
@@ -501,24 +495,16 @@ local function getRandomPlayer()
 end
 
 -- Get a randomized list of up to N candidate players (Player objects)
-local function getRandomTargets(maxCount)
-	local pool = {}
-	local now = time()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and not targetBlacklist[player.UserId] then
-			table.insert(pool, player)
+	local function getRoundRobinTargets()
+		local pool = {}
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				table.insert(pool, player)
+			end
 		end
+		table.sort(pool, function(a, b) return a.UserId < b.UserId end)
+		return pool
 	end
-	-- Fisher-Yates shuffle
-	for i = #pool, 2, -1 do
-		local j = math.random(1, i)
-		pool[i], pool[j] = pool[j], pool[i]
-	end
-	local out = {}
-	local limit = math.min(maxCount or 5, #pool)
-	for i = 1, limit do out[i] = pool[i] end
-	return out
-end
 
 -- Convert dropdown selection into a plain string list
 local function selectionToList(selection)
@@ -1349,24 +1335,22 @@ local function processTrash()
 		-- Determine targets with sticky preference
 		local targets = {}
 		local randomMode = (selectedTargetName == "Random Player")
-		if stickyTarget and stickyTarget.Parent == Players and not targetBlacklist[stickyTarget.UserId] then
-			targets = { stickyTarget }
+		if randomMode then
+			targets = getRoundRobinTargets()
+			if #targets > 0 then
+				if randomTargetState.rrIndex > #targets then randomTargetState.rrIndex = 1 end
+				targets = { targets[randomTargetState.rrIndex] }
+				randomTargetState.rrIndex = randomTargetState.rrIndex + 1
+			end
 		else
-			stickyTarget = nil
-			stickyFails = 0
-			if randomMode then
-				targets = getRandomTargets(8)
+			local tp = resolveTargetPlayerByName(selectedTargetName)
+			if tp then
+				targets = { tp }
 			else
-				local tp = resolveTargetPlayerByName(selectedTargetName)
-				if tp and not targetBlacklist[tp.UserId] then
-					targets = { tp }
-				else
-					-- Non-random target invalid → stop immediately
-					trashEnabled = false
-					if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-					WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "Target unavailable.", Duration = 4 })
-					break
-				end
+				trashEnabled = false
+				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+				WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "Target unavailable.", Duration = 4 })
+				break
 			end
 		end
 
