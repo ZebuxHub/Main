@@ -162,22 +162,28 @@ end
 
 local function getPetSpeed(petNode)
 	if not petNode then return 0 end
-	
-	local attrs = petNode:GetAttributes()
-	if not attrs or not attrs.T then return 0 end
-	
-	if not ResPet or not ResPet[attrs.T] then return 0 end
-	local def = ResPet[attrs.T]
-	
-	-- Check if it's a big pet
-	if attrs.BPV then
-		return calculateBigPetSpeed(petNode, attrs)
-	else
-		-- Normal pet calculation
-		local benefitMax = 10 -- Default BenfitMax value
-		local externalMult = 1 -- Default external multiplier
-		return calculateNormalPetSpeed(def, attrs, benefitMax, externalMult)
+	-- Prefer real value from UI using the pet UID
+	local uid = petNode.Name
+	local lp = Players.LocalPlayer
+	local pg = lp and lp:FindFirstChild("PlayerGui")
+	local ss = pg and pg:FindFirstChild("ScreenStorage")
+	local frame = ss and ss:FindFirstChild("Frame")
+	local content = frame and frame:FindFirstChild("ContentPet")
+	local scroll = content and content:FindFirstChild("ScrollingFrame")
+	local item = scroll and scroll:FindFirstChild(uid)
+	local btn = item and item:FindFirstChild("BTN")
+	local stat = btn and btn:FindFirstChild("Stat")
+	local price = stat and stat:FindFirstChild("Price")
+	local valueLabel = price and price:FindFirstChild("Value")
+	local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+	if not txt and price and price:IsA("TextLabel") then
+		txt = price.Text
 	end
+	if txt then
+		local n = tonumber((txt:gsub("[^%d]", ""))) or 0
+		return n
+	end
+	return 0
 end
 
 -- Helper function to parse speed threshold with K/M/B/T suffixes
@@ -226,7 +232,7 @@ local sellStats = {
 local function updateStatus()
 	if not statusParagraph then return end
 	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
-	local speedText = speedThreshold > 0 and ("Speed≥" .. tostring(speedThreshold) .. " | ") or ""
+	local speedText = speedThreshold > 0 and ("Sell if speed≤" .. tostring(speedThreshold) .. " | ") or ""
 	local desc = string.format(
 		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d | %sMode: %s\nSession: %d/%s%s",
 		sellStats.totalSold,
@@ -372,7 +378,8 @@ local function scanAndSell()
 						sellStats.lastAction = "❌ Failed selling egg " .. uid
 					end
 					updateStatus()
-					task.wait(0.15)
+					-- slower for eggs
+					task.wait(0.4)
 
 					-- Check session limit
 					if sessionLimit > 0 and sessionSold >= sessionLimit then
@@ -432,7 +439,7 @@ function AutoSellSystem.CreateUI()
 
 	mutationDropdown = MainTab:Dropdown({
 		Title = "🧬 Mutations",
-		Desc = "Choose whether to sell mutated pets (M attribute).",
+		Desc = "Sell mutated or keep",
 		Values = { "Sell mutated pets", "Keep mutated (don't sell)" },
 		Value = "Keep mutated (don't sell)",
 		Multi = false,
@@ -445,7 +452,7 @@ function AutoSellSystem.CreateUI()
 
 	speedThresholdInput = MainTab:Input({
 		Title = "⚡ Speed Threshold",
-		Desc = "Only sell pets below this speed (0 = disabled, supports K/M/B/T)",
+		Desc = "Sell if speed ≤ value",
 		Value = "0",
 		Callback = function(value)
 			local parsedValue = parseSpeedThreshold(value)
@@ -456,7 +463,7 @@ function AutoSellSystem.CreateUI()
 
 	sessionLimitInput = MainTab:Input({
 		Title = "Session Sell Limit",
-		Desc = "Max sells this session (0 = unlimited)",
+		Desc = "Max sells this session",
 		Value = "0",
 		Callback = function(value)
 			local n = tonumber(value)
@@ -472,13 +479,14 @@ function AutoSellSystem.CreateUI()
 
 	statusParagraph = MainTab:Paragraph({
 		Title = "Status",
-		Desc = "Idle",
+		Desc = "Auto sell status",
 		Image = "activity",
 		ImageSize = 16,
 	})
 
 	autoSellToggle = MainTab:Toggle({
 		Title = "💸 Auto Sell Unplaced Pets",
+		Desc = "Sell pets without 'D' (not placed)",
 		Value = false,
 		Callback = function(state)
 			autoSellEnabled = state
