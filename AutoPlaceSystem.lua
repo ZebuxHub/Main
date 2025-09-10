@@ -1486,13 +1486,37 @@ local function runAutoDelete()
                     if petUserId and tonumber(petUserId) == playerUserId then
                         local rootPart = pet:FindFirstChild("RootPart")
                         if rootPart then
-                            local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
-                            if idleGUI then
-                                local speedText = idleGUI:FindFirstChild("Speed")
-                                if speedText and speedText:IsA("TextLabel") then
-                                    local speedValue = parseNumberWithSuffix(speedText.Text)
-                                    if speedValue and speedValue < deleteSpeedThreshold then
-                                        table.insert(petsToDelete, { name = pet.Name })
+                            -- Classify by pet type (from Data.Pets) instead of world position
+                            local petTypeForFilter = nil
+                            do
+                                local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+                                local data = pg and pg:FindFirstChild("Data")
+                                local invPets = data and data:FindFirstChild("Pets")
+                                local conf = invPets and invPets:FindFirstChild(pet.Name)
+                                if conf and conf:IsA("Configuration") then
+                                    petTypeForFilter = conf:GetAttribute("T")
+                                end
+                            end
+                            local isOcean = false
+                            if petTypeForFilter then
+                                isOcean = isOceanPet(petTypeForFilter)
+                            end
+                            if autoDeleteTileFilter == "Regular" and isOcean then
+                                -- Skip ocean pets when filtering for Normal tiles
+                                -- (using type classification from ResPet)
+                            else
+                                if autoDeleteTileFilter == "Ocean" and not isOcean then
+                                    -- Skip normal pets when filtering for Ocean
+                                else
+                                    local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
+                                    if idleGUI then
+                                        local speedText = idleGUI:FindFirstChild("Speed")
+                                        if speedText and speedText:IsA("TextLabel") then
+                                            local speedValue = parseNumberWithSuffix(speedText.Text)
+                                            if speedValue and speedValue < deleteSpeedThreshold then
+                                                table.insert(petsToDelete, { name = pet.Name })
+                                            end
+                                        end
                                     end
                                 end
                             end
