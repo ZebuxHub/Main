@@ -743,20 +743,22 @@ local function placePet(farmPart, eggUID)
         return false
     end
     
-    -- Verify placement: check that pet attributes now include D (placed marker)
-    waitJitter(0.4)
-    local petContainer = getPetContainer()
-    local petNode = petContainer and petContainer:FindFirstChild(eggUID)
-    if petNode then
-        local dAttr = petNode:GetAttribute("D")
-        if dAttr ~= nil and tostring(dAttr) ~= "" then
+    -- Verify placement robustly:
+    -- Success if egg UID disappears from Data.Egg OR tile becomes occupied.
+    local dataRoot = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Data")
+    local eggFolder = dataRoot and dataRoot:FindFirstChild("Egg")
+    local deadline = os.clock() + 2.0
+    repeat
+        -- Egg removed from inventory → placed
+        if eggFolder and not eggFolder:FindFirstChild(eggUID) then
             return true
         end
-    end
-    -- Fallback: occupancy check
-    if isTileOccupied(farmPart) then
-        return true
-    end
+        -- Tile occupied
+        if isTileOccupied(farmPart) then
+            return true
+        end
+        task.wait(0.05)
+    until os.clock() > deadline
     return false
 end
 
@@ -1552,7 +1554,7 @@ function AutoPlaceSystem.CreateUI()
     -- Egg selection dropdown
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Egg Types",
-        Desc = "Pick eggs to place (🌊 needs water)",
+        Desc = "Choose eggs to place",
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
             "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
@@ -1572,7 +1574,7 @@ function AutoPlaceSystem.CreateUI()
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Mutations",
-        Desc = "Pick mutations (empty = any)",
+        Desc = "Choose mutations (optional)",
         Values = {"Golden", "Diamond", "Electric", "Fire", "Jurassic"},
         Value = {},
         Multi = true,
@@ -1591,7 +1593,7 @@ function AutoPlaceSystem.CreateUI()
     
     local statsLabel = Tabs.PlaceTab:Paragraph({
         Title = "Stats",
-        Desc = "Waiting for placement data..."
+        Desc = "Live placement stats"
     })
 
     -- Mode & behavior section
@@ -1603,7 +1605,7 @@ function AutoPlaceSystem.CreateUI()
     -- Replace toggle with multi-select dropdown for placement sources
     local placeModeDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Sources",
-        Desc = "Choose what to place",
+        Desc = "Pick sources",
         Values = {"Eggs","Pets"},
         Value = {"Eggs"},
         Multi = true,
@@ -1625,7 +1627,7 @@ function AutoPlaceSystem.CreateUI()
 
     Tabs.PlaceTab:Slider({
         Title = "Min Speed",
-        Desc = "Only place pets ≥ this rate",
+        Desc = "Min pet value",
         Value = {
             Min = 0,
             Max = 50000,
@@ -1641,7 +1643,7 @@ function AutoPlaceSystem.CreateUI()
     -- Replace toggle with dropdown sort order
     Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
-        Desc = "Order by rate",
+        Desc = "Sort by value",
         Values = {"Low → High","High → Low"},
         Value = "Low → High",
         Multi = false,
@@ -1651,6 +1653,41 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
+
+    -- Forward declare for use below
+    local updateStats
+
+    -- Auto Place toggle (moved here under Sort Order)
+    local autoPlaceToggle = Tabs.PlaceTab:Toggle({
+        Title = "Auto Place",
+        Desc = "Automatically place pets/eggs",
+        Value = false,
+        Callback = function(state)
+            autoPlaceEnabled = state
+            
+            if state and not autoPlaceThread then
+                autoPlaceThread = task.spawn(function()
+                    runAutoPlace()
+                    autoPlaceThread = nil
+                end)
+                
+                -- Start stats update loop
+                task.spawn(function()
+                    while autoPlaceEnabled do
+                        updateStats()
+                        task.wait(3)
+                    end
+                end)
+                
+                WindUI:Notify({ Title = "Auto Place", Content = "Started", Duration = 2 })
+            elseif not state and autoPlaceThread then
+                WindUI:Notify({ Title = "Auto Place", Content = "Stopped", Duration = 2 })
+            end
+        end
+    })
+
+    -- Store reference
+    AutoPlaceSystem.Toggle = autoPlaceToggle
     
     -- Tile Management section
     Tabs.PlaceTab:Section({
@@ -1660,7 +1697,7 @@ function AutoPlaceSystem.CreateUI()
     
     local autoUnlockToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Unlock Tiles",
-        Desc = "Unlock tiles when you have enough money",
+        Desc = "Unlock tiles automatically",
         Value = false,
         Callback = function(state)
             autoUnlockEnabled = state
@@ -1685,17 +1722,23 @@ function AutoPlaceSystem.CreateUI()
     
     local autoDeleteTileDropdown = Tabs.DeleteTab:Dropdown({
         Title = "Tile Filter",
-        Desc = "Delete pets on specific tile types",
-        Values = {"Both", "Regular", "Ocean"},
+        Desc = "Delete on: Normal or Ocean tiles",
+        Values = {"Both", "Normal", "Ocean"},
         Value = "Both",
         Callback = function(value)
-            autoDeleteTileFilter = value or "Both"
+            if value == "Normal" then
+                autoDeleteTileFilter = "Regular"
+            elseif value == "Ocean" then
+                autoDeleteTileFilter = "Ocean"
+            else
+                autoDeleteTileFilter = "Both"
+            end
         end
     })
     
     local autoDeleteSpeedSlider = Tabs.DeleteTab:Input({
         Title = "Speed Threshold",
-        Desc = "Delete pets below this speed (supports K/M/B/T)",
+        Desc = "Delete pets below this speed",
         Value = "100",
         Callback = function(value)
             local parsedValue = parseNumberWithSuffix(value)
@@ -1709,7 +1752,7 @@ function AutoPlaceSystem.CreateUI()
     
     local autoDeleteToggle = Tabs.DeleteTab:Toggle({
         Title = "Auto Delete",
-        Desc = "Delete slow pets automatically (your pets only)",
+        Desc = "Automatically delete slow pets",
         Value = false,
         Callback = function(state)
             autoDeleteEnabled = state
@@ -1732,7 +1775,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "play"
     })
     
-    -- Auto Delete section
+    -- Auto Delete section (duplicate controls in Place tab)
     Tabs.PlaceTab:Section({
         Title = "Auto Delete Settings",
         Icon = "trash-2"
@@ -1740,17 +1783,23 @@ function AutoPlaceSystem.CreateUI()
     
     local autoDeleteTileDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Tile Filter",
-        Desc = "Delete pets on specific tile types",
-        Values = {"Both", "Regular", "Ocean"},
+        Desc = "Delete on: Normal or Ocean",
+        Values = {"Both", "Normal", "Ocean"},
         Value = "Both",
         Callback = function(value)
-            autoDeleteTileFilter = value or "Both"
+            if value == "Normal" then
+                autoDeleteTileFilter = "Regular"
+            elseif value == "Ocean" then
+                autoDeleteTileFilter = "Ocean"
+            else
+                autoDeleteTileFilter = "Both"
+            end
         end
     })
     
     local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
         Title = "Speed Threshold",
-        Desc = "Delete pets below this speed (supports K/M/B/T)",
+        Desc = "Delete pets below this speed",
         Value = "100",
         Callback = function(value)
             local parsedValue = parseNumberWithSuffix(value)
@@ -1764,7 +1813,7 @@ function AutoPlaceSystem.CreateUI()
     
     local autoDeleteToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Delete",
-        Desc = "Delete slow pets automatically (your pets only)",
+        Desc = "Automatically delete slow pets",
         Value = false,
         Callback = function(state)
             autoDeleteEnabled = state
