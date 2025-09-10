@@ -485,7 +485,7 @@ function AutoSellSystem.CreateUI()
 	})
 
 	autoSellToggle = MainTab:Toggle({
-		Title = "💸 Auto Sell Unplaced Pets",
+		Title = "💸 Auto Sell",
 		Desc = "Sell pets not placed",
 		Value = false,
 		Callback = function(state)
