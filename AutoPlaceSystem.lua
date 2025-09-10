@@ -1787,12 +1787,6 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
-
-    -- Run section
-    Tabs.PlaceTab:Section({
-        Title = "Run",
-        Icon = "play"
-    })
     
     -- Auto Delete section (duplicate controls in Place tab)
     Tabs.PlaceTab:Section({
