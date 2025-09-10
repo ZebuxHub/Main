@@ -957,14 +957,14 @@ local function getNextBestPet()
                 else
                 -- Step 2: Check tile availability for this specific pet type
                 if currentCandidate.isOcean then
-                    -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
-                    if waterAvailable > 0 or (fallbackToRegularWhenNoWater and regularAvailable > 0) then
+                    -- Ocean pets: STRICT → require water tiles; do not fallback to regular when water is full
+                    if waterAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
                         break
                     end
                 else
-                    -- Regular pets: ONLY regular tiles
+                    -- Regular pets: STRICT → require regular tiles
                     if regularAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
@@ -1019,16 +1019,14 @@ local function getNextBestPet()
     
     -- Return selected pet and appropriate tile with smart tile selection
     if selectedCandidate.isOcean then
-        -- Ocean pets: water first, then regular fallback
+        -- Ocean pets: require water tile; never pull if water is full
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
-        elseif fallbackToRegularWhenNoWater and regularAvailable > 0 then
-            return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular_fallback"
         else
             return nil, nil, "ocean_pet_no_tiles"
         end
     else
-        -- Regular pets: ONLY regular tiles
+        -- Regular pets: require regular tile; never place on water-only
         if regularAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
         else
