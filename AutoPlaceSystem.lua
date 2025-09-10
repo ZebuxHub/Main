@@ -909,16 +909,16 @@ local function getNextBestPet()
         if currentCandidate then
             -- Double-check pet is still not placed
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
-                -- Check tile availability for this specific pet type
+                -- Pick only if there are tiles AVAILABLE for this type
                 if currentCandidate.isOcean then
-                    -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
-                    if waterAvailable > 0 or regularAvailable > 0 then
+                    -- Ocean pets: water tiles only
+                    if waterAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
                         break
                     end
                 else
-                    -- Regular pets: ONLY regular tiles
+                    -- Regular pets: regular tiles only
                     if regularAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
