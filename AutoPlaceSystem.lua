@@ -1014,33 +1014,87 @@ end
 local function attemptPlacement()
     local willPlacePet = placePetsEnabled
     local willPlaceEgg = placeEggsEnabled
-    -- If both selected, try pet first for variety; alternate could be added later
+    -- Helper: egg placement flow (callable as fallback or primary)
+    local function placeEggFlow()
+        if not willPlaceEgg then
+            return false, "Egg placement disabled"
+        end
+        local eggInfo, tileInfo, reason = getNextBestEgg()
+        if not eggInfo or not tileInfo then
+            if reason == "skip_ocean" then
+                placementStats.lastReason = "Ocean eggs skipped (no water farms)"
+                return false, placementStats.lastReason
+            elseif reason == "no_space" then
+                placementStats.lastReason = "No available tiles for any eggs"
+                return false, placementStats.lastReason
+            else
+                placementStats.lastReason = "No suitable eggs found"
+                return false, placementStats.lastReason
+            end
+        end
+        -- Focus egg first (game requirement)
+        if not focusEgg(eggInfo.uid) then
+            placementStats.lastReason = "Failed to focus egg " .. eggInfo.uid
+            return false, placementStats.lastReason
+        end
+        task.wait(0.2)
+        local success = placePet(tileInfo, eggInfo.uid)
+        if success then
+            eggCache.lastUpdate = 0
+            if tileInfo then
+                tileCache.lastUpdate = time() - (CACHE_DURATION - 2)
+            end
+            placementStats.lastReason = "Placed " .. (eggInfo.mutation and (eggInfo.mutation .. " ") or "") .. eggInfo.type
+            if eggInfo.mutation then
+                placementStats.mutationPlacements = placementStats.mutationPlacements + 1
+            end
+            if eggInfo.mutation then
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Placed " .. eggInfo.mutation .. " " .. eggInfo.type .. " on 8x8 tile!", Duration = 3 })
+            else
+                WindUI:Notify({ Title = "🏠 Auto Place", Content = "Placed " .. eggInfo.type .. " on 8x8 tile!", Duration = 2 })
+            end
+            return true, "Successfully placed " .. eggInfo.type
+        else
+            placementStats.lastReason = "Failed to place " .. eggInfo.type
+            return false, placementStats.lastReason
+        end
+    end
+
+    -- If both selected, try pet first for variety; if blocked, fall back to eggs
     if willPlacePet then
         local petInfo, tileInfo, reason = getNextBestPet()
         if not petInfo or not tileInfo then
             if reason == "no_pets" then
                 placementStats.lastReason = "No pets pass filters"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             elseif reason == "no_tiles_available" then
                 placementStats.lastReason = "No tiles available"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             elseif reason == "ocean_pets_no_tiles" then
                 placementStats.lastReason = "Ocean pets need water/regular tiles"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             elseif reason == "regular_pets_no_regular_tiles" then
                 placementStats.lastReason = "Regular pets need regular tiles"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             elseif reason == "mixed_pets_insufficient_tiles" then
                 placementStats.lastReason = "Not enough tiles for pet types"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             elseif reason == "ocean_pet_no_tiles" then
                 placementStats.lastReason = "Ocean pet: no water/regular tiles"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             elseif reason == "regular_pet_no_regular_tiles" then
                 placementStats.lastReason = "Regular pet: no regular tiles"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             else
                 placementStats.lastReason = "No suitable pets found"
+                if willPlaceEgg then return placeEggFlow() end
                 return false, placementStats.lastReason
             end
         end
@@ -1060,6 +1114,7 @@ local function attemptPlacement()
 
         if not focusEgg(petInfo.uid) then
             placementStats.lastReason = "Failed to focus pet " .. petInfo.uid
+            if willPlaceEgg then return placeEggFlow() end
             return false, placementStats.lastReason
         end
         waitJitter(0.2)
@@ -1084,72 +1139,13 @@ local function attemptPlacement()
             return true, "Successfully placed pet"
         else
             placementStats.lastReason = "Failed to place pet " .. petInfo.type
+            if willPlaceEgg then return placeEggFlow() end
             return false, placementStats.lastReason
         end
     end
 
-    if not willPlaceEgg then
-        return false, "Egg placement disabled"
-    end
-
-    local eggInfo, tileInfo, reason = getNextBestEgg()
-    
-    if not eggInfo or not tileInfo then
-        if reason == "skip_ocean" then
-            -- Ocean eggs skipped - this is normal behavior
-            placementStats.lastReason = "Ocean eggs skipped (no water farms)"
-            return false, placementStats.lastReason
-        elseif reason == "no_space" then
-            placementStats.lastReason = "No available tiles for any eggs"
-            return false, placementStats.lastReason
-        else
-            placementStats.lastReason = "No suitable eggs found"
-            return false, placementStats.lastReason
-        end
-    end
-    
-    -- Focus egg first (game requirement)
-    if not focusEgg(eggInfo.uid) then
-        placementStats.lastReason = "Failed to focus egg " .. eggInfo.uid
-        return false, placementStats.lastReason
-    end
-    
-    task.wait(0.2) -- Wait for focus to register
-    
-    -- Attempt placement
-    local success = placePet(tileInfo, eggInfo.uid)
-    
-    if success then
-        -- Only invalidate egg cache since we placed an egg
-        eggCache.lastUpdate = 0
-        -- Mark specific tile as occupied instead of full tile rescan
-        if tileInfo then
-            tileCache.lastUpdate = time() - (CACHE_DURATION - 2) -- Partial refresh in 2 seconds
-        end
-        placementStats.lastReason = "Placed " .. (eggInfo.mutation and (eggInfo.mutation .. " ") or "") .. eggInfo.type
-        if eggInfo.mutation then
-            placementStats.mutationPlacements = placementStats.mutationPlacements + 1
-        end
-        
-        if eggInfo.mutation then
-            WindUI:Notify({ 
-                Title = "🏠 Auto Place", 
-                Content = "Placed " .. eggInfo.mutation .. " " .. eggInfo.type .. " on 8x8 tile!", 
-                Duration = 3 
-            })
-        else
-            WindUI:Notify({ 
-                Title = "🏠 Auto Place", 
-                Content = "Placed " .. eggInfo.type .. " on 8x8 tile!", 
-                Duration = 2 
-            })
-        end
-        
-        return true, "Successfully placed " .. eggInfo.type
-    else
-        placementStats.lastReason = "Failed to place " .. eggInfo.type
-        return false, placementStats.lastReason
-    end
+    -- If we reached here without placing pets, try eggs
+    return placeEggFlow()
 end
 
 -- ============ Auto Place Main Logic ============
