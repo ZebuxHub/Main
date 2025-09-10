@@ -392,60 +392,45 @@ local petCache = {
 }
 
 local function computeEffectiveRate(petType, mutation, petNode)
-    local base = getPetBaseData(petType)
-    if not base then return 0 end
-    
-    -- Use precise decimal arithmetic to avoid floating point errors
-    local rate = tonumber(base.ProduceRate) or 0
-    
-    -- BPV path (big pet exp) overrides base with levelDef.Produce and BigRate
+    -- Game-accurate produce calculation
+    local def = getPetBaseData(petType)
+    if not def then return 0 end
     local bpv = petNode and petNode:GetAttribute("BPV")
     if bpv then
-        local levelDef = getBigLevelDefFromExp(bpv)
-        if levelDef and levelDef.Produce then
-            rate = tonumber(levelDef.Produce) or rate
-            -- Scan dynamic MT_* attributes for BigRate max
-            local maxBigRate = 1.0
-            local ok, attrs = pcall(function()
-                return petNode:GetAttributes()
-            end)
-            if ok and type(attrs) == "table" then
-                for key, _ in pairs(attrs) do
-                    if type(key) == "string" and key:sub(1,3) == "MT_" then
-                        local mutName = key:sub(4)
-                        local mdef = getMutationData(mutName)
-                        if mdef and tonumber(mdef.BigRate) then
-                            maxBigRate = math.max(maxBigRate, tonumber(mdef.BigRate))
-                        end
+        -- Big Pet branch: final = Produce * max(BigRate), no floor, no v71 multiplier
+        local levelDef = getBigLevelDefFromExp(tonumber(bpv) or 0)
+        if not levelDef then return 0 end
+        local baseProduce = tonumber(levelDef.Produce) or 0
+        local maxBigRate = 1
+        local ok, attrs = pcall(function() return petNode:GetAttributes() end)
+        if ok and type(attrs) == "table" then
+            for key, _ in pairs(attrs) do
+                if type(key) == "string" and key:sub(1,3) == "MT_" then
+                    local id = key:sub(4)
+                    local mdef = getMutationData(id)
+                    if mdef and tonumber(mdef.BigRate) then
+                        maxBigRate = math.max(maxBigRate, tonumber(mdef.BigRate))
                     end
                 end
             end
-            -- Use precise multiplication and round to avoid precision errors
-            local finalRate = rate * maxBigRate
-            return math.floor(finalRate + 0.5) -- Round to nearest integer
         end
+        return baseProduce * maxBigRate
     end
-    
-    -- Size/V scaling: V is an integer scaled by 1e-4, exponent 2.24, scaled by (BenfitMax - 1)
-    local vAttr = petNode and petNode:GetAttribute("V")
-    local benefitMax = getUtilPetAttribute("BenfitMax", 1)
-    if vAttr and benefitMax then
-        local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0.0
-        local vMultiplier = ((benefitMax - 1) * (vScaled ^ 2.24)) + 1
-        rate = rate * vMultiplier
-    end
-    
-    -- Base mutation multiplier (ProduceRate)
+    -- Normal pet branch: floor(base * grow * mut * v71)
+    local baseProduce = tonumber(def.ProduceRate) or 0
+    local v = petNode and tonumber(petNode:GetAttribute("V")) or 0
+    local bm = getUtilPetAttribute("BenfitMax", 1)
+    local grow = ((bm - 1) * ((v * 1e-4) ^ 2.24) + 1)
+    local mutMul = 1
     if mutation then
         local m = getMutationData(mutation)
         if m and tonumber(m.ProduceRate) then
-            local mutMultiplier = tonumber(m.ProduceRate)
-            rate = rate * mutMultiplier
+            mutMul = tonumber(m.ProduceRate)
         end
     end
-    
-    -- Round to nearest integer to avoid precision issues
-    return math.floor(rate + 0.5)
+    local v71 = 1 -- external multiplier if any
+    local final = math.floor(baseProduce * grow * mutMul * v71 + 1e-9)
+    return final
 end
 
 local function updateAvailablePets()
