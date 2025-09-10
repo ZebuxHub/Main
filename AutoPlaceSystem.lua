@@ -1711,7 +1711,7 @@ function AutoPlaceSystem.CreateUI()
     -- Tile Management section
     Tabs.PlaceTab:Section({
         Title = "Tile Management",
-        Icon = "unlock"
+        Icon = "land-plot"
     })
     
     local autoUnlockToggle = Tabs.PlaceTab:Toggle({
