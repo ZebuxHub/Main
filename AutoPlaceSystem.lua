@@ -1049,24 +1049,16 @@ local function attemptPlacement()
                 tileCache.lastUpdate = time() - (CACHE_DURATION - 2) -- Partial refresh in 2 seconds
             end
             
-            -- Verify pet speed and auto-delete if needed
-            local isValidPet = verifyAndDeletePetIfNeeded(petInfo.uid, petInfo.effectiveRate)
-            
-            if isValidPet then
-                placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
-                if petInfo.mutation then
-                    placementStats.mutationPlacements = placementStats.mutationPlacements + 1
-                end
-                WindUI:Notify({
-                    Title = "🏠 Auto Place",
-                    Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")!",
-                    Duration = 2
-                })
-                return true, "Successfully placed pet"
-            else
-                placementStats.lastReason = "Pet " .. petInfo.type .. " deleted (speed verification failed)"
-                return false, placementStats.lastReason
+            placementStats.lastReason = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")"
+            if petInfo.mutation then
+                placementStats.mutationPlacements = placementStats.mutationPlacements + 1
             end
+            WindUI:Notify({
+                Title = "🏠 Auto Place",
+                Content = "Placed pet " .. (petInfo.mutation and (petInfo.mutation .. " ") or "") .. petInfo.type .. " (Speed: " .. petInfo.effectiveRate .. ")!",
+                Duration = 2
+            })
+            return true, "Successfully placed pet"
         else
             placementStats.lastReason = "Failed to place pet " .. petInfo.type
             return false, placementStats.lastReason
