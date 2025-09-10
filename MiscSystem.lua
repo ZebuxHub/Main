@@ -7,6 +7,7 @@ local MiscTab
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
 
 -- State
 local autoPotionEnabled = false
@@ -183,9 +184,18 @@ local function runAutoPotion()
 	end
 end
 
+local function hopServer()
+    local lp = Players.LocalPlayer
+    pcall(function()
+        if WindUI then WindUI:Notify({ Title = "Auto Like", Content = "Hopping to a new server...", Duration = 3 }) end
+        TeleportService:Teleport(game.PlaceId, lp)
+    end)
+end
+
 local function runAutoLike(statusParagraph)
-	while autoLikeEnabled do
-		local likes, dailyComplete, weeklyLikes, weeklyComplete = getLikeProgress()
+    local noTargetStreak = 0
+    while autoLikeEnabled do
+        local likes, dailyComplete, weeklyLikes, weeklyComplete = getLikeProgress()
 		if statusParagraph and statusParagraph.SetDesc then
 			local msg = string.format("Daily Like: %d/3 | Weekly Like: %d/20", likes, weeklyLikes)
 			if weeklyComplete then msg = msg .. " (complete)" end
@@ -193,16 +203,23 @@ local function runAutoLike(statusParagraph)
 		end
 		-- Continue until weekly requirement is reached
 		if weeklyComplete then break end
-		local targetId = getRandomOtherUserId()
-		if not targetId then
-			-- everyone liked already; wait a bit
-			task.wait(2.0)
-		else
-			sendLikeTo(targetId)
-			likedUserIds[targetId] = true
-			task.wait(1.0)
-		end
-	end
+        local targetId = getRandomOtherUserId()
+        if not targetId then
+            -- everyone liked already in this server
+            noTargetStreak = noTargetStreak + 1
+            if not weeklyComplete and noTargetStreak >= 3 then
+                hopServer()
+                task.wait(3.0)
+            else
+                task.wait(2.0)
+            end
+        else
+            noTargetStreak = 0
+            sendLikeTo(targetId)
+            likedUserIds[targetId] = true
+            task.wait(1.0)
+        end
+    end
 end
 
 -- Public Init
