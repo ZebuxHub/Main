@@ -1177,8 +1177,8 @@ local function sendItemToPlayer(item, target, itemType)
 		-- Send webhook notification for successful trade
 		if _G.WebhookSystem and _G.WebhookSystem.SendTradeWebhook then
 			local fromItems = {{
-				type = logged and logged.type or item.type,
-				mutation = (logged and logged.mutation) and logged.mutation or ((item.mutation ~= nil and item.mutation ~= "" and item.mutation) or ""),
+				type = item.type,
+				mutation = (item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "",
 				count = 1
 			}}
 			_G.WebhookSystem.SendTradeWebhook(LocalPlayer.Name, targetPlayerObj.Name, fromItems, {})
@@ -1260,13 +1260,7 @@ local function updateStatus()
         keepTrackingWhenEmpty and "Enabled" or "Disabled"
     )
 
-    -- Append blacklist info
-    local blNames = {}
-    for uid, name in pairs(blacklistedNames) do table.insert(blNames, name) end
-    table.sort(blNames)
-    if #blNames > 0 then
-        statusText = statusText .. string.format("\n⛔ Blacklisted targets (%d): %s", #blNames, table.concat(blNames, ", "))
-    end
+    -- Blacklist removed
 
     statusParagraph:SetDesc(statusText)
 end
@@ -1386,42 +1380,18 @@ local function processTrash()
 			return false, anyAttempt
 		end
 
-		-- If we have a sticky target: keep trying only them until failure
-		if #targets > 0 and targets[1] == stickyTarget then
-			local ok, attempted = trySendToTarget(stickyTarget)
-			sentAnyItem = ok
-			if not ok and attempted then
-				stickyFails = stickyFails + 1
-				if stickyFails >= 1 then -- one failed cycle un-sticks
-					stickyTarget = nil
-					stickyFails = 0
-				end
-			else
-				if ok then stickyFails = 0 end
+		-- Iterate chosen target only (round-robin returns a single target)
+		for _, targetPlayerObj in ipairs(targets) do
+			local ok = false
+			local attempts = 0
+			while attempts < 2 and not ok do
+				local r1 = trySendToTarget(targetPlayerObj)
+				ok = r1
+				attempts = attempts + 1
 			end
-		else
-			-- No sticky: iterate candidates; each gets up to 2 attempts this cycle
-			for _, targetPlayerObj in ipairs(targets) do
-				local attempts = 0
-				local ok = false
-				local attempted = false
-				while attempts < 2 and not ok do
-					local r1, a1 = trySendToTarget(targetPlayerObj)
-					ok = r1
-					attempted = attempted or a1
-					attempts = attempts + 1
-				end
-				if ok then
-					sentAnyItem = true
-					stickyTarget = targetPlayerObj -- stick to winner
-					stickyFails = 0
-					break
-				else
-					if attempted then
-						targetBlacklist[targetPlayerObj.UserId] = true
-						blacklistedNames[targetPlayerObj.UserId] = targetPlayerObj.Name
-					end
-				end
+			if ok then
+				sentAnyItem = true
+				break
 			end
 		end
 
