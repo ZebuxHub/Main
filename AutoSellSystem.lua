@@ -425,7 +425,7 @@ function AutoSellSystem.CreateUI()
 
 	sellModeDropdown = MainTab:Dropdown({
 		Title = "🎯 Sell Mode",
-		Desc = "Choose what to sell automatically",
+		Desc = "What to sell",
 		Values = { "Pets Only", "Eggs Only", "Both Pets & Eggs" },
 		Value = "Pets Only",
 		Multi = false,
@@ -486,7 +486,7 @@ function AutoSellSystem.CreateUI()
 
 	autoSellToggle = MainTab:Toggle({
 		Title = "💸 Auto Sell Unplaced Pets",
-		Desc = "Sell pets without 'D' (not placed)",
+		Desc = "Sell pets not placed",
 		Value = false,
 		Callback = function(state)
 			autoSellEnabled = state
