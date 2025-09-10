@@ -124,18 +124,22 @@ local function getBigLevelDefFromExp(totalExp)
 end
 
 local function isOceanPet(petType)
-	-- STRICT classification using Config.ResPet only
-	local base = getPetBaseData(petType)
-	if not base then return false end
-	local function toLower(v)
-		return (type(v) == "string") and string.lower(v) or ""
-	end
-	local cat = toLower(base.Category)
-	local tag = toLower(base.LimitedTag)
-	if cat == "ocean" or tag == "ocean" then
-		return true
-	end
-	return false
+    local base = getPetBaseData(petType)
+    local category = base and base.Category
+    if typeof(category) == "string" then
+        local c = string.lower(category)
+        if string.find(c, "ocean") or string.find(c, "water") or string.find(c, "sea") then
+            return true
+        end
+    end
+    -- Fallback heuristic on type name
+    if typeof(petType) == "string" then
+        local t = string.lower(petType)
+        if string.find(t, "fish") or string.find(t, "shark") or string.find(t, "octopus") or string.find(t, "sea") or string.find(t, "angler") then
+            return true
+        end
+    end
+    return false
 end
 
 local function isBigPet(petType)
@@ -382,11 +386,60 @@ local petCache = {
 }
 
 local function computeEffectiveRate(petType, mutation, petNode)
-	-- Simplified: Use Config.ResPet.ProduceRate directly (no formulas)
-	local base = getPetBaseData(petType)
-	if not base then return 0 end
-	local rate = tonumber(base.ProduceRate) or 0
-	return math.floor(rate) -- ensure integer for comparisons/UI
+    local base = getPetBaseData(petType)
+    if not base then return 0 end
+    
+    -- Use precise decimal arithmetic to avoid floating point errors
+    local rate = tonumber(base.ProduceRate) or 0
+    
+    -- BPV path (big pet exp) overrides base with levelDef.Produce and BigRate
+    local bpv = petNode and petNode:GetAttribute("BPV")
+    if bpv then
+        local levelDef = getBigLevelDefFromExp(bpv)
+        if levelDef and levelDef.Produce then
+            rate = tonumber(levelDef.Produce) or rate
+            -- Scan dynamic MT_* attributes for BigRate max
+            local maxBigRate = 1.0
+            local ok, attrs = pcall(function()
+                return petNode:GetAttributes()
+            end)
+            if ok and type(attrs) == "table" then
+                for key, _ in pairs(attrs) do
+                    if type(key) == "string" and key:sub(1,3) == "MT_" then
+                        local mutName = key:sub(4)
+                        local mdef = getMutationData(mutName)
+                        if mdef and tonumber(mdef.BigRate) then
+                            maxBigRate = math.max(maxBigRate, tonumber(mdef.BigRate))
+                        end
+                    end
+                end
+            end
+            -- Use precise multiplication and round to avoid precision errors
+            local finalRate = rate * maxBigRate
+            return math.floor(finalRate + 0.5) -- Round to nearest integer
+        end
+    end
+    
+    -- Size/V scaling: V is an integer scaled by 1e-4, exponent 2.24, scaled by (BenfitMax - 1)
+    local vAttr = petNode and petNode:GetAttribute("V")
+    local benefitMax = getUtilPetAttribute("BenfitMax", 1)
+    if vAttr and benefitMax then
+        local vScaled = tonumber(vAttr) and (tonumber(vAttr) * 1.0e-4) or 0.0
+        local vMultiplier = ((benefitMax - 1) * (vScaled ^ 2.24)) + 1
+        rate = rate * vMultiplier
+    end
+    
+    -- Base mutation multiplier (ProduceRate)
+    if mutation then
+        local m = getMutationData(mutation)
+        if m and tonumber(m.ProduceRate) then
+            local mutMultiplier = tonumber(m.ProduceRate)
+            rate = rate * mutMultiplier
+        end
+    end
+    
+    -- Round to nearest integer to avoid precision issues
+    return math.floor(rate + 0.5)
 end
 
 local function updateAvailablePets()
@@ -892,8 +945,8 @@ local function getNextBestPet()
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
                 -- Check tile availability for this specific pet type
                 if currentCandidate.isOcean then
-                    -- Ocean pets: ONLY water tiles (no fallback to regular per new rule)
-                    if waterAvailable > 0 then
+                    -- Ocean pets: prefer water tiles, fallback to regular if water unavailable
+                    if waterAvailable > 0 or regularAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
                         break
@@ -953,9 +1006,11 @@ local function getNextBestPet()
     
     -- Return selected pet and appropriate tile with smart tile selection
     if selectedCandidate.isOcean then
-        -- Ocean pets: ONLY water tiles
+        -- Ocean pets: water first, then regular fallback
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
+        elseif regularAvailable > 0 then
+            return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular_fallback"
         else
             return nil, nil, "ocean_pet_no_tiles"
         end
