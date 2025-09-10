@@ -1565,9 +1565,20 @@ function AutoPlaceSystem.Init(dependencies)
 end
 
 function AutoPlaceSystem.CreateUI()
-    -- Egg filters section
+    -- Statistics first
     Tabs.PlaceTab:Section({
-        Title = "Egg Filters",
+        Title = "Statistics",
+        Icon = "activity"
+    })
+
+    local statsLabel = Tabs.PlaceTab:Paragraph({
+        Title = "Stats",
+        Desc = "Live placement stats"
+    })
+
+    -- Egg Settings
+    Tabs.PlaceTab:Section({
+        Title = "Egg Settings",
         Icon = "egg"
     })
 
@@ -1604,42 +1615,8 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
-    
-    -- Statistics section with live stats
-    Tabs.PlaceTab:Section({
-        Title = "Statistics",
-        Icon = "activity"
-    })
-    
-    local statsLabel = Tabs.PlaceTab:Paragraph({
-        Title = "Stats",
-        Desc = "Live placement stats"
-    })
 
-    -- Mode & behavior section
-    Tabs.PlaceTab:Section({
-        Title = "What to Place",
-        Icon = "layers"
-    })
-
-    -- Replace toggle with multi-select dropdown for placement sources
-    local placeModeDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "Sources",
-        Desc = "Pick sources",
-        Values = {"Eggs","Pets"},
-        Value = {"Eggs"},
-        Multi = true,
-        AllowNone = false,
-        Callback = function(selection)
-            local set = {}
-            for _, v in ipairs(selection or {}) do set[v] = true end
-            placeEggsEnabled = set["Eggs"] == true
-            placePetsEnabled = set["Pets"] == true
-            petCache.lastUpdate = 0
-        end
-    })
-
-    -- Pet settings section
+    -- Pet Settings
     Tabs.PlaceTab:Section({
         Title = "Pet Settings",
         Icon = "heart"
@@ -1659,8 +1636,7 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    
-    -- Replace toggle with dropdown sort order
+
     Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
@@ -1670,6 +1646,29 @@ function AutoPlaceSystem.CreateUI()
         AllowNone = false,
         Callback = function(v)
             petSortAscending = (v == "Low → High")
+            petCache.lastUpdate = 0
+        end
+    })
+
+    -- Mode & behavior (Sources)
+    Tabs.PlaceTab:Section({
+        Title = "What to Place",
+        Icon = "layers"
+    })
+
+    -- Replace toggle with multi-select dropdown for placement sources
+    local placeModeDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "Sources",
+        Desc = "Pick sources",
+        Values = {"Eggs","Pets"},
+        Value = {"Eggs"},
+        Multi = true,
+        AllowNone = false,
+        Callback = function(selection)
+            local set = {}
+            for _, v in ipairs(selection or {}) do set[v] = true end
+            placeEggsEnabled = set["Eggs"] == true
+            placePetsEnabled = set["Pets"] == true
             petCache.lastUpdate = 0
         end
     })
