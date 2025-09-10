@@ -124,24 +124,19 @@ local function getBigLevelDefFromExp(totalExp)
 end
 
 local function isOceanPet(petType)
+    -- Strict classification based on game config only (no name heuristics)
     local base = getPetBaseData(petType)
-    local category = base and base.Category
+    if not base then return false end
+    local category = base.Category
     if typeof(category) == "string" then
         local c = string.lower(category)
-        if string.find(c, "ocean") or string.find(c, "water") or string.find(c, "sea") then
-            return true
-        end
+        if c == "ocean" then return true end
+        -- Some configs may use phrases, keep contains("ocean") but avoid other terms
+        if string.find(c, "ocean") then return true end
     end
-    local limitedTag = base and base.LimitedTag
+    local limitedTag = base.LimitedTag
     if typeof(limitedTag) == "string" and string.lower(limitedTag) == "ocean" then
         return true
-    end
-    -- Fallback heuristic on type name
-    if typeof(petType) == "string" then
-        local t = string.lower(petType)
-        if string.find(t, "fish") or string.find(t, "shark") or string.find(t, "octopus") or string.find(t, "sea") or string.find(t, "angler") then
-            return true
-        end
     end
     return false
 end
@@ -943,7 +938,34 @@ local function getNextBestPet()
     end
     
     if not found then
-        -- No valid pets found, check why and provide specific reason
+        -- New behavior: if top candidates are ocean but no water, try best regular instead (and vice versa)
+        if waterAvailable == 0 and regularAvailable > 0 then
+            -- Scan for highest-priority regular candidate
+            local best = nil
+            for _, cand in ipairs(candidates) do
+                if not cand.isOcean and not isPetAlreadyPlacedByUid(cand.uid) then
+                    best = cand
+                    break
+                end
+            end
+            if best then
+                return best, getRandomFromList(tileCache.regularTiles), "regular"
+            end
+        elseif regularAvailable == 0 and waterAvailable > 0 then
+            -- Scan for highest-priority ocean candidate
+            local best = nil
+            for _, cand in ipairs(candidates) do
+                if cand.isOcean and not isPetAlreadyPlacedByUid(cand.uid) then
+                    best = cand
+                    break
+                end
+            end
+            if best then
+                return best, getRandomFromList(tileCache.waterTiles), "water"
+            end
+        end
+
+        -- If still none, return detailed reason
         local hasOcean = false
         local hasRegular = false
         for _, cand in ipairs(candidates) do
@@ -952,13 +974,12 @@ local function getNextBestPet()
                 if not cand.isOcean then hasRegular = true end
             end
         end
-        
-        if hasOcean and not hasRegular and waterAvailable == 0 and regularAvailable == 0 then
+        if hasOcean and not hasRegular and waterAvailable == 0 then
             return nil, nil, "ocean_pets_no_tiles"
         elseif hasRegular and not hasOcean and regularAvailable == 0 then
             return nil, nil, "regular_pets_no_regular_tiles"
-        elseif hasOcean and hasRegular then
-            return nil, nil, "mixed_pets_insufficient_tiles"
+        elseif (hasOcean and waterAvailable == 0) and (hasRegular and regularAvailable == 0) then
+            return nil, nil, "no_tiles_available"
         else
             return nil, nil, "no_suitable_pets"
         end
