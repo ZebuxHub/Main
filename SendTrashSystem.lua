@@ -45,14 +45,13 @@ local sendPetTypeDropdown
 local sendPetMutationDropdown
 local sendEggTypeDropdown
 local sendEggMutationDropdown
-local speedThresholdSlider
 local sessionLimitInput
 local statusParagraph
 local keepTrackingToggle
 
 -- State variables
 local trashEnabled = false
-local autoDeleteMinSpeed = 0
+-- auto delete min speed removed
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
 local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
@@ -290,31 +289,7 @@ local function getIconUrlFor(kind, typeName)
 end
 
 -- Cute emoji for readability in Discord
-local EggEmojiMap = {
-    BasicEgg = "🥚",
-    RareEgg = "🔷",
-    SuperRareEgg = "💎",
-    EpicEgg = "🌟",
-    LegendEgg = "🏆",
-    PrismaticEgg = "✨",
-    HyperEgg = "⚡",
-    VoidEgg = "🕳️",
-    BowserEgg = "🐢",
-    SharkEgg = "🦈",
-    LionfishEgg = "🐟",
-    ClownfishEgg = "🐠",
-    AnglerfishEgg = "🐡",
-    OctopusEgg = "🐙",
-    SeaweedEgg = "🐚",
-    BoneDragonEgg = "💀",
-    DinoEgg = "🦖",
-    FlyEgg = "🪶",
-    UnicornEgg = "🦄",
-    AncientEgg = "🗿",
-    UltraEgg = "🚀",
-    CornEgg = "🌽",
-    SeaDragonEgg = "🐉",
-}
+local EggEmojiMap = {}
 
 local function getAvatarUrl(userId)
     return nil
@@ -941,9 +916,9 @@ local function sendCurrentInventoryWebhook()
 
     -- Compose embed
     local overviewValue = table.concat({
-        "🧾 Net Worth: **" .. compactNumber(netWorth) .. "**",
-        string.format("🐾 Pets: **%d** (unplaced **%d**)", allPetCount, unplacedPetCount),
-        string.format("🥚 Eggs: **%d** (unplaced **%d**)", allEggCount, unplacedEggCount)
+        "Net Worth: **" .. compactNumber(netWorth) .. "**",
+        string.format("Pets: **%d** (unplaced **%d**)", allPetCount, unplacedPetCount),
+        string.format("Eggs: **%d** (unplaced **%d**)", allEggCount, unplacedEggCount)
     }, "\n")
 
     local fields = {
@@ -1194,49 +1169,7 @@ end
 -- Selling pets has been removed per user request
 
 -- Auto-delete slow pets
-local function autoDeleteSlowPets(speedThreshold)
-    if speedThreshold <= 0 then
-        return 0, "Auto-delete disabled (speed threshold: 0)"
-    end
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
-        return 0, "Player data not found"
-    end
-    
-    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
-    if not petsFolder then
-        return 0, "Pets folder not found"
-    end
-    
-    local deletedCount = 0
-    local PetRE = ReplicatedStorage:FindChild("Remote") and ReplicatedStorage.Remote:FindFirstChild("PetRE")
-    if not PetRE then
-        return 0, "PetRE not found"
-    end
-    
-    -- Find pets with speed below threshold
-    for _, petData in pairs(petsFolder:GetChildren()) do
-        if petData:IsA("Configuration") then
-            local petSpeed = petData:GetAttribute("Speed") or 0
-            local petLocked = petData:GetAttribute("LK") or 0
-            local petUID = petData.Name
-            
-            -- Only delete unlocked pets below speed threshold
-            if petLocked == 0 and petSpeed < speedThreshold then
-                PetRE:FireServer('Sell', petUID)
-                deletedCount = deletedCount + 1
-                wait(0.05) -- Very quick delay between deletions
-                
-                -- Limit to 5 deletions per cycle to avoid spam
-                if deletedCount >= 5 then
-                    break
-                end
-            end
-        end
-    end
-    
-    return deletedCount, string.format("Deleted %d pets below speed %d", deletedCount, speedThreshold)
-end
+-- auto-delete slow pets removed per request
 
 -- Update status display
 local function updateStatus()
@@ -1249,13 +1182,11 @@ local function updateStatus()
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
-        "⚡ Auto-delete speed threshold: %s\n" ..
         "🔄 Actions performed: %d\n" ..
         "📡 Keep tracking when empty: %s",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
-        autoDeleteMinSpeed > 0 and tostring(autoDeleteMinSpeed) or "Disabled",
         actionCounter,
         keepTrackingWhenEmpty and "Enabled" or "Disabled"
     )
@@ -1316,7 +1247,7 @@ local function processTrash()
 				-- Stop immediately if nothing matches selectors (no fallback behavior)
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-				WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
+				WindUI:Notify({ Title = "Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
 				break
 			else
 				-- Keep tracking mode: wait and continue monitoring
@@ -1343,7 +1274,7 @@ local function processTrash()
 			else
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-				WindUI:Notify({ Title = "🛑 Send Trash Stopped", Content = "Target unavailable.", Duration = 4 })
+				WindUI:Notify({ Title = "Send Trash Stopped", Content = "Target unavailable.", Duration = 4 })
 				break
 			end
 		end
@@ -1395,9 +1326,7 @@ local function processTrash()
 			end
 		end
 
-		if autoDeleteMinSpeed > 0 and (sendMode == "Pets" or sendMode == "Both") then
-			autoDeleteSlowPets(autoDeleteMinSpeed)
-		end
+		-- auto-delete by speed removed
 
 		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 			-- Clamp internal counters and sync with WebhookSystem to avoid overshoot
@@ -1469,15 +1398,15 @@ function SendTrashSystem.Init(dependencies)
     
     -- Keep tracking toggle
     keepTrackingToggle = TrashTab:Toggle({
-        Title = "🔄 Keep Tracking When Empty",
-        Desc = "Continue monitoring inventory even when no items match filters (instead of stopping)",
+        Title = "Keep Tracking When Empty",
+        Desc = "Continue monitoring even when no items match filters",
         Value = false,
         Callback = function(state)
             keepTrackingWhenEmpty = state
             if state then
-                WindUI:Notify({ Title = "🔄 Keep Tracking", Content = "System will keep monitoring when no items available", Duration = 3 })
+                WindUI:Notify({ Title = "Keep Tracking", Content = "Keeps monitoring when no items are available", Duration = 3 })
             else
-                WindUI:Notify({ Title = "🛑 Stop When Empty", Content = "System will stop when no items match filters", Duration = 3 })
+                WindUI:Notify({ Title = "Stop When Empty", Content = "Stops when no items match filters", Duration = 3 })
             end
         end
     })
@@ -1502,8 +1431,8 @@ function SendTrashSystem.Init(dependencies)
 
     -- Reset session limits button (moved directly under Session Limit)
     TrashTab:Button({
-        Title = "🔄 Reset Session Limits",
-        Desc = "Reset send/sell counters for this session",
+        Title = "Reset Session Limits",
+        Desc = "Reset counters for this session",
         Callback = function()
             sessionLimits.sendPetCount = 0
             sessionLimits.limitReachedNotified = false -- Reset notification
@@ -1511,15 +1440,15 @@ function SendTrashSystem.Init(dependencies)
             sessionLogs = {}
             actionCounter = 0
             updateStatus()
-            WindUI:Notify({ Title = "🔄 Session Reset", Content = "Send/sell limits reset!", Duration = 2 })
+            WindUI:Notify({ Title = "Session Reset", Content = "Limits reset", Duration = 2 })
             if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
         end
     })
 
     -- Main toggle
     trashToggle = TrashTab:Toggle({
-        Title = "🗑️ Send Trash System",
-        Desc = "Automatically send/sell unwanted pets based on filters",
+        Title = "Send Trash",
+        Desc = "Automatically send selected pets/eggs",
         Value = false,
         Callback = function(state)
 			trashEnabled = state
@@ -1533,22 +1462,22 @@ function SendTrashSystem.Init(dependencies)
 					syncSelectorsFromControls()
 					processTrash()
 				end)
-				WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Started trash system! 🎉", Duration = 3 })
+				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
 			else
 				-- Graceful stop: request stop, allow in-flight send to conclude
 				stopRequested = true
-				WindUI:Notify({ Title = "🗑️ Send Trash", Content = "Stopped", Duration = 3 })
+				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
 				-- no immediate webhook here; let processTrash() handle it after it exits
 			end
 		end
     })
     
-    TrashTab:Section({ Title = "🎯 Target Settings", Icon = "target" })
+    TrashTab:Section({ Title = "Target Settings", Icon = "target" })
     
     -- Send mode dropdown
     sendModeDropdown = TrashTab:Dropdown({
-        Title = "📦 Send Type",
-        Desc = "Choose what to send: Pets only, Eggs only, or Both",
+        Title = "Send Type",
+        Desc = "Choose what to send",
         Values = {"Pets", "Eggs", "Both"},
         Value = "Both",
         Callback = function(selection) end
@@ -1556,8 +1485,8 @@ function SendTrashSystem.Init(dependencies)
     
     -- Target player dropdown
     targetPlayerDropdown = TrashTab:Dropdown({
-        Title = "🎯 Target Player (for sending)",
-        Desc = "Select player to send items to (Random = different player each time)",
+        Title = "Target Player",
+        Desc = "Random cycles through players",
         Values = refreshPlayerList(),
         Value = "Random Player",
         Callback = function(selection)
@@ -1570,8 +1499,8 @@ function SendTrashSystem.Init(dependencies)
     
     -- Refresh Target List button (placed directly below target dropdown)
     TrashTab:Button({
-        Title = "🔄 Refresh Target List",
-        Desc = "Update player list from server",
+        Title = "Refresh Target List",
+        Desc = "Update player list",
         Callback = function()
             if targetPlayerDropdown and targetPlayerDropdown.SetValues then
                 pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
@@ -1579,12 +1508,12 @@ function SendTrashSystem.Init(dependencies)
         end
     })
     
-    TrashTab:Section({ Title = "📤 Send Pet Selectors", Icon = "mail" })
+    TrashTab:Section({ Title = "Pet Filters", Icon = "mail" })
     
     -- Send pet type filter (now include-only)
     sendPetTypeDropdown = TrashTab:Dropdown({
-        Title = "✅ Pet Types to Send",
-        Desc = "Select pet types to send (empty = allow all)",
+        Title = "Pet Types",
+        Desc = "Types to send (empty = all)",
         Values = getAllPetTypes(),
         Value = {},
         Multi = true,
@@ -1596,8 +1525,8 @@ function SendTrashSystem.Init(dependencies)
     
     -- Send pet mutation filter (now include-only)
     sendPetMutationDropdown = TrashTab:Dropdown({
-        Title = "✅ Pet Mutations to Send", 
-        Desc = "Select mutations to send (empty = allow all)",
+        Title = "Pet Mutations", 
+        Desc = "Mutations to send (empty = all)",
         Values = getAllMutations(),
         Value = {},
         Multi = true,
@@ -1607,12 +1536,12 @@ function SendTrashSystem.Init(dependencies)
         end
     })
     
-    TrashTab:Section({ Title = "🥚 Send Egg Selectors", Icon = "mail" })
+    TrashTab:Section({ Title = "Egg Filters", Icon = "mail" })
     
     -- Send egg type filter (now include-only)
     sendEggTypeDropdown = TrashTab:Dropdown({
-        Title = "✅ Egg Types to Send",
-        Desc = "Select egg types to send (empty = allow all)",
+        Title = "Egg Types",
+        Desc = "Types to send (empty = all)",
         Values = getAllEggTypes(),
         Value = {},
         Multi = true,
@@ -1624,8 +1553,8 @@ function SendTrashSystem.Init(dependencies)
     
     -- Send egg mutation filter (now include-only)
     sendEggMutationDropdown = TrashTab:Dropdown({
-        Title = "✅ Egg Mutations to Send", 
-        Desc = "Select mutations to send (empty = allow all)",
+        Title = "Egg Mutations", 
+        Desc = "Mutations to send (empty = all)",
         Values = getAllMutations(),
         Value = {},
         Multi = true,
@@ -1682,7 +1611,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
         -- webhook config removed
         -- Selling config removed
-        Config:Register("speedThreshold", speedThresholdSlider)
+        -- speed threshold removed
         Config:Register("sessionLimit", sessionLimitInput)
     end
     
