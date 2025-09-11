@@ -1601,6 +1601,11 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceEggTypes", placeEggDropdown)
+        end)
+    end
     
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
@@ -1615,6 +1620,11 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceMutations", placeMutationDropdown)
+        end)
+    end
 
     -- Pet Settings
     Tabs.PlaceTab:Section({
@@ -1672,6 +1682,11 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceSources", placeModeDropdown)
+        end)
+    end
 
     -- Stats update function (defined before usage)
     local function updateStats()
@@ -1731,6 +1746,12 @@ function AutoPlaceSystem.CreateUI()
 
     -- Store reference
     AutoPlaceSystem.Toggle = autoPlaceToggle
+    -- Register with Config manager so the value is saved/loaded
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceEnabled", autoPlaceToggle)
+        end)
+    end
     
     -- Tile Management section
     Tabs.PlaceTab:Section({
@@ -1756,6 +1777,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoUnlockEnabled", autoUnlockToggle)
+        end)
+    end
     
     -- (Removed) Auto Delete tab controls are consolidated under PlaceTab
     
@@ -1776,6 +1802,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoDeleteTileFilter", autoDeleteTileDropdown)
+        end)
+    end
     
     local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
         Title = "Speed Threshold",
@@ -1790,6 +1821,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoDeleteSpeedThreshold", autoDeleteSpeedSlider)
+        end)
+    end
     
     local autoDeleteToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Delete",
@@ -1809,6 +1845,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoDeleteEnabled", autoDeleteToggle)
+        end)
+    end
 
     -- Stats update function (moved earlier in CreateUI)
 
