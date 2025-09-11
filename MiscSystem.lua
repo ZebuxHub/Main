@@ -23,7 +23,7 @@ local function createButton(parent)
 	local btn = Instance.new("TextButton")
 	btn.Name = "ToggleUI"
 	btn.AnchorPoint = Vector2.new(1, 0)
-	btn.Position = UDim2.new(1, -14, 0, 14)
+	btn.Position = UDim2.new(1, 14, 0, 14)
 	btn.Size = UDim2.new(0, 90, 0, 28)
 	btn.BackgroundTransparency = 0.2
 	btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
