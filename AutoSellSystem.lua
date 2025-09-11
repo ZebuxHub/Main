@@ -295,9 +295,10 @@ local function scanAndSell()
 					-- Check speed threshold if enabled
 					if speedThreshold > 0 then
 						local petSpeed = getPetSpeed(node)
-						if petSpeed < speedThreshold then
+						-- We SELL if speed ≤ threshold. Skip if above threshold.
+						if petSpeed > speedThreshold then
 							sellStats.skippedSpeed += 1
-							sellStats.lastAction = "Skipped slow pet " .. uid .. " (speed: " .. tostring(petSpeed) .. ")"
+							sellStats.lastAction = "Skipped fast pet " .. uid .. " (speed: " .. tostring(petSpeed) .. ")"
 							updateStatus()
 							continue
 						end
@@ -486,7 +487,7 @@ function AutoSellSystem.CreateUI()
 
 	autoSellToggle = MainTab:Toggle({
 		Title = "💸 Auto Sell",
-		Desc = "Sell pets",
+		Desc = "Sell pets not placed",
 		Value = false,
 		Callback = function(state)
 			autoSellEnabled = state
