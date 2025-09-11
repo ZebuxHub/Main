@@ -1,9 +1,5 @@
 local UIToggleButton = {}
 
--- Create a small floating button to show/hide the WindUI window
--- Usage:
---   UIToggleButton.Init({ WindUI = WindUI, Window = Window })
-
 local Players = game:GetService("Players")
 
 local function ensureGuiFolder()
@@ -26,15 +22,15 @@ end
 local function createButton(parent)
 	local btn = Instance.new("TextButton")
 	btn.Name = "ToggleUI"
-	btn.AnchorPoint = Vector2.new(1, 0)
-	btn.Position = UDim2.new(1, -14, 0, 14)
-	btn.Size = UDim2.new(0, 90, 0, 28)
+	btn.AnchorPoint = Vector2.new(1, 1)
+	btn.Position = UDim2.new(1, -18, 1, -18)
+	btn.Size = UDim2.new(0, 140, 0, 44)
 	btn.BackgroundTransparency = 0.2
 	btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	btn.BorderSizePixel = 0
 	btn.TextColor3 = Color3.fromRGB(235, 235, 235)
 	btn.Font = Enum.Font.GothamSemibold
-	btn.TextSize = 13
+	btn.TextSize = 16
 	btn.Text = "Toggle UI"
 	btn.AutoButtonColor = true
 	btn.Parent = parent
@@ -44,7 +40,7 @@ local function createButton(parent)
 	corner.Parent = btn
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1
+	stroke.Thickness = 2
 	stroke.Color = Color3.fromRGB(70, 70, 70)
 	stroke.Parent = btn
 
@@ -52,9 +48,9 @@ local function createButton(parent)
 end
 
 local function resolveWindowContainer(WindUI)
-	-- WindUI keeps its content under WindUI.ScreenGui.Window
-	if WindUI and WindUI.ScreenGui and WindUI.ScreenGui:FindFirstChild("Window") then
-		return WindUI.ScreenGui.Window
+	-- Prefer toggling the whole ScreenGui when possible
+	if WindUI and WindUI.ScreenGui then
+		return WindUI.ScreenGui
 	end
 	return nil
 end
@@ -68,10 +64,12 @@ function UIToggleButton.Init(deps)
 
 	local function getVisible()
 		local container = resolveWindowContainer(WindUI)
-		if container and container:IsA("Frame") then
+		if container and container:IsA("ScreenGui") then
+			return container.Enabled ~= false
+		end
+		if container and container.Visible ~= nil then
 			return container.Visible
 		end
-		-- Fallback: try Window.Visible if exposed
 		if Window and Window.Visible ~= nil then
 			return Window.Visible
 		end
@@ -80,7 +78,11 @@ function UIToggleButton.Init(deps)
 
 	local function setVisible(v)
 		local container = resolveWindowContainer(WindUI)
-		if container and container:IsA("Frame") then
+		if container and container:IsA("ScreenGui") then
+			container.Enabled = v and true or false
+			return
+		end
+		if container and container.Visible ~= nil then
 			container.Visible = v and true or false
 			return
 		end
@@ -89,8 +91,13 @@ function UIToggleButton.Init(deps)
 		end
 	end
 
+	local function refreshButton()
+		btn.Text = getVisible() and "Hide UI" or "Show UI"
+	end
+
 	btn.MouseButton1Click:Connect(function()
 		setVisible(not getVisible())
+		refreshButton()
 	end)
 
 	-- Optional keybind: RightControl toggles UI
@@ -99,8 +106,11 @@ function UIToggleButton.Init(deps)
 		if gp then return end
 		if input.KeyCode == Enum.KeyCode.RightControl then
 			setVisible(not getVisible())
+			refreshButton()
 		end
 	end)
+
+	refreshButton()
 
 	return {
 		Button = btn,
