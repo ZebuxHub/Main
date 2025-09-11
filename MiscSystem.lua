@@ -91,8 +91,13 @@ function UIToggleButton.Init(deps)
 		end
 	end
 
+	local function refreshButton()
+		btn.Text = getVisible() and "Hide UI" or "Show UI"
+	end
+
 	btn.MouseButton1Click:Connect(function()
 		setVisible(not getVisible())
+		refreshButton()
 	end)
 
 	-- Optional keybind: RightControl toggles UI
@@ -101,8 +106,11 @@ function UIToggleButton.Init(deps)
 		if gp then return end
 		if input.KeyCode == Enum.KeyCode.RightControl then
 			setVisible(not getVisible())
+			refreshButton()
 		end
 	end)
+
+	refreshButton()
 
 	return {
 		Button = btn,
