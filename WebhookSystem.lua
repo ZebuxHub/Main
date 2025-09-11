@@ -40,6 +40,10 @@ local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
+-- One-time announcements to prevent spam
+local dinoWorldAnnounced = false
+local cerberusAnnounced = false
+
 -- Helper function to format numbers
 local function formatNumber(num)
     if type(num) == "string" then
@@ -571,6 +575,104 @@ local function sendInventory()
     sendWebhook(embedData)
 end
 
+-- Helper: notify locally and optionally send webhook alert
+local function notifyAndAlert(title, content)
+	-- Local notification
+	if WindUI and WindUI.Notify then
+		pcall(function()
+			WindUI:Notify({ Title = title, Content = content, Duration = 4 })
+		end)
+	end
+	-- Webhook alert (only if enabled and URL set)
+	if autoAlertEnabled then
+		sendAlert(title, content)
+	end
+end
+
+-- Monitor GameFlag for Base_DinoWorld unlock (value == 1)
+local function setupDinoWorldMonitor()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	local gameFlag = data and data:FindFirstChild("GameFlag")
+
+	local function checkDinoWorld()
+		if dinoWorldAnnounced then return end
+		local val = nil
+		if gameFlag then
+			-- Prefer attribute; fallback to child ValueBase
+			val = gameFlag:GetAttribute("Base_DinoWorld")
+			if val == nil then
+				local child = gameFlag:FindFirstChild("Base_DinoWorld")
+				if child and child.Value ~= nil then
+					local v = child.Value
+					if type(v) == "string" then v = tonumber(v) or 0 end
+					val = v
+				end
+			end
+		end
+		if type(val) == "string" then val = tonumber(val) or 0 end
+		if type(val) == "number" and val >= 1 then
+			dinoWorldAnnounced = true
+			notifyAndAlert("🦕 Dino World Unlocked", "You got Dino World!")
+		end
+	end
+
+	-- Initial check
+	pcall(checkDinoWorld)
+
+	-- Attribute change listener
+	if gameFlag then
+		pcall(function()
+			gameFlag:GetAttributeChangedSignal("Base_DinoWorld"):Connect(checkDinoWorld)
+		end)
+		-- ValueBase child fallback listeners
+		pcall(function()
+			gameFlag.ChildAdded:Connect(function(c)
+				if c and c.Name == "Base_DinoWorld" then
+					if c.GetPropertyChangedSignal then
+						c:GetPropertyChangedSignal("Value"):Connect(checkDinoWorld)
+					end
+					checkDinoWorld()
+				end
+			end)
+		end)
+	end
+end
+
+-- Monitor Data.Pets for any Configuration with attribute T == "Cerberus"
+local function setupCerberusMonitor()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	local petsFolder = data and data:FindFirstChild("Pets")
+
+	local function inspectConfig(conf)
+		if cerberusAnnounced then return end
+		if conf and conf:IsA("Configuration") then
+			local t = conf:GetAttribute("T")
+			if t == "Cerberus" then
+				cerberusAnnounced = true
+				notifyAndAlert("🐾 Cerberus Acquired", "You obtained pet: Cerberus")
+			end
+		end
+	end
+
+	-- Initial scan
+	if petsFolder then
+		for _, ch in ipairs(petsFolder:GetChildren()) do
+			inspectConfig(ch)
+		end
+		-- Watch for new pets
+		pcall(function()
+			petsFolder.ChildAdded:Connect(function(ch)
+				-- Defer to allow attributes to populate
+				task.defer(function()
+					inspectConfig(ch)
+				end)
+			end)
+		end)
+	end
+end
+
 -- Function to create alert embed
 local function createAlertEmbed(alertType, details)
     local username = LocalPlayer and LocalPlayer.Name or "Unknown"
@@ -802,6 +904,14 @@ function WebhookSystem.InitCore(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
+    
+    -- Start monitors for Dino World and Cerberus
+    task.spawn(function()
+        -- small delay to give UI/Data time to exist
+        task.wait(1)
+        pcall(setupDinoWorldMonitor)
+        pcall(setupCerberusMonitor)
+    end)
     
     return WebhookSystem
 end
