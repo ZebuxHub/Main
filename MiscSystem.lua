@@ -22,15 +22,15 @@ end
 local function createButton(parent)
 	local btn = Instance.new("TextButton")
 	btn.Name = "ToggleUI"
-	btn.AnchorPoint = Vector2.new(1, 0)
-	btn.Position = UDim2.new(1, 14, 0, 14)
-	btn.Size = UDim2.new(0, 90, 0, 28)
+	btn.AnchorPoint = Vector2.new(1, 1)
+	btn.Position = UDim2.new(1, -18, 1, -18)
+	btn.Size = UDim2.new(0, 140, 0, 44)
 	btn.BackgroundTransparency = 0.2
 	btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	btn.BorderSizePixel = 0
 	btn.TextColor3 = Color3.fromRGB(235, 235, 235)
 	btn.Font = Enum.Font.GothamSemibold
-	btn.TextSize = 13
+	btn.TextSize = 16
 	btn.Text = "Toggle UI"
 	btn.AutoButtonColor = true
 	btn.Parent = parent
@@ -40,7 +40,7 @@ local function createButton(parent)
 	corner.Parent = btn
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1
+	stroke.Thickness = 2
 	stroke.Color = Color3.fromRGB(70, 70, 70)
 	stroke.Parent = btn
 
