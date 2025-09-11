@@ -1557,6 +1557,26 @@ function AutoPlaceSystem.Init(dependencies)
     Tabs = dependencies.Tabs
     Config = dependencies.Config
     
+    -- Load settings from unified settings if available
+    if _G.getSetting then
+        selectedEggTypes = _G.getSetting("autoPlaceEggTypes", {})
+        selectedMutations = _G.getSetting("autoPlaceMutations", {})
+        local sources = _G.getSetting("autoPlaceSources", {"Eggs"})
+        local sourceSet = {}
+        for _, v in ipairs(sources) do sourceSet[v] = true end
+        placeEggsEnabled = sourceSet["Eggs"] == true
+        placePetsEnabled = sourceSet["Pets"] == true
+        minPetRateFilter = _G.getSetting("autoPlaceMinSpeed", 0)
+        local sortOrder = _G.getSetting("autoPlaceSortOrder", "Low → High")
+        petSortAscending = (sortOrder == "Low → High")
+        autoPlaceEnabled = _G.getSetting("autoPlaceEnabled", false)
+        autoUnlockEnabled = _G.getSetting("autoUnlockEnabled", false)
+        autoDeleteEnabled = _G.getSetting("autoDeleteEnabled", false)
+        autoDeleteTileFilter = _G.getSetting("autoDeleteTileFilter", "Both")
+        local threshold = _G.getSetting("autoDeleteSpeedThreshold", "100")
+        deleteSpeedThreshold = tonumber(threshold) or 100
+    end
+    
     -- Set up UI elements
     math.randomseed(os.time())
     AutoPlaceSystem.CreateUI()
@@ -1601,10 +1621,16 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceEggTypes", placeEggDropdown)
-        end)
+    -- Auto-save to unified settings instead of WindUI config
+    local originalCallback = placeEggDropdown.Callback or function() end
+    placeEggDropdown.Callback = function(selection)
+        selectedEggTypes = selection
+        eggCache.lastUpdate = 0
+        -- Save to unified settings if available
+        if _G.updateSetting then
+            _G.updateSetting("autoPlaceEggTypes", selection)
+        end
+        originalCallback(selection)
     end
     
     -- Mutation selection dropdown
@@ -1620,10 +1646,15 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceMutations", placeMutationDropdown)
-        end)
+    -- Auto-save to unified settings
+    local originalMutationCallback = placeMutationDropdown.Callback or function() end
+    placeMutationDropdown.Callback = function(selection)
+        selectedMutations = selection
+        eggCache.lastUpdate = 0
+        if _G.updateSetting then
+            _G.updateSetting("autoPlaceMutations", selection)
+        end
+        originalMutationCallback(selection)
     end
 
     -- Pet Settings
@@ -1646,10 +1677,15 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceMinSpeed", minSpeedSlider)
-        end)
+    -- Auto-save to unified settings
+    local originalSpeedCallback = minSpeedSlider.Callback or function() end
+    minSpeedSlider.Callback = function(val)
+        minPetRateFilter = tonumber(val) or 0
+        petCache.lastUpdate = 0
+        if _G.updateSetting then
+            _G.updateSetting("autoPlaceMinSpeed", val)
+        end
+        originalSpeedCallback(val)
     end
 
     local sortOrderDropdown = Tabs.PlaceTab:Dropdown({
@@ -1664,10 +1700,15 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceSortOrder", sortOrderDropdown)
-        end)
+    -- Auto-save to unified settings
+    local originalSortCallback = sortOrderDropdown.Callback or function() end
+    sortOrderDropdown.Callback = function(v)
+        petSortAscending = (v == "Low → High")
+        petCache.lastUpdate = 0
+        if _G.updateSetting then
+            _G.updateSetting("autoPlaceSortOrder", v)
+        end
+        originalSortCallback(v)
     end
 
     -- Mode & behavior (Sources)
@@ -1692,10 +1733,18 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceSources", placeModeDropdown)
-        end)
+    -- Auto-save to unified settings
+    local originalSourcesCallback = placeModeDropdown.Callback or function() end
+    placeModeDropdown.Callback = function(selection)
+        local set = {}
+        for _, v in ipairs(selection or {}) do set[v] = true end
+        placeEggsEnabled = set["Eggs"] == true
+        placePetsEnabled = set["Pets"] == true
+        petCache.lastUpdate = 0
+        if _G.updateSetting then
+            _G.updateSetting("autoPlaceSources", selection)
+        end
+        originalSourcesCallback(selection)
     end
 
     -- Stats update function (defined before usage)
@@ -1757,10 +1806,14 @@ function AutoPlaceSystem.CreateUI()
     -- Store reference
     AutoPlaceSystem.Toggle = autoPlaceToggle
     -- Register with Config manager so the value is saved/loaded
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceEnabled", autoPlaceToggle)
-        end)
+    -- Auto-save to unified settings
+    local originalPlaceCallback = autoPlaceToggle.Callback or function() end
+    autoPlaceToggle.Callback = function(state)
+        autoPlaceEnabled = state
+        if _G.updateSetting then
+            _G.updateSetting("autoPlaceEnabled", state)
+        end
+        originalPlaceCallback(state)
     end
     
     -- Tile Management section
