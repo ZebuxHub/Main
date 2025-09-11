@@ -1632,7 +1632,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    Tabs.PlaceTab:Slider({
+    local minSpeedSlider = Tabs.PlaceTab:Slider({
         Title = "Min Speed",
         Desc = "Min pet value",
         Value = {
@@ -1646,8 +1646,13 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceMinSpeed", minSpeedSlider)
+        end)
+    end
 
-    Tabs.PlaceTab:Dropdown({
+    local sortOrderDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
         Values = {"Low → High","High → Low"},
@@ -1659,6 +1664,11 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceSortOrder", sortOrderDropdown)
+        end)
+    end
 
     -- Mode & behavior (Sources)
     Tabs.PlaceTab:Section({
