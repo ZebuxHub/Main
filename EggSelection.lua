@@ -113,7 +113,7 @@ local EggData = {
         Price = "999,999,999,999",
         Icon = "rbxassetid://113910587565739",
         Rarity = 6
-    }
+    },
     UnicornProEgg = {
         Name = "Unicorn Pro Egg",
         Price "50,000,000,000",
