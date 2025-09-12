@@ -13,14 +13,14 @@ local HardcodedPetTypes = {
     "Lionfish", "Rhino", "Kangroo", "Gorilla", "Alligator", "Ostrich", "Triceratops", "Pachycephalosaur", 
     "Sawfish", "Pterosaur", "ElectricEel", "Wolf", "Rex", "Dolphin", "Dragon", "Baldeagle", "Shark", 
     "Griffin", "Brontosaurus", "Anglerfish", "Plesiosaur", "Alpaca", "Spinosaurus", "Manta", "Unicorn", 
-    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale"
+    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock"
 }
 
 local HardcodedEggTypes = {
     "BasicEgg", "RareEgg", "SuperRareEgg", "SeaweedEgg", "EpicEgg", "LegendEgg", "ClownfishEgg", 
     "PrismaticEgg", "LionfishEgg", "HyperEgg", "VoidEgg", "BowserEgg", "SharkEgg", "DemonEgg", 
     "CornEgg", "AnglerfishEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", 
-    "OctopusEgg", "AncientEgg", "SeaDragonEgg"
+    "OctopusEgg", "AncientEgg", "SeaDragonEgg", "UnicornProEgg"
 }
 
 local HardcodedMutations = {
@@ -278,6 +278,7 @@ local EggIconMap = {
     OctopusEgg = 84758700095552,
     AncientEgg = 113910587565739,
     SeaDragonEgg = 130514093439717,
+    UnicornProEgg = 140138063696377,
 }
 
 local function robloxIconUrl(assetId)
