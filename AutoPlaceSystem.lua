@@ -1587,10 +1587,11 @@ function AutoPlaceSystem.CreateUI()
         Title = "Egg Types",
         Desc = "Choose eggs to place",
         Values = {
-            "BasicEgg", "RareEgg", "SuperRareEgg", "SeaweedEgg", "EpicEgg", "LegendEgg", "ClownfishEgg", 
-            "PrismaticEgg", "LionfishEgg", "HyperEgg", "VoidEgg", "BowserEgg", "SharkEgg", "DemonEgg", 
-            "CornEgg", "AnglerfishEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", 
-            "OctopusEgg", "AncientEgg", "SeaDragonEgg", "UnicornProEgg"
+            "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
+            "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
+            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg",
+            "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
+            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
         },
         Value = {},
         Multi = true,
