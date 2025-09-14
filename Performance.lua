@@ -10,76 +10,49 @@ local state = {
 	petsRemoved = false
 }
 
--- Function to clean pet models (remove unwanted parts, keep essential structure)
+-- Function to clean pet models and player built blocks (remove unwanted parts, keep essential structure)
 local function removePetModels()
 	if state.petsRemoved then
-		if WindUI then WindUI:Notify({ Title = "🐾 Pet Cleanup", Content = "Pet cleanup already applied", Duration = 2 }) end
+		if WindUI then WindUI:Notify({ Title = "🧹 Model Cleanup", Content = "Model cleanup already applied", Duration = 2 }) end
 		return
 	end
 
-	-- Find the Pets folder in workspace
+	local totalModelsProcessed = 0
+	local totalPartsRemoved = 0
+
+	-- === CLEAN PETS ===
 	local petsFolder = workspace:FindFirstChild("Pets")
-	if not petsFolder then
-		if WindUI then WindUI:Notify({ Title = "🐾 Pet Cleanup", Content = "No Pets folder found", Duration = 2 }) end
-		return
-	end
+	if petsFolder then
+		-- List of parts to keep in each pet model
+		local keepParts = {
+			"CollectHL",
+			"SA_PetStateMachine", 
+			"BF",
+			"BE",
+			"RootPart"
+		}
+		
+		-- List of parts to keep inside RootPart
+		local keepInRootPart = {
+			"Base",
+			"CS_IdlePet",
+			"RE", 
+			"TrgIdle",
+			"GUI/IdleGUI",
+			"Motor6D"
+		}
 
-	-- List of parts to keep in each pet model
-	local keepParts = {
-		"CollectHL",
-		"SA_PetStateMachine", 
-		"BF",
-		"BE",
-		"RootPart"
-	}
-	
-	-- List of parts to keep inside RootPart
-	local keepInRootPart = {
-		"Base",
-		"CS_IdlePet",
-		"RE", 
-		"TrgIdle",
-		"GUI/IdleGUI",
-		"Motor6D"
-	}
-
-	local petCount = 0
-	local removedPartsCount = 0
-
-	-- Process each pet model
-	for _, petModel in pairs(petsFolder:GetChildren()) do
-		if petModel:IsA("Model") then
-			petCount = petCount + 1
-			
-			-- Remove unwanted parts from the main pet model
-			for _, child in pairs(petModel:GetChildren()) do
-				local shouldKeep = false
+		-- Process each pet model
+		for _, petModel in pairs(petsFolder:GetChildren()) do
+			if petModel:IsA("Model") then
+				totalModelsProcessed = totalModelsProcessed + 1
 				
-				-- Check if this part should be kept
-				for _, keepName in pairs(keepParts) do
-					if child.Name == keepName then
-						shouldKeep = true
-						break
-					end
-				end
-				
-				-- If it's not in the keep list, remove it
-				if not shouldKeep then
-					pcall(function()
-						child:Destroy()
-						removedPartsCount = removedPartsCount + 1
-					end)
-				end
-			end
-			
-			-- Clean up RootPart specifically
-			local rootPart = petModel:FindFirstChild("RootPart")
-			if rootPart then
-				for _, child in pairs(rootPart:GetChildren()) do
+				-- Remove unwanted parts from the main pet model
+				for _, child in pairs(petModel:GetChildren()) do
 					local shouldKeep = false
 					
-					-- Check if this part should be kept in RootPart
-					for _, keepName in pairs(keepInRootPart) do
+					-- Check if this part should be kept
+					for _, keepName in pairs(keepParts) do
 						if child.Name == keepName then
 							shouldKeep = true
 							break
@@ -90,10 +63,80 @@ local function removePetModels()
 					if not shouldKeep then
 						pcall(function()
 							child:Destroy()
-							removedPartsCount = removedPartsCount + 1
+							totalPartsRemoved = totalPartsRemoved + 1
 						end)
+		end
+	end
+
+				-- Clean up RootPart specifically
+				local rootPart = petModel:FindFirstChild("RootPart")
+				if rootPart then
+					for _, child in pairs(rootPart:GetChildren()) do
+						local shouldKeep = false
+						
+						-- Check if this part should be kept in RootPart
+						for _, keepName in pairs(keepInRootPart) do
+							if child.Name == keepName then
+								shouldKeep = true
+								break
+							end
+						end
+						
+						-- If it's not in the keep list, remove it
+						if not shouldKeep then
+	pcall(function()
+								child:Destroy()
+								totalPartsRemoved = totalPartsRemoved + 1
+							end)
+						end
 					end
 				end
+			end
+		end
+	end
+
+	-- === CLEAN PLAYER BUILT BLOCKS ===
+	local playerBlocksFolder = workspace:FindFirstChild("PlayerBuiltBlocks")
+	if playerBlocksFolder then
+		-- List of parts to remove from PlayerBuiltBlocks models
+		local removeFromBlocks = {
+			"color1",
+			"color2", 
+			"E1D",
+			"E1U",
+			"E2D",
+			"E2U",
+			"E3",
+			"Left",
+			"MutateFX_Inst",
+			"Right"
+		}
+
+		-- Process each player built block model
+		for _, blockModel in pairs(playerBlocksFolder:GetChildren()) do
+			if blockModel:IsA("Model") then
+				totalModelsProcessed = totalModelsProcessed + 1
+				
+				-- Remove specific unwanted parts from block models
+				for _, child in pairs(blockModel:GetChildren()) do
+					local shouldRemove = false
+					
+					-- Check if this part should be removed
+					for _, removeName in pairs(removeFromBlocks) do
+						if child.Name == removeName then
+							shouldRemove = true
+							break
+						end
+					end
+					
+					-- If it's in the remove list, destroy it
+					if shouldRemove then
+			pcall(function()
+							child:Destroy()
+							totalPartsRemoved = totalPartsRemoved + 1
+			end)
+		end
+	end
 			end
 		end
 	end
@@ -102,17 +145,17 @@ local function removePetModels()
 	
 	if WindUI then 
 		WindUI:Notify({ 
-			Title = "🐾 Pet Cleanup", 
-			Content = "Cleaned " .. petCount .. " pets, removed " .. removedPartsCount .. " unnecessary parts", 
+			Title = "🧹 Model Cleanup", 
+			Content = "Cleaned " .. totalModelsProcessed .. " models, removed " .. totalPartsRemoved .. " unnecessary parts", 
 			Duration = 4 
 		}) 
 	end
 end
 
--- Function to disable pet cleanup (note: removed parts can't be restored)
+-- Function to disable model cleanup (note: removed parts can't be restored)
 local function restorePetModels()
 	if not state.petsRemoved then
-		if WindUI then WindUI:Notify({ Title = "🐾 Pet Cleanup", Content = "Pet cleanup not applied", Duration = 2 }) end
+		if WindUI then WindUI:Notify({ Title = "🧹 Model Cleanup", Content = "Model cleanup not applied", Duration = 2 }) end
 		return
 	end
 
@@ -120,8 +163,8 @@ local function restorePetModels()
 	
 	if WindUI then 
 		WindUI:Notify({ 
-			Title = "🐾 Pet Cleanup", 
-			Content = "Pet cleanup disabled (removed parts can't be restored)", 
+			Title = "🧹 Model Cleanup", 
+			Content = "Model cleanup disabled (removed parts can't be restored)", 
 			Duration = 3 
 		}) 
 	end
@@ -136,10 +179,10 @@ function Performance.Init(deps)
 		Tabs.PerfTab = Tabs.MainSection:Tab({ Title = "🚀 | Performance" })
 	end
 
-	-- Create toggle for pet model cleanup
+	-- Create toggle for model cleanup
 	local petRemovalToggle = Tabs.PerfTab:Toggle({
-		Title = "🐾 Clean Pet Models",
-		Desc = "Remove unnecessary parts from pets, keep only essential components for performance",
+		Title = "🧹 Clean All Models",
+		Desc = "Remove unnecessary parts from pets and player built blocks for better performance",
 		Value = false,
 		Callback = function(stateOn)
 			if stateOn then 
