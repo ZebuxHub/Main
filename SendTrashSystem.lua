@@ -13,7 +13,8 @@ local HardcodedPetTypes = {
     "Lionfish", "Rhino", "Kangroo", "Gorilla", "Alligator", "Ostrich", "Triceratops", "Pachycephalosaur", 
     "Sawfish", "Pterosaur", "ElectricEel", "Wolf", "Rex", "Dolphin", "Dragon", "Baldeagle", "Shark", 
     "Griffin", "Brontosaurus", "Anglerfish", "Plesiosaur", "Alpaca", "Spinosaurus", "Manta", "Unicorn", 
-    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock"
+    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale",
+    "Peacock"
 }
 
 local HardcodedEggTypes = {
@@ -41,8 +42,8 @@ local Config
 local trashToggle
 local targetPlayerDropdown
 local sendModeDropdown
-local sendPetTypeDropdown
-local sendPetMutationDropdown
+local sendPetMinSpeedInput
+local sendPetMaxSpeedInput
 local sendEggTypeDropdown
 local sendEggMutationDropdown
 local sessionLimitInput
@@ -54,7 +55,9 @@ local trashEnabled = false
 -- auto delete min speed removed
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
-local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
+local selectedPetMinSpeed = 0 -- cached selectors (changed pet filters to speed)
+local selectedPetMaxSpeed = math.huge
+local selectedEggTypes, selectedEggMuts
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 local stopRequested = false -- graceful stop flag
 local keepTrackingWhenEmpty = false -- new setting to control stop behavior
@@ -275,10 +278,10 @@ local EggIconMap = {
     DinoEgg = 80783528632315,
     FlyEgg = 109240587278187,
     UnicornEgg = 123427249205445,
+    UnicornProEgg = 140138063696377,
     OctopusEgg = 84758700095552,
     AncientEgg = 113910587565739,
     SeaDragonEgg = 130514093439717,
-    UnicornProEgg = 140138063696377,
 }
 
 local function robloxIconUrl(assetId)
@@ -309,6 +312,33 @@ local function safeGetAttribute(obj, attrName, default)
         return obj:GetAttribute(attrName)
     end)
     return success and result or default
+end
+
+-- Get pet speed from UI (imported from AutoSellSystem.lua)
+local function getPetSpeed(petNode)
+	if not petNode then return 0 end
+	-- Prefer real value from UI using the pet UID
+	local uid = petNode.Name or tostring(petNode)
+	local lp = Players.LocalPlayer
+	local pg = lp and lp:FindFirstChild("PlayerGui")
+	local ss = pg and pg:FindFirstChild("ScreenStorage")
+	local frame = ss and ss:FindFirstChild("Frame")
+	local content = frame and frame:FindFirstChild("ContentPet")
+	local scroll = content and content:FindFirstChild("ScrollingFrame")
+	local item = scroll and scroll:FindFirstChild(uid)
+	local btn = item and item:FindFirstChild("BTN")
+	local stat = btn and btn:FindFirstChild("Stat")
+	local price = stat and stat:FindFirstChild("Price")
+	local valueLabel = price and price:FindFirstChild("Value")
+	local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+	if not txt and price and price:IsA("TextLabel") then
+		txt = price.Text
+	end
+	if txt then
+		local n = tonumber((txt:gsub("[^%d]", ""))) or 0
+		return n
+	end
+	return 0
 end
 
 -- Get all pet types from inventory + hardcoded list
@@ -526,13 +556,13 @@ local function syncSelectorsFromControls()
         return nil
     end
 
-    local petTypes = readControl(sendPetTypeDropdown)
-    local petMuts = readControl(sendPetMutationDropdown)
+    local petMinSpeed = readControl(sendPetMinSpeedInput)
+    local petMaxSpeed = readControl(sendPetMaxSpeedInput)
     local eggTypes = readControl(sendEggTypeDropdown)
     local eggMuts = readControl(sendEggMutationDropdown)
 
-    if petTypes ~= nil then selectedPetTypes = selectionToList(petTypes) end
-    if petMuts ~= nil then selectedPetMuts = selectionToList(petMuts) end
+    if petMinSpeed ~= nil then selectedPetMinSpeed = tonumber(petMinSpeed) or 0 end
+    if petMaxSpeed ~= nil then selectedPetMaxSpeed = tonumber(petMaxSpeed) or math.huge end
     if eggTypes ~= nil then selectedEggTypes = selectionToList(eggTypes) end
     if eggMuts ~= nil then selectedEggMuts = selectionToList(eggMuts) end
 end
@@ -572,7 +602,7 @@ local function updateInventoryCache()
                     uid = petData.Name,
                     type = petType,
                     mutation = safeGetAttribute(petData, "M", ""),
-                    speed = safeGetAttribute(petData, "Speed", 0),
+                    speed = getPetSpeed(petData), -- Use UI-based speed calculation
                     locked = safeGetAttribute(petData, "LK", 0) == 1,
                     placed = safeGetAttribute(petData, "D", nil) ~= nil
                 }
@@ -980,48 +1010,68 @@ local function refreshItemFromData(uid, isEgg, into)
 end
 
 -- Re-verify live item data against current selectors before sending
-local shouldSendItem
-local function verifyItemMatchesFiltersLive(uid, isEgg, includeTypes, includeMutations)
+local function verifyItemMatchesFiltersLive(uid, isEgg, filterParam1, filterParam2)
     -- Read fresh snapshot from PlayerGui.Data
     local fresh = refreshItemFromData(uid, isEgg, nil)
     if not fresh then return false end
     -- Reuse shouldSendItem logic using the fresh record
-    return shouldSendItem(fresh, includeTypes, includeMutations), fresh
+    local itemTypeStr = isEgg and "egg" or "pet"
+    return shouldSendItem(fresh, filterParam1, filterParam2, itemTypeStr), fresh
 end
 
 -- Check if item should be sent/sold based on filters
-function shouldSendItem(item, includeTypes, includeMutations)
+function shouldSendItem(item, filterParam1, filterParam2, itemType)
     -- Don't send locked items
     if item.locked then return false end
     
-    -- Normalize values for robust comparison
-    local function norm(v)
-        return v and tostring(v):lower() or nil
+    if itemType == "pet" then
+        -- For pets, use speed filtering
+        local petSpeed = item.speed or 0
+        local minSpeed = filterParam1 or 0  -- selectedPetMinSpeed
+        local maxSpeed = filterParam2 or math.huge  -- selectedPetMaxSpeed
+        
+        -- STRICT: require a valid T (type) to exist
+        local itemTypeNorm = item.type and tostring(item.type):lower() or nil
+        if not itemTypeNorm or itemTypeNorm == "" or itemTypeNorm == "unknown" then
+            return false
+        end
+        
+        -- Check if pet speed is within the specified range
+        return petSpeed >= minSpeed and petSpeed <= maxSpeed
+    else
+        -- For eggs, use type/mutation filtering (existing logic)
+        local includeTypes = filterParam1
+        local includeMutations = filterParam2
+        
+        -- Normalize values for robust comparison
+        local function norm(v)
+            return v and tostring(v):lower() or nil
+        end
+        local itemTypeVal = norm(item.type)
+        local itemMut = item.mutation and norm(canonicalizeMutationName(item.mutation)) or nil
+        
+        -- STRICT: require a valid T (type) to exist
+        if not itemTypeVal or itemTypeVal == "" or itemTypeVal == "unknown" then
+            return false
+        end
+        
+        -- Build lookup sets for O(1) checks
+        local typesSet, mutsSet
+        if includeTypes and #includeTypes > 0 then
+            typesSet = {}
+            for _, t in ipairs(includeTypes) do typesSet[norm(t)] = true end
+            if not typesSet[itemTypeVal] then return false end
+        end
+        if includeMutations and #includeMutations > 0 then
+            -- STRICT for M: if selectors provided, item must have an M and it must match
+            if not itemMut or itemMut == "" then return false end
+            mutsSet = {}
+            for _, m in ipairs(includeMutations) do mutsSet[norm(canonicalizeMutationName(m))] = true end
+            if not mutsSet[itemMut] then return false end
+        end
+        
+        return true
     end
-    local itemType = norm(item.type)
-    local itemMut  = item.mutation and norm(canonicalizeMutationName(item.mutation)) or nil
-    
-    -- STRICT: require a valid T (type) to exist
-    if not itemType or itemType == "" or itemType == "unknown" then
-        return false
-    end
-    
-    -- Build lookup sets for O(1) checks
-    local typesSet, mutsSet
-    if includeTypes and #includeTypes > 0 then
-        typesSet = {}
-        for _, t in ipairs(includeTypes) do typesSet[norm(t)] = true end
-        if not typesSet[itemType] then return false end
-    end
-    if includeMutations and #includeMutations > 0 then
-        -- STRICT for M: if selectors provided, item must have an M and it must match
-        if not itemMut or itemMut == "" then return false end
-        mutsSet = {}
-        for _, m in ipairs(includeMutations) do mutsSet[norm(canonicalizeMutationName(m))] = true end
-        if not mutsSet[itemMut] then return false end
-    end
-    
-    return true
 end
 
 -- Remove placed item from ground
@@ -1105,10 +1155,16 @@ local function sendItemToPlayer(item, target, itemType)
 	local focusSuccess = focusItem(itemUID)
 	if focusSuccess then task.wait(0.1) end
 
-	-- Re-verify name/type/mutation live right before sending to ensure it still matches filters
-	local typesSel = (itemType == "egg") and (selectedEggTypes or {}) or (selectedPetTypes or {})
-	local mutsSel = (itemType == "egg") and (selectedEggMuts or {}) or (selectedPetMuts or {})
-	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, isEgg, typesSel, mutsSel)
+	-- Re-verify filters live right before sending to ensure it still matches filters
+	local param1, param2
+	if itemType == "pet" then
+		param1 = selectedPetMinSpeed or 0
+		param2 = selectedPetMaxSpeed or math.huge
+	else
+		param1 = selectedEggTypes or {}
+		param2 = selectedEggMuts or {}
+	end
+	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, isEgg, param1, param2)
 	if not stillMatches then
 		sendInProgress[itemUID] = nil
 		return false
@@ -1179,20 +1235,51 @@ local function updateStatus()
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
     
+    -- Calculate speed stats for pets
+    local petsWithSpeed = 0
+    local totalSpeed = 0
+    local minSpeed = math.huge
+    local maxSpeed = 0
+    
+    for _, pet in pairs(petInventory) do
+        if pet.speed and pet.speed > 0 then
+            petsWithSpeed = petsWithSpeed + 1
+            totalSpeed = totalSpeed + pet.speed
+            minSpeed = math.min(minSpeed, pet.speed)
+            maxSpeed = math.max(maxSpeed, pet.speed)
+        end
+    end
+    
+    local avgSpeed = petsWithSpeed > 0 and math.floor(totalSpeed / petsWithSpeed) or 0
+    if minSpeed == math.huge then minSpeed = 0 end
+    
+    local speedFilterText = ""
+    if selectedPetMinSpeed and selectedPetMinSpeed > 0 then
+        speedFilterText = speedFilterText .. "Min: " .. tostring(selectedPetMinSpeed)
+    end
+    if selectedPetMaxSpeed and selectedPetMaxSpeed ~= math.huge then
+        if speedFilterText ~= "" then speedFilterText = speedFilterText .. ", " end
+        speedFilterText = speedFilterText .. "Max: " .. tostring(selectedPetMaxSpeed)
+    end
+    if speedFilterText ~= "" then
+        speedFilterText = "\n⚡ Speed filter: " .. speedFilterText
+    end
+    
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
         "📤 Items sent this session: %d/%d\n" ..
         "🔄 Actions performed: %d\n" ..
-        "📡 Keep tracking when empty: %s",
+        "📡 Keep tracking when empty: %s\n" ..
+        "⚡ Pet speeds: Avg: %d | Min: %d | Max: %d%s",
         #petInventory,
         #eggInventory,
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         actionCounter,
-        keepTrackingWhenEmpty and "Enabled" or "Disabled"
+        keepTrackingWhenEmpty and "Enabled" or "Disabled",
+        avgSpeed, minSpeed, maxSpeed,
+        speedFilterText
     )
-
-    -- Blacklist removed
 
     statusParagraph:SetDesc(statusText)
 end
@@ -1226,7 +1313,7 @@ local function processTrash()
 		if sendMode == "Pets" or sendMode == "Both" then
 			for _, pet in ipairs(petInventory) do
 				pet = refreshItemFromData(pet.uid, false, pet)
-				if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
+				if shouldSendItem(pet, selectedPetMinSpeed, selectedPetMaxSpeed, "pet") then
 					matchingPets = matchingPets + 1
 				end
 			end
@@ -1237,7 +1324,7 @@ local function processTrash()
 				egg = refreshItemFromData(egg.uid, true, egg)
 				local tList = selectedEggTypes or {}
 				local mList = selectedEggMuts or {}
-				if shouldSendItem(egg, tList, mList) then
+				if shouldSendItem(egg, tList, mList, "egg") then
 					matchingEggs = matchingEggs + 1
 				end
 			end
@@ -1290,7 +1377,7 @@ local function processTrash()
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
 					if stopRequested then break end
-					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts) then
+					if shouldSendItem(pet, selectedPetMinSpeed, selectedPetMaxSpeed, "pet") then
 						anyAttempt = true
 						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
 					end
@@ -1303,7 +1390,7 @@ local function processTrash()
 					if stopRequested then break end
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
-					if shouldSendItem(egg, tList, mList) then
+					if shouldSendItem(egg, tList, mList, "egg") then
 						anyAttempt = true
 						if sendItemToPlayer(egg, targetPlayerObj, "egg") then return true, true end
 					end
@@ -1509,31 +1596,32 @@ function SendTrashSystem.Init(dependencies)
         end
     })
     
-    TrashTab:Section({ Title = "Pet Filters", Icon = "mail" })
+    TrashTab:Section({ Title = "Pet Speed Filters", Icon = "zap" })
     
-    -- Send pet type filter (now include-only)
-    sendPetTypeDropdown = TrashTab:Dropdown({
-        Title = "Pet Types",
-        Desc = "Types to send (empty = all)",
-        Values = getAllPetTypes(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedPetTypes = selectionToList(selection)
+    -- Pet minimum speed filter
+    sendPetMinSpeedInput = TrashTab:Input({
+        Title = "Min Pet Speed",
+        Desc = "Minimum speed for pets to send (0 = no minimum)",
+        Default = "0",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            selectedPetMinSpeed = tonumber(value) or 0
+            print("Pet minimum speed set to: " .. tostring(selectedPetMinSpeed))
         end
     })
     
-    -- Send pet mutation filter (now include-only)
-    sendPetMutationDropdown = TrashTab:Dropdown({
-        Title = "Pet Mutations", 
-        Desc = "Mutations to send (empty = all)",
-        Values = getAllMutations(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedPetMuts = selectionToList(selection)
+    -- Pet maximum speed filter
+    sendPetMaxSpeedInput = TrashTab:Input({
+        Title = "Max Pet Speed",
+        Desc = "Maximum speed for pets to send (0 = no maximum)",
+        Default = "0",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            local maxSpeed = tonumber(value) or 0
+            selectedPetMaxSpeed = (maxSpeed == 0) and math.huge or maxSpeed
+            print("Pet maximum speed set to: " .. tostring(selectedPetMaxSpeed == math.huge and "unlimited" or selectedPetMaxSpeed))
         end
     })
     
@@ -1605,14 +1693,13 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("trashEnabled", trashToggle)
         Config:Register("sendMode", sendModeDropdown)
         Config:Register("targetPlayer", targetPlayerDropdown)
-        Config:Register("sendPetTypeFilter", sendPetTypeDropdown)
-        Config:Register("sendPetMutationFilter", sendPetMutationDropdown)
+        Config:Register("sendPetMinSpeed", sendPetMinSpeedInput)
+        Config:Register("sendPetMaxSpeed", sendPetMaxSpeedInput)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
         Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
         -- webhook config removed
         -- Selling config removed
-        -- speed threshold removed
         Config:Register("sessionLimit", sessionLimitInput)
     end
     
