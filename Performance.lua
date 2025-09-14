@@ -1,24 +1,29 @@
--- Performance.lua - Pet Model Removal Toggle
+-- Performance.lua - Performance Mode Toggle
 
 local Performance = {}
+
+-- Services
+local Players = game:GetService("Players")
 
 -- Dependencies (injected)
 local WindUI, Tabs
 
--- State to track if pets are removed
+-- State to track if performance mode is active
 local state = {
-	petsRemoved = false
+	performanceModeActive = false,
+	windScriptDisabled = false
 }
 
--- Function to clean pet models and player built blocks (remove unwanted parts, keep essential structure)
-local function removePetModels()
-	if state.petsRemoved then
-		if WindUI then WindUI:Notify({ Title = "🧹 Model Cleanup", Content = "Model cleanup already applied", Duration = 2 }) end
+-- Function to enable performance mode (clean models, remove effects, disable wind)
+local function enablePerformanceMode()
+	if state.performanceModeActive then
+		if WindUI then WindUI:Notify({ Title = "⚡ Performance Mode", Content = "Performance Mode already active", Duration = 2 }) end
 		return
 	end
 
 	local totalModelsProcessed = 0
 	local totalPartsRemoved = 0
+	local totalEffectsRemoved = 0
 
 	-- === CLEAN PETS ===
 	local petsFolder = workspace:FindFirstChild("Pets")
@@ -126,46 +131,114 @@ local function removePetModels()
 						if child.Name == removeName then
 							shouldRemove = true
 							break
-						end
-					end
-					
+		end
+	end
+
 					-- If it's in the remove list, destroy it
 					if shouldRemove then
-			pcall(function()
+	pcall(function()
 							child:Destroy()
 							totalPartsRemoved = totalPartsRemoved + 1
 			end)
 		end
 	end
+
+	-- === REMOVE ALL GAME EFFECTS ===
+	for _, obj in ipairs(game:GetDescendants()) do
+		-- Remove visual effects
+		if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+		   obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") or 
+		   obj:IsA("Explosion") or obj:IsA("Highlight") then
+			pcall(function()
+				obj:Destroy()
+				totalEffectsRemoved = totalEffectsRemoved + 1
+			end)
+		-- Remove lighting effects
+		elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+			pcall(function()
+				obj:Destroy()
+				totalEffectsRemoved = totalEffectsRemoved + 1
+			end)
+		-- Remove post effects
+		elseif obj:IsA("BloomEffect") or obj:IsA("BlurEffect") or obj:IsA("ColorCorrectionEffect") or
+			   obj:IsA("DepthOfFieldEffect") or obj:IsA("SunRaysEffect") then
+	pcall(function()
+				obj:Destroy()
+				totalEffectsRemoved = totalEffectsRemoved + 1
+	end)
+		-- Remove sound effects
+		elseif obj:IsA("Sound") then
+	pcall(function()
+				obj:Stop()
+				obj:Destroy()
+				totalEffectsRemoved = totalEffectsRemoved + 1
+			end)
+		end
+	end
+
+	-- === DISABLE WIND BEHAVIOR ===
+	local localPlayer = Players.LocalPlayer
+	if localPlayer then
+		local windScript = localPlayer:FindFirstChild("PlayerScripts")
+		if windScript then
+			windScript = windScript:FindFirstChild("Env")
+			if windScript then
+				windScript = windScript:FindFirstChild("Wind")
+				if windScript then
+					pcall(function()
+						windScript.Disabled = true
+						state.windScriptDisabled = true
+					end)
+				end
 			end
 		end
 	end
 
-	state.petsRemoved = true
+	state.performanceModeActive = true
 	
 	if WindUI then 
 		WindUI:Notify({ 
-			Title = "🧹 Model Cleanup", 
-			Content = "Cleaned " .. totalModelsProcessed .. " models, removed " .. totalPartsRemoved .. " unnecessary parts", 
-			Duration = 4 
+			Title = "⚡ Performance Mode", 
+			Content = "ENABLED: " .. totalModelsProcessed .. " models cleaned, " .. totalPartsRemoved .. " parts removed, " .. totalEffectsRemoved .. " effects removed, Wind disabled", 
+			Duration = 5 
 		}) 
 	end
 end
 
--- Function to disable model cleanup (note: removed parts can't be restored)
-local function restorePetModels()
-	if not state.petsRemoved then
-		if WindUI then WindUI:Notify({ Title = "🧹 Model Cleanup", Content = "Model cleanup not applied", Duration = 2 }) end
+-- Function to disable performance mode (note: removed parts/effects can't be restored)
+local function disablePerformanceMode()
+	if not state.performanceModeActive then
+		if WindUI then WindUI:Notify({ Title = "⚡ Performance Mode", Content = "Performance Mode not active", Duration = 2 }) end
 		return
 	end
 
-	state.petsRemoved = false
+	-- Try to re-enable Wind script if it was disabled
+	if state.windScriptDisabled then
+		local localPlayer = Players.LocalPlayer
+		if localPlayer then
+			local windScript = localPlayer:FindFirstChild("PlayerScripts")
+			if windScript then
+				windScript = windScript:FindFirstChild("Env")
+				if windScript then
+					windScript = windScript:FindFirstChild("Wind")
+					if windScript then
+						pcall(function()
+							windScript.Disabled = false
+							state.windScriptDisabled = false
+						end)
+					end
+				end
+			end
+		end
+	end
+
+	state.performanceModeActive = false
 	
 	if WindUI then 
 		WindUI:Notify({ 
-			Title = "🧹 Model Cleanup", 
-			Content = "Model cleanup disabled (removed parts can't be restored)", 
-			Duration = 3 
+			Title = "⚡ Performance Mode", 
+			Content = "DISABLED: Wind re-enabled (removed parts/effects can't be restored)", 
+			Duration = 4 
 		}) 
 	end
 end
@@ -179,24 +252,24 @@ function Performance.Init(deps)
 		Tabs.PerfTab = Tabs.MainSection:Tab({ Title = "🚀 | Performance" })
 	end
 
-	-- Create toggle for model cleanup
-	local petRemovalToggle = Tabs.PerfTab:Toggle({
-		Title = "🧹 Clean All Models",
-		Desc = "Remove unnecessary parts from pets and player built blocks for better performance",
+	-- Create toggle for performance mode
+	local performanceToggle = Tabs.PerfTab:Toggle({
+		Title = "⚡ Performance Mode",
+		Desc = "Clean models, remove all effects, disable wind - Maximum performance boost",
 		Value = false,
 		Callback = function(stateOn)
 			if stateOn then 
-				removePetModels() 
+				enablePerformanceMode() 
 			else 
-				restorePetModels() 
+				disablePerformanceMode() 
 			end
 		end
 	})
 
 	-- Store references for external access
-	Performance.Toggle = petRemovalToggle
-	Performance.RemovePets = removePetModels
-	Performance.RestorePets = restorePetModels
+	Performance.Toggle = performanceToggle
+	Performance.Enable = enablePerformanceMode
+	Performance.Disable = disablePerformanceMode
 
 	return Performance
 end
