@@ -1,50 +1,14 @@
--- Performance.lua - Performance Mode with Config Save
+-- Performance.lua - Pet Model Removal Toggle
 
 local Performance = {}
-
--- Services
-local HttpService = game:GetService("HttpService")
 
 -- Dependencies (injected)
 local WindUI, Tabs
 
--- Config file name
-local CONFIG_FILE = "PerformanceMode_Config.json"
-
--- State to track if performance mode is active
+-- State to track if pets are removed
 local state = {
 	petsRemoved = false
 }
-
--- Default config
-local defaultConfig = {
-	performanceModeEnabled = false
-}
-
--- Save config to file
-local function saveConfig()
-	local config = {
-		performanceModeEnabled = state.petsRemoved
-	}
-	
-	pcall(function()
-		writefile(CONFIG_FILE, HttpService:JSONEncode(config))
-	end)
-end
-
--- Load config from file
-local function loadConfig()
-	local config = defaultConfig
-	
-	pcall(function()
-		if isfile(CONFIG_FILE) then
-			local fileContent = readfile(CONFIG_FILE)
-			config = HttpService:JSONDecode(fileContent)
-		end
-	end)
-	
-	return config
-end
 
 -- Function for Performance Mode (clean models, remove effects, disable wind)
 local function activatePerformanceMode()
@@ -207,7 +171,6 @@ local function activatePerformanceMode()
 	end)
 
 	state.petsRemoved = true
-	saveConfig() -- Save the new state
 	
 	if WindUI then 
 		WindUI:Notify({ 
@@ -234,7 +197,6 @@ local function deactivatePerformanceMode()
 	end)
 
 	state.petsRemoved = false
-	saveConfig() -- Save the new state
 	
 	if WindUI then 
 		WindUI:Notify({ 
@@ -249,9 +211,6 @@ function Performance.Init(deps)
 	WindUI = deps.WindUI
 	Tabs = deps.Tabs
 
-	-- Load saved config
-	local config = loadConfig()
-	
 	-- Ensure Performance tab exists
 	if not Tabs.PerfTab then
 		Tabs.PerfTab = Tabs.MainSection:Tab({ Title = "🚀 | Performance" })
@@ -260,7 +219,8 @@ function Performance.Init(deps)
 	-- Create toggle for Performance Mode
 	local performanceToggle = Tabs.PerfTab:Toggle({
 		Title = "⚡ Performance Mode",
-		Value = config.performanceModeEnabled, -- Load saved state
+		Desc = "Clean models, remove all effects, disable wind behavior for maximum performance",
+		Value = false,
 		Callback = function(stateOn)
 			if stateOn then 
 				activatePerformanceMode() 
@@ -270,33 +230,10 @@ function Performance.Init(deps)
 		end
 	})
 
-	-- Apply saved config on startup
-	if config.performanceModeEnabled then
-		state.petsRemoved = true
-		-- Don't run the full performance mode on startup to avoid lag
-		-- Just set the state and disable wind
-		pcall(function()
-			local windScript = game:GetService("Players").LocalPlayer.PlayerScripts.Env.Wind
-			if windScript then
-				windScript.Enabled = false
-			end
-		end)
-		
-		if WindUI then 
-			WindUI:Notify({ 
-				Title = "⚡ Performance Mode", 
-				Content = "Performance Mode loaded from config (Wind disabled)", 
-				Duration = 3 
-			}) 
-		end
-	end
-
 	-- Store references for external access
 	Performance.Toggle = performanceToggle
 	Performance.Activate = activatePerformanceMode
 	Performance.Deactivate = deactivatePerformanceMode
-	Performance.SaveConfig = saveConfig
-	Performance.LoadConfig = loadConfig
 
 	return Performance
 end
