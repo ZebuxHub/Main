@@ -165,7 +165,7 @@ local MutationData = {
     }, 
     Electirc = {
         ID = "Electirc", 
-        Name = "Electric",
+        Name = "Electirc",
         ProduceRate = 5, 
         SellRate = 5, 
         BuyRate = 20, 
