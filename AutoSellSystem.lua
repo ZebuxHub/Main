@@ -61,7 +61,7 @@ local MutationData = {
     Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
     Electric = { Name = "Electric", Icon = "⚡", Rarity = 50 },
     Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
+    Jurassic = { Name = "Dino", Icon = "🦕", Rarity = 100 }
 }
 
 -- State
