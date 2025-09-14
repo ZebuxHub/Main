@@ -465,7 +465,7 @@ local function createInventoryEmbed()
                     }
                 },
                 footer = {
-                    text = "Generated • Build A Zoo"
+                    text = "Zebux • Build A Zoo"
                 }
             }
         },
