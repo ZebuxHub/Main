@@ -191,18 +191,21 @@ local function shouldKeepEgg(eggNode)
 		keepForMutation = shouldKeepMutation(eggNode)
 	end
 	
-	-- Decision logic
-	if keepForEggType and not mutated then
-		-- Keep: Egg type is selected and no mutation
-		return true
-	elseif keepForEggType and mutated and keepForMutation then
-		-- Keep: Egg type is selected AND mutation is selected
-		return true
-	elseif not keepForEggType and mutated and keepForMutation then
-		-- Keep: Egg type not selected BUT mutation is selected
-		return true
+	-- Decision logic - Only keep if BOTH conditions are met when both are selected
+	if #eggsToKeep > 0 and #mutationsToKeep > 0 then
+		-- Both egg types and mutations are selected
+		-- Keep ONLY if: correct egg type AND correct mutation
+		return keepForEggType and mutated and keepForMutation
+	elseif #eggsToKeep > 0 and #mutationsToKeep == 0 then
+		-- Only egg types selected, no specific mutations
+		-- Keep if correct egg type (regardless of mutation)
+		return keepForEggType
+	elseif #eggsToKeep == 0 and #mutationsToKeep > 0 then
+		-- Only mutations selected, no specific egg types
+		-- Keep if has correct mutation (any egg type)
+		return mutated and keepForMutation
 	else
-		-- Sell: All other cases
+		-- Nothing selected, sell everything
 		return false
 	end
 end
