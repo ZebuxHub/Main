@@ -59,7 +59,7 @@ local EggData = {
 local MutationData = {
     Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
     Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electric = { Name = "Electric", Icon = "⚡", Rarity = 50 },
+    Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
     Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
     Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
 }
