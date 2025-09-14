@@ -114,7 +114,7 @@ local function unanchorPlayer()
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum.AutoRotate = true
-		hum.WalkSpeed = 30
+		hum.WalkSpeed = 35
 		hum.JumpPower = 50
 	end
 	if hrp then hrp.Anchored = false end
