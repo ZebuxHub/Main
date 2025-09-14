@@ -526,6 +526,26 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
+	-- Create egg selection dropdown (show right after sell mode)
+	local eggNames = {}
+	for _, data in pairs(EggData) do
+		table.insert(eggNames, data.Name)
+	end
+	table.sort(eggNames) -- Sort alphabetically
+
+	eggKeepDropdown = MainTab:Dropdown({
+		Title = "🥚 Eggs to Keep",
+		Desc = "Select eggs to keep (don't sell)",
+		Values = eggNames,
+		Value = {},
+		Multi = true,
+		AllowNone = true,
+		Callback = function(selection)
+			eggsToKeep = selection or {}
+			updateStatus()
+		end
+	})
+
 	mutationDropdown = MainTab:Dropdown({
 		Title = "🧬 Mutations",
 		Desc = "Sell mutated or keep",
@@ -546,26 +566,6 @@ function AutoSellSystem.CreateUI()
 		Callback = function(value)
 			local parsedValue = parseSpeedThreshold(value)
 			speedThreshold = parsedValue
-			updateStatus()
-		end
-	})
-
-	-- Create egg selection dropdown (only show for egg modes)
-	local eggNames = {}
-	for _, data in pairs(EggData) do
-		table.insert(eggNames, data.Name)
-	end
-	table.sort(eggNames) -- Sort alphabetically
-
-	eggKeepDropdown = MainTab:Dropdown({
-		Title = "🥚 Eggs to Keep",
-		Desc = "Select eggs to keep (don't sell)",
-		Values = eggNames,
-		Value = {},
-		Multi = true,
-		AllowNone = true,
-		Callback = function(selection)
-			eggsToKeep = selection or {}
 			updateStatus()
 		end
 	})
