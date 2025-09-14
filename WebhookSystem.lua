@@ -1,716 +1,1086 @@
--- AutoSellSystem.lua - Auto Sell functionality for Build A Zoo
--- Scans PlayerGui.Data.Pets for unplaced pets (no "D" attribute) and sells them via PetRE
+-- WebhookSystem.lua
+-- Discord Webhook Integration for Build A Zoo
 
-local AutoSellSystem = {}
+local WebhookSystem = {}
+
+-- Dependencies (injected from main script)
+local WindUI
+local Window
+local Config
+local Tab
+
+-- State variables
+local webhookUrl = ""
+local autoAlertEnabled = false
+local autoAlertThread = nil
+
+-- Session tracking
+local sessionStats = {
+    tradesCompleted = 0,
+    desiredEggsFound = 0,
+    desiredPetsFound = 0,
+    desiredFruitsFound = 0,
+    sessionStart = os.time()
+}
+
+-- Trade tracking
+local tradeTracking = {
+    isMonitoring = false,
+    currentTrade = nil,
+    tradeConnection = nil,
+    sessionTradeCount = 0,
+    maxSessionTrades = 10
+}
+
+-- Prevent duplicate session summaries
+local sessionSummarySent = false
 
 -- Services
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
 
--- Config modules for speed calculation
-local ResPet, ResMutate, ResBigPet, ResBigFish
-pcall(function()
-	local Config = ReplicatedStorage:WaitForChild("Config", 5)
-	if Config then
-		ResPet = require(Config:WaitForChild("ResPet"))
-		ResMutate = require(Config:WaitForChild("ResMutate"))
-		ResBigPet = require(Config:WaitForChild("ResBigPetScale"))
-		ResBigFish = require(Config:WaitForChild("ResBigFishScale"))
-	end
-end)
+-- One-time announcements to prevent spam
+local dinoWorldAnnounced = false
+local cerberusAnnounced = false
 
--- Dependencies (injected via Init)
-local WindUI, Tabs, MainTab, Config
-
--- Remotes (cached)
-local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
-local PetRE = Remotes and Remotes:FindFirstChild("PetRE")
-
--- Hardcoded Egg Data for selection
-local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
-    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
-    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
-    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
-    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 }
-}
-
--- Hardcoded Mutation Data for selection
-local MutationData = {
-    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
-    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electric = { Name = "Electric", Icon = "⚡", Rarity = 50 },
-    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
-}
-
--- State
-local autoSellEnabled = false
-local autoSellThread = nil
-local sellMode = "Pets Only" -- "Pets Only", "Eggs Only", "Both Pets & Eggs"
-local speedThreshold = 0 -- 0 = disabled, >0 = minimum speed required
-local sessionLimit = 0 -- 0 = unlimited
-local sessionSold = 0
-local eggsToKeep = {} -- Table of egg names to keep (don't sell)
-local mutationsToKeep = {} -- Table of mutation names to keep (don't sell)
-
--- UI refs
-local statusParagraph
-local mutationKeepDropdown
-local sellModeDropdown
-local speedThresholdInput
-local autoSellToggle
-local sessionLimitInput
-local eggKeepDropdown
-
--- Helpers
-local function getPetContainer()
-	local localPlayer = Players.LocalPlayer
-	local pg = localPlayer and localPlayer:FindFirstChild("PlayerGui")
-	local data = pg and pg:FindFirstChild("Data")
-	return data and data:FindFirstChild("Pets") or nil
+-- Helper function to format numbers
+local function formatNumber(num)
+    if type(num) == "string" then
+        num = tonumber(num) or 0
+    end
+    
+    if num >= 1e12 then
+        return string.format("%.2fT", num / 1e12)
+    elseif num >= 1e9 then
+        return string.format("%.2fB", num / 1e9)
+    elseif num >= 1e6 then
+        return string.format("%.2fM", num / 1e6)
+    elseif num >= 1e3 then
+        return string.format("%.2fK", num / 1e3)
+    else
+        return tostring(math.floor(num))
+    end
 end
 
-local function getEggContainer()
-	local localPlayer = Players.LocalPlayer
-	local pg = localPlayer and localPlayer:FindFirstChild("PlayerGui")
-	local data = pg and pg:FindFirstChild("Data")
-	return data and data:FindFirstChild("Egg") or nil
+-- Helper function to get player net worth
+local function getPlayerNetWorth()
+    if not LocalPlayer then return 0 end
+    local attrValue = LocalPlayer:GetAttribute("NetWorth")
+    if type(attrValue) == "number" then return attrValue end
+    if type(attrValue) == "string" then return tonumber(attrValue) or 0 end
+    return 0
 end
 
-local function isUnplacedPet(petNode)
-	if not petNode then return false end
-	local d = petNode:GetAttribute("D")
-	return d == nil or tostring(d) == ""
+-- Helper function to get player tickets
+local function getPlayerTickets()
+    if not LocalPlayer then return 0 end
+    local attrValue = LocalPlayer:GetAttribute("Ticket")
+    if type(attrValue) == "number" then return attrValue end
+    if type(attrValue) == "string" then return tonumber(attrValue) or 0 end
+    return 0
 end
 
-local function isAvailableEgg(eggNode)
-	if not eggNode then return false end
-	-- Eggs are available if they have no children (not being hatched) AND no "D" attribute
-	local d = eggNode:GetAttribute("D")
-	local hasChildren = #eggNode:GetChildren() > 0
-	return (d == nil or tostring(d) == "") and not hasChildren
+-- Function to get fruit inventory (based on FeedFruitSelection.lua)
+local function getFruitInventory()
+    local fruits = {}
+    
+    if not LocalPlayer then return fruits end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return fruits end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return fruits end
+    
+    local asset = data:FindFirstChild("Asset")
+    if not asset then return fruits end
+    
+    -- Hardcoded fruit data for mapping (from FeedFruitSelection.lua)
+    local FruitData = {
+        Strawberry = { Name = "Strawberry" },
+        Blueberry = { Name = "Blueberry" },
+        Watermelon = { Name = "Watermelon" },
+        Apple = { Name = "Apple" },
+        Orange = { Name = "Orange" },
+        Corn = { Name = "Corn" },
+        Banana = { Name = "Banana" },
+        Grape = { Name = "Grape" },
+        Pear = { Name = "Pear" },
+        Pineapple = { Name = "Pineapple" },
+        GoldMango = { Name = "Gold Mango" },
+        BloodstoneCycad = { Name = "Bloodstone Cycad" },
+        ColossalPinecone = { Name = "Colossal Pinecone" },
+        VoltGinkgo = { Name = "Volt Ginkgo" },
+        DeepseaPearlFruit = { Name = "DeepseaPearlFruit" }
+    }
+    
+    -- Name normalization helper
+    local function normalizeFruitName(name)
+        if type(name) ~= "string" then return "" end
+        local lowered = string.lower(name)
+        lowered = lowered:gsub("[%s_%-%./]", "")
+        return lowered
+    end
+    
+    -- Build canonical name map
+    local FRUIT_CANONICAL = {}
+    for id, item in pairs(FruitData) do
+        local display = item.Name or id
+        FRUIT_CANONICAL[normalizeFruitName(id)] = display
+        FRUIT_CANONICAL[normalizeFruitName(display)] = display
+    end
+    
+    -- Read from Attributes on Asset (primary source)
+    local attrMap = {}
+    local ok, attrs = pcall(function()
+        return asset:GetAttributes()
+    end)
+    if ok and type(attrs) == "table" then
+        attrMap = attrs
+    end
+    
+    for id, item in pairs(FruitData) do
+        local display = item.Name or id
+        local amount = attrMap[display] or attrMap[id]
+        if amount == nil then
+            -- Fallback by normalized key search
+            local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
+            for k, v in pairs(attrMap) do
+                local nk = normalizeFruitName(k)
+                if nk == wantA or nk == wantB then
+                    amount = v
+                    break
+                end
+            end
+        end
+        if type(amount) == "string" then amount = tonumber(amount) or 0 end
+        if type(amount) == "number" and amount > 0 then
+            fruits[display] = amount
+        end
+    end
+    
+    -- Also support legacy children-based values as fallback/merge
+    for _, child in pairs(asset:GetChildren()) do
+        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+            local normalized = normalizeFruitName(child.Name)
+            local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
+            if canonical then
+                local amount = child.Value
+                if type(amount) == "string" then amount = tonumber(amount) or 0 end
+                if type(amount) == "number" and amount > 0 then
+                    fruits[canonical] = amount
+                end
+            end
+        end
+    end
+    
+    return fruits
 end
 
-local function isMutated(node)
-	if not node then return false end
-	local m = node:GetAttribute("M")
-	return m ~= nil and tostring(m) ~= ""
+-- Function to get pet inventory (only pets without D attribute - unplaced pets)
+local function getPetInventory()
+    local pets = {}
+    
+    if not LocalPlayer then return pets end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return pets end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return pets end
+    
+    local petContainer = data:FindFirstChild("Pets")
+    if not petContainer then return pets end
+    
+    for _, child in ipairs(petContainer:GetChildren()) do
+        -- Scan ALL Configuration objects
+        if child:IsA("Configuration") then
+            local dAttr = child:GetAttribute("D")
+            local petType = child:GetAttribute("T")
+            local mutation = child:GetAttribute("M")
+            
+            -- Only count pets WITHOUT D attribute (unplaced pets)
+            if not dAttr and petType then
+                -- Handle Dino -> Jurassic conversion
+                if mutation == "Dino" then
+                    mutation = "Jurassic"
+                end
+                
+                if not pets[petType] then
+                    pets[petType] = {
+                        total = 0,
+                        mutations = {}
+                    }
+                end
+                
+                pets[petType].total = pets[petType].total + 1
+                
+                if mutation then
+                    if not pets[petType].mutations[mutation] then
+                        pets[petType].mutations[mutation] = 0
+                    end
+                    pets[petType].mutations[mutation] = pets[petType].mutations[mutation] + 1
+                end
+            end
+        end
+    end
+    
+    return pets
 end
 
-local function getMutationType(node)
-	if not node then return nil end
-	local m = node:GetAttribute("M")
-	if not m or tostring(m) == "" then return nil end
-	
-	-- Try to match mutation type with our MutationData
-	for key, data in pairs(MutationData) do
-		if tostring(m) == key or tostring(m) == data.Name then
-			return data.Name
-		end
-	end
-	
-	-- Return the raw mutation value if not found in our data
-	return tostring(m)
+-- Function to get egg inventory (only eggs without D attribute - unhatched eggs)
+local function getEggInventory()
+    local eggs = {}
+    
+    if not LocalPlayer then return eggs end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return eggs end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return eggs end
+    
+    local eggContainer = data:FindFirstChild("Egg")
+    if not eggContainer then return eggs end
+    
+    for _, child in ipairs(eggContainer:GetChildren()) do
+        -- Scan ALL Configuration objects
+        if child:IsA("Configuration") then
+            local dAttr = child:GetAttribute("D")
+            local eggType = child:GetAttribute("T")
+            local mutation = child:GetAttribute("M")
+            
+            -- Only count eggs WITHOUT D attribute (unhatched eggs)
+            if not dAttr and eggType then
+                -- Handle Dino -> Jurassic conversion
+                if mutation == "Dino" then
+                    mutation = "Jurassic"
+                end
+                
+                if not eggs[eggType] then
+                    eggs[eggType] = {
+                        total = 0,
+                        mutations = {}
+                    }
+                end
+                
+                eggs[eggType].total = eggs[eggType].total + 1
+                
+                if mutation then
+                    if not eggs[eggType].mutations[mutation] then
+                        eggs[eggType].mutations[mutation] = 0
+                    end
+                    eggs[eggType].mutations[mutation] = eggs[eggType].mutations[mutation] + 1
+                end
+            end
+        end
+    end
+    
+    return eggs
 end
 
-local function shouldKeepMutation(node)
-	if not node then return false end
-	
-	local mutationType = getMutationType(node)
-	if not mutationType then return false end -- No mutation
-	
-	-- Check if this mutation type is in the keep list
-	for _, keepMutationName in pairs(mutationsToKeep) do
-		if keepMutationName == mutationType then
-			return true
-		end
-	end
-	
-	return false -- Not in keep list
+-- Function to create inventory embed
+local function createInventoryEmbed()
+    local netWorth = getPlayerNetWorth()
+    local tickets = getPlayerTickets()
+    local username = LocalPlayer and LocalPlayer.Name or "Unknown"
+    
+    -- Get inventories
+    local fruits = getFruitInventory()
+    local pets = getPetInventory()
+    local eggs = getEggInventory()
+    
+    -- Build fruit field
+    local fruitValue = ""
+    local fruitCount = 0
+    local fruitLines = {}
+    local currentLine = ""
+    
+    -- Fruit emojis mapping (using provided format)
+    local fruitEmojis = {
+        Apple = "<:Apple:1414278364042232040>",
+        Banana = "<:Banana:1414278394849267823>",
+        Blueberry = "<:Blueberry:1414278423119007744>",
+        Watermelon = "<:Watermelon:1414278523903803402>",
+        Strawberry = "<:Strawberry:1414278519382605874>",
+        Orange = "<:Orange:1414278509769261219>",
+        Corn = "<:Corn:1414278452315684954>",
+        Pear = "<:Pear:1414278513632219256>",
+        Pineapple = "<:Pineapple:1414278517302100008>",
+        Grape = "<:Grape:1414278507005083849>",
+        ["Gold Mango"] = "<:GoldMango:1414278503440060516>",
+        GoldMango = "<:GoldMango:1414278503440060516>",
+        ["Bloodstone Cycad"] = "<:BloodstoneCycad:1414278408988528725>",
+        BloodstoneCycad = "<:BloodstoneCycad:1414278408988528725>",
+        ["Colossal Pinecone"] = "<:ColossalPinecone:1414278437052616865>",
+        ColossalPinecone = "<:ColossalPinecone:1414278437052616865>",
+        ["Volt Ginkgo"] = "<:VoltGinkgo:1414278521681088543>",
+        VoltGinkgo = "<:VoltGinkgo:1414278521681088543>",
+        DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>"
+    }
+    
+    -- Sort fruits for consistent display
+    local sortedFruits = {}
+    for fruitName, count in pairs(fruits) do
+        table.insert(sortedFruits, {name = fruitName, count = count})
+    end
+    table.sort(sortedFruits, function(a, b) return a.count > b.count end)
+    
+    local itemsInCurrentLine = 0
+    
+    for _, fruitData in ipairs(sortedFruits) do
+        local fruitName = fruitData.name
+        local count = fruitData.count
+        local emoji = fruitEmojis[fruitName] or "🍎"
+        local fruitText = emoji .. " `" .. count .. "`"
+        
+        -- Add to current line
+        if currentLine ~= "" then
+            currentLine = currentLine .. "  "
+        end
+        currentLine = currentLine .. fruitText
+        itemsInCurrentLine = itemsInCurrentLine + 1
+        
+        -- Break line every 5 fruits
+        if itemsInCurrentLine == 5 then
+            table.insert(fruitLines, currentLine)
+            currentLine = ""
+            itemsInCurrentLine = 0
+            
+            -- Add empty line after every 2 rows (10 fruits total)
+            if #fruitLines % 2 == 0 and fruitCount + 1 < #sortedFruits then
+                table.insert(fruitLines, "")
+            end
+        end
+        
+        fruitCount = fruitCount + 1
+    end
+    
+    if currentLine ~= "" then
+        table.insert(fruitLines, currentLine)
+    end
+    
+    fruitValue = table.concat(fruitLines, "\n")
+    if fruitValue == "" then fruitValue = "No fruits found" end
+    
+    -- Build pet field (top 5 sorted, with top 5 mutations)
+    local petValue = "```diff\n"
+    local petArr = {}
+    for petType, petData in pairs(pets) do
+        table.insert(petArr, { name = petType, total = petData.total or 0, mutations = petData.mutations or {} })
+    end
+    table.sort(petArr, function(a, b)
+        if a.total ~= b.total then return a.total > b.total end
+        return (a.name or "") < (b.name or "")
+    end)
+    local pLimit = math.min(5, #petArr)
+    for i = 1, pLimit do
+        local it = petArr[i]
+        petValue = petValue .. "🐾 " .. it.name .. " × " .. tostring(it.total or 0) .. "\n"
+        local mutsArr = {}
+        for m, c in pairs(it.mutations or {}) do table.insert(mutsArr, { m = m, c = c }) end
+        table.sort(mutsArr, function(a, b)
+            if a.c ~= b.c then return a.c > b.c end
+            return (a.m or "") < (b.m or "")
+        end)
+        local mLimit = math.min(5, #mutsArr)
+        for j = 1, mLimit do
+            local mutation = mutsArr[j].m
+            local count = mutsArr[j].c
+            local mutationIcon = "🧬"
+            if mutation == "Fire" then mutationIcon = "🔥" elseif mutation == "Electric" then mutationIcon = "⚡" end
+            petValue = petValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
+        end
+        if i < pLimit then petValue = petValue .. "\n" end
+    end
+    if pLimit == 0 then
+        petValue = "```diff\nNo pets found```"
+    else
+        petValue = petValue .. "```"
+    end
+    
+    -- Build egg field (top 5 like pets list)
+    local eggValue = "```diff\n"
+    local eggArr = {}
+    for eggType, eggData in pairs(eggs) do
+        table.insert(eggArr, { name = eggType, total = eggData.total or 0, mutations = eggData.mutations or {} })
+    end
+    table.sort(eggArr, function(a, b)
+        if a.total ~= b.total then return a.total > b.total end
+        return (a.name or "") < (b.name or "")
+    end)
+    local limit = math.min(5, #eggArr)
+    for i = 1, limit do
+        local it = eggArr[i]
+        eggValue = eggValue .. "🏆 " .. it.name .. " × " .. tostring(it.total or 0) .. "\n"
+        -- sort mutations by count desc then name
+        local mutsArr = {}
+        for m, c in pairs(it.mutations or {}) do table.insert(mutsArr, { m = m, c = c }) end
+        table.sort(mutsArr, function(a, b)
+            if a.c ~= b.c then return a.c > b.c end
+            return (a.m or "") < (b.m or "")
+        end)
+        local mLimit = math.min(5, #mutsArr)
+        for j = 1, mLimit do
+            local mutation = mutsArr[j].m
+            local count = mutsArr[j].c
+            local mutationIcon = "🧬"
+            if mutation == "Fire" then mutationIcon = "🔥" elseif mutation == "Electric" then mutationIcon = "⚡" end
+            eggValue = eggValue .. "L " .. mutationIcon .. " " .. mutation .. " × " .. count .. "\n"
+        end
+        if i < limit then eggValue = eggValue .. "\n" end
+    end
+    if limit == 0 then
+        eggValue = "```diff\nNo eggs found```"
+    else
+        eggValue = eggValue .. "```"
+    end
+    
+    -- Create embed
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "📊 Inventory Snapshot",
+                color = 16761095,
+                fields = {
+                    {
+                        name = "User: " .. username,
+                        value = "💰 Net Worth:  `" .. formatNumber(netWorth) .. "`\n<:Ticket:1414283452659798167> Ticket: `" .. formatNumber(tickets) .. "`"
+                    },
+                    {
+                        name = "🪣 Fruits",
+                        value = fruitValue,
+                    },
+                    {
+                        name = "🐾 Pets",
+                        value = petValue,
+                        inline = true
+                    },
+                    {
+                        name = "🥚 Top Eggs",
+                        value = eggValue,
+                        inline = true
+                    }
+                },
+                footer = {
+                    text = "Generated • Build A Zoo"
+                }
+            }
+        },
+        attachments = {}
+    }
+    
+    return embed
 end
 
-local function getEggType(eggNode)
-	if not eggNode then return nil end
-	-- Try to get egg type from attributes
-	local eggType = eggNode:GetAttribute("Type") or eggNode:GetAttribute("T")
-	if eggType and EggData[eggType] then
-		return EggData[eggType].Name
-	end
-	
-	-- Fallback: try to match by name pattern or other attributes
-	for key, data in pairs(EggData) do
-		if eggNode.Name:find(key) or eggNode.Name:find(data.Name) then
-			return data.Name
-		end
-	end
-	
-	return nil
+-- Function to send webhook
+local function sendWebhook(embedData)
+    
+    if not webhookUrl or webhookUrl == "" then
+        WindUI:Notify({
+            Title = "Webhook Error",
+            Content = "No webhook URL configured - Please enter your Discord webhook URL first",
+            Duration = 5
+        })
+        return false
+    end
+    
+    
+    -- Try different methods to send HTTP request
+    local success, result = false, "No method available"
+    
+    -- Method 1: Try HttpService (works in Studio/some executors)
+    if not success then
+        success, result = pcall(function()
+            return game:GetService("HttpService"):PostAsync(webhookUrl, game:GetService("HttpService"):JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
+        end)
+    end
+    
+    -- Method 2: Try request function (common in executors)
+    if not success and _G.request then
+        success, result = pcall(function()
+            return _G.request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = game:GetService("HttpService"):JSONEncode(embedData)
+            })
+        end)
+    end
+    
+    -- Method 3: Try syn.request (Synapse X)
+    if not success and syn and syn.request then
+        success, result = pcall(function()
+            return syn.request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = game:GetService("HttpService"):JSONEncode(embedData)
+            })
+        end)
+    end
+    
+    -- Method 4: Try http_request (common executor function)
+    if not success and http_request then
+        success, result = pcall(function()
+            local response = http_request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = game:GetService("HttpService"):JSONEncode(embedData)
+            })
+            return response
+        end)
+        if success and result then
+            -- Consider 200-299 status codes as success
+            if result.StatusCode and result.StatusCode >= 200 and result.StatusCode < 300 then
+                success = true
+            else
+                success = false
+                result = "HTTP Error: " .. (result.StatusCode or "unknown status")
+            end
+        else
+        end
+    end
+    
+    
+    if success then
+        WindUI:Notify({
+            Title = "Webhook Sent",
+            Content = "Message sent to Discord successfully! 🎉",
+            Duration = 3
+        })
+        return true
+    else
+        WindUI:Notify({
+            Title = "Webhook Failed",
+            Content = "Failed to send: " .. tostring(result),
+            Duration = 5
+        })
+        return false
+    end
 end
 
-local function shouldKeepEgg(eggNode)
-	if not eggNode then return false end
-	
-	-- Get egg type
-	local eggType = getEggType(eggNode)
-	local mutated = isMutated(eggNode)
-	
-	-- Logic priority:
-	-- 1. If egg type is in keep list AND (no mutation OR mutation is in keep list) → KEEP
-	-- 2. If egg type is not in keep list BUT mutation is in keep list → KEEP  
-	-- 3. Otherwise → SELL
-	
-	local keepForEggType = false
-	local keepForMutation = false
-	
-	-- Check egg type
-	if eggType then
-		for _, keepEggName in pairs(eggsToKeep) do
-			if keepEggName == eggType then
-				keepForEggType = true
-				break
-			end
-		end
-	end
-	
-	-- Check mutation type
-	if mutated then
-		keepForMutation = shouldKeepMutation(eggNode)
-	end
-	
-	-- Decision logic
-	if keepForEggType and not mutated then
-		-- Keep: Egg type is selected and no mutation
-		return true
-	elseif keepForEggType and mutated and keepForMutation then
-		-- Keep: Egg type is selected AND mutation is selected
-		return true
-	elseif not keepForEggType and mutated and keepForMutation then
-		-- Keep: Egg type not selected BUT mutation is selected
-		return true
-	else
-		-- Sell: All other cases
-		return false
-	end
+-- Function to send inventory
+local function sendInventory()
+    local embedData = createInventoryEmbed()
+    sendWebhook(embedData)
 end
 
-local function sellPetByUid(petUid)
-	if not PetRE then return false end
-	local ok = pcall(function()
-		PetRE:FireServer("Sell", petUid)
-	end)
-	return ok == true
-end
-
-local function sellEggByUid(eggUid)
-	-- Use PetRE with correct parameters for egg selling
-	if not PetRE then return false end
-	local ok = pcall(function()
-		local args = {
-			"Sell",
-			eggUid,
-			true -- Third parameter indicates it's an egg
-		}
-		PetRE:FireServer(unpack(args))
-	end)
-	return ok == true
-end
-
--- Speed calculation functions (based on user's formula)
-local function getBigLevel(exp, typ)
-	if not ResBigPet or not ResBigFish then return 0, nil end
-	local tbl = (typ == "Fish") and ResBigFish or ResBigPet
-	if not tbl or not tbl.__index then return 0, nil end
-	
-	local stage, def = 0, nil
-	for _, idx in pairs(tbl.__index) do
-		local row = tbl[idx]
-		if row and row.EXP and row.EXP <= exp then
-			stage, def = idx, row
-		else
-			break
-		end
-	end
-	return stage, def
-end
-
-local function calculateNormalPetSpeed(def, attrs, benefitMax, externalMult)
-	if not def or not attrs then return 0 end
-	
-	local base = tonumber(def.ProduceRate) or 0
-	local v = tonumber(attrs.V) or 0 -- 0..10000
-	local grow = ((benefitMax - 1) * ((v * 1e-4) ^ 2.24) + 1)
-	
-	local mut = 1
-	local M = attrs.M
-	if M and ResMutate and ResMutate[M] and ResMutate[M].ProduceRate then
-		mut = ResMutate[M].ProduceRate
-	end
-	
-	externalMult = externalMult or 1
-	local final = math.floor(base * grow * mut * externalMult + 1e-9)
-	return final
-end
-
-local function calculateBigPetSpeed(petNode, attrs)
-	if not petNode or not attrs then return 0 end
-	
-	local _, def = getBigLevel(tonumber(attrs.BPV) or 0, attrs.BPT or "Normal")
-	if not def then return 0 end
-	
-	local base = tonumber(def.Produce) or 0
-	local bigRate = 1
-	
-	-- Find MT_* attributes and get highest BigRate
-	for name, _ in pairs(petNode:GetAttributes()) do
-		if string.sub(name, 1, 3) == "MT_" then
-			local id = string.split(name, "_")[2]
-			if ResMutate and ResMutate[id] and ResMutate[id].BigRate then
-				bigRate = math.max(bigRate, ResMutate[id].BigRate)
-			end
-		end
-	end
-	
-	-- Big pets don't floor and don't multiply by v71
-	local final = base * bigRate
-	return final
-end
-
-local function getPetSpeed(petNode)
-	if not petNode then return 0 end
-	-- Prefer real value from UI using the pet UID
-	local uid = petNode.Name
-	local lp = Players.LocalPlayer
-	local pg = lp and lp:FindFirstChild("PlayerGui")
-	local ss = pg and pg:FindFirstChild("ScreenStorage")
-	local frame = ss and ss:FindFirstChild("Frame")
-	local content = frame and frame:FindFirstChild("ContentPet")
-	local scroll = content and content:FindFirstChild("ScrollingFrame")
-	local item = scroll and scroll:FindFirstChild(uid)
-	local btn = item and item:FindFirstChild("BTN")
-	local stat = btn and btn:FindFirstChild("Stat")
-	local price = stat and stat:FindFirstChild("Price")
-	local valueLabel = price and price:FindFirstChild("Value")
-	local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
-	if not txt and price and price:IsA("TextLabel") then
-		txt = price.Text
-	end
-	if txt then
-		local n = tonumber((txt:gsub("[^%d]", ""))) or 0
-		return n
-	end
-	return 0
-end
-
--- Helper function to parse speed threshold with K/M/B/T suffixes
-local function parseSpeedThreshold(text)
-	if not text or type(text) ~= "string" then return 0 end
-	
-	local cleanText = text:gsub("[$€£¥₹/s,]", ""):gsub("^%s*(.-)%s*$", "%1")
-	local number, suffix = cleanText:match("^([%d%.]+)([KkMmBbTt]?)$")
-	
-	if not number then
-		number = cleanText:match("([%d%.]+)")
-	end
-	
-	local numValue = tonumber(number)
-	if not numValue then return 0 end
-	
-	if suffix then
-		local lowerSuffix = string.lower(suffix)
-		if lowerSuffix == "k" then
-			numValue = numValue * 1000
-		elseif lowerSuffix == "m" then
-			numValue = numValue * 1000000
-		elseif lowerSuffix == "b" then
-			numValue = numValue * 1000000000
-		elseif lowerSuffix == "t" then
-			numValue = numValue * 1000000000000
-		end
-	end
-	
-	return numValue
-end
-
--- Status
-local sellStats = {
-	totalSold = 0,
-	petsSold = 0,
-	eggsSold = 0,
-	lastAction = "Idle",
-	lastSold = nil,
-	skippedMutations = 0,
-	skippedSpeed = 0,
-	skippedKeepEggs = 0,
-	scannedPets = 0,
-	scannedEggs = 0,
-}
-
-local function updateStatus()
-	if not statusParagraph then return end
-	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
-	local speedText = speedThreshold > 0 and ("Sell if speed≤" .. tostring(speedThreshold) .. " | ") or ""
-	local eggKeepText = (#eggsToKeep > 0) and ("Keep: " .. #eggsToKeep .. " eggs | ") or ""
-	local mutationKeepText = (#mutationsToKeep > 0) and ("Keep: " .. #mutationsToKeep .. " mutations | ") or ""
-	local desc = string.format(
-		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d K: %d | %s%s%sMode: %s\nSession: %d/%s%s",
-		sellStats.totalSold,
-		sellStats.petsSold,
-		sellStats.eggsSold,
-		totalScanned,
-		sellStats.skippedMutations,
-		sellStats.skippedSpeed,
-		sellStats.skippedKeepEggs,
-		eggKeepText,
-		mutationKeepText,
-		speedText,
-		sellMode,
-		sessionSold,
-		tostring(sessionLimit == 0 and "∞" or sessionLimit),
-		sellStats.lastAction and ("\n" .. sellStats.lastAction) or ""
-	)
-	if statusParagraph.SetDesc then
-		statusParagraph:SetDesc(desc)
-	end
-end
-
-local function scanAndSell()
-	sellStats.scannedPets = 0
-	sellStats.scannedEggs = 0
-	sellStats.skippedMutations = 0
-	sellStats.skippedSpeed = 0
-	sellStats.skippedKeepEggs = 0
-
-	-- Scan pets if mode allows
-	if sellMode == "Pets Only" or sellMode == "Both Pets & Eggs" then
-		local pets = getPetContainer()
-		if not pets then
-			sellStats.lastAction = "Waiting for PlayerGui.Data.Pets"
-			updateStatus()
-			return
-		end
-
-		for _, node in ipairs(pets:GetChildren()) do
-		if not autoSellEnabled then return end
-		if sessionLimit > 0 and sessionSold >= sessionLimit then
-			sellStats.lastAction = "Session limit reached"
-			updateStatus()
-			if autoSellToggle and autoSellToggle.SetValue then
-				autoSellToggle:SetValue(false)
-			else
-				autoSellEnabled = false
-			end
-			return
-		end
-		sellStats.scannedPets += 1
-
-				local uid = node.Name
-				local unplaced = isUnplacedPet(node)
-				if unplaced then
-					local mutated = isMutated(node)
-					if mutated and shouldKeepMutation(node) then
-						sellStats.skippedMutations += 1
-						local mutationType = getMutationType(node) or "Unknown"
-						sellStats.lastAction = "Kept " .. mutationType .. " pet " .. uid
-						updateStatus()
-						continue
-					end
-
-					-- Check speed threshold if enabled
-					if speedThreshold > 0 then
-						local petSpeed = getPetSpeed(node)
-						-- We SELL if speed ≤ threshold. Skip if above threshold.
-						if petSpeed > speedThreshold then
-							sellStats.skippedSpeed += 1
-							sellStats.lastAction = "Skipped fast pet " .. uid .. " (speed: " .. tostring(petSpeed) .. ")"
-							updateStatus()
-							continue
-						end
-					end
-
-			local ok = sellPetByUid(uid)
-			if ok then
-				sellStats.totalSold += 1
-				sellStats.petsSold += 1
-				sessionSold += 1
-				sellStats.lastSold = uid
-				sellStats.lastAction = "✅ Sold pet " .. uid
-				if WindUI then
-					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Sold pet " .. uid, Duration = 2 })
-				end
-			else
-				sellStats.lastAction = "❌ Failed selling " .. uid
-			end
-			updateStatus()
-			task.wait(0.15)
-
-			-- Stop immediately if session limit reached after this sale
-			if sessionLimit > 0 and sessionSold >= sessionLimit then
-				if WindUI then
-					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Session limit reached (" .. tostring(sessionSold) .. "/" .. tostring(sessionLimit) .. ")", Duration = 3 })
-				end
-				if autoSellToggle and autoSellToggle.SetValue then
-					autoSellToggle:SetValue(false)
-				else
-					autoSellEnabled = false
-				end
-				return
-			end
-		end
-	end
-	end
-
-	-- Scan eggs if mode allows
-	if sellMode == "Eggs Only" or sellMode == "Both Pets & Eggs" then
-		local eggs = getEggContainer()
-		if eggs then
-			for _, node in ipairs(eggs:GetChildren()) do
-				if not autoSellEnabled then return end
-				if sessionLimit > 0 and sessionSold >= sessionLimit then
-					sellStats.lastAction = "Session limit reached"
-					updateStatus()
-					if autoSellToggle and autoSellToggle.SetValue then
-						autoSellToggle:SetValue(false)
-					else
-						autoSellEnabled = false
-					end
-					return
-				end
-				sellStats.scannedEggs += 1
-
-				local uid = node.Name
-				local available = isAvailableEgg(node)
-				if available then
-					-- Check if we should keep this egg (based on type and mutation settings)
-					if shouldKeepEgg(node) then
-						sellStats.skippedKeepEggs += 1
-						local eggType = getEggType(node) or "Unknown"
-						sellStats.lastAction = "Kept " .. eggType .. " egg " .. uid
-						updateStatus()
-						continue
-					end
-
-					local ok = sellEggByUid(uid)
-					if ok then
-						sellStats.totalSold += 1
-						sellStats.eggsSold += 1
-						sessionSold += 1
-						sellStats.lastSold = uid
-						sellStats.lastAction = "✅ Sold egg " .. uid
-						if WindUI then
-							WindUI:Notify({ Title = "💸 Auto Sell", Content = "Sold egg " .. uid, Duration = 2 })
-						end
-					else
-						sellStats.lastAction = "❌ Failed selling egg " .. uid
-					end
-					updateStatus()
-					-- slower for eggs
-					task.wait(0.4)
-
-					-- Check session limit
-					if sessionLimit > 0 and sessionSold >= sessionLimit then
-						if WindUI then
-							WindUI:Notify({ Title = "💸 Auto Sell", Content = "Session limit reached (" .. tostring(sessionSold) .. "/" .. tostring(sessionLimit) .. ")", Duration = 3 })
-						end
-						if autoSellToggle and autoSellToggle.SetValue then
-							autoSellToggle:SetValue(false)
-						else
-							autoSellEnabled = false
-						end
-						return
-					end
-				end
-			end
-		end
-	end
-
-	sellStats.lastAction = "Scan complete"
-	updateStatus()
-end
-
-local function runAutoSell()
-	while autoSellEnabled do
-		local ok, err = pcall(function()
-			scanAndSell()
+-- Helper: notify locally and optionally send webhook alert
+local function notifyAndAlert(title, content)
+	-- Local notification
+	if WindUI and WindUI.Notify then
+		pcall(function()
+			WindUI:Notify({ Title = title, Content = content, Duration = 4 })
 		end)
-		if not ok then
-			sellStats.lastAction = "Error: " .. tostring(err)
-			updateStatus()
-			task.wait(1)
-		else
-			-- Short idle before next pass
-			task.wait(1.0)
-		end
+	end
+	-- Webhook alert (only if enabled and URL set)
+	if autoAlertEnabled then
+		sendAlert(title, content)
 	end
 end
 
--- UI
-function AutoSellSystem.CreateUI()
-	-- Create Auto Sell section in MainTab
-	MainTab:Section({ Title = "Auto Sell Pets", Icon = "dollar-sign" })
+-- Monitor GameFlag for Base_DinoWorld unlock (value == 1)
+local function setupDinoWorldMonitor()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	local gameFlag = data and data:FindFirstChild("GameFlag")
 
-	sellModeDropdown = MainTab:Dropdown({
-		Title = "🎯 Sell Mode",
-		Desc = "What to sell",
-		Values = { "Pets Only", "Eggs Only", "Both Pets & Eggs" },
-		Value = "Pets Only",
-		Multi = false,
-		AllowNone = false,
-		Callback = function(selection)
-			if type(selection) == "table" then selection = selection[1] end
-			sellMode = selection or "Pets Only"
-			updateStatus()
-		end
-	})
-
-	-- Create egg selection dropdown (show right after sell mode)
-	local eggNames = {}
-	for _, data in pairs(EggData) do
-		table.insert(eggNames, data.Name)
-	end
-	table.sort(eggNames) -- Sort alphabetically
-
-	eggKeepDropdown = MainTab:Dropdown({
-		Title = "🥚 Eggs to Keep",
-		Desc = "Select eggs to keep (don't sell)",
-		Values = eggNames,
-		Value = {},
-		Multi = true,
-		AllowNone = true,
-		Callback = function(selection)
-			eggsToKeep = selection or {}
-			updateStatus()
-		end
-	})
-
-	-- Create mutation selection dropdown
-	local mutationNames = {}
-	for _, data in pairs(MutationData) do
-		table.insert(mutationNames, data.Icon .. " " .. data.Name)
-	end
-	table.sort(mutationNames) -- Sort alphabetically
-
-	mutationKeepDropdown = MainTab:Dropdown({
-		Title = "🧬 Mutations to Keep",
-		Desc = "Select mutations to keep (don't sell)",
-		Values = mutationNames,
-		Value = {},
-		Multi = true,
-		AllowNone = true,
-		Callback = function(selection)
-			-- Convert display names back to mutation names
-			mutationsToKeep = {}
-			if selection then
-				for _, displayName in pairs(selection) do
-					-- Extract mutation name from "Icon Name" format
-					local mutationName = displayName:match("^.+ (.+)$") or displayName
-					table.insert(mutationsToKeep, mutationName)
+	local function checkDinoWorld()
+		if dinoWorldAnnounced then return end
+		local val = nil
+		if gameFlag then
+			-- Prefer attribute; fallback to child ValueBase
+			val = gameFlag:GetAttribute("Base_DinoWorld")
+			if val == nil then
+				local child = gameFlag:FindFirstChild("Base_DinoWorld")
+				if child and child.Value ~= nil then
+					local v = child.Value
+					if type(v) == "string" then v = tonumber(v) or 0 end
+					val = v
 				end
 			end
-			updateStatus()
 		end
-	})
-
-	speedThresholdInput = MainTab:Input({
-		Title = "⚡ Speed Threshold",
-		Desc = "Sell if speed ≤ value",
-		Value = "0",
-		Callback = function(value)
-			local parsedValue = parseSpeedThreshold(value)
-			speedThreshold = parsedValue
-			updateStatus()
+		if type(val) == "string" then val = tonumber(val) or 0 end
+		if type(val) == "number" and val >= 1 then
+			dinoWorldAnnounced = true
+			notifyAndAlert("🦕 Dino World Unlocked", "You got Dino World!")
 		end
-	})
+	end
 
-	sessionLimitInput = MainTab:Input({
-		Title = "Session Sell Limit",
-		Desc = "Max sells this session",
-		Value = "0",
-		Callback = function(value)
-			local n = tonumber(value)
-			if not n then
-				local cleaned = tostring(value):gsub("[^%d%.]", "")
-				n = tonumber(cleaned) or 0
+	-- Initial check
+	pcall(checkDinoWorld)
+
+	-- Attribute change listener
+	if gameFlag then
+		pcall(function()
+			gameFlag:GetAttributeChangedSignal("Base_DinoWorld"):Connect(checkDinoWorld)
+		end)
+		-- ValueBase child fallback listeners
+		pcall(function()
+			gameFlag.ChildAdded:Connect(function(c)
+				if c and c.Name == "Base_DinoWorld" then
+					if c.GetPropertyChangedSignal then
+						c:GetPropertyChangedSignal("Value"):Connect(checkDinoWorld)
+					end
+					checkDinoWorld()
+				end
+			end)
+		end)
+	end
+end
+
+-- Monitor Data.Pets for any Configuration with attribute T == "Cerberus"
+local function setupCerberusMonitor()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	local petsFolder = data and data:FindFirstChild("Pets")
+
+	local function inspectConfig(conf)
+		if cerberusAnnounced then return end
+		if conf and conf:IsA("Configuration") then
+			local t = conf:GetAttribute("T")
+			if t == "Cerberus" then
+				cerberusAnnounced = true
+				notifyAndAlert("🐾 Cerberus Acquired", "You obtained pet: Cerberus")
 			end
-			n = math.max(0, math.floor(n))
-			sessionLimit = n
-			updateStatus()
 		end
-	})
+	end
 
-	statusParagraph = MainTab:Paragraph({
-		Title = "Status",
-		Desc = "Auto sell status",
-		Image = "activity",
-		ImageSize = 16,
-	})
-
-	autoSellToggle = MainTab:Toggle({
-		Title = "💸 Auto Sell",
-		Desc = "Sell pets not placed",
-		Value = false,
-		Callback = function(state)
-			autoSellEnabled = state
-			if state and not autoSellThread then
-				sessionSold = 0
-				autoSellThread = task.spawn(function()
-					runAutoSell()
-					autoSellThread = nil
+	-- Initial scan
+	if petsFolder then
+		for _, ch in ipairs(petsFolder:GetChildren()) do
+			inspectConfig(ch)
+		end
+		-- Watch for new pets
+		pcall(function()
+			petsFolder.ChildAdded:Connect(function(ch)
+				-- Defer to allow attributes to populate
+				task.defer(function()
+					inspectConfig(ch)
 				end)
-				if WindUI then
-					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Started", Duration = 2 })
-				end
-			elseif not state and autoSellThread then
-				if WindUI then
-					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Stopped", Duration = 2 })
-				end
-			end
-		end
-	})
-
-	-- Register with shared config if available (for persistence)
-	if Config then
-		pcall(function()
-			Config:Register("autoSellEnabled", autoSellToggle)
-		end)
-		pcall(function()
-			Config:Register("autoSellMutationsToKeep", mutationKeepDropdown)
-		end)
-		pcall(function()
-			Config:Register("autoSellSessionLimit", sessionLimitInput)
-		end)
-		pcall(function()
-			Config:Register("autoSellEggsToKeep", eggKeepDropdown)
+			end)
 		end)
 	end
-
-	updateStatus()
 end
 
--- Public API
-function AutoSellSystem.Init(dependencies)
-	WindUI = dependencies.WindUI
-	Tabs = dependencies.Tabs
-	MainTab = dependencies.MainTab
-	Config = dependencies.Config
-
-	AutoSellSystem.CreateUI()
-	return AutoSellSystem
+-- Function to create alert embed
+local function createAlertEmbed(alertType, details)
+    local username = LocalPlayer and LocalPlayer.Name or "Unknown"
+    local sessionTime = os.time() - sessionStats.sessionStart
+    local sessionText = sessionTime < 60 and (sessionTime .. "s") or (math.floor(sessionTime/60) .. "m")
+    
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "🚨 Alert: " .. alertType,
+                color = 3447003, -- Blue color
+                fields = {
+                    {
+                        name = "User: " .. username,
+                        value = details
+                    },
+                    {
+                        name = "📊 Session Stats",
+                        value = "🔄 Trades: `" .. sessionStats.tradesCompleted .. "`\n" ..
+                               "🥚 Desired Eggs: `" .. sessionStats.desiredEggsFound .. "`\n" ..
+                               "🐾 Desired Pets: `" .. sessionStats.desiredPetsFound .. "`\n" ..
+                               "🍎 Desired Fruits: `" .. sessionStats.desiredFruitsFound .. "`\n" ..
+                               "⏱️ Session: `" .. sessionText .. "`"
+                    }
+                },
+                footer = {
+                    text = "Auto Alert • Build A Zoo"
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }
+        },
+        attachments = {}
+    }
+    
+    return embed
 end
 
-return AutoSellSystem
+-- Function to create trade session summary embed
+local function createTradeSessionSummaryEmbed()
+    local username = LocalPlayer and LocalPlayer.Name or "Unknown"
+    local sessionTime = os.time() - sessionStats.sessionStart
+    local sessionText = sessionTime < 60 and (sessionTime .. "s") or (math.floor(sessionTime/60) .. "m")
+    
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "🎯 Trade Session Completed",
+                color = 65280, -- Green color
+                fields = {
+                    {
+                        name = "User: " .. username,
+                        value = "✅ **Trade session finished successfully!**\n" ..
+                               "📊 **" .. tradeTracking.sessionTradeCount .. "/" .. tradeTracking.maxSessionTrades .. "** trades completed"
+                    },
+                    {
+                        name = "📈 Session Summary",
+                        value = "🔄 Total Trades: `" .. tradeTracking.sessionTradeCount .. "`\n" ..
+                               "⏱️ Session Duration: `" .. sessionText .. "`\n" ..
+                               "🎯 Trade Limit: `" .. tradeTracking.maxSessionTrades .. "`\n" ..
+                               "✨ Status: `Session Complete`"
+                    }
+                },
+                footer = {
+                    text = "Trade Session Summary • Build A Zoo"
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }
+        },
+        attachments = {}
+    }
+    
+    -- If a session note was provided via WebhookSystem.__sessionNote, append into fields
+    if WebhookSystem.__sessionNote and type(WebhookSystem.__sessionNote) == "table" and #WebhookSystem.__sessionNote > 0 then
+        for _, f in ipairs(WebhookSystem.__sessionNote) do
+            table.insert(embed.embeds[1].fields, f)
+        end
+        WebhookSystem.__sessionNote = nil
+    end
+    
+    return embed
+end
 
+-- Function to send trade session summary
+local function sendTradeSessionSummary()
+    if not webhookUrl or webhookUrl == "" then
+        return
+    end
+    
+    local embedData = createTradeSessionSummaryEmbed()
+    sendWebhook(embedData)
+end
 
+-- Function to send alert
+local function sendAlert(alertType, details)
+    if not autoAlertEnabled or not webhookUrl or webhookUrl == "" then
+        return
+    end
+    
+    local embedData = createAlertEmbed(alertType, details)
+    
+    local success, result = pcall(function()
+        return game:GetService("HttpService"):PostAsync(webhookUrl, HttpService:JSONEncode(embedData), Enum.HttpContentType.ApplicationJson)
+    end)
+    
+    if not success then
+        print("Alert webhook failed:", result)
+    end
+end
+
+-- Function to create trade completion embed
+local function createTradeEmbed(fromPlayer, toPlayer, fromItems, toItems)
+    local tradeCount = math.min(tradeTracking.sessionTradeCount, tradeTracking.maxSessionTrades)
+    local maxTrades = tradeTracking.maxSessionTrades
+    
+    -- Build items text for "From" player
+    local fromValue = "```diff\n"
+    for _, item in ipairs(fromItems) do
+        local icon = "🐾"
+        if string.find(item.type or "", "Egg") then
+            icon = "🥚"
+        end
+        fromValue = fromValue .. icon .. " " .. (item.type or "Unknown") .. " × " .. (item.count or 1) .. "\n"
+    end
+    fromValue = fromValue .. "```"
+    
+    -- Build items text for "To" player
+    local toValue = "```diff\n"
+    for _, item in ipairs(toItems) do
+        local icon = "🐾"
+        if string.find(item.type or "", "Egg") then
+            icon = "🥚"
+        end
+        toValue = toValue .. icon .. " " .. (item.type or "Unknown") .. " × " .. (item.count or 1) .. "\n"
+    end
+    toValue = toValue .. "```"
+    
+    -- Create embed with exact format
+    local embed = {
+        content = nil,
+        embeds = {
+            {
+                title = "🤝 Trade Completed (" .. tradeCount .. "/" .. maxTrades .. ")",
+                color = 3447003,
+                fields = {
+                    {
+                        name = "📤 From: " .. (fromPlayer or "Unknown"),
+                        value = fromValue,
+                        inline = true
+                    },
+                    {
+                        name = "📥 To: " .. (toPlayer or "Unknown"),
+                        value = toValue,
+                        inline = true
+                    }
+                },
+                footer = {
+                    text = "Trade completed • " .. os.date("%B %d, %Y at %I:%M %p")
+                }
+            }
+        },
+        attachments = {}
+    }
+    
+    return embed
+end
+
+-- Function to send trade completion webhook
+local function sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+    if not webhookUrl or webhookUrl == "" then
+        return
+    end
+    
+    local embedData = createTradeEmbed(fromPlayer, toPlayer, fromItems, toItems)
+    sendWebhook(embedData)
+end
+
+-- Function to detect and parse trade completion (simplified - now integrated via SendTrashSystem)
+local function detectTradeCompletion()
+    -- Trade detection is now handled by SendTrashSystem integration
+    -- This function is kept for backward compatibility but does nothing
+    local function monitorInventoryChanges()
+        -- No-op: Trade detection moved to SendTrashSystem
+    end
+    
+    return monitorInventoryChanges
+end
+
+-- Function to start trade monitoring
+local function startTradeMonitoring()
+    if tradeTracking.isMonitoring then return end
+    
+    tradeTracking.isMonitoring = true
+    
+    -- Set up trade detection
+    local monitorInventoryChanges = detectTradeCompletion()
+    
+    -- Start monitoring
+    task.spawn(function()
+        monitorInventoryChanges()
+    end)
+end
+
+-- Function to stop trade monitoring
+local function stopTradeMonitoring()
+    tradeTracking.isMonitoring = false
+    if tradeTracking.tradeConnection then
+        tradeTracking.tradeConnection:Disconnect()
+        tradeTracking.tradeConnection = nil
+    end
+end
+
+-- Auto alert monitoring function
+local function runAutoAlert()
+    -- This would monitor for trades, desired items, etc.
+    -- Implementation would depend on the game's specific events and data structure
+    while autoAlertEnabled do
+        -- Monitor for trade completions
+        -- Monitor for desired eggs/pets/fruits
+        -- Send alerts when conditions are met
+        
+        task.wait(5) -- Check every 5 seconds
+    end
+end
+
+-- Core initialization without UI (called from main file)
+function WebhookSystem.InitCore(dependencies)
+    WindUI = dependencies.WindUI
+    Window = dependencies.Window
+    Config = dependencies.Config
+    
+    -- Start monitors for Dino World and Cerberus
+    task.spawn(function()
+        -- small delay to give UI/Data time to exist
+        task.wait(1)
+        pcall(setupDinoWorldMonitor)
+        pcall(setupCerberusMonitor)
+    end)
+    
+    return WebhookSystem
+end
+
+-- Public methods for UI integration
+function WebhookSystem.SetWebhookUrl(url)
+    webhookUrl = url or ""
+end
+
+function WebhookSystem.SetAutoAlert(enabled)
+    autoAlertEnabled = enabled
+    
+    if enabled then
+        if not autoAlertThread then
+            autoAlertThread = task.spawn(function()
+                runAutoAlert()
+                autoAlertThread = nil
+            end)
+        end
+        -- Start trade monitoring when auto alert is enabled
+        startTradeMonitoring()
+    else
+        -- Stop trade monitoring when auto alert is disabled
+        stopTradeMonitoring()
+    end
+end
+
+function WebhookSystem.SendInventory()
+    sendInventory()
+end
+
+-- Public API functions
+function WebhookSystem.SendAlert(alertType, details)
+    sendAlert(alertType, details)
+end
+
+function WebhookSystem.UpdateSessionStats(statType, increment)
+    increment = increment or 1
+    if statType == "trades" then
+        sessionStats.tradesCompleted = sessionStats.tradesCompleted + increment
+    elseif statType == "eggs" then
+        sessionStats.desiredEggsFound = sessionStats.desiredEggsFound + increment
+    elseif statType == "pets" then
+        sessionStats.desiredPetsFound = sessionStats.desiredPetsFound + increment
+    elseif statType == "fruits" then
+        sessionStats.desiredFruitsFound = sessionStats.desiredFruitsFound + increment
+    end
+end
+
+-- Public method to manually trigger trade webhook (for external integration)
+function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+    if not autoAlertEnabled then return end
+    
+    -- Guard: do not overshoot the session limit
+    if tradeTracking.sessionTradeCount >= tradeTracking.maxSessionTrades then
+        return
+    end
+    
+    -- Increment trade count
+    tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
+    sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
+    
+    -- Send the individual trade webhook
+    sendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
+end
+
+-- Public method to manually send trade session summary
+function WebhookSystem.SendTradeSessionSummary(summaryLogs)
+    if not autoAlertEnabled then return end
+    if sessionSummarySent then return end
+    -- If summaryLogs are provided, build a nicer description
+    if type(summaryLogs) == "table" and #summaryLogs > 0 then
+        -- Build a compact map per receiver
+        local byReceiver = {}
+        for _, log in ipairs(summaryLogs) do
+            local recv = log.receiver or "Unknown"
+            byReceiver[recv] = byReceiver[recv] or { items = {}, order = {} }
+            local key = (log.type or "Unknown")
+            local isEgg = (tostring(log.kind or ""):lower() == "egg") or (key:find("Egg") ~= nil)
+            local icon = isEgg and "🥚" or "🐾"
+            local entry = byReceiver[recv].items[key]
+            if not entry then
+                entry = { name = key, count = 0, icon = icon }
+                byReceiver[recv].items[key] = entry
+                table.insert(byReceiver[recv].order, key)
+            end
+            entry.count = entry.count + 1
+        end
+        -- Compose a short note field into the summary embed by temporarily
+        -- setting a global that createTradeSessionSummaryEmbed can read.
+        WebhookSystem.__sessionNote = {}
+        local receiverCount = 0
+        for recv, bucket in pairs(byReceiver) do
+            receiverCount = receiverCount + 1
+            local lines = {"```diff"}
+            for _, key in ipairs(bucket.order) do
+                local e = bucket.items[key]
+                table.insert(lines, string.format("%s %s × %d", e.icon, e.name, e.count))
+            end
+            table.insert(lines, "```")
+            table.insert(WebhookSystem.__sessionNote, { name = "📥 To: " .. recv, value = table.concat(lines, "\n"), inline = false })
+            if receiverCount >= 2 then break end -- limit to 2 receivers for brevity
+        end
+    end
+    sendTradeSessionSummary()
+    sessionSummarySent = true
+end
+
+-- Public method to reset trade session count
+function WebhookSystem.ResetTradeCount()
+    tradeTracking.sessionTradeCount = 0
+    sessionSummarySent = false
+end
+
+-- Public method to set max trades per session
+function WebhookSystem.SetMaxTrades(maxTrades)
+    tradeTracking.maxSessionTrades = maxTrades or 10
+end
+
+-- Sync counters from external systems (e.g., SendTrashSystem)
+function WebhookSystem.SyncTradeCounters(currentCount, maxCount)
+    if type(currentCount) == "number" then
+        tradeTracking.sessionTradeCount = math.max(0, math.floor(currentCount))
+    end
+    if type(maxCount) == "number" then
+        tradeTracking.maxSessionTrades = math.max(1, math.floor(maxCount))
+    end
+    if tradeTracking.sessionTradeCount < tradeTracking.maxSessionTrades then
+        sessionSummarySent = false
+    end
+end
+
+function WebhookSystem.GetConfigElements()
+    return {
+        webhookUrl = webhookUrl,
+        autoAlertEnabled = autoAlertEnabled
+    }
+end
+
+function WebhookSystem.LoadConfig(config)
+    if config.webhookUrl then
+        webhookUrl = config.webhookUrl
+    end
+    if config.autoAlertEnabled ~= nil then
+        autoAlertEnabled = config.autoAlertEnabled
+    end
+end
+
+-- Function to create UI (kept for legacy compatibility)
+local function CreateUI()
+    if not Tab then return end
+    
+    -- Legacy UI creation code removed - UI is now in main file
+    -- This function is kept for backward compatibility but does nothing
+end
+
+-- Legacy initialization function (for backward compatibility)
+function WebhookSystem.Init(dependencies)
+    WindUI = dependencies.WindUI
+    Window = dependencies.Window
+    Config = dependencies.Config
+    Tab = dependencies.Tab
+    
+    -- Only create UI if Tab is provided (legacy mode)
+    if Tab then
+        CreateUI()
+    end
+    
+    return WebhookSystem
+end
+
+return WebhookSystem
