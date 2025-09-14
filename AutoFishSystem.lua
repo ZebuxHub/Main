@@ -114,7 +114,7 @@ local function unanchorPlayer()
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum.AutoRotate = true
-		hum.WalkSpeed = 16
+		hum.WalkSpeed = 30
 		hum.JumpPower = 50
 	end
 	if hrp then hrp.Anchored = false end
@@ -223,6 +223,7 @@ function AutoFishSystem.Init(dependencies)
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
         Default = FishingConfig.SelectedBait,
 		Callback = function(sel)
+			print("AutoFish bait callback triggered:", sel)
 			AutoFishSystem.SetBait(sel)
         end
     })
@@ -231,6 +232,7 @@ function AutoFishSystem.Init(dependencies)
 		Title = "Auto Fish",
         Value = FishingConfig.AutoFishEnabled,
         Callback = function(state)
+			print("AutoFish toggle callback triggered:", state)
 			AutoFishSystem.SetEnabled(state)
         end
     })
@@ -249,8 +251,11 @@ end
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
 	if not (autoFishToggle and baitDropdown) then 
+		print("AutoFish UI elements not ready for config")
 		return {} 
 	end
+	
+	print("AutoFish returning UI elements directly")
 	return {
 		-- Register the actual UI elements directly
 		autoFishToggleElement = autoFishToggle,
