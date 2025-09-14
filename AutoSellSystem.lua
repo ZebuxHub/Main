@@ -26,6 +26,28 @@ local WindUI, Tabs, MainTab, Config
 local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
 local PetRE = Remotes and Remotes:FindFirstChild("PetRE")
 
+-- Hardcoded Egg Data for selection
+local EggData = {
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
+    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
+    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 }
+}
+
 -- State
 local autoSellEnabled = false
 local autoSellThread = nil
@@ -34,6 +56,7 @@ local sellMode = "Pets Only" -- "Pets Only", "Eggs Only", "Both Pets & Eggs"
 local speedThreshold = 0 -- 0 = disabled, >0 = minimum speed required
 local sessionLimit = 0 -- 0 = unlimited
 local sessionSold = 0
+local eggsToKeep = {} -- Table of egg names to keep (don't sell)
 
 -- UI refs
 local statusParagraph
@@ -42,6 +65,7 @@ local sellModeDropdown
 local speedThresholdInput
 local autoSellToggle
 local sessionLimitInput
+local eggKeepDropdown
 
 -- Helpers
 local function getPetContainer()
@@ -76,6 +100,56 @@ local function isMutated(node)
 	if not node then return false end
 	local m = node:GetAttribute("M")
 	return m ~= nil and tostring(m) ~= ""
+end
+
+local function getEggType(eggNode)
+	if not eggNode then return nil end
+	-- Try to get egg type from attributes
+	local eggType = eggNode:GetAttribute("Type") or eggNode:GetAttribute("T")
+	if eggType and EggData[eggType] then
+		return EggData[eggType].Name
+	end
+	
+	-- Fallback: try to match by name pattern or other attributes
+	for key, data in pairs(EggData) do
+		if eggNode.Name:find(key) or eggNode.Name:find(data.Name) then
+			return data.Name
+		end
+	end
+	
+	return nil
+end
+
+local function shouldKeepEgg(eggNode)
+	if not eggNode then return false end
+	
+	-- Get egg type
+	local eggType = getEggType(eggNode)
+	if not eggType then return false end -- Unknown egg type, don't keep
+	
+	-- Check if this egg type is in the keep list
+	local shouldKeep = false
+	for _, keepEggName in pairs(eggsToKeep) do
+		if keepEggName == eggType then
+			shouldKeep = true
+			break
+		end
+	end
+	
+	if not shouldKeep then return false end -- Not in keep list
+	
+	-- If we want to keep this egg type, check mutation logic
+	local mutated = isMutated(eggNode)
+	
+	if sellMutations then
+		-- User wants to sell mutated eggs
+		-- Keep this egg only if it's NOT mutated (since we keep the egg type but sell mutated ones)
+		return not mutated
+	else
+		-- User wants to keep mutated eggs
+		-- Keep this egg regardless of mutation status
+		return true
+	end
 end
 
 local function sellPetByUid(petUid)
@@ -225,6 +299,7 @@ local sellStats = {
 	lastSold = nil,
 	skippedMutations = 0,
 	skippedSpeed = 0,
+	skippedKeepEggs = 0,
 	scannedPets = 0,
 	scannedEggs = 0,
 }
@@ -233,14 +308,17 @@ local function updateStatus()
 	if not statusParagraph then return end
 	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
 	local speedText = speedThreshold > 0 and ("Sell if speed≤" .. tostring(speedThreshold) .. " | ") or ""
+	local eggKeepText = (#eggsToKeep > 0) and ("Keep: " .. #eggsToKeep .. " egg types | ") or ""
 	local desc = string.format(
-		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d | %sMode: %s\nSession: %d/%s%s",
+		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d K: %d | %s%sMode: %s\nSession: %d/%s%s",
 		sellStats.totalSold,
 		sellStats.petsSold,
 		sellStats.eggsSold,
 		totalScanned,
 		sellStats.skippedMutations,
 		sellStats.skippedSpeed,
+		sellStats.skippedKeepEggs,
+		eggKeepText,
 		speedText,
 		sellMode,
 		sessionSold,
@@ -257,6 +335,7 @@ local function scanAndSell()
 	sellStats.scannedEggs = 0
 	sellStats.skippedMutations = 0
 	sellStats.skippedSpeed = 0
+	sellStats.skippedKeepEggs = 0
 
 	-- Scan pets if mode allows
 	if sellMode == "Pets Only" or sellMode == "Both Pets & Eggs" then
@@ -357,6 +436,15 @@ local function scanAndSell()
 				local uid = node.Name
 				local available = isAvailableEgg(node)
 				if available then
+					-- Check if we should keep this egg (based on type and mutation settings)
+					if shouldKeepEgg(node) then
+						sellStats.skippedKeepEggs += 1
+						local eggType = getEggType(node) or "Unknown"
+						sellStats.lastAction = "Kept " .. eggType .. " egg " .. uid
+						updateStatus()
+						continue
+					end
+					
 					local mutated = isMutated(node)
 					if mutated and not sellMutations then
 						sellStats.skippedMutations += 1
@@ -462,6 +550,26 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
+	-- Create egg selection dropdown (only show for egg modes)
+	local eggNames = {}
+	for _, data in pairs(EggData) do
+		table.insert(eggNames, data.Name)
+	end
+	table.sort(eggNames) -- Sort alphabetically
+
+	eggKeepDropdown = MainTab:Dropdown({
+		Title = "🥚 Eggs to Keep",
+		Desc = "Select eggs to keep (don't sell)",
+		Values = eggNames,
+		Value = {},
+		Multi = true,
+		AllowNone = true,
+		Callback = function(selection)
+			eggsToKeep = selection or {}
+			updateStatus()
+		end
+	})
+
 	sessionLimitInput = MainTab:Input({
 		Title = "Session Sell Limit",
 		Desc = "Max sells this session",
@@ -518,6 +626,9 @@ function AutoSellSystem.CreateUI()
 		end)
 		pcall(function()
 			Config:Register("autoSellSessionLimit", sessionLimitInput)
+		end)
+		pcall(function()
+			Config:Register("autoSellEggsToKeep", eggKeepDropdown)
 		end)
 	end
 
