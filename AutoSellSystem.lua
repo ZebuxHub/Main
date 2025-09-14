@@ -48,19 +48,28 @@ local EggData = {
     UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 }
 }
 
+-- Hardcoded Mutation Data for selection
+local MutationData = {
+    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
+    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
+    Electric = { Name = "Electric", Icon = "⚡", Rarity = 50 },
+    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
+    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 }
+}
+
 -- State
 local autoSellEnabled = false
 local autoSellThread = nil
-local sellMutations = false -- false = keep mutated (do not sell), true = sell mutated
 local sellMode = "Pets Only" -- "Pets Only", "Eggs Only", "Both Pets & Eggs"
 local speedThreshold = 0 -- 0 = disabled, >0 = minimum speed required
 local sessionLimit = 0 -- 0 = unlimited
 local sessionSold = 0
 local eggsToKeep = {} -- Table of egg names to keep (don't sell)
+local mutationsToKeep = {} -- Table of mutation names to keep (don't sell)
 
 -- UI refs
 local statusParagraph
-local mutationDropdown
+local mutationKeepDropdown
 local sellModeDropdown
 local speedThresholdInput
 local autoSellToggle
@@ -102,6 +111,38 @@ local function isMutated(node)
 	return m ~= nil and tostring(m) ~= ""
 end
 
+local function getMutationType(node)
+	if not node then return nil end
+	local m = node:GetAttribute("M")
+	if not m or tostring(m) == "" then return nil end
+	
+	-- Try to match mutation type with our MutationData
+	for key, data in pairs(MutationData) do
+		if tostring(m) == key or tostring(m) == data.Name then
+			return data.Name
+		end
+	end
+	
+	-- Return the raw mutation value if not found in our data
+	return tostring(m)
+end
+
+local function shouldKeepMutation(node)
+	if not node then return false end
+	
+	local mutationType = getMutationType(node)
+	if not mutationType then return false end -- No mutation
+	
+	-- Check if this mutation type is in the keep list
+	for _, keepMutationName in pairs(mutationsToKeep) do
+		if keepMutationName == mutationType then
+			return true
+		end
+	end
+	
+	return false -- Not in keep list
+end
+
 local function getEggType(eggNode)
 	if not eggNode then return nil end
 	-- Try to get egg type from attributes
@@ -125,30 +166,44 @@ local function shouldKeepEgg(eggNode)
 	
 	-- Get egg type
 	local eggType = getEggType(eggNode)
-	if not eggType then return false end -- Unknown egg type, don't keep
+	local mutated = isMutated(eggNode)
 	
-	-- Check if this egg type is in the keep list
-	local shouldKeep = false
-	for _, keepEggName in pairs(eggsToKeep) do
-		if keepEggName == eggType then
-			shouldKeep = true
-			break
+	-- Logic priority:
+	-- 1. If egg type is in keep list AND (no mutation OR mutation is in keep list) → KEEP
+	-- 2. If egg type is not in keep list BUT mutation is in keep list → KEEP  
+	-- 3. Otherwise → SELL
+	
+	local keepForEggType = false
+	local keepForMutation = false
+	
+	-- Check egg type
+	if eggType then
+		for _, keepEggName in pairs(eggsToKeep) do
+			if keepEggName == eggType then
+				keepForEggType = true
+				break
+			end
 		end
 	end
 	
-	if not shouldKeep then return false end -- Not in keep list
+	-- Check mutation type
+	if mutated then
+		keepForMutation = shouldKeepMutation(eggNode)
+	end
 	
-	-- If we want to keep this egg type, check mutation logic
-	local mutated = isMutated(eggNode)
-	
-	if sellMutations then
-		-- User wants to sell mutated eggs
-		-- Keep this egg only if it's NOT mutated (since we keep the egg type but sell mutated ones)
-		return not mutated
-	else
-		-- User wants to keep mutated eggs
-		-- Keep this egg regardless of mutation status
+	-- Decision logic
+	if keepForEggType and not mutated then
+		-- Keep: Egg type is selected and no mutation
 		return true
+	elseif keepForEggType and mutated and keepForMutation then
+		-- Keep: Egg type is selected AND mutation is selected
+		return true
+	elseif not keepForEggType and mutated and keepForMutation then
+		-- Keep: Egg type not selected BUT mutation is selected
+		return true
+	else
+		-- Sell: All other cases
+		return false
 	end
 end
 
@@ -308,9 +363,10 @@ local function updateStatus()
 	if not statusParagraph then return end
 	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
 	local speedText = speedThreshold > 0 and ("Sell if speed≤" .. tostring(speedThreshold) .. " | ") or ""
-	local eggKeepText = (#eggsToKeep > 0) and ("Keep: " .. #eggsToKeep .. " egg types | ") or ""
+	local eggKeepText = (#eggsToKeep > 0) and ("Keep: " .. #eggsToKeep .. " eggs | ") or ""
+	local mutationKeepText = (#mutationsToKeep > 0) and ("Keep: " .. #mutationsToKeep .. " mutations | ") or ""
 	local desc = string.format(
-		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d K: %d | %s%sMode: %s\nSession: %d/%s%s",
+		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d K: %d | %s%s%sMode: %s\nSession: %d/%s%s",
 		sellStats.totalSold,
 		sellStats.petsSold,
 		sellStats.eggsSold,
@@ -319,6 +375,7 @@ local function updateStatus()
 		sellStats.skippedSpeed,
 		sellStats.skippedKeepEggs,
 		eggKeepText,
+		mutationKeepText,
 		speedText,
 		sellMode,
 		sessionSold,
@@ -364,9 +421,10 @@ local function scanAndSell()
 				local unplaced = isUnplacedPet(node)
 				if unplaced then
 					local mutated = isMutated(node)
-					if mutated and not sellMutations then
+					if mutated and shouldKeepMutation(node) then
 						sellStats.skippedMutations += 1
-						sellStats.lastAction = "Skipped mutated pet " .. uid
+						local mutationType = getMutationType(node) or "Unknown"
+						sellStats.lastAction = "Kept " .. mutationType .. " pet " .. uid
 						updateStatus()
 						continue
 					end
@@ -441,14 +499,6 @@ local function scanAndSell()
 						sellStats.skippedKeepEggs += 1
 						local eggType = getEggType(node) or "Unknown"
 						sellStats.lastAction = "Kept " .. eggType .. " egg " .. uid
-						updateStatus()
-						continue
-					end
-					
-					local mutated = isMutated(node)
-					if mutated and not sellMutations then
-						sellStats.skippedMutations += 1
-						sellStats.lastAction = "Skipped mutated egg " .. uid
 						updateStatus()
 						continue
 					end
@@ -546,16 +596,31 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	mutationDropdown = MainTab:Dropdown({
-		Title = "🧬 Mutations",
-		Desc = "Sell mutated or keep",
-		Values = { "Sell mutated pets", "Keep mutated (don't sell)" },
-		Value = "Keep mutated (don't sell)",
-		Multi = false,
-		AllowNone = false,
+	-- Create mutation selection dropdown
+	local mutationNames = {}
+	for _, data in pairs(MutationData) do
+		table.insert(mutationNames, data.Icon .. " " .. data.Name)
+	end
+	table.sort(mutationNames) -- Sort alphabetically
+
+	mutationKeepDropdown = MainTab:Dropdown({
+		Title = "🧬 Mutations to Keep",
+		Desc = "Select mutations to keep (don't sell)",
+		Values = mutationNames,
+		Value = {},
+		Multi = true,
+		AllowNone = true,
 		Callback = function(selection)
-			if type(selection) == "table" then selection = selection[1] end
-			sellMutations = (selection == "Sell mutated pets")
+			-- Convert display names back to mutation names
+			mutationsToKeep = {}
+			if selection then
+				for _, displayName in pairs(selection) do
+					-- Extract mutation name from "Icon Name" format
+					local mutationName = displayName:match("^.+ (.+)$") or displayName
+					table.insert(mutationsToKeep, mutationName)
+				end
+			end
+			updateStatus()
 		end
 	})
 
@@ -622,7 +687,7 @@ function AutoSellSystem.CreateUI()
 			Config:Register("autoSellEnabled", autoSellToggle)
 		end)
 		pcall(function()
-			Config:Register("autoSellMutationMode", mutationDropdown)
+			Config:Register("autoSellMutationsToKeep", mutationKeepDropdown)
 		end)
 		pcall(function()
 			Config:Register("autoSellSessionLimit", sessionLimitInput)
