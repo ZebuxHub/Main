@@ -10,34 +10,91 @@ local state = {
 	petsRemoved = false
 }
 
--- Function to remove all pet models from workspace.Pets
+-- Function to clean pet models (remove unwanted parts, keep essential structure)
 local function removePetModels()
 	if state.petsRemoved then
-		if WindUI then WindUI:Notify({ Title = "🐾 Pet Removal", Content = "Pets already removed", Duration = 2 }) end
+		if WindUI then WindUI:Notify({ Title = "🐾 Pet Cleanup", Content = "Pet cleanup already applied", Duration = 2 }) end
 		return
 	end
 
 	-- Find the Pets folder in workspace
 	local petsFolder = workspace:FindFirstChild("Pets")
 	if not petsFolder then
-		if WindUI then WindUI:Notify({ Title = "🐾 Pet Removal", Content = "No Pets folder found", Duration = 2 }) end
+		if WindUI then WindUI:Notify({ Title = "🐾 Pet Cleanup", Content = "No Pets folder found", Duration = 2 }) end
 		return
 	end
 
-	-- Count pets before removal
+	-- List of parts to keep in each pet model
+	local keepParts = {
+		"CollectHL",
+		"SA_PetStateMachine", 
+		"BF",
+		"BE",
+		"RootPart"
+	}
+	
+	-- List of parts to keep inside RootPart
+	local keepInRootPart = {
+		"Base",
+		"CS_IdlePet",
+		"RE", 
+		"TrgIdle",
+		"GUI/IdleGUI",
+		"Motor6D"
+	}
+
 	local petCount = 0
+	local removedPartsCount = 0
+
+	-- Process each pet model
 	for _, petModel in pairs(petsFolder:GetChildren()) do
 		if petModel:IsA("Model") then
 			petCount = petCount + 1
-		end
-	end
-
-	-- Remove all pet models
-	for _, petModel in pairs(petsFolder:GetChildren()) do
-		if petModel:IsA("Model") then
-			pcall(function()
-				petModel:Destroy()
-			end)
+			
+			-- Remove unwanted parts from the main pet model
+			for _, child in pairs(petModel:GetChildren()) do
+				local shouldKeep = false
+				
+				-- Check if this part should be kept
+				for _, keepName in pairs(keepParts) do
+					if child.Name == keepName then
+						shouldKeep = true
+						break
+					end
+				end
+				
+				-- If it's not in the keep list, remove it
+				if not shouldKeep then
+					pcall(function()
+						child:Destroy()
+						removedPartsCount = removedPartsCount + 1
+					end)
+				end
+			end
+			
+			-- Clean up RootPart specifically
+			local rootPart = petModel:FindFirstChild("RootPart")
+			if rootPart then
+				for _, child in pairs(rootPart:GetChildren()) do
+					local shouldKeep = false
+					
+					-- Check if this part should be kept in RootPart
+					for _, keepName in pairs(keepInRootPart) do
+						if child.Name == keepName then
+							shouldKeep = true
+							break
+						end
+					end
+					
+					-- If it's not in the keep list, remove it
+					if not shouldKeep then
+						pcall(function()
+							child:Destroy()
+							removedPartsCount = removedPartsCount + 1
+						end)
+					end
+				end
+			end
 		end
 	end
 
@@ -45,17 +102,17 @@ local function removePetModels()
 	
 	if WindUI then 
 		WindUI:Notify({ 
-			Title = "🐾 Pet Removal", 
-			Content = "Removed " .. petCount .. " pet models for performance", 
-			Duration = 3 
+			Title = "🐾 Pet Cleanup", 
+			Content = "Cleaned " .. petCount .. " pets, removed " .. removedPartsCount .. " unnecessary parts", 
+			Duration = 4 
 		}) 
 	end
 end
 
--- Function to restore pets (note: this won't actually restore them since they're destroyed)
+-- Function to disable pet cleanup (note: removed parts can't be restored)
 local function restorePetModels()
 	if not state.petsRemoved then
-		if WindUI then WindUI:Notify({ Title = "🐾 Pet Removal", Content = "Pets not removed", Duration = 2 }) end
+		if WindUI then WindUI:Notify({ Title = "🐾 Pet Cleanup", Content = "Pet cleanup not applied", Duration = 2 }) end
 		return
 	end
 
@@ -63,8 +120,8 @@ local function restorePetModels()
 	
 	if WindUI then 
 		WindUI:Notify({ 
-			Title = "🐾 Pet Removal", 
-			Content = "Pet removal disabled (models can't be restored)", 
+			Title = "🐾 Pet Cleanup", 
+			Content = "Pet cleanup disabled (removed parts can't be restored)", 
 			Duration = 3 
 		}) 
 	end
@@ -79,10 +136,10 @@ function Performance.Init(deps)
 		Tabs.PerfTab = Tabs.MainSection:Tab({ Title = "🚀 | Performance" })
 	end
 
-	-- Create toggle for pet model removal
+	-- Create toggle for pet model cleanup
 	local petRemovalToggle = Tabs.PerfTab:Toggle({
-		Title = "🐾 Remove Pet Models",
-		Desc = "Remove all pet models from workspace.Pets folder for better performance",
+		Title = "🐾 Clean Pet Models",
+		Desc = "Remove unnecessary parts from pets, keep only essential components for performance",
 		Value = false,
 		Callback = function(stateOn)
 			if stateOn then 
