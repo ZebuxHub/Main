@@ -260,7 +260,6 @@ function Performance.Init(deps)
 	-- Create toggle for Performance Mode
 	local performanceToggle = Tabs.PerfTab:Toggle({
 		Title = "⚡ Performance Mode",
-		Desc = "Clean models, remove all effects, disable wind behavior for maximum performance",
 		Value = config.performanceModeEnabled, -- Load saved state
 		Callback = function(stateOn)
 			if stateOn then 
