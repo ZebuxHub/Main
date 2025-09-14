@@ -131,15 +131,18 @@ local function enablePerformanceMode()
 						if child.Name == removeName then
 							shouldRemove = true
 							break
-		end
-	end
+						end
+					end
 
 					-- If it's in the remove list, destroy it
 					if shouldRemove then
-	pcall(function()
+						pcall(function()
 							child:Destroy()
 							totalPartsRemoved = totalPartsRemoved + 1
-			end)
+						end)
+					end
+				end
+			end
 		end
 	end
 
@@ -162,13 +165,13 @@ local function enablePerformanceMode()
 		-- Remove post effects
 		elseif obj:IsA("BloomEffect") or obj:IsA("BlurEffect") or obj:IsA("ColorCorrectionEffect") or
 			   obj:IsA("DepthOfFieldEffect") or obj:IsA("SunRaysEffect") then
-	pcall(function()
+			pcall(function()
 				obj:Destroy()
 				totalEffectsRemoved = totalEffectsRemoved + 1
-	end)
+			end)
 		-- Remove sound effects
 		elseif obj:IsA("Sound") then
-	pcall(function()
+			pcall(function()
 				obj:Stop()
 				obj:Destroy()
 				totalEffectsRemoved = totalEffectsRemoved + 1
