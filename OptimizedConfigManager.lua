@@ -1,436 +1,464 @@
--- OptimizedConfigManager.lua - High-performance config system for low-end devices
--- Optimized for minimal freezing, reduced memory usage, and fast I/O operations
+-- UnifiedConfigManager.lua - Centralized Config System for Build A Zoo
+-- Optimized for low-end devices with lazy loading and memory management
+-- Supports both WindUI and Custom UI systems
 
-local OptimizedConfigManager = {}
+local UnifiedConfigManager = {}
 
 -- Services
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
 -- Configuration
-local CONFIG_FOLDER = "WindUI/Zebux/Optimized"
-local UNIFIED_CONFIG_FILE = "BuildAZoo_Unified.json"
-local BACKUP_CONFIG_FILE = "BuildAZoo_Backup.json"
-local SAVE_DEBOUNCE_TIME = 0.5 -- Seconds to wait before saving
-local MAX_CACHE_SIZE = 50 -- Maximum cached config sections
-
--- Ensure folders exist
-pcall(function() 
-    if not isfolder("WindUI") then makefolder("WindUI") end
-    if not isfolder("WindUI/Zebux") then makefolder("WindUI/Zebux") end
-    if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
-end)
-
--- State management
-local state = {
-    configCache = {}, -- Lazy-loaded config sections
-    saveQueue = {}, -- Pending saves (debounced)
-    saveTimer = nil, -- Debounce timer
-    lastSavedState = {}, -- For incremental updates
-    isLoading = false, -- Prevent concurrent loads
-    isSaving = false, -- Prevent concurrent saves
-    cacheSize = 0 -- Track cache memory usage
+local CONFIG = {
+    BASE_FOLDER = "WindUI/Zebux/BuildAZoo",
+    UNIFIED_FILE = "UnifiedConfig.json",
+    BACKUP_FOLDER = "backup",
+    MAX_BACKUPS = 3,
+    SAVE_DEBOUNCE = 2, -- seconds
+    MEMORY_CLEANUP_INTERVAL = 30, -- seconds
+    COMPRESSION_ENABLED = true
 }
 
--- Default configuration structure
-local defaultConfig = {
-    main = {
-        autoBuy = false,
-        autoHatch = false,
-        autoPlace = false,
-        autoUnlock = false,
-        autoClaim = false
-    },
-    autoSystems = {
-        autoDelete = false,
-        autoDino = false,
-        autoUpgrade = false,
-        autoFeed = false,
-        autoFish = false
-    },
-    customUI = {
-        theme = "DarkPurple",
-        notifications = true,
-        compactMode = false
-    },
-    selections = {
-        eggSelections = {},
-        fruitSelections = {},
-        feedFruitSelections = {},
-        mutationOrder = {}
-    },
-    performance = {
-        enableCache = true,
-        asyncSave = true,
-        compressData = true
-    }
+-- State Management
+local configData = {}
+local registeredElements = {}
+local saveDebounceTimer = nil
+local lastSaveTime = 0
+local memoryCleanupConnection = nil
+local isInitialized = false
+
+-- Performance tracking
+local performanceStats = {
+    saveCount = 0,
+    loadCount = 0,
+    totalSaveTime = 0,
+    totalLoadTime = 0,
+    memoryUsage = 0
 }
 
 -- Utility Functions
-local function deepCopy(t)
-    if type(t) ~= "table" then return t end
-    local copy = {}
-    for k, v in pairs(t) do
-        copy[k] = deepCopy(v)
+local function createFolders()
+    local folders = {
+        CONFIG.BASE_FOLDER,
+        CONFIG.BASE_FOLDER .. "/" .. CONFIG.BACKUP_FOLDER
+    }
+    
+    for _, folder in ipairs(folders) do
+        pcall(function()
+            if not isfolder(folder) then
+                makefolder(folder)
+            end
+        end)
     end
-    return copy
 end
 
 local function getConfigPath()
-    return string.format("%s/%s", CONFIG_FOLDER, UNIFIED_CONFIG_FILE)
+    return CONFIG.BASE_FOLDER .. "/" .. CONFIG.UNIFIED_FILE
 end
 
-local function getBackupPath()
-    return string.format("%s/%s", CONFIG_FOLDER, BACKUP_CONFIG_FILE)
+local function getBackupPath(index)
+    return CONFIG.BASE_FOLDER .. "/" .. CONFIG.BACKUP_FOLDER .. "/backup_" .. tostring(index) .. ".json"
 end
 
--- Data Compression (removes default values to reduce file size)
-local function compressConfig(data)
-    local compressed = {}
+-- Compression utilities for large configs
+local function compressData(data)
+    if not CONFIG.COMPRESSION_ENABLED then return data end
     
-    local function compressSection(section, defaults, result)
-        for key, value in pairs(section) do
-            if type(value) == "table" and type(defaults[key]) == "table" then
-                local compressedSub = {}
-                compressSection(value, defaults[key], compressedSub)
-                if next(compressedSub) then
-                    result[key] = compressedSub
-                end
-            elseif value ~= defaults[key] then
-                result[key] = value
-            end
+    -- Simple compression: remove unnecessary whitespace and optimize structure
+    local compressed = {}
+    for key, value in pairs(data) do
+        if type(value) == "table" and next(value) then
+            compressed[key] = value
+        elseif type(value) ~= "table" and value ~= nil and value ~= "" then
+            compressed[key] = value
         end
     end
-    
-    compressSection(data, defaultConfig, compressed)
     return compressed
 end
 
--- Data Decompression (restores default values)
-local function decompressConfig(compressed)
-    local function mergeDefaults(target, defaults)
-        local result = deepCopy(defaults)
-        if type(target) ~= "table" then return result end
-        
-        for key, value in pairs(target) do
-            if type(value) == "table" and type(result[key]) == "table" then
-                result[key] = mergeDefaults(value, result[key])
-            else
-                result[key] = value
-            end
+-- Memory management
+local function updateMemoryUsage()
+    performanceStats.memoryUsage = collectgarbage("count")
+end
+
+local function cleanupMemory()
+    -- Clean up unused references
+    for elementId, element in pairs(registeredElements) do
+        if element.cleanup and type(element.cleanup) == "function" then
+            pcall(element.cleanup)
         end
-        return result
     end
     
-    return mergeDefaults(compressed, defaultConfig)
-end
-
--- Cache Management
-local function addToCache(section, data)
-    if state.cacheSize >= MAX_CACHE_SIZE then
-        -- Remove oldest cache entry
-        local oldestKey = next(state.configCache)
-        state.configCache[oldestKey] = nil
-        state.cacheSize = state.cacheSize - 1
+    -- Force garbage collection on low-end devices
+    if performanceStats.memoryUsage > 50000 then -- 50MB threshold
+        collectgarbage("collect")
     end
     
-    state.configCache[section] = data
-    state.cacheSize = state.cacheSize + 1
+    updateMemoryUsage()
 end
 
-local function clearCache()
-    state.configCache = {}
-    state.cacheSize = 0
-end
-
--- Async File Operations (prevents freezing)
-local function asyncReadFile(path, callback)
-    coroutine.wrap(function()
-        local success, result = pcall(function()
-            if isfile(path) then
-                return readfile(path)
-            end
-            return nil
-        end)
-        
-        if callback then
-            callback(success, result)
-        end
-    end)()
-end
-
-local function asyncWriteFile(path, data, callback)
-    coroutine.wrap(function()
-        local success, error = pcall(function()
-            writefile(path, data)
-        end)
-        
-        if callback then
-            callback(success, error)
-        end
-    end)()
-end
-
--- Debounced Save System
-local function debouncedSave()
-    -- Clear existing timer
-    if state.saveTimer then
-        state.saveTimer:Disconnect()
-        state.saveTimer = nil
-    end
+-- Backup management
+local function createBackup()
+    local configPath = getConfigPath()
+    if not isfile(configPath) then return end
     
-    -- Set new timer
-    state.saveTimer = task.delay(SAVE_DEBOUNCE_TIME, function()
-        if next(state.saveQueue) and not state.isSaving then
-            state.isSaving = true
+    pcall(function()
+        local currentData = readfile(configPath)
+        
+        -- Shift existing backups
+        for i = CONFIG.MAX_BACKUPS - 1, 1, -1 do
+            local currentBackup = getBackupPath(i)
+            local nextBackup = getBackupPath(i + 1)
             
-            -- Merge all queued changes
-            local finalConfig = deepCopy(state.lastSavedState)
-            for section, changes in pairs(state.saveQueue) do
-                if finalConfig[section] then
-                    for key, value in pairs(changes) do
-                        finalConfig[section][key] = value
-                    end
-                else
-                    finalConfig[section] = changes
+            if isfile(currentBackup) then
+                if i == CONFIG.MAX_BACKUPS - 1 then
+                    -- Delete oldest backup
+                    delfile(nextBackup)
                 end
+                -- Move backup up one slot
+                writefile(nextBackup, readfile(currentBackup))
+                delfile(currentBackup)
             end
-            
-            -- Compress and save asynchronously
-            local compressedData = state.performance and state.performance.compressData and compressConfig(finalConfig) or finalConfig
-            local jsonData = HttpService:JSONEncode(compressedData)
-            
-            asyncWriteFile(getConfigPath(), jsonData, function(success, error)
-                if success then
-                    -- Create backup
-                    asyncWriteFile(getBackupPath(), jsonData, function() end)
-                    state.lastSavedState = finalConfig
-                    state.saveQueue = {}
-                else
-                    warn("OptimizedConfig: Save failed - " .. tostring(error))
-                end
-                state.isSaving = false
-            end)
         end
-        state.saveTimer = nil
+        
+        -- Create new backup
+        writefile(getBackupPath(1), currentData)
     end)
 end
 
--- Public API
-function OptimizedConfigManager:Init(windUI)
-    self.WindUI = windUI
+-- Core Config Functions
+local function loadConfigData()
+    local startTime = tick()
     
-    -- Load initial config
-    self:LoadConfig(function(success)
-        if success and windUI then
-            windUI:Notify({
-                Title = "⚡ Optimized Config",
-                Content = "System initialized successfully!",
-                Duration = 2
-            })
-        end
+    local configPath = getConfigPath()
+    if not isfile(configPath) then
+        configData = {}
+        return true
+    end
+    
+    local success, result = pcall(function()
+        local rawData = readfile(configPath)
+        return HttpService:JSONDecode(rawData)
     end)
+    
+    if success and type(result) == "table" then
+        configData = result
+        performanceStats.loadCount = performanceStats.loadCount + 1
+        performanceStats.totalLoadTime = performanceStats.totalLoadTime + (tick() - startTime)
+        return true
+    else
+        -- Try to load from backup
+        for i = 1, CONFIG.MAX_BACKUPS do
+            local backupPath = getBackupPath(i)
+            if isfile(backupPath) then
+                local backupSuccess, backupResult = pcall(function()
+                    local rawData = readfile(backupPath)
+                    return HttpService:JSONDecode(rawData)
+                end)
+                
+                if backupSuccess and type(backupResult) == "table" then
+                    configData = backupResult
+                    warn("UnifiedConfigManager: Loaded from backup " .. i)
+                    return true
+                end
+            end
+        end
+        
+        -- All failed, start fresh
+        configData = {}
+        warn("UnifiedConfigManager: Failed to load config, starting fresh")
+        return false
+    end
+end
+
+local function saveConfigData()
+    local startTime = tick()
+    
+    -- Debounce saves to prevent spam
+    local currentTime = tick()
+    if currentTime - lastSaveTime < CONFIG.SAVE_DEBOUNCE then
+        return false
+    end
+    
+    createBackup()
+    
+    local success = pcall(function()
+        local compressedData = compressData(configData)
+        local jsonData = HttpService:JSONEncode(compressedData)
+        writefile(getConfigPath(), jsonData)
+    end)
+    
+    if success then
+        lastSaveTime = currentTime
+        performanceStats.saveCount = performanceStats.saveCount + 1
+        performanceStats.totalSaveTime = performanceStats.totalSaveTime + (tick() - startTime)
+    end
+    
+    return success
+end
+
+-- Element Registration System
+function UnifiedConfigManager:Register(elementId, element, category)
+    if not elementId or not element then
+        warn("UnifiedConfigManager: Invalid registration parameters")
+        return false
+    end
+    
+    category = category or "default"
+    
+    -- Create category structure
+    if not configData[category] then
+        configData[category] = {}
+    end
+    
+    -- Store element reference
+    registeredElements[elementId] = {
+        element = element,
+        category = category,
+        lastValue = nil
+    }
+    
+    -- Load existing value if available
+    if configData[category][elementId] ~= nil then
+        self:LoadElement(elementId)
+    end
     
     return true
 end
 
-function OptimizedConfigManager:LoadConfig(callback)
-    if state.isLoading then
-        if callback then callback(false, "Already loading") end
-        return
+function UnifiedConfigManager:Unregister(elementId)
+    if registeredElements[elementId] then
+        registeredElements[elementId] = nil
+        return true
+    end
+    return false
+end
+
+-- Element Value Management
+function UnifiedConfigManager:SaveElement(elementId)
+    local registration = registeredElements[elementId]
+    if not registration then return false end
+    
+    local element = registration.element
+    local category = registration.category
+    
+    local value = nil
+    
+    -- Handle different element types
+    if type(element) == "table" then
+        if element.Get and type(element.Get) == "function" then
+            -- Custom getter
+            local success, result = pcall(element.Get)
+            if success then value = result end
+        elseif element.Value ~= nil then
+            -- Direct value access
+            value = element.Value
+        end
+    elseif type(element) == "function" then
+        -- Function-based element
+        local success, result = pcall(element)
+        if success then value = result end
     end
     
-    state.isLoading = true
+    if value ~= nil then
+        configData[category][elementId] = value
+        registration.lastValue = value
+        return true
+    end
     
-    asyncReadFile(getConfigPath(), function(success, data)
-        if success and data then
-            local parseSuccess, config = pcall(function()
-                local parsed = HttpService:JSONDecode(data)
-                return decompressConfig(parsed)
-            end)
-            
-            if parseSuccess then
-                state.lastSavedState = config
-                clearCache() -- Clear cache when loading new config
-                
-                if callback then callback(true, config) end
-            else
-                -- Try backup file
-                asyncReadFile(getBackupPath(), function(backupSuccess, backupData)
-                    if backupSuccess and backupData then
-                        local backupParseSuccess, backupConfig = pcall(function()
-                            local parsed = HttpService:JSONDecode(backupData)
-                            return decompressConfig(parsed)
-                        end)
-                        
-                        if backupParseSuccess then
-                            state.lastSavedState = backupConfig
-                            if callback then callback(true, backupConfig) end
-                        else
-                            -- Use default config
-                            state.lastSavedState = deepCopy(defaultConfig)
-                            if callback then callback(true, state.lastSavedState) end
-                        end
-                    else
-                        -- Use default config
-                        state.lastSavedState = deepCopy(defaultConfig)
-                        if callback then callback(true, state.lastSavedState) end
-                    end
-                    state.isLoading = false
-                end)
-                return
-            end
-        else
-            -- Use default config
-            state.lastSavedState = deepCopy(defaultConfig)
-            if callback then callback(true, state.lastSavedState) end
+    return false
+end
+
+function UnifiedConfigManager:LoadElement(elementId)
+    local registration = registeredElements[elementId]
+    if not registration then return false end
+    
+    local element = registration.element
+    local category = registration.category
+    local value = configData[category][elementId]
+    
+    if value == nil then return false end
+    
+    -- Handle different element types
+    if type(element) == "table" then
+        if element.Set and type(element.Set) == "function" then
+            -- Custom setter
+            local success = pcall(element.Set, value)
+            if success then registration.lastValue = value end
+            return success
+        elseif element.SetValue and type(element.SetValue) == "function" then
+            -- WindUI-style setter
+            local success = pcall(element.SetValue, value)
+            if success then registration.lastValue = value end
+            return success
         end
-        
-        state.isLoading = false
+    elseif type(element) == "function" then
+        -- Function-based element
+        local success = pcall(element, value)
+        if success then registration.lastValue = value end
+        return success
+    end
+    
+    return false
+end
+
+-- Batch Operations
+function UnifiedConfigManager:SaveAll(category)
+    local savedCount = 0
+    local totalCount = 0
+    
+    for elementId, registration in pairs(registeredElements) do
+        if not category or registration.category == category then
+            totalCount = totalCount + 1
+            if self:SaveElement(elementId) then
+                savedCount = savedCount + 1
+            end
+        end
+    end
+    
+    local success = saveConfigData()
+    return success, savedCount, totalCount
+end
+
+function UnifiedConfigManager:LoadAll(category)
+    local loadedCount = 0
+    local totalCount = 0
+    
+    for elementId, registration in pairs(registeredElements) do
+        if not category or registration.category == category then
+            totalCount = totalCount + 1
+            if self:LoadElement(elementId) then
+                loadedCount = loadedCount + 1
+            end
+        end
+    end
+    
+    return true, loadedCount, totalCount
+end
+
+-- Auto-save functionality
+function UnifiedConfigManager:EnableAutoSave(interval)
+    interval = interval or 30 -- Default 30 seconds
+    
+    if saveDebounceTimer then
+        saveDebounceTimer:Disconnect()
+    end
+    
+    saveDebounceTimer = task.spawn(function()
+        while true do
+            task.wait(interval)
+            if next(registeredElements) then
+                self:SaveAll()
+            end
+        end
     end)
 end
 
-function OptimizedConfigManager:GetSection(sectionName, useCache)
-    useCache = useCache ~= false -- Default to true
-    
-    -- Check cache first
-    if useCache and state.configCache[sectionName] then
-        return state.configCache[sectionName]
-    end
-    
-    -- Get from main config
-    local section = state.lastSavedState[sectionName] or defaultConfig[sectionName]
-    
-    -- Add to cache
-    if useCache and section then
-        addToCache(sectionName, deepCopy(section))
-    end
-    
-    return section
-end
-
-function OptimizedConfigManager:SetSection(sectionName, data, immediate)
-    immediate = immediate or false
-    
-    -- Update cache
-    if state.configCache[sectionName] then
-        state.configCache[sectionName] = deepCopy(data)
-    end
-    
-    -- Queue for saving
-    state.saveQueue[sectionName] = deepCopy(data)
-    
-    if immediate then
-        -- Force immediate save
-        if state.saveTimer then
-            state.saveTimer:Disconnect()
-            state.saveTimer = nil
-        end
-        debouncedSave()
-    else
-        -- Use debounced save
-        debouncedSave()
+function UnifiedConfigManager:DisableAutoSave()
+    if saveDebounceTimer then
+        pcall(function() task.cancel(saveDebounceTimer) end)
+        saveDebounceTimer = nil
     end
 end
 
-function OptimizedConfigManager:GetValue(sectionName, key, defaultValue)
-    local section = self:GetSection(sectionName)
-    return section and section[key] or defaultValue
-end
-
-function OptimizedConfigManager:SetValue(sectionName, key, value, immediate)
-    local section = self:GetSection(sectionName) or {}
-    section[key] = value
-    self:SetSection(sectionName, section, immediate)
-end
-
-function OptimizedConfigManager:SaveImmediate(callback)
-    if state.saveTimer then
-        state.saveTimer:Disconnect()
-        state.saveTimer = nil
-    end
-    
-    -- Force immediate save
-    if next(state.saveQueue) and not state.isSaving then
-        state.isSaving = true
-        
-        local finalConfig = deepCopy(state.lastSavedState)
-        for section, changes in pairs(state.saveQueue) do
-            if finalConfig[section] then
-                for key, value in pairs(changes) do
-                    finalConfig[section][key] = value
-                end
-            else
-                finalConfig[section] = changes
-            end
-        end
-        
-        local compressedData = compressConfig(finalConfig)
-        local jsonData = HttpService:JSONEncode(compressedData)
-        
-        asyncWriteFile(getConfigPath(), jsonData, function(success, error)
-            if success then
-                asyncWriteFile(getBackupPath(), jsonData, function() end)
-                state.lastSavedState = finalConfig
-                state.saveQueue = {}
-            else
-                warn("OptimizedConfig: Immediate save failed - " .. tostring(error))
-            end
-            state.isSaving = false
-            if callback then callback(success, error) end
-        end)
-    else
-        if callback then callback(true) end
-    end
-end
-
-function OptimizedConfigManager:GetStats()
+-- Performance and Debugging
+function UnifiedConfigManager:GetStats()
+    updateMemoryUsage()
     return {
-        cacheSize = state.cacheSize,
-        maxCacheSize = MAX_CACHE_SIZE,
-        queuedSaves = #state.saveQueue,
-        isLoading = state.isLoading,
-        isSaving = state.isSaving,
-        configPath = getConfigPath(),
-        backupPath = getBackupPath()
+        registeredElements = #registeredElements,
+        categories = #configData,
+        saves = performanceStats.saveCount,
+        loads = performanceStats.loadCount,
+        avgSaveTime = performanceStats.saveCount > 0 and (performanceStats.totalSaveTime / performanceStats.saveCount) or 0,
+        avgLoadTime = performanceStats.loadCount > 0 and (performanceStats.totalLoadTime / performanceStats.loadCount) or 0,
+        memoryUsage = performanceStats.memoryUsage,
+        configSize = #HttpService:JSONEncode(configData)
     }
 end
 
-function OptimizedConfigManager:ClearCache()
-    clearCache()
+function UnifiedConfigManager:GetCategories()
+    local categories = {}
+    for category, _ in pairs(configData) do
+        table.insert(categories, category)
+    end
+    return categories
 end
 
--- Migration function for existing configs
-function OptimizedConfigManager:MigrateFromLegacy(legacyConfigs, callback)
-    local migratedConfig = deepCopy(defaultConfig)
+function UnifiedConfigManager:ExportCategory(category)
+    if configData[category] then
+        return HttpService:JSONEncode(configData[category])
+    end
+    return nil
+end
+
+function UnifiedConfigManager:ImportCategory(category, jsonData)
+    local success, data = pcall(function()
+        return HttpService:JSONDecode(jsonData)
+    end)
     
-    -- Migrate WindUI configs
-    if legacyConfigs.windUIConfigs then
-        for configName, configData in pairs(legacyConfigs.windUIConfigs) do
-            if configName:find("BuildAZoo_Main") then
-                for key, value in pairs(configData) do
-                    migratedConfig.main[key] = value
-                end
-            elseif configName:find("BuildAZoo_AutoSystems") then
-                for key, value in pairs(configData) do
-                    migratedConfig.autoSystems[key] = value
-                end
-            elseif configName:find("BuildAZoo_CustomUI") then
-                for key, value in pairs(configData) do
-                    migratedConfig.customUI[key] = value
-                end
-            end
+    if success and type(data) == "table" then
+        configData[category] = data
+        return saveConfigData()
+    end
+    
+    return false
+end
+
+-- Initialization
+function UnifiedConfigManager:Init()
+    if isInitialized then return true end
+    
+    createFolders()
+    loadConfigData()
+    
+    -- Setup memory cleanup
+    memoryCleanupConnection = task.spawn(function()
+        while true do
+            task.wait(CONFIG.MEMORY_CLEANUP_INTERVAL)
+            cleanupMemory()
         end
-    end
+    end)
     
-    -- Migrate custom selections
-    if legacyConfigs.customSelections then
-        migratedConfig.selections = legacyConfigs.customSelections
-    end
+    -- Enable auto-save by default
+    self:EnableAutoSave()
     
-    -- Save migrated config
-    state.lastSavedState = migratedConfig
-    self:SaveImmediate(callback)
+    isInitialized = true
+    return true
 end
 
-return OptimizedConfigManager
+-- Cleanup
+function UnifiedConfigManager:Cleanup()
+    self:DisableAutoSave()
+    
+    if memoryCleanupConnection then
+        pcall(function() task.cancel(memoryCleanupConnection) end)
+        memoryCleanupConnection = nil
+    end
+    
+    -- Final save
+    self:SaveAll()
+    
+    -- Clear memory
+    configData = {}
+    registeredElements = {}
+    
+    isInitialized = false
+end
+
+-- Legacy compatibility functions
+function UnifiedConfigManager:CreateConfig(name)
+    -- Return a wrapper that uses categories
+    return {
+        Register = function(_, elementId, element)
+            return UnifiedConfigManager:Register(elementId, element, name)
+        end,
+        Load = function(_)
+            return UnifiedConfigManager:LoadAll(name)
+        end,
+        Save = function(_)
+            return UnifiedConfigManager:SaveAll(name)
+        end
+    }
+end
+
+return UnifiedConfigManager
