@@ -366,7 +366,7 @@ local function runAutoClaimSnow(statusParagraph)
 							end
 						end
 						if #taskInfo > 0 then
-							msg = "Tasks: " .. table.concat(taskInfo, " | ")
+							msg = "Tasks:\n" .. table.concat(taskInfo, "\n")
 						end
 					end
 				end
