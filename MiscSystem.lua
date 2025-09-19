@@ -17,6 +17,8 @@ local autoLikeThread = nil
 local selectedPotions = {}
 local likedUserIds = {} -- session memory to avoid repeating targets
 local autoLotteryEnabled = false
+local autoClaimSnowEnabled = false
+local autoClaimSnowThread = nil
 -- Forward refs for UI controls that we may need to flip programmatically
 local potionToggleRef = nil
 
@@ -157,6 +159,53 @@ local function sendLikeTo(userId)
 	return ok, err
 end
 
+-- Auto Claim Snow helpers
+local function getDinoEventFrame()
+	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local screenDino = pg and pg:FindFirstChild("ScreenDinoEvent")
+	local root = screenDino and screenDino:FindFirstChild("Root")
+	local frame = root and root:FindFirstChild("Frame")
+	return frame and frame:FindFirstChild("ScrollingFrame") or nil
+end
+
+local function getClaimableTask()
+	local scrollFrame = getDinoEventFrame()
+	if not scrollFrame then return nil, nil end
+	
+	-- Check TaskItem_1, TaskItem_2, TaskItem_3
+	for i = 1, 3 do
+		local taskItem = scrollFrame:FindFirstChild("TaskItem_" .. i)
+		if taskItem then
+			local claimButton = taskItem:FindFirstChild("ClaimButton")
+			local normal = claimButton and claimButton:FindFirstChild("Normal")
+			
+			-- Check if claim button is visible (ready to claim)
+			if normal and normal.Visible then
+				local taskId = taskItem:GetAttribute("Id")
+				if taskId then
+					return taskId, taskItem
+				end
+			end
+		end
+	end
+	
+	return nil, nil
+end
+
+local function claimDinoReward(taskId)
+	if not taskId then return false end
+	local args = {
+		{
+			event = "claimreward",
+			id = taskId
+		}
+	}
+	local ok, err = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+	end)
+	return ok, err
+end
+
 -- Threads
 local function runAutoPotion()
 	while autoPotionEnabled do
@@ -220,6 +269,55 @@ local function runAutoLike(statusParagraph)
             task.wait(1.0)
         end
     end
+end
+
+local function runAutoClaimSnow(statusParagraph)
+	local claimedTasks = {}
+	local lastClaimTime = 0
+	
+	while autoClaimSnowEnabled do
+		local currentTime = tick()
+		local taskId, taskItem = getClaimableTask()
+		
+		if taskId and not claimedTasks[taskId] then
+			-- Prevent spam claiming the same task
+			if currentTime - lastClaimTime >= 2 then
+				local success, err = claimDinoReward(taskId)
+				if success then
+					claimedTasks[taskId] = true
+					lastClaimTime = currentTime
+					if WindUI then
+						WindUI:Notify({ 
+							Title = "❄️ Auto Claim Snow", 
+							Content = "Claimed reward: " .. taskId, 
+							Duration = 3 
+						})
+					end
+					if statusParagraph and statusParagraph.SetDesc then
+						statusParagraph:SetDesc("Last claimed: " .. taskId .. " at " .. os.date("%H:%M:%S"))
+					end
+				else
+					if statusParagraph and statusParagraph.SetDesc then
+						statusParagraph:SetDesc("Failed to claim: " .. taskId)
+					end
+				end
+			end
+		else
+			-- Update status when no tasks available
+			if statusParagraph and statusParagraph.SetDesc then
+				local msg = "Monitoring for claimable tasks..."
+				if next(claimedTasks) then
+					local claimedCount = 0
+					for _ in pairs(claimedTasks) do claimedCount = claimedCount + 1 end
+					msg = msg .. " (Claimed: " .. claimedCount .. ")"
+				end
+				statusParagraph:SetDesc(msg)
+			end
+		end
+		
+		-- Optimized polling - check every 1 second to avoid lag
+		task.wait(1.0)
+	end
 end
 
 -- Public Init
@@ -306,6 +404,39 @@ function MiscSystem.Init(deps)
 		end
 	})
 
+	-- Auto Claim Snow section
+	MiscTab:Section({ Title = "Auto Claim Snow", Icon = "snowflake" })
+	local snowStatus = MiscTab:Paragraph({ Title = "Status", Desc = "Monitoring for claimable tasks..." })
+	local snowToggle = MiscTab:Toggle({
+		Title = "Auto Claim Dino Event",
+		Desc = "Automatically claim snow event rewards",
+		Value = false,
+		Callback = function(state)
+			autoClaimSnowEnabled = state
+			if state and not autoClaimSnowThread then
+				autoClaimSnowThread = task.spawn(function()
+					runAutoClaimSnow(snowStatus)
+					autoClaimSnowThread = nil
+				end)
+				if WindUI then
+					WindUI:Notify({ 
+						Title = "❄️ Auto Claim Snow", 
+						Content = "Started monitoring dino event tasks", 
+						Duration = 3 
+					})
+				end
+			elseif not state then
+				if WindUI then
+					WindUI:Notify({ 
+						Title = "❄️ Auto Claim Snow", 
+						Content = "Stopped monitoring", 
+						Duration = 2 
+					})
+				end
+			end
+		end
+	})
+
 	-- Config registration (optional)
 	if Config then
 		pcall(function()
@@ -313,6 +444,7 @@ function MiscSystem.Init(deps)
 			Config:Register("misc_potion_toggle", potionToggle)
 			Config:Register("misc_potion_dropdown", potionDropdown)
 			Config:Register("misc_like_toggle", likeToggle)
+			Config:Register("misc_snow_toggle", snowToggle)
 		end)
 	end
 
