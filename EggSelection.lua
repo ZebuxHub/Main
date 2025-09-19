@@ -300,6 +300,26 @@ local MutationData = {
         HatchTimeScale = 4, 
         MinHatchTime = 360, 
         Icon = "rbxassetid://93073511262401"
+    },
+    Snow = {
+        ID = "Snow", 
+        Name = "Snow",
+        ProduceRate = 12, 
+        SellRate = 10, 
+        BuyRate = 60, 
+        BigRate = 8, 
+        TextColor = "0090ff", 
+        Color1 = "105, 211, 203", 
+        Color2 = "91, 134, 186", 
+        Color3 = "179, 222, 223", 
+        Neon1 = "", 
+        Neon2 = 1, 
+        Neon3 = "", 
+        RarityNum = 150, 
+        Rarity = 150,
+        HatchTimeScale = 4, 
+        MinHatchTime = 360, 
+        Icon = "rbxassetid://12924452910"
     }
 }
 
