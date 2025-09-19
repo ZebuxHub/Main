@@ -44,6 +44,28 @@ function FruitStoreSystem.candidateKeysForFruit(fruitId)
         table.insert(candidates, "DeepSeaPearlFruit")
         table.insert(candidates, "deepseaPearlFruit")
         table.insert(candidates, "DEEPSEAPEARLFRUIT")
+        table.insert(candidates, "Deepsea Pearl Fruit")
+        table.insert(candidates, "DeepseaPearl")
+    elseif fruitId == "DragonFruit" then
+        table.insert(candidates, "Dragon Fruit")
+        table.insert(candidates, "dragonfruit")
+        table.insert(candidates, "DRAGONFRUIT")
+    elseif fruitId == "GoldMango" then
+        table.insert(candidates, "Gold Mango")
+        table.insert(candidates, "goldmango")
+        table.insert(candidates, "GOLDMANGO")
+    elseif fruitId == "BloodstoneCycad" then
+        table.insert(candidates, "Bloodstone Cycad")
+        table.insert(candidates, "bloodstonecycad")
+        table.insert(candidates, "BLOODSTONECYCAD")
+    elseif fruitId == "ColossalPinecone" then
+        table.insert(candidates, "Colossal Pinecone")
+        table.insert(candidates, "colossalpinecone")
+        table.insert(candidates, "COLOSSALPINECONE")
+    elseif fruitId == "VoltGinkgo" then
+        table.insert(candidates, "Volt Ginkgo")
+        table.insert(candidates, "voltginkgo")
+        table.insert(candidates, "VOLTGINKGO")
     end
     
     return candidates
