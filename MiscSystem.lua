@@ -362,7 +362,7 @@ local function runAutoClaimSnow(statusParagraph)
 									status = "⏳ Waiting"
 								end
 								
-								table.insert(taskInfo, string.format("%s (%s): %s", taskId, readableType, status))
+								table.insert(taskInfo, string.format("%s: %s", readableType, status))
 							end
 						end
 						if #taskInfo > 0 then
