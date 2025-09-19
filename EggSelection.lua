@@ -30,6 +30,12 @@ local EggData = {
         Icon = "rbxassetid://93845452154351",
         Rarity = 2
     },
+    SeaweedEgg = {
+        Name = "Seaweed Egg",
+        Price = "200",
+        Icon = "rbxassetid://87125339619211",
+        Rarity = 2
+    },
     EpicEgg = {
         Name = "Epic Egg",
         Price = "15,000",
@@ -42,16 +48,40 @@ local EggData = {
         Icon = "rbxassetid://90834918351014",
         Rarity = 3
     },
+    ClownfishEgg = {
+        Name = "Clownfish Egg",
+        Price = "200",
+        Icon = "rbxassetid://124419920608938",
+        Rarity = 3
+    },
+    SnowbunnyEgg = {
+        Name = "Snowbunny Egg",
+        Price = "1,500,000",
+        Icon = "rbxassetid://136223941487914",
+        Rarity = 3
+    },
     PrismaticEgg = {
         Name = "Prismatic Egg", 
         Price = "1,000,000",
         Icon = "rbxassetid://79960683434582",
         Rarity = 4
     },
+    LionfishEgg = {
+        Name = "Lionfish Egg",
+        Price = "200",
+        Icon = "rbxassetid://100181295820053",
+        Rarity = 4
+    },
     HyperEgg = {
         Name = "Hyper Egg",
         Price = "2,500,000",
         Icon = "rbxassetid://104958288296273",
+        Rarity = 4
+    },
+    DarkGoatyEgg = {
+        Name = "Dark Goaty Egg",
+        Price = "100,000,000",
+        Icon = "rbxassetid://95956060312947",
         Rarity = 4
     },
     VoidEgg = {
@@ -66,16 +96,34 @@ local EggData = {
         Icon = "rbxassetid://71500536051510",
         Rarity = 5
     },
+    SharkEgg = {
+        Name = "Shark Egg",
+        Price = "150,000,000",
+        Icon = "rbxassetid://71032472532652",
+        Rarity = 5
+    },
     DemonEgg = {
         Name = "Demon Egg",
         Price = "400,000,000",
         Icon = "rbxassetid://126412407639969",
         Rarity = 5
     },
+    RhinoRockEgg = {
+        Name = "Rhino Rock Egg",
+        Price = "3,000,000,000",
+        Icon = "rbxassetid://131221831910623",
+        Rarity = 5
+    },
     CornEgg = {
         Name = "Corn Egg",
         Price = "1,000,000,000",
         Icon = "rbxassetid://94739512852461",
+        Rarity = 5
+    },
+    AnglerfishEgg = {
+        Name = "Anglerfish Egg",
+        Price = "150,000,000",
+        Icon = "rbxassetid://121296998588378",
         Rarity = 5
     },
     BoneDragonEgg = {
@@ -102,10 +150,22 @@ local EggData = {
         Icon = "rbxassetid://109240587278187",
         Rarity = 6
     },
+    SaberCubEgg = {
+        Name = "Saber Cub Egg",
+        Price = "40,000,000,000",
+        Icon = "rbxassetid://111953502835346",
+        Rarity = 6
+    },
     UnicornEgg = {
         Name = "Unicorn Egg",
         Price = "40,000,000,000",
         Icon = "rbxassetid://123427249205445",
+        Rarity = 6
+    },
+    OctopusEgg = {
+        Name = "Octopus Egg",
+        Price = "10,000,000,000",
+        Icon = "rbxassetid://84758700095552",
         Rarity = 6
     },
     AncientEgg = {
@@ -114,10 +174,28 @@ local EggData = {
         Icon = "rbxassetid://113910587565739",
         Rarity = 6
     },
+    SeaDragonEgg = {
+        Name = "Sea Dragon Egg",
+        Price = "999,999,999,999",
+        Icon = "rbxassetid://130514093439717",
+        Rarity = 6
+    },
     UnicornProEgg = {
         Name = "Unicorn Pro Egg",
         Price = "50,000,000,000",
         Icon = "rbxassetid://140138063696377",
+        Rarity = 6
+    },
+    GeneralKongEgg = {
+        Name = "General Kong Egg",
+        Price = "80,000,000,000",
+        Icon = "rbxassetid://106836613554535",
+        Rarity = 6
+    },
+    PegasusEgg = {
+        Name = "Pegasus Egg",
+        Price = "999,999,999,999",
+        Icon = "rbxassetid://83004379343725",
         Rarity = 6
     }
 }
