@@ -52,7 +52,13 @@ local EggData = {
     OctopusEgg = { Name = "Octopus Egg", Price = "75,000,000,000", Icon = "rbxassetid://octopus_icon", Rarity = 6 },
     AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
     SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "100,000,000,000", Icon = "rbxassetid://seadragon_icon", Rarity = 6 },
-    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 }
+    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 },
+    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3 },
+    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4 },
+    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5 },
+    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6 },
+    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6 },
+    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6 }
 }
 
 -- Hardcoded Mutation Data for selection
@@ -61,7 +67,8 @@ local MutationData = {
     Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
     Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
     Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Dino = { Name = "Dino", Icon = "🦕", Rarity = 100 }
+    Dino = { Name = "Dino", Icon = "🦕", Rarity = 100 },
+    Snow = { Name = "Snow", Icon = "❄️", Rarity = 150 }
 }
 
 -- State
