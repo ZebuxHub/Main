@@ -1589,7 +1589,8 @@ function AutoPlaceSystem.CreateUI()
         Values = {
             "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
             "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
-            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg",
+            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg", "UnicornProEgg",
+            "DarkGoatyEgg", "SnowbunnyEgg", "RhinoRockEgg", "SaberCubEgg", "GeneralKongEgg", "PegasusEgg",
             "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
             "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
         },
