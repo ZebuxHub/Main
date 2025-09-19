@@ -1,7 +1,7 @@
 local MiscSystem = {}
 
 -- External deps passed via Init
-local WindUI, Tabs, Config
+local WindUI, Tabs, UnifiedConfig, ConfigCategory
 local MiscTab
 
 -- Services
@@ -24,6 +24,13 @@ local potionToggleRef = nil
 
 local lotteryAttrConn = nil
 local lotteryPollThread = nil
+
+-- UI element references (declared at module level)
+local lotteryToggle = nil
+local potionToggle = nil
+local potionDropdown = nil
+local likeToggle = nil
+local snowToggle = nil
 
 -- Helpers
 local function getAssetFolder()
@@ -160,31 +167,30 @@ local function sendLikeTo(userId)
 end
 
 -- Auto Claim Snow helpers
-local function getDinoEventFrame()
+local function getDinoEventTaskData()
 	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
-	local screenDino = pg and pg:FindFirstChild("ScreenDinoEvent")
-	local root = screenDino and screenDino:FindFirstChild("Root")
-	local frame = root and root:FindFirstChild("Frame")
-	return frame and frame:FindFirstChild("ScrollingFrame") or nil
+	local data = pg and pg:FindFirstChild("Data")
+	return data and data:FindFirstChild("DinoEventTaskData")
 end
 
 local function getClaimableTask()
-	local scrollFrame = getDinoEventFrame()
-	if not scrollFrame then return nil, nil end
+	local taskData = getDinoEventTaskData()
+	if not taskData then return nil, nil end
 	
-	-- Check TaskItem_1, TaskItem_2, TaskItem_3
+	local tasksFolder = taskData:FindFirstChild("Tasks")
+	if not tasksFolder then return nil, nil end
+	
+	-- Check Tasks 1, 2, 3
 	for i = 1, 3 do
-		local taskItem = scrollFrame:FindFirstChild("TaskItem_" .. i)
-		if taskItem then
-			local claimButton = taskItem:FindFirstChild("ClaimButton")
-			local normal = claimButton and claimButton:FindFirstChild("Normal")
+		local taskConfig = tasksFolder:FindFirstChild(tostring(i))
+		if taskConfig then
+			local taskId = taskConfig:GetAttribute("Id")
+			local progress = taskConfig:GetAttribute("Progress") or 0
+			local claimedCount = taskConfig:GetAttribute("ClaimedCount") or 0
 			
-			-- Check if claim button is visible (ready to claim)
-			if normal and normal.Visible then
-				local taskId = taskItem:GetAttribute("Id")
-				if taskId then
-					return taskId, taskItem
-				end
+			-- Only claim if task is complete (progress meets requirement) and not already claimed
+			if taskId and progress > 0 and claimedCount == 0 then
+				return taskId, taskConfig
 			end
 		end
 	end
@@ -303,14 +309,37 @@ local function runAutoClaimSnow(statusParagraph)
 				end
 			end
 		else
-			-- Update status when no tasks available
+			-- Update status when no tasks available - show current task progress
 			if statusParagraph and statusParagraph.SetDesc then
-				local msg = "Monitoring for claimable tasks..."
+				local taskData = getDinoEventTaskData()
+				local msg = "Monitoring tasks..."
+				
+				if taskData then
+					local tasksFolder = taskData:FindFirstChild("Tasks")
+					if tasksFolder then
+						local taskInfo = {}
+						for i = 1, 3 do
+							local taskConfig = tasksFolder:FindFirstChild(tostring(i))
+							if taskConfig then
+								local taskId = taskConfig:GetAttribute("Id") or "Unknown"
+								local progress = taskConfig:GetAttribute("Progress") or 0
+								local claimedCount = taskConfig:GetAttribute("ClaimedCount") or 0
+								local status = claimedCount > 0 and "✅" or (progress > 0 and "🔄" or "⏳")
+								table.insert(taskInfo, string.format("%s:%s", taskId, status))
+							end
+						end
+						if #taskInfo > 0 then
+							msg = "Tasks: " .. table.concat(taskInfo, " | ")
+						end
+					end
+				end
+				
 				if next(claimedTasks) then
 					local claimedCount = 0
 					for _ in pairs(claimedTasks) do claimedCount = claimedCount + 1 end
-					msg = msg .. " (Claimed: " .. claimedCount .. ")"
+					msg = msg .. " (Session claimed: " .. claimedCount .. ")"
 				end
+				
 				statusParagraph:SetDesc(msg)
 			end
 		end
@@ -324,9 +353,10 @@ end
 function MiscSystem.Init(deps)
 	WindUI = deps.WindUI
 	Tabs = deps.Tabs
-	Config = deps.Config
+	UnifiedConfig = deps.UnifiedConfig
+	ConfigCategory = deps.ConfigCategory or "misc"
 	MiscTab = deps.Tab or (Tabs and Tabs.MiscTab)
-	if not MiscTab then return end
+	if not MiscTab then return false end
 
 	-- Lottery section
 	MiscTab:Section({ Title = "Lottery", Icon = "gift" })
@@ -437,14 +467,14 @@ function MiscSystem.Init(deps)
 		end
 	})
 
-	-- Config registration (optional)
-	if Config then
+	-- Config registration with unified config system
+	if UnifiedConfig then
 		pcall(function()
-			Config:Register("misc_lottery_toggle", lotteryToggle)
-			Config:Register("misc_potion_toggle", potionToggle)
-			Config:Register("misc_potion_dropdown", potionDropdown)
-			Config:Register("misc_like_toggle", likeToggle)
-			Config:Register("misc_snow_toggle", snowToggle)
+			UnifiedConfig:Register("misc_lottery_toggle", lotteryToggle, ConfigCategory or "misc")
+			UnifiedConfig:Register("misc_potion_toggle", potionToggle, ConfigCategory or "misc")
+			UnifiedConfig:Register("misc_potion_dropdown", potionDropdown, ConfigCategory or "misc")
+			UnifiedConfig:Register("misc_like_toggle", likeToggle, ConfigCategory or "misc")
+			UnifiedConfig:Register("misc_snow_toggle", snowToggle, ConfigCategory or "misc")
 		end)
 	end
 
@@ -454,6 +484,42 @@ function MiscSystem.Init(deps)
 	if likeStatus and likeStatus.SetDesc then likeStatus:SetDesc("Daily Like Progress: " .. tostring(likes or 0) .. "/3") end
 
 	return true
+end
+
+function MiscSystem.GetConfigElements()
+	return {
+		lotteryToggle = lotteryToggle,
+		potionToggle = potionToggle,
+		potionDropdown = potionDropdown,
+		likeToggle = likeToggle,
+		snowToggle = snowToggle
+	}
+end
+
+function MiscSystem.Cleanup()
+	-- Stop all active systems
+	autoLotteryEnabled = false
+	autoPotionEnabled = false
+	autoLikeEnabled = false
+	autoClaimSnowEnabled = false
+	
+	-- Cleanup connections and threads
+	stopAutoLottery()
+	
+	if autoLikeThread then
+		pcall(function() task.cancel(autoLikeThread) end)
+		autoLikeThread = nil
+	end
+	
+	if autoClaimSnowThread then
+		pcall(function() task.cancel(autoClaimSnowThread) end)
+		autoClaimSnowThread = nil
+	end
+	
+	if autoPotionThread then
+		pcall(function() task.cancel(autoPotionThread) end)
+		autoPotionThread = nil
+	end
 end
 
 return MiscSystem
