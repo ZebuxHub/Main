@@ -47,58 +47,58 @@ local HardcodedMutations = {
 -- Task configuration data
 local TaskConfig = {
     Task_1 = {
-        Id = "Task_1",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "HatchEgg",
-        CompleteValue = 5,
-        Desc = "K_DINO_DESC_Task_1",
-        Icon = "rbxassetid://90239318564009"
-    },
+        Id = "Task_1", 
+        TaskPoints = 12, 
+        RepeatCount = 1, 
+        CompleteType = "HatchIceEgg", 
+        CompleteValue = 5, 
+        Desc = "K_DINO_DESC_Task_1", 
+        Icon = "rbxassetid://126382730672834"
+    }, 
     Task_3 = {
-        Id = "Task_3",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "SellPet",
-        CompleteValue = 5,
-        Desc = "K_DINO_DESC_Task_3",
-        Icon = "rbxassetid://90239318564009"
-    },
+        Id = "Task_3", 
+        TaskPoints = 12, 
+        RepeatCount = 1, 
+        CompleteType = "SellPet", 
+        CompleteValue = 5, 
+        Desc = "K_DINO_DESC_Task_3", 
+        Icon = "rbxassetid://126382730672834"
+    }, 
     Task_4 = {
-        Id = "Task_4",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "SendEgg",
-        CompleteValue = 5,
-        Desc = "K_DINO_DESC_Task_4",
-        Icon = "rbxassetid://90239318564009"
-    },
+        Id = "Task_4", 
+        TaskPoints = 12, 
+        RepeatCount = 1, 
+        CompleteType = "BuyEvolutionEgg", 
+        CompleteValue = 3, 
+        Desc = "K_DINO_DESC_Task_4", 
+        Icon = "rbxassetid://126382730672834"
+    }, 
     Task_5 = {
-        Id = "Task_5",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "BuyMutateEgg",
-        CompleteValue = 1,
-        Desc = "K_DINO_DESC_Task_5",
-        Icon = "rbxassetid://90239318564009"
-    },
+        Id = "Task_5", 
+        TaskPoints = 12, 
+        RepeatCount = 1, 
+        CompleteType = "BuyIceEgg", 
+        CompleteValue = 1, 
+        Desc = "K_DINO_DESC_Task_5", 
+        Icon = "rbxassetid://126382730672834"
+    }, 
     Task_7 = {
-        Id = "Task_7",
-        TaskPoints = 20,
-        RepeatCount = 1,
-        CompleteType = "HatchEgg",
-        CompleteValue = 10,
-        Desc = "K_DINO_DESC_Task_7",
-        Icon = "rbxassetid://90239318564009"
-    },
+        Id = "Task_7", 
+        TaskPoints = 12, 
+        RepeatCount = 1, 
+        CompleteType = "HatchEvolutionEgg", 
+        CompleteValue = 10, 
+        Desc = "K_DINO_DESC_Task_7", 
+        Icon = "rbxassetid://126382730672834"
+    }, 
     Task_8 = {
-        Id = "Task_8",
-        TaskPoints = 15,
-        RepeatCount = 6,
-        CompleteType = "OnlineTime",
-        CompleteValue = 900,
-        Desc = "K_DINO_DESC_Task_8",
-        Icon = "rbxassetid://90239318564009"
+        Id = "Task_8", 
+        TaskPoints = 10, 
+        RepeatCount = 4, 
+        CompleteType = "OnlineTime", 
+        CompleteValue = 1200, 
+        Desc = "K_DINO_DESC_Task_8", 
+        Icon = "rbxassetid://126382730672834"
     }
 }
 
