@@ -281,9 +281,9 @@ local MutationData = {
         MinHatchTime = 360, 
         Icon = "rbxassetid://16633305205"
     }, 
-    Jurassic = {
-        ID = "Jurassic", 
-        Name = "Jurassic",
+    Dino = {
+        ID = "Dino", 
+        Name = "Dino",
         ProduceRate = 12, 
         SellRate = 10, 
         BuyRate = 50, 
