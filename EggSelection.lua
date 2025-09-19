@@ -1251,29 +1251,6 @@ function EggSelection.UpdateSelections(eggs, mutations, order)
     end
 end
 
--- Helper functions for external scripts
-function EggSelection.IsEgg(itemId)
-    return EggData[itemId] ~= nil
-end
 
-function EggSelection.IsMutation(itemId)
-    return MutationData[itemId] ~= nil
-end
-
-function EggSelection.GetEggPrice(eggType)
-    if EggData[eggType] then
-        local priceStr = EggData[eggType].Price:gsub(",", "")
-        return tonumber(priceStr)
-    end
-    return nil
-end
-
-function EggSelection.GetEggData()
-    return EggData
-end
-
-function EggSelection.GetMutationData()
-    return MutationData
-end
 
 return EggSelection
