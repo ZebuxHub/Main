@@ -32,7 +32,7 @@ local FruitData = {
 	Blueberry = {
 		Name = "Blueberry",
 		Price = "20,000",
-		Icon = "🔵",
+		Icon = "🫐",
 		Rarity = 1
 	},
 	Watermelon = {
@@ -83,6 +83,12 @@ local FruitData = {
 		Icon = "🍍",
 		Rarity = 5
 	},
+	DragonFruit = {
+		Name = "Dragon Fruit",
+		Price = "1,500,000,000",
+		Icon = "🐉",
+		Rarity = 6
+	},
 	GoldMango = {
 		Name = "Gold Mango",
 		Price = "2,000,000,000",
@@ -108,9 +114,15 @@ local FruitData = {
 		Rarity = 6
 	},
 	DeepseaPearlFruit = {
-		Name = "DeepseaPearlFruit",
+		Name = "Deepsea Pearl Fruit",
 		Price = "40,000,000,000",
 		Icon = "💠",
+		Rarity = 6
+	},
+	Durian = {
+		Name = "Durian",
+		Price = "80,000,000,000",
+		Icon = "🌰",
 		Rarity = 6
 	}
 }
