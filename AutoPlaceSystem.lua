@@ -1612,7 +1612,7 @@ function AutoPlaceSystem.CreateUI()
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Mutations",
         Desc = "Choose mutations (optional)",
-        Values = {"Golden", "Diamond", "Electirc", "Fire", "Jurassic"},
+        Values = {"Golden", "Diamond", "Electirc", "Fire", "Jurassic", "Snow"},
         Value = {},
         Multi = true,
         AllowNone = true,
