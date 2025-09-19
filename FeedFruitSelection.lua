@@ -32,7 +32,7 @@ local FruitData = {
 	Blueberry = {
 		Name = "Blueberry",
 		Price = "20,000",
-		Icon = "🫐",
+		Icon = "🔵",
 		Rarity = 1
 	},
 	Watermelon = {
@@ -83,12 +83,6 @@ local FruitData = {
 		Icon = "🍍",
 		Rarity = 5
 	},
-	DragonFruit = {
-		Name = "Dragon Fruit",
-		Price = "1,500,000,000",
-		Icon = "🐉",
-		Rarity = 6
-	},
 	GoldMango = {
 		Name = "Gold Mango",
 		Price = "2,000,000,000",
@@ -114,7 +108,7 @@ local FruitData = {
 		Rarity = 6
 	},
 	DeepseaPearlFruit = {
-		Name = "Deepsea Pearl Fruit",
+		Name = "DeepseaPearlFruit",
 		Price = "40,000,000,000",
 		Icon = "💠",
 		Rarity = 6
@@ -122,8 +116,16 @@ local FruitData = {
 	Durian = {
 		Name = "Durian",
 		Price = "80,000,000,000",
-		Icon = "🌰",
-		Rarity = 6
+		Icon = "🥥",
+		Rarity = 6,
+		IsNew = true
+	},
+	DragonFruit = {
+		Name = "Dragon Fruit",
+		Price = "1,500,000,000",
+		Icon = "🐲",
+		Rarity = 6,
+		IsNew = true
 	}
 }
 
@@ -483,6 +485,27 @@ local function createItemCard(itemId, itemData, parent)
     checkmark.TextColor3 = colors.selected
     checkmark.Visible = false
     checkmark.Parent = card
+    
+    -- Add "New" indicator for new items
+    if itemData.IsNew then
+        local newIndicator = Instance.new("TextLabel")
+        newIndicator.Name = "NewIndicator"
+        newIndicator.Size = UDim2.new(0, 30, 0, 16)
+        newIndicator.Position = UDim2.new(1, -34, 0, 2)
+        newIndicator.BackgroundColor3 = Color3.fromRGB(255, 69, 58) -- Red background
+        newIndicator.BorderSizePixel = 0
+        newIndicator.Text = "NEW"
+        newIndicator.TextSize = 8
+        newIndicator.Font = Enum.Font.GothamBold
+        newIndicator.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
+        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
+        newIndicator.Parent = card
+        
+        local newCorner = Instance.new("UICorner")
+        newCorner.CornerRadius = UDim.new(0, 3)
+        newCorner.Parent = newIndicator
+    end
     
     -- Set initial selection state
     if selectedItems[itemId] then
