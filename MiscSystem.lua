@@ -173,6 +173,16 @@ local function getDinoEventTaskData()
 	return data and data:FindFirstChild("DinoEventTaskData")
 end
 
+-- Task definitions for validation
+local TaskDefinitions = {
+	Task_1 = { CompleteValue = 5, CompleteType = "HatchIceEgg" },
+	Task_3 = { CompleteValue = 5, CompleteType = "SellPet" },
+	Task_4 = { CompleteValue = 3, CompleteType = "BuyEvolutionEgg" },
+	Task_5 = { CompleteValue = 1, CompleteType = "BuyIceEgg" },
+	Task_7 = { CompleteValue = 10, CompleteType = "HatchEvolutionEgg" },
+	Task_8 = { CompleteValue = 1200, CompleteType = "OnlineTime" }
+}
+
 local function getClaimableTask()
 	local taskData = getDinoEventTaskData()
 	if not taskData then return nil, nil end
@@ -188,9 +198,15 @@ local function getClaimableTask()
 			local progress = taskConfig:GetAttribute("Progress") or 0
 			local claimedCount = taskConfig:GetAttribute("ClaimedCount") or 0
 			
-			-- Only claim if task is complete (progress meets requirement) and not already claimed
-			if taskId and progress > 0 and claimedCount == 0 then
-				return taskId, taskConfig
+			-- Get task definition to check completion requirement
+			local taskDef = TaskDefinitions[taskId]
+			if taskDef then
+				local requiredProgress = taskDef.CompleteValue
+				
+				-- Only claim if task is complete (progress >= required) and not already claimed
+				if taskId and progress >= requiredProgress and claimedCount == 0 then
+					return taskId, taskConfig
+				end
 			end
 		end
 	end
@@ -324,8 +340,29 @@ local function runAutoClaimSnow(statusParagraph)
 								local taskId = taskConfig:GetAttribute("Id") or "Unknown"
 								local progress = taskConfig:GetAttribute("Progress") or 0
 								local claimedCount = taskConfig:GetAttribute("ClaimedCount") or 0
-								local status = claimedCount > 0 and "✅" or (progress > 0 and "🔄" or "⏳")
-								table.insert(taskInfo, string.format("%s:%s", taskId, status))
+								
+								-- Get required progress from task definition
+								local taskDef = TaskDefinitions[taskId]
+								local required = taskDef and taskDef.CompleteValue or 0
+								local completeType = taskDef and taskDef.CompleteType or "Unknown"
+								
+								-- Format complete type to be more readable
+								local readableType = completeType
+									:gsub("([A-Z])", " %1") -- Add space before capital letters
+									:gsub("^%s+", "") -- Remove leading space
+								
+								local status
+								if claimedCount > 0 then
+									status = "✅ Claimed"
+								elseif progress >= required and required > 0 then
+									status = "🎁 Ready"
+								elseif progress > 0 then
+									status = string.format("🔄 %d/%d", progress, required)
+								else
+									status = "⏳ Waiting"
+								end
+								
+								table.insert(taskInfo, string.format("%s (%s): %s", taskId, readableType, status))
 							end
 						end
 						if #taskInfo > 0 then
