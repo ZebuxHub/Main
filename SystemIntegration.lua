@@ -4,7 +4,7 @@
 local SystemIntegration = {}
 
 -- Import the unified config manager
-local UnifiedConfigManager = require(script.Parent.UnifiedConfigManager)
+local UnifiedConfigManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/UnifiedConfigManager.lua"))()
 
 -- System modules (lazy loaded)
 local systems = {
