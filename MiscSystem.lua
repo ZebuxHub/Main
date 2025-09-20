@@ -276,20 +276,20 @@ local function checkAndClaimTask(taskSlot)
 	local taskInfo = getTaskProgress(taskSlot)
 	if not taskInfo or not taskInfo.id then return false, "No task data" end
 	
-	-- Skip if already claimed
-	if taskInfo.claimedCount > 0 then
-		return false, "Already claimed"
-	end
-	
 	-- Get task definition
 	local taskDef = DinoEventTasks[taskInfo.id]
 	if not taskDef then return false, "Unknown task: " .. taskInfo.id end
 	
-	-- Check if task is complete
+	-- Check if task is fully completed (claimed count >= repeat count)
+	if taskInfo.claimedCount >= taskDef.RepeatCount then
+		return false, "Fully completed"
+	end
+	
+	-- Check if task progress is ready for next claim
 	if taskInfo.progress >= taskDef.CompleteValue then
 		local ok, err = claimSnowReward(taskInfo.id)
 		if ok then
-			return true, "Claimed " .. taskInfo.id
+			return true, "Claimed " .. taskInfo.id .. " (" .. (taskInfo.claimedCount + 1) .. "/" .. taskDef.RepeatCount .. ")"
 		else
 			return false, "Failed to claim: " .. tostring(err)
 		end
@@ -385,16 +385,18 @@ local function runAutoClaimSnow(statusParagraph)
 			if taskInfo and taskInfo.id then
 				local taskDef = DinoEventTasks[taskInfo.id]
 				if taskDef then
-					local status = string.format("T%d:%s(%d/%d)", 
+					local status = string.format("T%d:%s(%d/%d)[%d/%d]", 
 						slot, 
 						taskInfo.id:gsub("Task_", ""), 
 						taskInfo.progress, 
-						taskDef.CompleteValue
+						taskDef.CompleteValue,
+						taskInfo.claimedCount,
+						taskDef.RepeatCount
 					)
-					if taskInfo.claimedCount > 0 then
-						status = status .. "✅"
+					if taskInfo.claimedCount >= taskDef.RepeatCount then
+						status = status .. "✅" -- Fully completed
 					elseif taskInfo.progress >= taskDef.CompleteValue then
-						status = status .. "🎁"
+						status = status .. "🎁" -- Ready to claim
 					end
 					statusText = statusText .. status .. " "
 				end
