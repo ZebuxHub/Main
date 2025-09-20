@@ -368,7 +368,7 @@ local function runAutoClaimSnow(statusParagraph)
 	
 	while autoClaimSnowEnabled do
 		local claimedAny = false
-		local statusText = "Snow Tasks: "
+		local statusLines = {}
 		
 		-- Check all 3 task slots
 		for slot = 1, 3 do
@@ -385,28 +385,49 @@ local function runAutoClaimSnow(statusParagraph)
 			if taskInfo and taskInfo.id then
 				local taskDef = DinoEventTasks[taskInfo.id]
 				if taskDef then
-					local status = string.format("T%d:%s(%d/%d)[%d/%d]", 
-						slot, 
-						taskInfo.id:gsub("Task_", ""), 
+					-- Create readable task type name
+					local taskTypeName = taskDef.CompleteType
+					if taskTypeName == "HatchIceEgg" then
+						taskTypeName = "Hatch Ice Eggs"
+					elseif taskTypeName == "SellPet" then
+						taskTypeName = "Sell Pets"
+					elseif taskTypeName == "BuyEvolutionEgg" then
+						taskTypeName = "Buy Evolution Eggs"
+					elseif taskTypeName == "BuyIceEgg" then
+						taskTypeName = "Buy Ice Eggs"
+					elseif taskTypeName == "HatchEvolutionEgg" then
+						taskTypeName = "Hatch Evolution Eggs"
+					elseif taskTypeName == "OnlineTime" then
+						taskTypeName = "Online Time"
+					end
+					
+					local status = string.format("Slot %d - %s: %d/%d (Claimed: %d/%d)", 
+						slot,
+						taskTypeName,
 						taskInfo.progress, 
 						taskDef.CompleteValue,
 						taskInfo.claimedCount,
 						taskDef.RepeatCount
 					)
+					
 					if taskInfo.claimedCount >= taskDef.RepeatCount then
-						status = status .. "✅" -- Fully completed
+						status = status .. " ✅ Complete"
 					elseif taskInfo.progress >= taskDef.CompleteValue then
-						status = status .. "🎁" -- Ready to claim
+						status = status .. " 🎁 Ready"
+					else
+						status = status .. " ⏳ In Progress"
 					end
-					statusText = statusText .. status .. " "
+					
+					table.insert(statusLines, status)
 				end
 			else
-				statusText = statusText .. "T" .. slot .. ":- "
+				table.insert(statusLines, string.format("Slot %d - No Task", slot))
 			end
 		end
 		
-		-- Update status display
+		-- Update status display with line breaks
 		if statusParagraph and statusParagraph.SetDesc then
+			local statusText = table.concat(statusLines, "\n")
 			statusParagraph:SetDesc(statusText)
 		end
 		
