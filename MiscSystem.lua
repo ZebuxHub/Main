@@ -346,27 +346,37 @@ local function runAutoClaimSnow(statusParagraph)
 								local required = taskDef and taskDef.CompleteValue or 0
 								local completeType = taskDef and taskDef.CompleteType or "Unknown"
 								
-								-- Format complete type to be more readable
-								local readableType = completeType
-									:gsub("([A-Z])", " %1") -- Add space before capital letters
-									:gsub("^%s+", "") -- Remove leading space
-								
-								local status
+								-- Only show incomplete/missing tasks (not completed ones)
+								local isIncomplete = false
 								if claimedCount == 0 then
-									status = "🚫 Stopped"
-								elseif progress >= required and required > 0 then
-									status = "🎁 Ready"
-								elseif progress > 0 then
-									status = string.format("🔄 %d/%d", progress, required)
-								else
-									status = "⏳ Waiting"
+									isIncomplete = true -- Stopped tasks
+								elseif progress < required then
+									isIncomplete = true -- Still in progress
 								end
 								
-								table.insert(taskInfo, string.format("%s: %s", readableType, status))
+								if isIncomplete then
+									-- Format complete type to be more readable
+									local readableType = completeType
+										:gsub("([A-Z])", " %1") -- Add space before capital letters
+										:gsub("^%s+", "") -- Remove leading space
+									
+									local status
+									if claimedCount == 0 then
+										status = "🚫 Stopped"
+									elseif progress > 0 then
+										status = string.format("🔄 %d/%d", progress, required)
+									else
+										status = "⏳ Waiting"
+									end
+									
+									table.insert(taskInfo, string.format("%s: %s", readableType, status))
+								end
 							end
 						end
 						if #taskInfo > 0 then
-							msg = "Tasks:\n" .. table.concat(taskInfo, "\n")
+							msg = "Missing Tasks:\n" .. table.concat(taskInfo, "\n")
+						else
+							msg = "✅ All tasks completed!"
 						end
 					end
 				end
