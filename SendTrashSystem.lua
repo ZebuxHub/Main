@@ -23,12 +23,6 @@ local HardcodedEggTypes = {
     "OctopusEgg", "AncientEgg", "SeaDragonEgg", "UnicornProEgg"
 }
 
-local HardcodedFruitTypes = {
-    "Apple", "Banana", "Orange", "Strawberry", "Watermelon", "Pineapple", "Grape", "Mango", 
-    "Peach", "Cherry", "Blueberry", "Kiwi", "Coconut", "Lemon", "Lime", "Papaya", "Avocado", 
-    "Pomegranate", "Durian", "DragonFruit"
-}
-
 local HardcodedMutations = {
     "Golden", "Diamond", "Electric", "Fire", "Dino"
 }
@@ -51,25 +45,20 @@ local petMinSpeedInput
 local petMaxSpeedInput
 local sendEggTypeDropdown
 local sendEggMutationDropdown
-local sendFruitTypeDropdown
 local sessionLimitInput
 local statusParagraph
 local keepTrackingToggle
-local bringTargetToggle
 
 -- State variables
 local trashEnabled = false
 -- auto delete min speed removed
 local actionCounter = 0
 local selectedTargetName = "Random Player" -- cache target selection
-local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts, selectedFruitTypes -- cached selectors
-local selectedSendModes = {"All"} -- cached send modes (multi-select)
+local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
 local petMinSpeed, petMaxSpeed = 0, 999999999 -- speed range for pets
 local lastReceiverName, lastReceiverId -- for webhook author/avatar
 local stopRequested = false -- graceful stop flag
 local keepTrackingWhenEmpty = false -- new setting to control stop behavior
-local bringTargetToPlayer = false -- bring target player to user
-local playerOriginalPositions = {} -- store original positions before bringing
 
 -- Random target state (for "Random Player" mode)
 local randomTargetState = { rrIndex = 1 }
@@ -80,7 +69,6 @@ local randomTargetState = { rrIndex = 1 }
 local inventoryCache = {
     pets = {},
     eggs = {},
-    fruits = {},
     lastUpdateTime = 0,
     updateInterval = 0.5, -- Update every 0.5 seconds
     unknownCount = 0 -- Track items that couldn't load properly
@@ -483,40 +471,6 @@ local function getAllMutations()
     return sortedMutations
 end
 
--- Get all fruit types from inventory + hardcoded list
-local function getAllFruitTypes()
-    local types = {}
-    
-    -- Add hardcoded fruit types
-    for _, fruitType in ipairs(HardcodedFruitTypes) do
-        types[fruitType] = true
-    end
-    
-    -- Add types from inventory
-    if LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui.Data then
-        local fruitsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Fruit")
-        if fruitsFolder then
-            for _, fruitData in pairs(fruitsFolder:GetChildren()) do
-                if fruitData:IsA("Configuration") then
-                    local fruitType = safeGetAttribute(fruitData, "T", nil)
-                    if fruitType then
-                        types[fruitType] = true
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Convert to sorted array
-    local sortedTypes = {}
-    for fruitType in pairs(types) do
-        table.insert(sortedTypes, fruitType)
-    end
-    table.sort(sortedTypes)
-    
-    return sortedTypes
-end
-
 -- Get player list for sending pets
 local function refreshPlayerList()
     local playerList = {"Random Player"}
@@ -574,53 +528,6 @@ local function getRandomPlayer()
 	return nil
 end
 
--- Bring target player to current player and store original position
-local function bringPlayerToMe(targetPlayer)
-	if not targetPlayer or not targetPlayer.Character then return false end
-	if not LocalPlayer or not LocalPlayer.Character then return false end
-	
-	local myPosition = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-	
-	if not myPosition or not targetRoot then return false end
-	
-	-- Store original position before bringing
-	playerOriginalPositions[targetPlayer.UserId] = {
-		position = targetRoot.Position,
-		cframe = targetRoot.CFrame,
-		timestamp = os.clock()
-	}
-	
-	local success, err = pcall(function()
-		local args = { targetPlayer }
-		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("BringRE"):FireServer(unpack(args))
-	end)
-	
-	return success
-end
-
--- Return player to their original position
-local function returnPlayerToOriginalPosition(targetPlayer)
-	if not targetPlayer or not targetPlayer.Character then return false end
-	
-	local originalData = playerOriginalPositions[targetPlayer.UserId]
-	if not originalData then return false end
-	
-	local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not targetRoot then return false end
-	
-	local success, err = pcall(function()
-		-- Try to teleport them back to original position
-		local args = { targetPlayer, originalData.position }
-		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("TeleportPlayerRE"):FireServer(unpack(args))
-	end)
-	
-	-- Clean up stored position after attempting return
-	playerOriginalPositions[targetPlayer.UserId] = nil
-	
-	return success
-end
-
 -- Get a randomized list of up to N candidate players (Player objects)
 	local function getRoundRobinTargets()
 		local pool = {}
@@ -663,20 +570,6 @@ local function selectionToList(selection)
     return result
 end
 
--- Check if a send mode is selected
-local function isSendModeSelected(mode)
-    if not selectedSendModes or #selectedSendModes == 0 then return false end
-    
-    for _, selectedMode in ipairs(selectedSendModes) do
-        if selectedMode == mode then return true end
-        -- Handle legacy "Both" and "All" modes
-        if selectedMode == "Both" and (mode == "Pets" or mode == "Eggs") then return true end
-        if selectedMode == "All" and (mode == "Pets" or mode == "Eggs" or mode == "Fruits") then return true end
-    end
-    
-    return false
-end
-
 -- Sync cached selector variables from current UI controls (needed after config load)
 local function syncSelectorsFromControls()
     local function readControl(ctrl)
@@ -698,16 +591,12 @@ local function syncSelectorsFromControls()
     if minSpeedVal ~= nil then petMinSpeed = parseSpeedInput(tostring(minSpeedVal)) end
     if maxSpeedVal ~= nil then petMaxSpeed = parseSpeedInput(tostring(maxSpeedVal)) end
     
-    -- Sync send mode and filters
-    local sendModes = readControl(sendModeDropdown)
+    -- Sync egg filters (keep existing logic)
     local eggTypes = readControl(sendEggTypeDropdown)
     local eggMuts = readControl(sendEggMutationDropdown)
-    local fruitTypes = readControl(sendFruitTypeDropdown)
 
-    if sendModes ~= nil then selectedSendModes = selectionToList(sendModes) end
     if eggTypes ~= nil then selectedEggTypes = selectionToList(eggTypes) end
     if eggMuts ~= nil then selectedEggMuts = selectionToList(eggMuts) end
-    if fruitTypes ~= nil then selectedFruitTypes = selectionToList(fruitTypes) end
 end
 
 -- Get pet inventory
@@ -721,7 +610,6 @@ local function updateInventoryCache()
     inventoryCache.lastUpdateTime = currentTime
     inventoryCache.pets = {}
     inventoryCache.eggs = {}
-    inventoryCache.fruits = {}
     inventoryCache.unknownCount = 0
     
     if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
@@ -777,32 +665,6 @@ local function updateInventoryCache()
                     placed = safeGetAttribute(eggData, "D", nil) ~= nil
                 }
                 inventoryCache.eggs[eggData.Name] = eggInfo
-            end
-        end
-    end
-    
-    -- Update fruits cache
-    local fruitsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Fruit")
-    if fruitsFolder then
-        for _, fruitData in pairs(fruitsFolder:GetChildren()) do
-            if fruitData:IsA("Configuration") then
-                -- Try multiple attributes and wait for data to load
-                local fruitType = safeGetAttribute(fruitData, "T", nil)
-                
-                -- Skip items without proper type data (not fully loaded yet)
-                if not fruitType or fruitType == "" or fruitType == "Unknown" then
-                    inventoryCache.unknownCount = inventoryCache.unknownCount + 1
-                    continue -- Skip this fruit until it loads properly
-                end
-                
-                local fruitInfo = {
-                    uid = fruitData.Name,
-                    type = fruitType,
-                    mutation = safeGetAttribute(fruitData, "M", ""),
-                    locked = safeGetAttribute(fruitData, "LK", 0) == 1,
-                    placed = safeGetAttribute(fruitData, "D", nil) ~= nil
-                }
-                inventoryCache.fruits[fruitData.Name] = fruitInfo
             end
         end
     end
@@ -925,16 +787,6 @@ local function getEggInventory()
         table.insert(eggs, egg)
     end
     return eggs
-end
-
---- Get fruit inventory (uses cache for better performance)
-local function getFruitInventory()
-    updateInventoryCache()
-    local fruits = {}
-    for _, fruit in pairs(inventoryCache.fruits) do
-        table.insert(fruits, fruit)
-    end
-    return fruits
 end
 
 --- Send current inventory webhook
@@ -1191,23 +1043,21 @@ end
 
 -- Re-verify live item data against current selectors before sending
 local shouldSendItem
-local function verifyItemMatchesFiltersLive(uid, itemCategory, includeTypes, includeMutations)
+local function verifyItemMatchesFiltersLive(uid, isEgg, includeTypes, includeMutations)
     -- Read fresh snapshot from PlayerGui.Data
-    local isEgg = (itemCategory == "egg")
-    local isFruit = (itemCategory == "fruit")
-    local fresh = refreshItemFromData(uid, isEgg or isFruit, nil)
+    local fresh = refreshItemFromData(uid, isEgg, nil)
     if not fresh then return false end
     -- Reuse shouldSendItem logic using the fresh record
-    return shouldSendItem(fresh, includeTypes, includeMutations, itemCategory), fresh
+    return shouldSendItem(fresh, includeTypes, includeMutations, isEgg), fresh
 end
 
 -- Check if item should be sent/sold based on filters
-function shouldSendItem(item, includeTypes, includeMutations, itemCategory)
+function shouldSendItem(item, includeTypes, includeMutations, isEgg)
     -- Don't send locked items
     if item.locked then return false end
     
     -- For pets: use speed filtering instead of type/mutation
-    if itemCategory == "pet" then
+    if not isEgg then
         -- Get pet speed using the existing getPetSpeed function
         local petSpeed = getPetSpeed({ Name = item.uid })
         
@@ -1219,7 +1069,7 @@ function shouldSendItem(item, includeTypes, includeMutations, itemCategory)
         return true -- If speed is in range, send the pet
     end
     
-    -- For eggs and fruits: keep the original type/mutation filtering logic
+    -- For eggs: keep the original type/mutation filtering logic
     -- Normalize values for robust comparison
     local function norm(v)
         return v and tostring(v):lower() or nil
@@ -1279,7 +1129,7 @@ local function focusItem(itemUID)
 end
 
 -- Send item (pet or egg) to player
---- Send item (pet, egg, or fruit) to player with verification and retry
+--- Send item (pet or egg) to player with verification and retry
 local function sendItemToPlayer(item, target, itemType)
 	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
 		if not sessionLimits.limitReachedNotified then
@@ -1291,7 +1141,6 @@ local function sendItemToPlayer(item, target, itemType)
 
 	local itemUID = item.uid
 	local isEgg = itemType == "egg"
-	local isFruit = itemType == "fruit"
 
 	-- Prevent parallel/rapid sends for the same item (cooldown + in-progress)
 	local nowClock = os.clock()
@@ -1303,7 +1152,7 @@ local function sendItemToPlayer(item, target, itemType)
 	sendInProgress[itemUID] = true
 
 	-- Verify item exists before attempting to send
-	if not verifyItemExists(itemUID, isEgg or isFruit) then
+	if not verifyItemExists(itemUID, isEgg) then
 		sendInProgress[itemUID] = nil
 		return false
 	end
@@ -1320,12 +1169,6 @@ local function sendItemToPlayer(item, target, itemType)
 		return false -- silently skip
 	end
 
-	-- Bring target player to me if toggle is enabled
-	if bringTargetToPlayer then
-		bringPlayerToMe(targetPlayerObj)
-		task.wait(0.2) -- Wait for bring to complete
-	end
-
 	local success = false
 
 	-- Skip placed items; do not auto-remove from ground
@@ -1339,19 +1182,9 @@ local function sendItemToPlayer(item, target, itemType)
 	if focusSuccess then task.wait(0.1) end
 
 	-- Re-verify name/type/mutation live right before sending to ensure it still matches filters
-	local typesSel, mutsSel
-	if itemType == "egg" then
-		typesSel = selectedEggTypes or {}
-		mutsSel = selectedEggMuts or {}
-	elseif itemType == "fruit" then
-		typesSel = selectedFruitTypes or {}
-		mutsSel = {} -- Fruits don't have mutations typically
-	else -- pet
-		typesSel = selectedPetTypes or {}
-		mutsSel = selectedPetMuts or {}
-	end
-	
-	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, itemType, typesSel, mutsSel)
+	local typesSel = (itemType == "egg") and (selectedEggTypes or {}) or (selectedPetTypes or {})
+	local mutsSel = (itemType == "egg") and (selectedEggMuts or {}) or (selectedPetMuts or {})
+	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, isEgg, typesSel, mutsSel)
 	if not stillMatches then
 		sendInProgress[itemUID] = nil
 		return false
@@ -1371,7 +1204,7 @@ local function sendItemToPlayer(item, target, itemType)
 
 	if sendSuccess then
 		-- Robust confirmation: wait until inventory actually removes the item
-		local removed = waitForInventoryRemoval(itemUID, isEgg or isFruit, 3.0)
+		local removed = waitForInventoryRemoval(itemUID, isEgg, 3.0)
 		if removed then
 			-- Use freshest data captured earlier if available to ensure correct type/name/mutation in logs
 			success = true
@@ -1421,7 +1254,6 @@ local function updateStatus()
     
     local petInventory = getPetInventory()
     local eggInventory = getEggInventory()
-    local fruitInventory = getFruitInventory()
     
     -- Format speed values nicely
     local function formatSpeed(speed)
@@ -1441,21 +1273,17 @@ local function updateStatus()
     local statusText = string.format(
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
-        "🍎 Fruits in inventory: %d\n" ..
         "⚡ Pet speed range: %s - %s\n" ..
         "📤 Items sent this session: %d/%d\n" ..
         "🔄 Actions performed: %d\n" ..
-        "📡 Keep tracking when empty: %s\n" ..
-        "🎯 Bring target to player: %s",
+        "📡 Keep tracking when empty: %s",
         #petInventory,
         #eggInventory,
-        #fruitInventory,
         formatSpeed(petMinSpeed),
         formatSpeed(petMaxSpeed),
         sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         actionCounter,
-        keepTrackingWhenEmpty and "Enabled" or "Disabled",
-        bringTargetToPlayer and "Enabled" or "Disabled"
+        keepTrackingWhenEmpty and "Enabled" or "Disabled"
     )
 
     -- Blacklist removed
@@ -1466,52 +1294,50 @@ end
 -- Main trash processing function
 local function processTrash()
 	while trashEnabled do
-		-- Sync selectors to get latest send modes
-		syncSelectorsFromControls()
+		-- Get send mode setting
+		local sendMode = "Both" -- Default
+		if sendModeDropdown then
+			local success, result = nil, nil
+			if sendModeDropdown.GetValue then
+				success, result = pcall(function() return sendModeDropdown:GetValue() end)
+			elseif sendModeDropdown.Value then
+				success, result = pcall(function() return sendModeDropdown.Value end)
+			end
+			sendMode = (success and result) and result or "Both"
+		else
+			sendMode = "Both"
+		end
 
 		local petInventory = {}
 		local eggInventory = {}
-		local fruitInventory = {}
-		if isSendModeSelected("Pets") then petInventory = getPetInventory() end
-		if isSendModeSelected("Eggs") then eggInventory = getEggInventory() end
-		if isSendModeSelected("Fruits") then fruitInventory = getFruitInventory() end
+		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
+		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
 
 		-- Check if any items match the current selectors
 		local matchingPets = 0
 		local matchingEggs = 0
-		local matchingFruits = 0
 		
-		if isSendModeSelected("Pets") then
+		if sendMode == "Pets" or sendMode == "Both" then
 			for _, pet in ipairs(petInventory) do
 				pet = refreshItemFromData(pet.uid, false, pet)
-				if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, "pet") then
+				if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, false) then
 					matchingPets = matchingPets + 1
 				end
 			end
 		end
 		
-		if isSendModeSelected("Eggs") then
+		if sendMode == "Eggs" or sendMode == "Both" then
 			for _, egg in ipairs(eggInventory) do
 				egg = refreshItemFromData(egg.uid, true, egg)
 				local tList = selectedEggTypes or {}
 				local mList = selectedEggMuts or {}
-				if shouldSendItem(egg, tList, mList, "egg") then
+				if shouldSendItem(egg, tList, mList, true) then
 					matchingEggs = matchingEggs + 1
 				end
 			end
 		end
 		
-		if isSendModeSelected("Fruits") then
-			for _, fruit in ipairs(fruitInventory) do
-				fruit = refreshItemFromData(fruit.uid, true, fruit)
-				local tList = selectedFruitTypes or {}
-				if shouldSendItem(fruit, tList, {}, "fruit") then
-					matchingFruits = matchingFruits + 1
-				end
-			end
-		end
-		
-		if matchingPets == 0 and matchingEggs == 0 and matchingFruits == 0 then
+		if matchingPets == 0 and matchingEggs == 0 then
 			if not keepTrackingWhenEmpty then
 				-- Stop immediately if nothing matches selectors (no fallback behavior)
 				trashEnabled = false
@@ -1551,65 +1377,33 @@ local function processTrash()
 		local sentAnyItem = false
 		local function trySendToTarget(targetPlayerObj)
 			local anyAttempt = false
-			local sentSuccessfully = false
 			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
 			if stopRequested then return false, anyAttempt end
-			
 			-- attempt pets (stop after first successful send this cycle)
-			if isSendModeSelected("Pets") then
+			if sendMode == "Pets" or sendMode == "Both" then
 				for _, pet in ipairs(petInventory) do
 					pet = refreshItemFromData(pet.uid, false, pet)
 					if stopRequested then break end
-					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, "pet") then
+					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, false) then
 						anyAttempt = true
-						if sendItemToPlayer(pet, targetPlayerObj, "pet") then 
-							sentSuccessfully = true
-							break
-						end
+						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
 					end
 				end
 			end
-			
 			-- attempt eggs (stop after first successful send this cycle)
-			if not sentSuccessfully and isSendModeSelected("Eggs") then
+			if sendMode == "Eggs" or sendMode == "Both" then
 				for _, egg in ipairs(eggInventory) do
 					egg = refreshItemFromData(egg.uid, true, egg)
 					if stopRequested then break end
 					local tList = selectedEggTypes or {}
 					local mList = selectedEggMuts or {}
-					if shouldSendItem(egg, tList, mList, "egg") then
+					if shouldSendItem(egg, tList, mList, true) then
 						anyAttempt = true
-						if sendItemToPlayer(egg, targetPlayerObj, "egg") then 
-							sentSuccessfully = true
-							break
-						end
+						if sendItemToPlayer(egg, targetPlayerObj, "egg") then return true, true end
 					end
 				end
 			end
-			
-			-- attempt fruits (stop after first successful send this cycle)
-			if not sentSuccessfully and isSendModeSelected("Fruits") then
-				for _, fruit in ipairs(fruitInventory) do
-					fruit = refreshItemFromData(fruit.uid, true, fruit)
-					if stopRequested then break end
-					local tList = selectedFruitTypes or {}
-					if shouldSendItem(fruit, tList, {}, "fruit") then
-						anyAttempt = true
-						if sendItemToPlayer(fruit, targetPlayerObj, "fruit") then 
-							sentSuccessfully = true
-							break
-						end
-					end
-				end
-			end
-			
-			-- Return player to original position if we brought them and sent something
-			if sentSuccessfully and bringTargetToPlayer then
-				task.wait(0.5) -- Wait a moment for the trade to complete
-				returnPlayerToOriginalPosition(targetPlayerObj)
-			end
-			
-			return sentSuccessfully, anyAttempt
+			return false, anyAttempt
 		end
 
 		-- Iterate chosen target only (round-robin returns a single target)
@@ -1697,34 +1491,7 @@ function SendTrashSystem.Init(dependencies)
         ImageSize = 22
     })
     
-    -- Main toggle
-    trashToggle = TrashTab:Toggle({
-        Title = "Send Trash",
-        Desc = "Automatically send selected pets/eggs/fruits",
-        Value = false,
-        Callback = function(state)
-			trashEnabled = state
-			
-			if state then
-				-- Start of a new run/session: do not reset logs, only reset webhookSent
-				webhookSent = false
-				stopRequested = false
-				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
-				task.spawn(function()
-					syncSelectorsFromControls()
-					processTrash()
-				end)
-				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
-			else
-				-- Graceful stop: request stop, allow in-flight send to conclude
-				stopRequested = true
-				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
-				-- no immediate webhook here; let processTrash() handle it after it exits
-			end
-		end
-    })
-    
-    -- Keep tracking toggle (moved under main toggle)
+    -- Keep tracking toggle
     keepTrackingToggle = TrashTab:Toggle({
         Title = "Keep Tracking When Empty",
         Desc = "Continue monitoring even when no items match filters",
@@ -1773,20 +1540,42 @@ function SendTrashSystem.Init(dependencies)
         end
     })
 
+    -- Main toggle
+    trashToggle = TrashTab:Toggle({
+        Title = "Send Trash",
+        Desc = "Automatically send selected pets/eggs",
+        Value = false,
+        Callback = function(state)
+			trashEnabled = state
+			
+			if state then
+				-- Start of a new run/session: do not reset logs, only reset webhookSent
+				webhookSent = false
+				stopRequested = false
+				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
+				task.spawn(function()
+					syncSelectorsFromControls()
+					processTrash()
+				end)
+				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
+			else
+				-- Graceful stop: request stop, allow in-flight send to conclude
+				stopRequested = true
+				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
+				-- no immediate webhook here; let processTrash() handle it after it exits
+			end
+		end
+    })
     
     TrashTab:Section({ Title = "Target Settings", Icon = "target" })
     
     -- Send mode dropdown
     sendModeDropdown = TrashTab:Dropdown({
         Title = "Send Type",
-        Desc = "Choose what to send (multi-select)",
-        Values = {"Pets", "Eggs", "Fruits", "Both", "All"},
-        Value = {"All"},
-        Multi = true,
-        AllowNone = false,
-        Callback = function(selection)
-            selectedSendModes = selectionToList(selection)
-        end
+        Desc = "Choose what to send",
+        Values = {"Pets", "Eggs", "Both"},
+        Value = "Both",
+        Callback = function(selection) end
     })
     
     -- Target player dropdown
@@ -1808,61 +1597,8 @@ function SendTrashSystem.Init(dependencies)
         Title = "Refresh Target List",
         Desc = "Update player list",
         Callback = function()
-            local newPlayerList = refreshPlayerList()
-            if targetPlayerDropdown then
-                -- Try multiple methods to update dropdown values
-                local success = false
-                
-                -- Method 1: SetValues
-                if targetPlayerDropdown.SetValues then
-                    success = pcall(function() 
-                        targetPlayerDropdown:SetValues(newPlayerList)
-                    end)
-                end
-                
-                -- Method 2: Update Values property directly
-                if not success and targetPlayerDropdown.Values then
-                    success = pcall(function()
-                        targetPlayerDropdown.Values = newPlayerList
-                    end)
-                end
-                
-                -- Method 3: Refresh/Update method
-                if not success and targetPlayerDropdown.Refresh then
-                    success = pcall(function()
-                        targetPlayerDropdown.Values = newPlayerList
-                        targetPlayerDropdown:Refresh()
-                    end)
-                end
-                
-                -- Method 4: Update method
-                if not success and targetPlayerDropdown.Update then
-                    success = pcall(function()
-                        targetPlayerDropdown.Values = newPlayerList
-                        targetPlayerDropdown:Update()
-                    end)
-                end
-                
-                if success then
-                    WindUI:Notify({ Title = "Target List", Content = "Updated player list (" .. (#newPlayerList - 1) .. " players)", Duration = 2 })
-                else
-                    WindUI:Notify({ Title = "Target List", Content = "Failed to update dropdown", Duration = 2 })
-                end
-            end
-        end
-    })
-    
-    -- Bring target to player toggle
-    bringTargetToggle = TrashTab:Toggle({
-        Title = "Bring Target to Player",
-        Desc = "Automatically bring target player to your location",
-        Value = false,
-        Callback = function(state)
-            bringTargetToPlayer = state
-            if state then
-                WindUI:Notify({ Title = "Bring Target", Content = "Will bring target players to your location", Duration = 3 })
-            else
-                WindUI:Notify({ Title = "Bring Target", Content = "Disabled bringing target players", Duration = 3 })
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
             end
         end
     })
@@ -1925,21 +1661,6 @@ function SendTrashSystem.Init(dependencies)
         end
     })
     
-    TrashTab:Section({ Title = "Fruit Filters", Icon = "apple" })
-    
-    -- Send fruit type filter
-    sendFruitTypeDropdown = TrashTab:Dropdown({
-        Title = "Fruit Types",
-        Desc = "Types to send (empty = all)",
-        Values = getAllFruitTypes(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedFruitTypes = selectionToList(selection)
-        end
-    })
-    
     -- Selling UI removed per request
     
     TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
@@ -1984,9 +1705,7 @@ function SendTrashSystem.Init(dependencies)
         Config:Register("petMaxSpeed", petMaxSpeedInput)
         Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
         Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
-        Config:Register("sendFruitTypeFilter", sendFruitTypeDropdown)
         Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
-        Config:Register("bringTargetToPlayer", bringTargetToggle)
         -- webhook config removed
         -- Selling config removed
         -- speed threshold removed
