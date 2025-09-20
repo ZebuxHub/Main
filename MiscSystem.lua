@@ -203,8 +203,8 @@ local function getClaimableTask()
 			if taskDef then
 				local requiredProgress = taskDef.CompleteValue
 				
-				-- Only claim if task is complete (progress >= required) and not already claimed
-				if taskId and progress >= requiredProgress and claimedCount == 0 then
+				-- Only claim if task is complete (progress >= required) and claimedCount > 0
+				if taskId and progress >= requiredProgress and claimedCount > 0 then
 					return taskId, taskConfig
 				end
 			end
@@ -352,8 +352,8 @@ local function runAutoClaimSnow(statusParagraph)
 									:gsub("^%s+", "") -- Remove leading space
 								
 								local status
-								if claimedCount > 0 then
-									status = "✅ Claimed"
+								if claimedCount == 0 then
+									status = "🚫 Stopped"
 								elseif progress >= required and required > 0 then
 									status = "🎁 Ready"
 								elseif progress > 0 then
