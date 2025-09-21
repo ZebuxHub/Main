@@ -1401,31 +1401,48 @@ local function createItemCard(itemId, itemData, category, parent)
             -- Add small delay to prevent rapid firing
             task.wait(0.1)
             
-            local value = tonumber(sendInput.Text) or 0
-            if not itemConfigs[category][itemId] then
-                itemConfigs[category][itemId] = {}
-            end
-            itemConfigs[category][itemId].sendUntil = value
-            itemConfigs[category][itemId].enabled = true -- Always enabled when user sets a value
+            local inputText = sendInput.Text:gsub("^%s*(.-)%s*$", "%1") -- Trim whitespace
             
-            -- Update warning with new format: "nX ⚠️"
-            if value == 0 then
-                -- When target is 0, show warning if we have items to send
-                if ownedAmount > 0 then
-                    warningIcon.Text = ownedAmount .. "X ⚠️"
-                    warningIcon.Visible = true
-                else
-                    warningIcon.Visible = false
+            if inputText == "" then
+                -- Empty input - disable this item
+                if itemConfigs[category][itemId] then
+                    itemConfigs[category][itemId].enabled = false
                 end
             else
-                -- When target > 0, show warning if we don't have enough
-                if ownedAmount > 0 and ownedAmount <= value then
-                    local difference = value - ownedAmount
-                    warningIcon.Text = difference .. "X ⚠️"
-                    warningIcon.Visible = true
-                else
-                    warningIcon.Visible = false
+                -- User entered a value - enable and save it
+                local value = tonumber(inputText) or 0
+                if not itemConfigs[category][itemId] then
+                    itemConfigs[category][itemId] = {}
                 end
+                itemConfigs[category][itemId].sendUntil = value
+                itemConfigs[category][itemId].enabled = true
+            end
+            
+            -- Update warning with new format: "nX ⚠️"
+            local config = itemConfigs[category][itemId]
+            if config and config.enabled then
+                local currentValue = config.sendUntil or 0
+                if currentValue == 0 then
+                    -- When target is 0, show warning if we have items to send
+                    if ownedAmount > 0 then
+                        warningIcon.Text = ownedAmount .. "X ⚠️"
+                        warningIcon.Visible = true
+                    else
+                        warningIcon.Visible = false
+                    end
+                else
+                    -- When target > 0, show warning if we don't have enough
+                    if ownedAmount > 0 and ownedAmount <= currentValue then
+                        local difference = currentValue - ownedAmount
+                        warningIcon.Text = difference .. "X ⚠️"
+                        warningIcon.Visible = true
+                    else
+                        warningIcon.Visible = false
+                    end
+                end
+            else
+                -- No config or disabled - hide warning
+                warningIcon.Visible = false
             end
             
             saveConfig()
