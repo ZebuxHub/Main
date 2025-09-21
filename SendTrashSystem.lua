@@ -24,7 +24,7 @@ local HardcodedEggTypes = {
 }
 
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Dino"
+    "Golden", "Diamond", "Electric", "Fire", "Dino", "Snow"
 }
 
 -- Services
@@ -1474,79 +1474,213 @@ function SendTrashSystem.Init(dependencies)
     Config = dependencies.Config
     local providedTab = dependencies.Tab
     
+    -- Load saved webhook URL from config
+    -- webhook load disabled
+    
     -- Start precise event-driven watchers for T/M replication
     startDataWatchers()
     
     -- Create the Send Trash tab (or reuse provided Tab from main script)
-    local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Auto Trade"})
+    local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Send Trash"})
     
-    -- Single button to open new Auto Trade UI
-    TrashTab:Button({
-        Title = "🔄 Open Auto Trade",
-        Desc = "Open the new Auto Trade interface with custom item selection",
-        Callback = function()
-            WindUI:Notify({
-                Title = "🔄 Loading",
-                Content = "Loading Auto Trade UI...",
-                Duration = 2
-            })
-            
-            -- Load the new AutoTradeUI module
-            if not _G.AutoTradeUI then
-                local success, result = pcall(function()
-                    local code = game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua")
-                    return loadstring(code)()
-                end)
-                
-                if success and result then
-                    _G.AutoTradeUI = result
-                    WindUI:Notify({
-                        Title = "✅ Loaded",
-                        Content = "Auto Trade UI loaded successfully!",
-                        Duration = 2
-                    })
-                else
-                    WindUI:Notify({
-                        Title = "❌ Error",
-                        Content = "Failed to load Auto Trade UI: " .. tostring(result or "Unknown error"),
-                        Duration = 5
-                    })
-                    print("AutoTradeUI Load Error:", result)
-                    return
-                end
-            end
-            
-            -- Try to show the UI
-            if _G.AutoTradeUI and _G.AutoTradeUI.Show then
-                local showSuccess, showError = pcall(function()
-                    _G.AutoTradeUI.Show()
-                end)
-                
-                if not showSuccess then
-                    WindUI:Notify({
-                        Title = "❌ Error",
-                        Content = "Failed to show Auto Trade UI: " .. tostring(showError),
-                        Duration = 5
-                    })
-                    print("AutoTradeUI Show Error:", showError)
-                end
+    -- Status display
+    statusParagraph = TrashTab:Paragraph({
+        Title = "Trash System Status:",
+        Desc = "Loading pet information...",
+        Image = "trash-2",
+        ImageSize = 22
+    })
+    
+    -- Keep tracking toggle
+    keepTrackingToggle = TrashTab:Toggle({
+        Title = "Keep Tracking When Empty",
+        Desc = "Continue monitoring even when no items match filters",
+        Value = false,
+        Callback = function(state)
+            keepTrackingWhenEmpty = state
+            if state then
+                WindUI:Notify({ Title = "Keep Tracking", Content = "Keeps monitoring when no items are available", Duration = 3 })
             else
-                WindUI:Notify({
-                    Title = "❌ Error",
-                    Content = "Auto Trade UI module not properly loaded",
-                    Duration = 3
-                })
+                WindUI:Notify({ Title = "Stop When Empty", Content = "Stops when no items match filters", Duration = 3 })
             end
         end
     })
     
-    -- Cache refresh button (keep this for utility)
+    
+    -- Session limit input
+    sessionLimitInput = TrashTab:Input({
+        Title = "Session Limit",
+        Desc = "Maximum items to send/sell per session (default: 50)",
+        Default = "50",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            local numValue = tonumber(value) or 50
+            if numValue < 1 then numValue = 1 end -- Minimum of 1
+            sessionLimits.maxSendPet = numValue
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            print("Session limits updated: " .. numValue .. " items per session")
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
+        end,
+    })
+
+    -- Reset session limits button (moved directly under Session Limit)
+    TrashTab:Button({
+        Title = "Reset Session Limits",
+        Desc = "Reset counters for this session",
+        Callback = function()
+            sessionLimits.sendPetCount = 0
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            webhookSent = false
+            sessionLogs = {}
+            actionCounter = 0
+            updateStatus()
+            WindUI:Notify({ Title = "Session Reset", Content = "Limits reset", Duration = 2 })
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
+        end
+    })
+
+    -- Main toggle
+    trashToggle = TrashTab:Toggle({
+        Title = "Send Trash",
+        Desc = "Automatically send selected pets/eggs",
+        Value = false,
+        Callback = function(state)
+			trashEnabled = state
+			
+			if state then
+				-- Start of a new run/session: do not reset logs, only reset webhookSent
+				webhookSent = false
+				stopRequested = false
+				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
+				task.spawn(function()
+					syncSelectorsFromControls()
+					processTrash()
+				end)
+				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
+			else
+				-- Graceful stop: request stop, allow in-flight send to conclude
+				stopRequested = true
+				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
+				-- no immediate webhook here; let processTrash() handle it after it exits
+			end
+		end
+    })
+    
+    TrashTab:Section({ Title = "Target Settings", Icon = "target" })
+    
+    -- Send mode dropdown
+    sendModeDropdown = TrashTab:Dropdown({
+        Title = "Send Type",
+        Desc = "Choose what to send",
+        Values = {"Pets", "Eggs", "Both"},
+        Value = "Both",
+        Callback = function(selection) end
+    })
+    
+    -- Target player dropdown
+    targetPlayerDropdown = TrashTab:Dropdown({
+        Title = "Target Player",
+        Desc = "Random cycles through players",
+        Values = refreshPlayerList(),
+        Value = "Random Player",
+        Callback = function(selection)
+            selectedTargetName = selection or "Random Player"
+            -- Reset random target state when user changes selection
+            randomTargetState.current = nil
+            randomTargetState.fails = 0
+        end
+    })
+    
+    -- Refresh Target List button (placed directly below target dropdown)
+    TrashTab:Button({
+        Title = "Refresh Target List",
+        Desc = "Update player list",
+        Callback = function()
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            end
+        end
+    })
+    
+    TrashTab:Section({ Title = "Pet Speed Filters", Icon = "zap" })
+    
+    -- Pet minimum speed input
+    petMinSpeedInput = TrashTab:Input({
+        Title = "⚡ Min Pet Speed",
+        Desc = "Minimum speed to send pets (supports K/M/B/T)",
+        Value = "0",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            local parsedValue = parseSpeedInput(value)
+            petMinSpeed = parsedValue
+            print("Pet min speed set to:", petMinSpeed)
+        end
+    })
+    
+    -- Pet maximum speed input
+    petMaxSpeedInput = TrashTab:Input({
+        Title = "⚡ Max Pet Speed", 
+        Desc = "Maximum speed to send pets (supports K/M/B/T)",
+        Value = "999999999",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            local parsedValue = parseSpeedInput(value)
+            petMaxSpeed = parsedValue
+            print("Pet max speed set to:", petMaxSpeed)
+        end
+    })
+    
+    TrashTab:Section({ Title = "Egg Filters", Icon = "mail" })
+    
+    -- Send egg type filter (now include-only)
+    sendEggTypeDropdown = TrashTab:Dropdown({
+        Title = "Egg Types",
+        Desc = "Types to send (empty = all)",
+        Values = getAllEggTypes(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggTypes = selectionToList(selection)
+        end
+    })
+    
+    -- Send egg mutation filter (now include-only)
+    sendEggMutationDropdown = TrashTab:Dropdown({
+        Title = "Egg Mutations", 
+        Desc = "Mutations to send (empty = all)",
+        Values = getAllMutations(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggMuts = selectionToList(selection)
+        end
+    })
+    
+    -- Selling UI removed per request
+    
+    TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
+    
+    -- Webhook input (optional) - Auto-saves to config
+    -- webhook UI removed
+    
+    -- Ensure the loaded webhook URL is displayed in the input field
+    --
+    
+    -- Removed generic "Refresh Lists" button (target-specific refresh placed under target dropdown)
+    
+    -- Cache refresh button
     TrashTab:Button({
         Title = "🔄 Refresh Cache",
         Desc = "Force refresh inventory cache and clear send progress",
         Callback = function()
             forceRefreshCache()
             clearSendProgress()
+            updateStatus()
             
             WindUI:Notify({
                 Title = "🔄 Cache Refreshed",
@@ -1555,11 +1689,36 @@ function SendTrashSystem.Init(dependencies)
             })
         end
     })
+
+    -- Removed: Fix Unknown Items and Force Resolve Names buttons
+
+    -- Send current inventory webhook button
+    -- webhook send button removed
     
-    -- Register minimal config
+    
+    -- Register UI elements with config
     if Config then
-        -- Keep basic config for cache functionality
+        Config:Register("trashEnabled", trashToggle)
+        Config:Register("sendMode", sendModeDropdown)
+        Config:Register("targetPlayer", targetPlayerDropdown)
+        Config:Register("petMinSpeed", petMinSpeedInput)
+        Config:Register("petMaxSpeed", petMaxSpeedInput)
+        Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
+        Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
+        Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
+        -- webhook config removed
+        -- Selling config removed
+        -- speed threshold removed
+        Config:Register("sessionLimit", sessionLimitInput)
     end
+    
+    -- Initial status update
+    task.spawn(function()
+        task.wait(1)
+        -- Ensure selectors reflect dropdowns after config load
+        syncSelectorsFromControls()
+        updateStatus()
+    end)
 end
 
 return SendTrashSystem
