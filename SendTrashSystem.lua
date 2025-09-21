@@ -1488,7 +1488,7 @@ function SendTrashSystem.Init(dependencies)
             -- Load the new AutoTradeUI module
             if not _G.AutoTradeUI then
                 local success, autoTradeUI = pcall(function()
-                    return require(script.Parent:WaitForChild("AutoTradeUI"))
+                    return require(loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua")))()
                 end)
                 if success then
                     _G.AutoTradeUI = autoTradeUI
