@@ -1362,33 +1362,28 @@ local function createItemCard(itemId, itemData, category, parent)
         inputCorner.CornerRadius = UDim.new(0, 4)
         inputCorner.Parent = sendInput
         
-        -- Only save when user presses Enter (user controls when to save)
-        local function updateConfig()
-            local inputText = sendInput.Text
-            local value = tonumber(inputText) or 0
-            
-            if not itemConfigs[category][itemId] then
-                itemConfigs[category][itemId] = {}
-            end
-            itemConfigs[category][itemId].sendUntil = value
-            itemConfigs[category][itemId].enabled = value > 0
-            
-            -- Update warning with new format: "nX ⚠️"
-            if ownedAmount > 0 and ownedAmount <= value then
-                local difference = value - ownedAmount
-                warningIcon.Text = difference .. "X ⚠️"
-                warningIcon.Visible = true
-            else
-                warningIcon.Visible = false
-            end
-            
-            saveConfig()
-        end
-        
-        -- Only save when user presses Enter
-        sendInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                updateConfig()
+        -- Use same approach as search filter - simple Changed event
+        sendInput.Changed:Connect(function(prop)
+            if prop == "Text" then
+                local inputText = sendInput.Text
+                local value = tonumber(inputText) or 0
+                
+                if not itemConfigs[category][itemId] then
+                    itemConfigs[category][itemId] = {}
+                end
+                itemConfigs[category][itemId].sendUntil = value
+                itemConfigs[category][itemId].enabled = value > 0
+                
+                -- Update warning with new format: "nX ⚠️"
+                if ownedAmount > 0 and ownedAmount <= value then
+                    local difference = value - ownedAmount
+                    warningIcon.Text = difference .. "X ⚠️"
+                    warningIcon.Visible = true
+                else
+                    warningIcon.Visible = false
+                end
+                
+                saveConfig()
             end
         end)
         
@@ -1524,42 +1519,32 @@ refreshContent = function()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed input functionality (only save when user presses Enter)
-        local function updateMinSpeed()
-            local inputText = minInput.Text
-            local newValue = tonumber(inputText) or 0
-            if newValue ~= petSpeedMin then
-                petSpeedMin = newValue
-                saveConfig()
-                if petMode == "Speed" then
-                    refreshContent() -- Refresh to show pets matching new speed range
+        -- Speed inputs - use same approach as search filter
+        minInput.Changed:Connect(function(prop)
+            if prop == "Text" then
+                local inputText = minInput.Text
+                local newValue = tonumber(inputText) or 0
+                if newValue ~= petSpeedMin then
+                    petSpeedMin = newValue
+                    saveConfig()
+                    if petMode == "Speed" then
+                        refreshContent() -- Refresh to show pets matching new speed range
+                    end
                 end
-            end
-        end
-        
-        local function updateMaxSpeed()
-            local inputText = maxInput.Text
-            local newValue = tonumber(inputText) or 100
-            if newValue ~= petSpeedMax then
-                petSpeedMax = newValue
-                saveConfig()
-                if petMode == "Speed" then
-                    refreshContent() -- Refresh to show pets matching new speed range
-                end
-            end
-        end
-        
-        -- Min speed - only save when Enter is pressed
-        minInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                updateMinSpeed()
             end
         end)
         
-        -- Max speed - only save when Enter is pressed
-        maxInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                updateMaxSpeed()
+        maxInput.Changed:Connect(function(prop)
+            if prop == "Text" then
+                local inputText = maxInput.Text
+                local newValue = tonumber(inputText) or 100
+                if newValue ~= petSpeedMax then
+                    petSpeedMax = newValue
+                    saveConfig()
+                    if petMode == "Speed" then
+                        refreshContent() -- Refresh to show pets matching new speed range
+                    end
+                end
             end
         end)
     end
