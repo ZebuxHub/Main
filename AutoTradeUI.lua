@@ -191,13 +191,14 @@ local function getPlayerInventory()
         end
     end
     
-    -- Get Eggs
+    -- Get Eggs (exclude placed eggs with D attribute)
     local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
     if eggsFolder then
         for _, eggData in pairs(eggsFolder:GetChildren()) do
             if eggData:IsA("Configuration") then
                 local eggType = safeGetAttribute(eggData, "T", nil)
-                if eggType and eggType ~= "" then
+                local isPlaced = safeGetAttribute(eggData, "D", nil) ~= nil
+                if eggType and eggType ~= "" and not isPlaced then
                     inventory.eggs[eggType] = (inventory.eggs[eggType] or 0) + 1
                 end
             end
@@ -1166,13 +1167,14 @@ local function createItemCard(itemId, itemData, category, parent)
     -- Warning icon for insufficient items
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
-    warningIcon.Size = UDim2.new(0, 20, 0, 20)
+    warningIcon.Size = UDim2.new(0, 60, 0, 16)
     warningIcon.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 40)
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
-    warningIcon.TextSize = 12
-    warningIcon.Font = Enum.Font.Gotham
+    warningIcon.TextSize = 10
+    warningIcon.Font = Enum.Font.GothamSemibold
     warningIcon.TextColor3 = colors.warning
+    warningIcon.TextXAlignment = Enum.TextXAlignment.Left
     warningIcon.Visible = false
     warningIcon.Parent = card
     
@@ -1206,15 +1208,27 @@ local function createItemCard(itemId, itemData, category, parent)
             itemConfigs[category][itemId].sendUntil = value
             itemConfigs[category][itemId].enabled = value > 0
             
-            -- Show warning if owned amount is less than send until value
-            warningIcon.Visible = ownedAmount > 0 and ownedAmount <= value
+            -- Update warning with new format: "nX ⚠️"
+            if ownedAmount > 0 and ownedAmount <= value then
+                local difference = value - ownedAmount
+                warningIcon.Text = difference .. "X ⚠️"
+                warningIcon.Visible = true
+            else
+                warningIcon.Visible = false
+            end
             
             saveConfig()
         end)
         
-        -- Show warning initially if needed
+        -- Show warning initially if needed with new format
         local currentSendUntil = (itemConfigs[category][itemId] and itemConfigs[category][itemId].sendUntil) or 0
-        warningIcon.Visible = ownedAmount > 0 and ownedAmount <= currentSendUntil
+        if ownedAmount > 0 and ownedAmount <= currentSendUntil then
+            local difference = currentSendUntil - ownedAmount
+            warningIcon.Text = difference .. "X ⚠️"
+            warningIcon.Visible = true
+        else
+            warningIcon.Visible = false
+        end
     end
     
     return card
@@ -1497,22 +1511,7 @@ function AutoTradeUI.CreateUI()
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = MainFrame
     
-    -- Refresh Button
-    local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Name = "RefreshBtn"
-    refreshBtn.Size = UDim2.new(0, 50, 0, 25)
-    refreshBtn.Position = UDim2.new(1, -60, 0, 10)
-    refreshBtn.BackgroundColor3 = colors.primary
-    refreshBtn.BorderSizePixel = 0
-    refreshBtn.Text = "🔄"
-    refreshBtn.TextSize = 14
-    refreshBtn.Font = Enum.Font.GothamBold
-    refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    refreshBtn.Parent = MainFrame
-    
-    local refreshCorner = Instance.new("UICorner")
-    refreshCorner.CornerRadius = UDim.new(0, 6)
-    refreshCorner.Parent = refreshBtn
+    -- Refresh button removed since real-time updates make it unnecessary
     
     -- Create sections
     local targetSection = createTargetSection(MainFrame)
@@ -1522,7 +1521,6 @@ function AutoTradeUI.CreateUI()
     -- Window control events
     local closeBtn = windowControls.CloseBtn
     local minimizeBtn = windowControls.MinimizeBtn
-    local refreshBtn = MainFrame.RefreshBtn
     
     closeBtn.MouseButton1Click:Connect(function()
         AutoTradeUI.Hide()
@@ -1541,18 +1539,6 @@ function AutoTradeUI.CreateUI()
             filterBar.Visible = false
             tabSection.Visible = false
             isMinimized = true
-        end
-    end)
-    
-    -- Refresh button functionality
-    refreshBtn.MouseButton1Click:Connect(function()
-        refreshContent()
-        if WindUI then
-            WindUI:Notify({
-                Title = "🔄 Refreshed",
-                Content = "All data has been updated",
-                Duration = 2
-            })
         end
     end)
     
