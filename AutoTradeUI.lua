@@ -564,7 +564,13 @@ local function shouldSendItem(itemType, category, ownedAmount)
     if not config or not config.enabled then return false end
     
     local sendUntil = config.sendUntil or 0
-    return ownedAmount > sendUntil
+    -- If sendUntil is 0, send everything (ownedAmount > 0)
+    -- If sendUntil > 0, send only if we have more than the threshold
+    if sendUntil == 0 then
+        return ownedAmount > 0 -- Send everything when target is 0
+    else
+        return ownedAmount > sendUntil -- Send extras when we have more than target
+    end
 end
 
 local function getItemsToSend()
@@ -609,13 +615,14 @@ local function getItemsToSend()
     
     -- Check Pets
     if petMode == "Speed" then
-        -- Speed mode: send all pets in speed range
+        -- Speed mode: send all pets in speed range (exclude placed pets)
         local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
         if petsFolder then
             for _, petData in pairs(petsFolder:GetChildren()) do
                 if petData:IsA("Configuration") then
                     local petType = safeGetAttribute(petData, "T", nil)
-                    if petType and petType ~= "" then
+                    local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
+                    if petType and petType ~= "" and not isPlaced then
                         local petSpeed = getPetSpeed(petData.Name)
                         if petSpeed >= petSpeedMin and petSpeed <= petSpeedMax then
                             table.insert(itemsToSend, {
@@ -629,7 +636,7 @@ local function getItemsToSend()
             end
         end
     else
-        -- Individual mode: check configured pets
+        -- Individual mode: check configured pets (exclude placed pets)
         for petType, ownedAmount in pairs(inventory.pets) do
             if shouldSendItem(petType, "pets", ownedAmount) then
                 -- Find pet UID from inventory
@@ -638,7 +645,8 @@ local function getItemsToSend()
                     for _, petData in pairs(petsFolder:GetChildren()) do
                         if petData:IsA("Configuration") then
                             local petDataType = safeGetAttribute(petData, "T", nil)
-                            if petDataType == petType then
+                            local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
+                            if petDataType == petType and not isPlaced then
                                 table.insert(itemsToSend, {
                                     uid = petData.Name,
                                     type = petType,
@@ -921,7 +929,7 @@ local function createTargetSection(parent)
     local autoTradeToggle = Instance.new("TextButton")
     autoTradeToggle.Name = "AutoTradeToggle"
     autoTradeToggle.Size = UDim2.new(1, -20, 0, 35)
-    autoTradeToggle.Position = UDim2.new(0, 10, 0, 250)
+    autoTradeToggle.Position = UDim2.new(0, 10, 1, -70) -- Position from bottom: 70px from bottom
     autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
     autoTradeToggle.BorderSizePixel = 0
     autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
@@ -938,7 +946,7 @@ local function createTargetSection(parent)
     local giftCountLabel = Instance.new("TextLabel")
     giftCountLabel.Name = "GiftCountLabel"
     giftCountLabel.Size = UDim2.new(1, -20, 0, 25)
-    giftCountLabel.Position = UDim2.new(0, 10, 0, 295)
+    giftCountLabel.Position = UDim2.new(0, 10, 1, -30) -- Position from bottom: 30px from bottom
     giftCountLabel.BackgroundTransparency = 1
     giftCountLabel.Text = "Today Gift: 0/500"
     giftCountLabel.TextSize = 12
@@ -1392,15 +1400,26 @@ local function createItemCard(itemId, itemData, category, parent)
                 itemConfigs[category][itemId] = {}
             end
             itemConfigs[category][itemId].sendUntil = value
-            itemConfigs[category][itemId].enabled = value > 0
+            itemConfigs[category][itemId].enabled = true -- Always enabled when user sets a value
             
             -- Update warning with new format: "nX ⚠️"
-            if ownedAmount > 0 and ownedAmount <= value then
-                local difference = value - ownedAmount
-                warningIcon.Text = difference .. "X ⚠️"
-                warningIcon.Visible = true
+            if value == 0 then
+                -- When target is 0, show warning if we have items to send
+                if ownedAmount > 0 then
+                    warningIcon.Text = ownedAmount .. "X ⚠️"
+                    warningIcon.Visible = true
+                else
+                    warningIcon.Visible = false
+                end
             else
-                warningIcon.Visible = false
+                -- When target > 0, show warning if we don't have enough
+                if ownedAmount > 0 and ownedAmount <= value then
+                    local difference = value - ownedAmount
+                    warningIcon.Text = difference .. "X ⚠️"
+                    warningIcon.Visible = true
+                else
+                    warningIcon.Visible = false
+                end
             end
             
             saveConfig()
@@ -1558,12 +1577,23 @@ updateOwnedAmounts = function()
                         sendUntil = itemConfigs[category][itemId].sendUntil or 0
                     end
                     
-                    if ownedAmount > 0 and ownedAmount <= sendUntil then
-                        local difference = sendUntil - ownedAmount
-                        warningIcon.Text = difference .. "X ⚠️"
-                        warningIcon.Visible = true
+                    if sendUntil == 0 then
+                        -- When target is 0, show warning if we have items to send
+                        if ownedAmount > 0 then
+                            warningIcon.Text = ownedAmount .. "X ⚠️"
+                            warningIcon.Visible = true
+                        else
+                            warningIcon.Visible = false
+                        end
                     else
-                        warningIcon.Visible = false
+                        -- When target > 0, show warning if we don't have enough
+                        if ownedAmount > 0 and ownedAmount <= sendUntil then
+                            local difference = sendUntil - ownedAmount
+                            warningIcon.Text = difference .. "X ⚠️"
+                            warningIcon.Visible = true
+                        else
+                            warningIcon.Visible = false
+                        end
                     end
                 end
             end
@@ -1713,14 +1743,15 @@ refreshContent = function()
                 data[petType] = { Name = petType }
             end
         else
-            -- In speed mode, show pets that match current speed range
+            -- In speed mode, show pets that match current speed range (exclude placed pets)
             local inventory = getPlayerInventory()
             local petsFolder = LocalPlayer.PlayerGui.Data and LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
             if petsFolder then
                 for _, petData in pairs(petsFolder:GetChildren()) do
                     if petData:IsA("Configuration") then
                         local petType = safeGetAttribute(petData, "T", nil)
-                        if petType and petType ~= "" then
+                        local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
+                        if petType and petType ~= "" and not isPlaced then
                             local petSpeed = getPetSpeed(petData.Name)
                             if petSpeed >= petSpeedMin and petSpeed <= petSpeedMax then
                                 data[petType] = { Name = petType }
