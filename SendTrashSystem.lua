@@ -1485,29 +1485,55 @@ function SendTrashSystem.Init(dependencies)
         Title = "🔄 Open Auto Trade",
         Desc = "Open the new Auto Trade interface with custom item selection",
         Callback = function()
+            WindUI:Notify({
+                Title = "🔄 Loading",
+                Content = "Loading Auto Trade UI...",
+                Duration = 2
+            })
+            
             -- Load the new AutoTradeUI module
             if not _G.AutoTradeUI then
-                local success, autoTradeUI = pcall(function()
-                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua"))
+                local success, result = pcall(function()
+                    local code = game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua")
+                    return loadstring(code)()
                 end)
-                if success then
-                    _G.AutoTradeUI = autoTradeUI
+                
+                if success and result then
+                    _G.AutoTradeUI = result
+                    WindUI:Notify({
+                        Title = "✅ Loaded",
+                        Content = "Auto Trade UI loaded successfully!",
+                        Duration = 2
+                    })
                 else
                     WindUI:Notify({
                         Title = "❌ Error",
-                        Content = "Could not load Auto Trade UI module",
-                        Duration = 3
+                        Content = "Failed to load Auto Trade UI: " .. tostring(result or "Unknown error"),
+                        Duration = 5
                     })
+                    print("AutoTradeUI Load Error:", result)
                     return
                 end
             end
             
-            if _G.AutoTradeUI then
-                _G.AutoTradeUI.Show()
+            -- Try to show the UI
+            if _G.AutoTradeUI and _G.AutoTradeUI.Show then
+                local showSuccess, showError = pcall(function()
+                    _G.AutoTradeUI.Show()
+                end)
+                
+                if not showSuccess then
+                    WindUI:Notify({
+                        Title = "❌ Error",
+                        Content = "Failed to show Auto Trade UI: " .. tostring(showError),
+                        Duration = 5
+                    })
+                    print("AutoTradeUI Show Error:", showError)
+                end
             else
                 WindUI:Notify({
                     Title = "❌ Error",
-                    Content = "Auto Trade UI not available",
+                    Content = "Auto Trade UI module not properly loaded",
                     Duration = 3
                 })
             end
