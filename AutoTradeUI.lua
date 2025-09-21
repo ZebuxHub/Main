@@ -197,7 +197,7 @@ local function createTooltip(text, parent, targetElement)
     tooltip.TextWrapped = true
     tooltip.TextXAlignment = Enum.TextXAlignment.Center
     tooltip.TextYAlignment = Enum.TextYAlignment.Center
-    tooltip.ZIndex = 200
+    tooltip.ZIndex = 300 -- Even higher to ensure it's above dropdowns
     tooltip.Parent = targetElement
     
     local tooltipCorner = Instance.new("UICorner")
@@ -222,6 +222,40 @@ end
 
 -- Forward declaration
 local refreshContent
+
+-- Daily Gift Functions
+local function getTodayGiftCount()
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return 0
+    end
+    
+    local userF = LocalPlayer.PlayerGui.Data:FindFirstChild("UserF")
+    if not userF then return 0 end
+    
+    return safeGetAttribute(userF, "TodaySendGiftCount", 0)
+end
+
+local function updateGiftCountDisplay()
+    if not ScreenGui then return end
+    
+    local targetSection = ScreenGui.MainFrame:FindFirstChild("TargetSection")
+    if not targetSection then return end
+    
+    local giftCountLabel = targetSection:FindFirstChild("GiftCountLabel")
+    if not giftCountLabel then return end
+    
+    local currentCount = getTodayGiftCount()
+    giftCountLabel.Text = "Today Gift: " .. currentCount .. "/200"
+    
+    -- Change color if approaching or at limit
+    if currentCount >= 200 then
+        giftCountLabel.TextColor3 = colors.error or Color3.fromRGB(255, 69, 58)
+    elseif currentCount >= 180 then
+        giftCountLabel.TextColor3 = colors.warning or Color3.fromRGB(255, 149, 0)
+    else
+        giftCountLabel.TextColor3 = colors.textSecondary
+    end
+end
 
 -- Inventory Functions
 local function getPlayerInventory()
@@ -337,6 +371,21 @@ local function saveCurrentPosition()
     end
 end
 
+local function isNearPlayer(targetPlayer, maxDistance)
+    maxDistance = maxDistance or 50 -- Default 50 studs
+    
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+    
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+    
+    local distance = (LocalPlayer.Character.HumanoidRootPart.Position - targetPlayer.Character.HumanoidRootPart.Position).Magnitude
+    return distance <= maxDistance
+end
+
 local function returnToSavedPosition()
     if savedPosition and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         LocalPlayer.Character.HumanoidRootPart.CFrame = savedPosition
@@ -351,6 +400,11 @@ local function teleportToPlayer(targetPlayer)
     
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         return false, "Local player has no character"
+    end
+    
+    -- Check if we're already near the target player
+    if isNearPlayer(targetPlayer, 50) then
+        return true -- No need to teleport, already close enough
     end
     
     local success, err = pcall(function()
@@ -379,6 +433,19 @@ end
 local function performTrade(itemUID, itemType, targetPlayer, shouldReturnToPosition)
     if isTrading or tradeCooldown then
         return false, "Trade in progress or cooldown active"
+    end
+    
+    -- Check daily gift limit
+    local currentGiftCount = getTodayGiftCount()
+    if currentGiftCount >= 200 then
+        if WindUI then
+            WindUI:Notify({
+                Title = "🚫 Daily Limit Reached",
+                Content = "You've reached the daily gift limit of 200. Cannot send more items today.",
+                Duration = 5
+            })
+        end
+        return false, "Daily gift limit reached (200/200)"
     end
     
     isTrading = true
@@ -595,6 +662,29 @@ local function startAutoTrade()
     
     autoTradeConnection = RunService.Heartbeat:Connect(function()
         if not autoTradeEnabled or isTrading then return end
+        
+        -- Check daily gift limit before attempting to trade
+        local currentGiftCount = getTodayGiftCount()
+        if currentGiftCount >= 200 then
+            -- Stop auto-trade and notify user
+            autoTradeEnabled = false
+            if ScreenGui and ScreenGui.MainFrame and ScreenGui.MainFrame.TargetSection then
+                local autoTradeToggle = ScreenGui.MainFrame.TargetSection:FindFirstChild("AutoTradeToggle")
+                if autoTradeToggle then
+                    autoTradeToggle.Text = "Auto Trade: OFF"
+                    autoTradeToggle.BackgroundColor3 = colors.hover
+                end
+            end
+            
+            if WindUI then
+                WindUI:Notify({
+                    Title = "🚫 Auto Trade Stopped",
+                    Content = "Daily gift limit reached (200/200). Auto-trade has been disabled.",
+                    Duration = 5
+                })
+            end
+            return
+        end
         
         local itemsToSend = getItemsToSend()
         if #itemsToSend > 0 then
@@ -842,6 +932,19 @@ local function createTargetSection(parent)
     toggleCorner.CornerRadius = UDim.new(0, 6)
     toggleCorner.Parent = autoTradeToggle
     
+    -- Daily Gift Counter Display
+    local giftCountLabel = Instance.new("TextLabel")
+    giftCountLabel.Name = "GiftCountLabel"
+    giftCountLabel.Size = UDim2.new(1, -20, 0, 25)
+    giftCountLabel.Position = UDim2.new(0, 10, 0, 295)
+    giftCountLabel.BackgroundTransparency = 1
+    giftCountLabel.Text = "Today Gift: 0/200"
+    giftCountLabel.TextSize = 12
+    giftCountLabel.Font = Enum.Font.Gotham
+    giftCountLabel.TextColor3 = colors.textSecondary
+    giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
+    giftCountLabel.Parent = targetSection
+    
     return targetSection
 end
 
@@ -943,6 +1046,7 @@ local function createFilterBar(parent)
         sortOption.Font = Enum.Font.Gotham
         sortOption.TextColor3 = colors.text
         sortOption.TextXAlignment = Enum.TextXAlignment.Left
+        sortOption.ZIndex = 101 -- Higher than the dropdown container
         sortOption.Parent = sortList
         
         local optionPadding = Instance.new("UIPadding")
@@ -1371,6 +1475,9 @@ end
 refreshContent = function()
     if not ScreenGui or not ScreenGui.Parent then return end
     
+    -- Update gift count display
+    updateGiftCountDisplay()
+    
     local tabSection = ScreenGui.MainFrame:FindFirstChild("TabSection")
     if not tabSection then return end
     
@@ -1667,6 +1774,7 @@ function setupEventHandlers()
             option.Font = Enum.Font.Gotham
             option.TextColor3 = colors.text
             option.TextXAlignment = Enum.TextXAlignment.Left
+            option.ZIndex = 101 -- Higher than the dropdown container
             option.Parent = dropdownList
             
             local optionPadding = Instance.new("UIPadding")
@@ -1702,6 +1810,9 @@ function setupEventHandlers()
     end
     
     targetDropdown.MouseButton1Click:Connect(function()
+        -- Hide any active tooltips when opening dropdown
+        hideTooltip()
+        
         local dropdownList = targetSection.DropdownList
         dropdownList.Visible = not dropdownList.Visible
         if dropdownList.Visible then
@@ -1789,6 +1900,9 @@ function setupEventHandlers()
     
     -- Sort dropdown functionality
     sortBtn.MouseButton1Click:Connect(function()
+        -- Hide any active tooltips when opening dropdown
+        hideTooltip()
+        
         sortList.Visible = not sortList.Visible
     end)
     
@@ -1892,11 +2006,11 @@ local function startInventoryMonitoring()
     inventoryConnection = RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         
-        -- Update UI every 2 seconds for real-time inventory amounts
+        -- Update UI every 2 seconds for real-time inventory amounts and gift count
         if currentTime - lastInventoryUpdate >= 2 then
             lastInventoryUpdate = currentTime
             if ScreenGui and ScreenGui.Enabled then
-                refreshContent()
+                refreshContent() -- This now includes gift count update
             end
         end
         
