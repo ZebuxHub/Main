@@ -1,56 +1,9 @@
--- SendTrashSystem.lua - Auto Trade/Send System for Build A Zoo
+-- SendTrashSystem.lua - Send/Sell Unwanted Pets Module for Build A Zoo
 -- Lua 5.1 Compatible
 
 local SendTrashSystem = {}
 
--- Hardcoded data from game
-local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
-    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
-    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
-    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
-    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 },
-    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3, IsNew = true },
-    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4, IsNew = true },
-    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5, IsNew = true },
-    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6, IsNew = true },
-    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6, IsNew = true },
-    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6, IsNew = true }
-}
-
-local FruitData = {
-    Strawberry = { Name = "Strawberry", Price = "5,000", Icon = "🍓", Rarity = 1 },
-    Blueberry = { Name = "Blueberry", Price = "20,000", Icon = "🔵", Rarity = 1 },
-    Watermelon = { Name = "Watermelon", Price = "80,000", Icon = "🍉", Rarity = 2 },
-    Apple = { Name = "Apple", Price = "400,000", Icon = "🍎", Rarity = 2 },
-    Orange = { Name = "Orange", Price = "1,200,000", Icon = "🍊", Rarity = 3 },
-    Corn = { Name = "Corn", Price = "3,500,000", Icon = "🌽", Rarity = 3 },
-    Banana = { Name = "Banana", Price = "12,000,000", Icon = "🍌", Rarity = 4 },
-    Grape = { Name = "Grape", Price = "50,000,000", Icon = "🍇", Rarity = 4 },
-    Pear = { Name = "Pear", Price = "200,000,000", Icon = "🍐", Rarity = 5 },
-    Pineapple = { Name = "Pineapple", Price = "600,000,000", Icon = "🍍", Rarity = 5 },
-    GoldMango = { Name = "Gold Mango", Price = "2,000,000,000", Icon = "🥭", Rarity = 6 },
-    BloodstoneCycad = { Name = "Bloodstone Cycad", Price = "8,000,000,000", Icon = "🌿", Rarity = 6 },
-    ColossalPinecone = { Name = "Colossal Pinecone", Price = "40,000,000,000", Icon = "🌲", Rarity = 6 },
-    VoltGinkgo = { Name = "Volt Ginkgo", Price = "80,000,000,000", Icon = "⚡", Rarity = 6 },
-    DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Price = "40,000,000,000", Icon = "💠", Rarity = 6 },
-    Durian = { Name = "Durian", Price = "80,000,000,000", Icon = "🥥", Rarity = 6, IsNew = true },
-    DragonFruit = { Name = "Dragon Fruit", Price = "1,500,000,000", Icon = "🐲", Rarity = 6, IsNew = true }
-}
-
+-- Hardcoded pet types and mutations for filtering (from game data)
 local HardcodedPetTypes = {
     "Capy1", "Capy2", "Pig", "Capy3", "Dog", "AngelFish", "Cat", "CapyL1", "Cow", "CapyL2", 
     "Sheep", "CapyL3", "Horse", "Zebra", "Bighead", "Giraffe", "Hippo", "Elephant", "Rabbit", 
@@ -63,8 +16,15 @@ local HardcodedPetTypes = {
     "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock"
 }
 
+local HardcodedEggTypes = {
+    "BasicEgg", "RareEgg", "SuperRareEgg", "SeaweedEgg", "EpicEgg", "LegendEgg", "ClownfishEgg", 
+    "PrismaticEgg", "LionfishEgg", "HyperEgg", "VoidEgg", "BowserEgg", "SharkEgg", "DemonEgg", 
+    "CornEgg", "AnglerfishEgg", "BoneDragonEgg", "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", 
+    "OctopusEgg", "AncientEgg", "SeaDragonEgg", "UnicornProEgg"
+}
+
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Dino", "Snow"
+    "Golden", "Diamond", "Electric", "Fire", "Dino"
 }
 
 -- Services
@@ -73,19 +33,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
-
--- Helper function to safely get attribute (moved to top for early access)
-local function safeGetAttribute(obj, attrName, default)
-    if not obj then return default end
-    local success, result = pcall(function()
-        return obj:GetAttribute(attrName)
-    end)
-    return success and result or default
-end
-
--- Forward declarations
-local processTrash
-local refreshPlayerList
 
 -- UI Variables
 local WindUI
@@ -96,28 +43,22 @@ local targetPlayerDropdown
 local sendModeDropdown
 local petMinSpeedInput
 local petMaxSpeedInput
+local sendEggTypeDropdown
+local sendEggMutationDropdown
+local sessionLimitInput
 local statusParagraph
 local keepTrackingToggle
 
--- Custom UI Variables
-local customUI = {
-    screenGui = nil,
-    mainFrame = nil,
-    eggSelectionFrame = nil,
-    fruitSelectionFrame = nil,
-    currentPage = "eggs", -- "eggs", "fruits", "pets"
-    selectedItems = {},
-    sendAmounts = {} -- How much of each item to send
-}
-
 -- State variables
 local trashEnabled = false
+-- auto delete min speed removed
 local actionCounter = 0
-local selectedTargetName = "Random Player"
-local selectedSendTypes = {"Pets"} -- Multi-select: "Pets", "Eggs", "Fruits"
-local petMinSpeed, petMaxSpeed = 0, 999999999
-local stopRequested = false
-local keepTrackingWhenEmpty = false
+local selectedTargetName = "Random Player" -- cache target selection
+local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
+local petMinSpeed, petMaxSpeed = 0, 999999999 -- speed range for pets
+local lastReceiverName, lastReceiverId -- for webhook author/avatar
+local stopRequested = false -- graceful stop flag
+local keepTrackingWhenEmpty = false -- new setting to control stop behavior
 
 -- Random target state (for "Random Player" mode)
 local randomTargetState = { rrIndex = 1 }
@@ -128,141 +69,10 @@ local randomTargetState = { rrIndex = 1 }
 local inventoryCache = {
     pets = {},
     eggs = {},
-    fruits = {},
     lastUpdateTime = 0,
     updateInterval = 0.5, -- Update every 0.5 seconds
     unknownCount = 0 -- Track items that couldn't load properly
 }
-
--- Fruit name normalization helpers
-local function normalizeFruitName(name)
-    if type(name) ~= "string" then return "" end
-    local lowered = string.lower(name)
-    lowered = lowered:gsub("[%s_%-%./]", "")
-    return lowered
-end
-
--- Build canonical name map from FruitData
-local function buildFruitCanonical()
-    local map = {}
-    for id, item in pairs(FruitData) do
-        local display = item.Name or id
-        map[normalizeFruitName(id)] = display
-        map[normalizeFruitName(display)] = display
-    end
-    return map
-end
-local FRUIT_CANONICAL = buildFruitCanonical()
-
--- Get player's fruit inventory
-local function getPlayerFruitInventory()
-    local localPlayer = Players.LocalPlayer
-    if not localPlayer then return {} end
-
-    local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return {} end
-
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return {} end
-
-    local asset = data:FindFirstChild("Asset")
-    if not asset then return {} end
-
-    local fruitInventory = {}
-
-    -- Read from Attributes on Asset (primary source)
-    local attrMap = {}
-    local ok, attrs = pcall(function()
-        return asset:GetAttributes()
-    end)
-    if ok and type(attrs) == "table" then
-        attrMap = attrs
-    end
-    
-    for id, item in pairs(FruitData) do
-        local display = item.Name or id
-        local amount = attrMap[display] or attrMap[id]
-        if amount == nil then
-            -- Fallback by normalized key search
-            local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
-            for k, v in pairs(attrMap) do
-                local nk = normalizeFruitName(k)
-                if nk == wantA or nk == wantB then
-                    amount = v
-                    break
-                end
-            end
-        end
-        if type(amount) == "string" then amount = tonumber(amount) or 0 end
-        if type(amount) == "number" and amount > 0 then
-            fruitInventory[display] = amount
-        end
-    end
-
-    -- Also support legacy children-based values as fallback/merge
-    for _, child in pairs(asset:GetChildren()) do
-        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-            local normalized = normalizeFruitName(child.Name)
-            local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
-            if canonical then
-                local amount = child.Value
-                if type(amount) == "string" then amount = tonumber(amount) or 0 end
-                if type(amount) == "number" and amount > 0 then
-                    fruitInventory[canonical] = amount
-                end
-            end
-        end
-    end
-
-    return fruitInventory
-end
-
--- Get player's egg inventory (improved matching)
-local function getPlayerEggInventory()
-    local eggInventory = {}
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
-        return eggInventory
-    end
-    
-    local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
-    if eggsFolder then
-        for _, eggData in pairs(eggsFolder:GetChildren()) do
-            if eggData:IsA("Configuration") then
-                local eggType = safeGetAttribute(eggData, "T", nil)
-                if eggType and eggType ~= "" and eggType ~= "Unknown" then
-                    -- Try direct matching first
-                    local matched = false
-                    for id, item in pairs(EggData) do
-                        if item.Name == eggType or id == eggType then
-                            eggInventory[item.Name] = (eggInventory[item.Name] or 0) + 1
-                            matched = true
-                            break
-                        end
-                    end
-                    
-                    -- If no direct match, try fuzzy matching
-                    if not matched then
-                        for id, item in pairs(EggData) do
-                            -- Remove "Egg" suffix for comparison
-                            local cleanItemName = item.Name:gsub(" Egg$", "")
-                            local cleanEggType = eggType:gsub("Egg$", "")
-                            
-                            if cleanItemName == cleanEggType or 
-                               string.find(cleanItemName:lower(), cleanEggType:lower()) or
-                               string.find(cleanEggType:lower(), cleanItemName:lower()) then
-                                eggInventory[item.Name] = (eggInventory[item.Name] or 0) + 1
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    return eggInventory
-end
 
 -- Unknown resolver removed per user request
 -- local unknownResolver = {
@@ -435,51 +245,42 @@ local webhookUrl = ""
 local sessionLogs = {}
 local webhookSent = false
 
--- Removed session limits as requested
-
--- macOS Dark Theme Colors for Custom UI
-local colors = {
-    background = Color3.fromRGB(18, 18, 20),
-    surface = Color3.fromRGB(32, 32, 34),
-    primary = Color3.fromRGB(0, 122, 255),
-    secondary = Color3.fromRGB(88, 86, 214),
-    text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(200, 200, 200),
-    textTertiary = Color3.fromRGB(150, 150, 150),
-    border = Color3.fromRGB(50, 50, 52),
-    selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(45, 45, 47),
-    pageActive = Color3.fromRGB(0, 122, 255),
-    pageInactive = Color3.fromRGB(60, 60, 62),
-    close = Color3.fromRGB(255, 69, 58),
-    minimize = Color3.fromRGB(255, 159, 10),
-    maximize = Color3.fromRGB(48, 209, 88)
+-- Session limits
+local sessionLimits = {
+    sendPetCount = 0,
+    maxSendPet = 50,
+    limitReachedNotified = false, -- Track if user has been notified
+    stickyCountMemory = 0 -- Persist count across mid-flight stops
 }
 
--- Utility Functions for Custom UI
-local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 20 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 10 then return Color3.fromRGB(255, 159, 10)
-    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85)
-    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88)
-    else return Color3.fromRGB(174, 174, 178)
-    end
-end
-
-local function formatNumber(num)
-    if type(num) == "string" then return num end
-    if num >= 1e12 then return string.format("%.1fT", num / 1e12)
-    elseif num >= 1e9 then return string.format("%.1fB", num / 1e9)
-    elseif num >= 1e6 then return string.format("%.1fM", num / 1e6)
-    elseif num >= 1e3 then return string.format("%.1fK", num / 1e3)
-    else return tostring(num)
-    end
-end
+-- Pretty Discord embed assets
+local EggIconMap = {
+    BasicEgg = 129248801621928,
+    RareEgg = 71012831091414,
+    SuperRareEgg = 93845452154351,
+    SeaweedEgg = 87125339619211,
+    EpicEgg = 116395645531721,
+    LegendEgg = 90834918351014,
+    ClownfishEgg = 124419920608938,
+    PrismaticEgg = 79960683434582,
+    LionfishEgg = 100181295820053,
+    HyperEgg = 104958288296273,
+    VoidEgg = 122396162708984,
+    BowserEgg = 71500536051510,
+    SharkEgg = 71032472532652,
+    DemonEgg = 126412407639969,
+    CornEgg = 94739512852461,
+    AnglerfishEgg = 121296998588378,
+    BoneDragonEgg = 83209913424562,
+    UltraEgg = 83909590718799,
+    DinoEgg = 80783528632315,
+    FlyEgg = 109240587278187,
+    UnicornEgg = 123427249205445,
+    OctopusEgg = 84758700095552,
+    AncientEgg = 113910587565739,
+    SeaDragonEgg = 130514093439717,
+    UnicornProEgg = 140138063696377,
+}
 
 local function robloxIconUrl(assetId)
     return nil
@@ -500,862 +301,15 @@ local function sendWebhookSummary()
     -- disabled
 end
 
--- Custom UI Creation Functions
-local function createCustomUI()
-    if customUI.screenGui then
-        customUI.screenGui:Destroy()
-    end
-    
-    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-    
-    customUI.screenGui = Instance.new("ScreenGui")
-    customUI.screenGui.Name = "SendTrashCustomUI"
-    customUI.screenGui.Parent = PlayerGui
-    
-    customUI.mainFrame = Instance.new("Frame")
-    customUI.mainFrame.Name = "MainFrame"
-    customUI.mainFrame.Size = UDim2.new(0, 800, 0, 600)
-    customUI.mainFrame.Position = UDim2.new(0.5, -400, 0.5, -300)
-    customUI.mainFrame.BackgroundColor3 = colors.background
-    customUI.mainFrame.BorderSizePixel = 0
-    customUI.mainFrame.Parent = customUI.screenGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = customUI.mainFrame
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = customUI.mainFrame
-    
-    -- Title Bar
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundColor3 = colors.surface
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = customUI.mainFrame
-    
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 12)
-    titleCorner.Parent = titleBar
-    
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, -100, 1, 0)
-    title.Position = UDim2.new(0, 50, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "Auto Trade System"
-    title.TextSize = 16
-    title.Font = Enum.Font.GothamSemibold
-    title.TextColor3 = colors.text
-    title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = titleBar
-    
-    -- Close Button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -35, 0, 5)
-    closeBtn.BackgroundColor3 = colors.close
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "×"
-    closeBtn.TextSize = 18
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.Parent = titleBar
-    
-    local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0.5, 0)
-    closeBtnCorner.Parent = closeBtn
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        customUI.screenGui.Enabled = false
-    end)
-    
-    -- Page Tabs
-    local tabContainer = Instance.new("Frame")
-    tabContainer.Name = "TabContainer"
-    tabContainer.Size = UDim2.new(1, -20, 0, 40)
-    tabContainer.Position = UDim2.new(0, 10, 0, 50)
-    tabContainer.BackgroundTransparency = 1
-    tabContainer.Parent = customUI.mainFrame
-    
-    local eggsTab = Instance.new("TextButton")
-    eggsTab.Name = "EggsTab"
-    eggsTab.Size = UDim2.new(0.5, -5, 1, 0)
-    eggsTab.Position = UDim2.new(0, 0, 0, 0)
-    eggsTab.BackgroundColor3 = colors.pageActive
-    eggsTab.BorderSizePixel = 0
-    eggsTab.Text = "🥚 Eggs"
-    eggsTab.TextSize = 14
-    eggsTab.Font = Enum.Font.GothamSemibold
-    eggsTab.TextColor3 = colors.text
-    eggsTab.Parent = tabContainer
-    
-    local eggsCorner = Instance.new("UICorner")
-    eggsCorner.CornerRadius = UDim.new(0, 6)
-    eggsCorner.Parent = eggsTab
-    
-    local fruitsTab = Instance.new("TextButton")
-    fruitsTab.Name = "FruitsTab"
-    fruitsTab.Size = UDim2.new(0.5, -5, 1, 0)
-    fruitsTab.Position = UDim2.new(0.5, 5, 0, 0)
-    fruitsTab.BackgroundColor3 = colors.pageInactive
-    fruitsTab.BorderSizePixel = 0
-    fruitsTab.Text = "🍓 Fruits"
-    fruitsTab.TextSize = 14
-    fruitsTab.Font = Enum.Font.GothamSemibold
-    fruitsTab.TextColor3 = colors.text
-    fruitsTab.Parent = tabContainer
-    
-    local fruitsCorner = Instance.new("UICorner")
-    fruitsCorner.CornerRadius = UDim.new(0, 6)
-    fruitsCorner.Parent = fruitsTab
-    
-    -- Content Frame
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Name = "ContentFrame"
-    contentFrame.Size = UDim2.new(1, -20, 1, -140)
-    contentFrame.Position = UDim2.new(0, 10, 0, 100)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.Parent = customUI.mainFrame
-    
-    -- Scroll Frame
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Name = "ScrollFrame"
-    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 6
-    scrollFrame.ScrollBarImageColor3 = colors.primary
-    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
-    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    scrollFrame.Parent = contentFrame
-    
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.25, -10, 0, 150)
-    gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.Parent = scrollFrame
-    
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 10)
-    padding.PaddingBottom = UDim.new(0, 50)
-    padding.PaddingLeft = UDim.new(0, 10)
-    padding.PaddingRight = UDim.new(0, 10)
-    padding.Parent = scrollFrame
-    
-    -- Tab Click Events
-    eggsTab.MouseButton1Click:Connect(function()
-        customUI.currentPage = "eggs"
-        eggsTab.BackgroundColor3 = colors.pageActive
-        fruitsTab.BackgroundColor3 = colors.pageInactive
-        refreshCustomUIContent()
-    end)
-    
-    fruitsTab.MouseButton1Click:Connect(function()
-        customUI.currentPage = "fruits"
-        fruitsTab.BackgroundColor3 = colors.pageActive
-        eggsTab.BackgroundColor3 = colors.pageInactive
-        refreshCustomUIContent()
-    end)
-    
-    -- Set default page to eggs
-    customUI.currentPage = "eggs"
-    
-    return customUI.screenGui
-end
 
--- Create New Auto Trade UI (Complete System)
-local function createNewAutoTradeUI()
-    if customUI.screenGui then
-        customUI.screenGui:Destroy()
-    end
-    
-    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-    
-    customUI.screenGui = Instance.new("ScreenGui")
-    customUI.screenGui.Name = "AutoTradeUI"
-    customUI.screenGui.Parent = PlayerGui
-    
-    customUI.mainFrame = Instance.new("Frame")
-    customUI.mainFrame.Name = "MainFrame"
-    customUI.mainFrame.Size = UDim2.new(0, 900, 0, 700)
-    customUI.mainFrame.Position = UDim2.new(0.5, -450, 0.5, -350)
-    customUI.mainFrame.BackgroundColor3 = colors.background
-    customUI.mainFrame.BorderSizePixel = 0
-    customUI.mainFrame.Parent = customUI.screenGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = customUI.mainFrame
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = customUI.mainFrame
-    
-    -- Title Bar with Controls
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 50)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundColor3 = colors.surface
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = customUI.mainFrame
-    
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 12)
-    titleCorner.Parent = titleBar
-    
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(0.6, 0, 1, 0)
-    title.Position = UDim2.new(0, 20, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "🚀 Auto Trade System"
-    title.TextSize = 18
-    title.Font = Enum.Font.GothamBold
-    title.TextColor3 = colors.text
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.TextYAlignment = Enum.TextYAlignment.Center
-    title.Parent = titleBar
-    
-    -- Target Selection in Title Bar
-    local targetFrame = Instance.new("Frame")
-    targetFrame.Name = "TargetFrame"
-    targetFrame.Size = UDim2.new(0.25, 0, 0.7, 0)
-    targetFrame.Position = UDim2.new(0.45, 0, 0.15, 0)
-    targetFrame.BackgroundColor3 = colors.background
-    targetFrame.BorderSizePixel = 0
-    targetFrame.Parent = titleBar
-    
-    local targetCorner = Instance.new("UICorner")
-    targetCorner.CornerRadius = UDim.new(0, 6)
-    targetCorner.Parent = targetFrame
-    
-    local targetLabel = Instance.new("TextLabel")
-    targetLabel.Name = "TargetLabel"
-    targetLabel.Size = UDim2.new(0.3, 0, 1, 0)
-    targetLabel.Position = UDim2.new(0, 8, 0, 0)
-    targetLabel.BackgroundTransparency = 1
-    targetLabel.Text = "Target:"
-    targetLabel.TextSize = 12
-    targetLabel.Font = Enum.Font.Gotham
-    targetLabel.TextColor3 = colors.textSecondary
-    targetLabel.TextXAlignment = Enum.TextXAlignment.Left
-    targetLabel.TextYAlignment = Enum.TextYAlignment.Center
-    targetLabel.Parent = targetFrame
-    
-    local targetDropdown = Instance.new("TextButton")
-    targetDropdown.Name = "TargetDropdown"
-    targetDropdown.Size = UDim2.new(0.65, 0, 1, 0)
-    targetDropdown.Position = UDim2.new(0.35, 0, 0, 0)
-    targetDropdown.BackgroundColor3 = colors.hover
-    targetDropdown.BorderSizePixel = 0
-    targetDropdown.Text = selectedTargetName or "Random Player"
-    targetDropdown.TextSize = 11
-    targetDropdown.Font = Enum.Font.Gotham
-    targetDropdown.TextColor3 = colors.text
-    targetDropdown.TextXAlignment = Enum.TextXAlignment.Center
-    targetDropdown.Parent = targetFrame
-    
-    local targetDropdownCorner = Instance.new("UICorner")
-    targetDropdownCorner.CornerRadius = UDim.new(0, 4)
-    targetDropdownCorner.Parent = targetDropdown
-    
-    -- Start/Stop Toggle
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Name = "ToggleFrame"
-    toggleFrame.Size = UDim2.new(0.15, 0, 0.7, 0)
-    toggleFrame.Position = UDim2.new(0.72, 0, 0.15, 0)
-    toggleFrame.BackgroundColor3 = trashEnabled and Color3.fromRGB(48, 209, 88) or Color3.fromRGB(255, 69, 58)
-    toggleFrame.BorderSizePixel = 0
-    toggleFrame.Parent = titleBar
-    
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 15)
-    toggleCorner.Parent = toggleFrame
-    
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.Name = "ToggleButton"
-    toggleButton.Size = UDim2.new(1, 0, 1, 0)
-    toggleButton.Position = UDim2.new(0, 0, 0, 0)
-    toggleButton.BackgroundTransparency = 1
-    toggleButton.Text = trashEnabled and "🟢 ON" or "🔴 OFF"
-    toggleButton.TextSize = 12
-    toggleButton.Font = Enum.Font.GothamBold
-    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleButton.Parent = toggleFrame
-    
-    -- Close Button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 35, 0, 35)
-    closeBtn.Position = UDim2.new(1, -42, 0, 7)
-    closeBtn.BackgroundColor3 = colors.close
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "×"
-    closeBtn.TextSize = 20
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.Parent = titleBar
-    
-    local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0.5, 0)
-    closeBtnCorner.Parent = closeBtn
-    
-    -- Page Tabs
-    local tabContainer = Instance.new("Frame")
-    tabContainer.Name = "TabContainer"
-    tabContainer.Size = UDim2.new(1, -20, 0, 40)
-    tabContainer.Position = UDim2.new(0, 10, 0, 60)
-    tabContainer.BackgroundTransparency = 1
-    tabContainer.Parent = customUI.mainFrame
-    
-    local eggsTab = Instance.new("TextButton")
-    eggsTab.Name = "EggsTab"
-    eggsTab.Size = UDim2.new(0.5, -5, 1, 0)
-    eggsTab.Position = UDim2.new(0, 0, 0, 0)
-    eggsTab.BackgroundColor3 = colors.pageActive
-    eggsTab.BorderSizePixel = 0
-    eggsTab.Text = "🥚 Eggs"
-    eggsTab.TextSize = 14
-    eggsTab.Font = Enum.Font.GothamSemibold
-    eggsTab.TextColor3 = colors.text
-    eggsTab.Parent = tabContainer
-    
-    local eggsCorner = Instance.new("UICorner")
-    eggsCorner.CornerRadius = UDim.new(0, 6)
-    eggsCorner.Parent = eggsTab
-    
-    local fruitsTab = Instance.new("TextButton")
-    fruitsTab.Name = "FruitsTab"
-    fruitsTab.Size = UDim2.new(0.5, -5, 1, 0)
-    fruitsTab.Position = UDim2.new(0.5, 5, 0, 0)
-    fruitsTab.BackgroundColor3 = colors.pageInactive
-    fruitsTab.BorderSizePixel = 0
-    fruitsTab.Text = "🍓 Fruits"
-    fruitsTab.TextSize = 14
-    fruitsTab.Font = Enum.Font.GothamSemibold
-    fruitsTab.TextColor3 = colors.text
-    fruitsTab.Parent = tabContainer
-    
-    local fruitsCorner = Instance.new("UICorner")
-    fruitsCorner.CornerRadius = UDim.new(0, 6)
-    fruitsCorner.Parent = fruitsTab
-    
-    -- Content Frame
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Name = "ContentFrame"
-    contentFrame.Size = UDim2.new(1, -20, 1, -150)
-    contentFrame.Position = UDim2.new(0, 10, 0, 110)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.Parent = customUI.mainFrame
-    
-    -- Scroll Frame
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Name = "ScrollFrame"
-    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 8
-    scrollFrame.ScrollBarImageColor3 = colors.primary
-    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
-    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    scrollFrame.Parent = contentFrame
-    
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.2, -8, 0, 180)
-    gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.Parent = scrollFrame
-    
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 10)
-    padding.PaddingBottom = UDim.new(0, 50)
-    padding.PaddingLeft = UDim.new(0, 10)
-    padding.PaddingRight = UDim.new(0, 10)
-    padding.Parent = scrollFrame
-    
-    -- Event Handlers
-    closeBtn.MouseButton1Click:Connect(function()
-        customUI.screenGui.Enabled = false
-        -- Save settings
-        if Config then
-            Config:SaveSetting("autoTradeSelections", customUI.selectedItems)
-            Config:SaveSetting("autoTradeSendAmounts", customUI.sendAmounts)
-            Config:SaveSetting("autoTradeTarget", selectedTargetName)
-        end
-    end)
-    
-    toggleButton.MouseButton1Click:Connect(function()
-        trashEnabled = not trashEnabled
-        toggleButton.Text = trashEnabled and "🟢 ON" or "🔴 OFF"
-        toggleFrame.BackgroundColor3 = trashEnabled and Color3.fromRGB(48, 209, 88) or Color3.fromRGB(255, 69, 58)
-        
-        if trashEnabled then
-            task.spawn(processTrash)
-            WindUI:Notify({ Title = "Auto Trade", Content = "Started", Duration = 2 })
-        else
-            stopRequested = true
-            WindUI:Notify({ Title = "Auto Trade", Content = "Stopped", Duration = 2 })
-        end
-    end)
-    
-    -- Target dropdown functionality
-    targetDropdown.MouseButton1Click:Connect(function()
-        local players = refreshPlayerList()
-        -- Create a simple cycling system
-        local currentIndex = 1
-        for i, player in ipairs(players) do
-            if player == selectedTargetName then
-                currentIndex = i
-                break
-            end
-        end
-        
-        currentIndex = currentIndex + 1
-        if currentIndex > #players then
-            currentIndex = 1
-        end
-        
-        selectedTargetName = players[currentIndex]
-        targetDropdown.Text = selectedTargetName
-    end)
-    
-    -- Tab functionality
-    eggsTab.MouseButton1Click:Connect(function()
-        customUI.currentPage = "eggs"
-        eggsTab.BackgroundColor3 = colors.pageActive
-        fruitsTab.BackgroundColor3 = colors.pageInactive
-        refreshNewAutoTradeContent()
-    end)
-    
-    fruitsTab.MouseButton1Click:Connect(function()
-        customUI.currentPage = "fruits"
-        fruitsTab.BackgroundColor3 = colors.pageActive
-        eggsTab.BackgroundColor3 = colors.pageInactive
-        refreshNewAutoTradeContent()
-    end)
-    
-    -- Set default page
-    customUI.currentPage = "eggs"
-    
-    return customUI.screenGui
-end
 
--- Create Enhanced Item Card with Auto-Resend Logic
-local function createEnhancedItemCard(itemId, itemData, parent, itemType)
-    local card = Instance.new("Frame")
-    card.Name = itemId
-    card.Size = UDim2.new(1, 0, 1, 0)
-    card.BackgroundColor3 = colors.surface
-    card.BorderSizePixel = 0
-    card.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = card
-    
-    -- Icon (larger for better visibility)
-    local icon
-    if itemType == "fruit" then
-        icon = Instance.new("TextLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 70, 0, 70)
-        icon.Position = UDim2.new(0.5, -35, 0, 10)
-        icon.BackgroundTransparency = 1
-        icon.Text = itemData.Icon
-        icon.TextSize = 45
-        icon.Font = Enum.Font.GothamBold
-        icon.TextColor3 = getRarityColor(itemData.Rarity)
-        icon.Parent = card
-    else
-        icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 70, 0, 70)
-        icon.Position = UDim2.new(0.5, -35, 0, 10)
-        icon.BackgroundTransparency = 1
-        icon.Image = itemData.Icon
-        icon.ScaleType = Enum.ScaleType.Fit
-        icon.Parent = card
-    end
-    
-    -- Name
-    local name = Instance.new("TextLabel")
-    name.Name = "Name"
-    name.Size = UDim2.new(1, -10, 0, 20)
-    name.Position = UDim2.new(0, 5, 0, 85)
-    name.BackgroundTransparency = 1
-    name.Text = itemData.Name
-    name.TextSize = 11
-    name.Font = Enum.Font.GothamSemibold
-    name.TextColor3 = colors.text
-    name.TextXAlignment = Enum.TextXAlignment.Center
-    name.TextWrapped = true
-    name.Parent = card
-    
-    -- Amount owned (larger display)
-    local amountLabel = Instance.new("TextLabel")
-    amountLabel.Name = "AmountLabel"
-    amountLabel.Size = UDim2.new(1, -10, 0, 18)
-    amountLabel.Position = UDim2.new(0, 5, 0, 105)
-    amountLabel.BackgroundTransparency = 1
-    amountLabel.Text = "0x"
-    amountLabel.TextSize = 12
-    amountLabel.Font = Enum.Font.GothamBold
-    amountLabel.TextColor3 = colors.textSecondary
-    amountLabel.TextXAlignment = Enum.TextXAlignment.Center
-    amountLabel.Parent = card
-    
-    -- Send amount input (enhanced)
-    local sendInput = Instance.new("TextBox")
-    sendInput.Name = "SendInput"
-    sendInput.Size = UDim2.new(0.9, 0, 0, 25)
-    sendInput.Position = UDim2.new(0.05, 0, 0, 125)
-    sendInput.BackgroundColor3 = colors.background
-    sendInput.BorderSizePixel = 0
-    sendInput.Text = "0"
-    sendInput.PlaceholderText = "Send Amount"
-    sendInput.TextSize = 11
-    sendInput.Font = Enum.Font.Gotham
-    sendInput.TextColor3 = colors.text
-    sendInput.TextXAlignment = Enum.TextXAlignment.Center
-    sendInput.Parent = card
-    
-    local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 4)
-    inputCorner.Parent = sendInput
-    
-    local inputStroke = Instance.new("UIStroke")
-    inputStroke.Color = colors.border
-    inputStroke.Thickness = 1
-    inputStroke.Parent = sendInput
-    
-    -- Auto-resend indicator
-    local autoIndicator = Instance.new("TextLabel")
-    autoIndicator.Name = "AutoIndicator"
-    autoIndicator.Size = UDim2.new(1, -10, 0, 15)
-    autoIndicator.Position = UDim2.new(0, 5, 0, 155)
-    autoIndicator.BackgroundTransparency = 1
-    autoIndicator.Text = "🔄 Auto-resend when ≥ amount"
-    autoIndicator.TextSize = 8
-    autoIndicator.Font = Enum.Font.Gotham
-    autoIndicator.TextColor3 = colors.textTertiary
-    autoIndicator.TextXAlignment = Enum.TextXAlignment.Center
-    autoIndicator.Visible = false
-    autoIndicator.Parent = card
-    
-    -- New indicator
-    if itemData.IsNew then
-        local newIndicator = Instance.new("TextLabel")
-        newIndicator.Name = "NewIndicator"
-        newIndicator.Size = UDim2.new(0, 30, 0, 16)
-        newIndicator.Position = UDim2.new(1, -34, 0, 2)
-        newIndicator.BackgroundColor3 = Color3.fromRGB(255, 69, 58)
-        newIndicator.BorderSizePixel = 0
-        newIndicator.Text = "NEW"
-        newIndicator.TextSize = 8
-        newIndicator.Font = Enum.Font.GothamBold
-        newIndicator.TextColor3 = Color3.fromRGB(255, 255, 255)
-        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
-        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
-        newIndicator.Parent = card
-        
-        local newCorner = Instance.new("UICorner")
-        newCorner.CornerRadius = UDim.new(0, 3)
-        newCorner.Parent = newIndicator
-    end
-    
-    -- Update inventory display function
-    local function updateInventoryDisplay()
-        local inventory
-        if itemType == "fruit" then
-            inventory = getPlayerFruitInventory()
-        elseif itemType == "egg" then
-            inventory = getPlayerEggInventory()
-        else
-            return
-        end
-        
-        local amount = inventory[itemData.Name] or 0
-        amountLabel.Text = amount .. "x"
-        
-        if amount > 0 then
-            amountLabel.TextColor3 = colors.textSecondary
-        else
-            amountLabel.TextColor3 = Color3.fromRGB(255, 69, 58)
-        end
-        
-        -- Auto-resend logic
-        local sendAmount = customUI.sendAmounts[itemId] or 0
-        if sendAmount > 0 and amount >= sendAmount and trashEnabled then
-            -- Trigger auto-send
-            autoIndicator.Text = "🚀 Auto-sending..."
-            autoIndicator.TextColor3 = Color3.fromRGB(48, 209, 88)
-            autoIndicator.Visible = true
-            
-            -- Add to send queue (this will be processed by the main loop)
-            task.spawn(function()
-                task.wait(1) -- Small delay to prevent spam
-                autoIndicator.Text = "🔄 Auto-resend when ≥ amount"
-                autoIndicator.TextColor3 = colors.textTertiary
-            end)
-        end
-    end
-    
-    -- Initial update
-    updateInventoryDisplay()
-    
-    -- Update every 2 seconds
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not card.Parent then
-            connection:Disconnect()
-            return
-        end
-        
-        local currentTime = tick()
-        if currentTime % 2 < 0.1 then
-            updateInventoryDisplay()
-        end
+-- Helper function to safely get attribute
+local function safeGetAttribute(obj, attrName, default)
+    if not obj then return default end
+    local success, result = pcall(function()
+        return obj:GetAttribute(attrName)
     end)
-    
-    -- Handle send amount input
-    sendInput.FocusLost:Connect(function()
-        local amount = tonumber(sendInput.Text) or 0
-        if amount < 0 then amount = 0 end
-        sendInput.Text = tostring(amount)
-        
-        customUI.sendAmounts[itemId] = amount
-        
-        -- Update selection state and auto indicator
-        if amount > 0 then
-            customUI.selectedItems[itemId] = true
-            card.BackgroundColor3 = colors.selected
-            stroke.Color = colors.primary
-            autoIndicator.Visible = true
-        else
-            customUI.selectedItems[itemId] = nil
-            card.BackgroundColor3 = colors.surface
-            stroke.Color = colors.border
-            autoIndicator.Visible = false
-        end
-    end)
-    
-    return card
-end
-
--- Refresh New Auto Trade Content
-function refreshNewAutoTradeContent()
-    if not customUI.screenGui then return end
-    
-    local contentFrame = customUI.mainFrame:FindFirstChild("ContentFrame")
-    if not contentFrame then return end
-    
-    local scrollFrame = contentFrame:FindFirstChild("ScrollFrame")
-    if not scrollFrame then return end
-    
-    -- Clear existing content
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("Frame") and child.Name ~= "UIGridLayout" and child.Name ~= "UIPadding" then
-            child:Destroy()
-        end
-    end
-    
-    local data, itemType
-    if customUI.currentPage == "eggs" then
-        data = EggData
-        itemType = "egg"
-    elseif customUI.currentPage == "fruits" then
-        data = FruitData
-        itemType = "fruit"
-    else
-        return
-    end
-    
-    -- Sort by inventory amount (high to low)
-    local sortedData = {}
-    for id, item in pairs(data) do
-        table.insert(sortedData, {id = id, data = item})
-    end
-    
-    local inventory
-    if itemType == "fruit" then
-        inventory = getPlayerFruitInventory()
-    elseif itemType == "egg" then
-        inventory = getPlayerEggInventory()
-    end
-    
-    table.sort(sortedData, function(a, b)
-        local amountA = inventory[a.data.Name] or 0
-        local amountB = inventory[b.data.Name] or 0
-        return amountA > amountB
-    end)
-    
-    -- Create enhanced cards
-    for i, item in ipairs(sortedData) do
-        local card = createEnhancedItemCard(item.id, item.data, scrollFrame, itemType)
-        card.LayoutOrder = i
-        
-        -- Restore send amount if exists
-        local sendAmount = customUI.sendAmounts[item.id] or 0
-        local sendInput = card:FindFirstChild("SendInput")
-        if sendInput then
-            sendInput.Text = tostring(sendAmount)
-        end
-        
-        -- Restore selection state
-        if sendAmount > 0 then
-            customUI.selectedItems[item.id] = true
-            card.BackgroundColor3 = colors.selected
-            local stroke = card:FindFirstChild("UIStroke")
-            if stroke then
-                stroke.Color = colors.primary
-            end
-            local autoIndicator = card:FindFirstChild("AutoIndicator")
-            if autoIndicator then
-                autoIndicator.Visible = true
-            end
-        end
-    end
-    
-    -- Update canvas size (5 items per row for better layout)
-    local itemCount = #sortedData
-    if itemCount > 0 then
-        local rows = math.ceil(itemCount / 5)
-        local cellHeight = 180
-        local cellPadding = 8
-        local topPadding = 10
-        local bottomPadding = 50
-        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-    end
-end
-
-local function createItemCard(itemId, itemData, parent, itemType)
-    local card = Instance.new("Frame")
-    card.Name = itemId
-    card.Size = UDim2.new(1, 0, 1, 0)
-    card.BackgroundColor3 = colors.surface
-    card.BorderSizePixel = 0
-    card.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = card
-    
-    -- Icon
-    local icon
-    if itemType == "fruit" then
-        icon = Instance.new("TextLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 60, 0, 60)
-        icon.Position = UDim2.new(0.5, -30, 0, 10)
-        icon.BackgroundTransparency = 1
-        icon.Text = itemData.Icon
-        icon.TextSize = 40
-        icon.Font = Enum.Font.GothamBold
-        icon.TextColor3 = getRarityColor(itemData.Rarity)
-        icon.Parent = card
-    else
-        icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 60, 0, 60)
-        icon.Position = UDim2.new(0.5, -30, 0, 10)
-        icon.BackgroundTransparency = 1
-        icon.Image = itemData.Icon
-        icon.ScaleType = Enum.ScaleType.Fit
-        icon.Parent = card
-    end
-    
-    -- Name
-    local name = Instance.new("TextLabel")
-    name.Name = "Name"
-    name.Size = UDim2.new(1, -10, 0, 20)
-    name.Position = UDim2.new(0, 5, 0, 75)
-    name.BackgroundTransparency = 1
-    name.Text = itemData.Name
-    name.TextSize = 12
-    name.Font = Enum.Font.GothamSemibold
-    name.TextColor3 = colors.text
-    name.TextXAlignment = Enum.TextXAlignment.Center
-    name.TextWrapped = true
-    name.Parent = card
-    
-    -- Amount owned
-    local amountLabel = Instance.new("TextLabel")
-    amountLabel.Name = "AmountLabel"
-    amountLabel.Size = UDim2.new(1, -10, 0, 16)
-    amountLabel.Position = UDim2.new(0, 5, 0, 95)
-    amountLabel.BackgroundTransparency = 1
-    amountLabel.Text = "0x"
-    amountLabel.TextSize = 10
-    amountLabel.Font = Enum.Font.Gotham
-    amountLabel.TextColor3 = colors.textSecondary
-    amountLabel.TextXAlignment = Enum.TextXAlignment.Center
-    amountLabel.Parent = card
-    
-    -- Send amount input
-    local sendInput = Instance.new("TextBox")
-    sendInput.Name = "SendInput"
-    sendInput.Size = UDim2.new(0.8, 0, 0, 20)
-    sendInput.Position = UDim2.new(0.1, 0, 0, 115)
-    sendInput.BackgroundColor3 = colors.background
-    sendInput.BorderSizePixel = 0
-    sendInput.Text = "0"
-    sendInput.PlaceholderText = "Amount to send"
-    sendInput.TextSize = 10
-    sendInput.Font = Enum.Font.Gotham
-    sendInput.TextColor3 = colors.text
-    sendInput.TextXAlignment = Enum.TextXAlignment.Center
-    sendInput.Parent = card
-    
-    local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 4)
-    inputCorner.Parent = sendInput
-    
-    -- New indicator
-    if itemData.IsNew then
-        local newIndicator = Instance.new("TextLabel")
-        newIndicator.Name = "NewIndicator"
-        newIndicator.Size = UDim2.new(0, 30, 0, 16)
-        newIndicator.Position = UDim2.new(1, -34, 0, 2)
-        newIndicator.BackgroundColor3 = Color3.fromRGB(255, 69, 58)
-        newIndicator.BorderSizePixel = 0
-        newIndicator.Text = "NEW"
-        newIndicator.TextSize = 8
-        newIndicator.Font = Enum.Font.GothamBold
-        newIndicator.TextColor3 = Color3.fromRGB(255, 255, 255)
-        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
-        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
-        newIndicator.Parent = card
-        
-        local newCorner = Instance.new("UICorner")
-        newCorner.CornerRadius = UDim.new(0, 3)
-        newCorner.Parent = newIndicator
-    end
-    
-    return card
-end
-
--- Legacy function (kept for compatibility)
-function refreshCustomUIContent()
-    refreshNewAutoTradeContent()
+    return success and result or default
 end
 
 -- Helper function to parse speed input with K/M/B/T suffixes
@@ -1453,9 +407,9 @@ end
 local function getAllEggTypes()
     local types = {}
     
-    -- Add egg types from EggData
-    for _, eggData in pairs(EggData) do
-        types[eggData.Name] = true
+    -- Add hardcoded egg types
+    for _, eggType in ipairs(HardcodedEggTypes) do
+        types[eggType] = true
     end
     
     -- Add types from inventory
@@ -1637,7 +591,12 @@ local function syncSelectorsFromControls()
     if minSpeedVal ~= nil then petMinSpeed = parseSpeedInput(tostring(minSpeedVal)) end
     if maxSpeedVal ~= nil then petMaxSpeed = parseSpeedInput(tostring(maxSpeedVal)) end
     
-    -- Egg filters removed (now using custom UI)
+    -- Sync egg filters (keep existing logic)
+    local eggTypes = readControl(sendEggTypeDropdown)
+    local eggMuts = readControl(sendEggMutationDropdown)
+
+    if eggTypes ~= nil then selectedEggTypes = selectionToList(eggTypes) end
+    if eggMuts ~= nil then selectedEggMuts = selectionToList(eggMuts) end
 end
 
 -- Get pet inventory
@@ -2169,9 +1128,16 @@ local function focusItem(itemUID)
     return success
 end
 
--- Send item (pet, egg, or fruit) to player with verification and retry
+-- Send item (pet or egg) to player
+--- Send item (pet or egg) to player with verification and retry
 local function sendItemToPlayer(item, target, itemType)
-	-- Session limits removed
+	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+		if not sessionLimits.limitReachedNotified then
+			WindUI:Notify({ Title = "⚠️ Send Limit Reached", Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")", Duration = 5 })
+			sessionLimits.limitReachedNotified = true
+		end
+		return false
+	end
 
 	local itemUID = item.uid
 	local isEgg = itemType == "egg"
@@ -2215,7 +1181,14 @@ local function sendItemToPlayer(item, target, itemType)
 	local focusSuccess = focusItem(itemUID)
 	if focusSuccess then task.wait(0.1) end
 
-	-- Skip filter verification for custom UI (items are pre-selected)
+	-- Re-verify name/type/mutation live right before sending to ensure it still matches filters
+	local typesSel = (itemType == "egg") and (selectedEggTypes or {}) or (selectedPetTypes or {})
+	local mutsSel = (itemType == "egg") and (selectedEggMuts or {}) or (selectedPetMuts or {})
+	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, isEgg, typesSel, mutsSel)
+	if not stillMatches then
+		sendInProgress[itemUID] = nil
+		return false
+	end
 
 	-- Ensure player is still online
 	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
@@ -2223,21 +1196,10 @@ local function sendItemToPlayer(item, target, itemType)
 		return false
 	end
 
-	-- Attempt to send (different remotes for different item types)
+	-- Attempt to send (single attempt, we confirm via removal)
 	local sendSuccess, _ = pcall(function()
 		local args = { targetPlayerObj }
-		if itemType == "fruit" then
-			-- For fruits, we need to send the actual fruit item
-			-- First focus the fruit, then send it
-			local fruitArgs = { itemUID }
-			ReplicatedStorage:WaitForChild("Remote"):WaitForChild("AssetRE"):FireServer("Focus", unpack(fruitArgs))
-			task.wait(0.1)
-			-- Then send to player
-			ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
-		else
-			-- For pets and eggs, use the standard method
-			ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
-		end
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
 	end)
 
 	if sendSuccess then
@@ -2246,8 +1208,9 @@ local function sendItemToPlayer(item, target, itemType)
 		if removed then
 			-- Use freshest data captured earlier if available to ensure correct type/name/mutation in logs
 			success = true
+			sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
 			actionCounter = actionCounter + 1
-			local logged = item
+			local logged = fresh or item
 			table.insert(sessionLogs, { kind = itemType, uid = itemUID, type = logged and logged.type or item.type, mutation = (logged and logged.mutation) and logged.mutation or ((item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None"), receiver = targetPlayerObj.Name })
 		else
 			-- Not removed → treat as failure (do not count/log)
@@ -2311,12 +1274,14 @@ local function updateStatus()
         "🐾 Pets in inventory: %d\n" ..
         "🥚 Eggs in inventory: %d\n" ..
         "⚡ Pet speed range: %s - %s\n" ..
+        "📤 Items sent this session: %d/%d\n" ..
         "🔄 Actions performed: %d\n" ..
         "📡 Keep tracking when empty: %s",
         #petInventory,
         #eggInventory,
         formatSpeed(petMinSpeed),
         formatSpeed(petMaxSpeed),
+        sessionLimits.sendPetCount, sessionLimits.maxSendPet,
         actionCounter,
         keepTrackingWhenEmpty and "Enabled" or "Disabled"
     )
@@ -2326,32 +1291,68 @@ local function updateStatus()
     statusParagraph:SetDesc(statusText)
 end
 
--- Main trash processing function (updated for custom UI)
+-- Main trash processing function
 local function processTrash()
 	while trashEnabled do
-		-- Check if we have any items selected to send
-		local hasItemsToSend = false
-		for itemId, amount in pairs(customUI.sendAmounts) do
-			if amount > 0 then
-				hasItemsToSend = true
-				break
+		-- Get send mode setting
+		local sendMode = "Both" -- Default
+		if sendModeDropdown then
+			local success, result = nil, nil
+			if sendModeDropdown.GetValue then
+				success, result = pcall(function() return sendModeDropdown:GetValue() end)
+			elseif sendModeDropdown.Value then
+				success, result = pcall(function() return sendModeDropdown.Value end)
+			end
+			sendMode = (success and result) and result or "Both"
+		else
+			sendMode = "Both"
+		end
+
+		local petInventory = {}
+		local eggInventory = {}
+		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
+		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
+
+		-- Check if any items match the current selectors
+		local matchingPets = 0
+		local matchingEggs = 0
+		
+		if sendMode == "Pets" or sendMode == "Both" then
+			for _, pet in ipairs(petInventory) do
+				pet = refreshItemFromData(pet.uid, false, pet)
+				if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, false) then
+					matchingPets = matchingPets + 1
+				end
 			end
 		end
 		
-		if not hasItemsToSend then
+		if sendMode == "Eggs" or sendMode == "Both" then
+			for _, egg in ipairs(eggInventory) do
+				egg = refreshItemFromData(egg.uid, true, egg)
+				local tList = selectedEggTypes or {}
+				local mList = selectedEggMuts or {}
+				if shouldSendItem(egg, tList, mList, true) then
+					matchingEggs = matchingEggs + 1
+				end
+			end
+		end
+		
+		if matchingPets == 0 and matchingEggs == 0 then
 			if not keepTrackingWhenEmpty then
+				-- Stop immediately if nothing matches selectors (no fallback behavior)
 				trashEnabled = false
 				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-				WindUI:Notify({ Title = "Send Trash Stopped", Content = "No items selected to send.", Duration = 4 })
+				WindUI:Notify({ Title = "Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
 				break
 			else
+				-- Keep tracking mode: wait and continue monitoring
 				updateStatus()
-				task.wait(2.0)
+				task.wait(2.0) -- Wait longer when no items match selectors
 				continue
 			end
 		end
 
-		-- Determine targets
+		-- Determine targets with sticky preference
 		local targets = {}
 		local randomMode = (selectedTargetName == "Random Player")
 		if randomMode then
@@ -2374,154 +1375,350 @@ local function processTrash()
 		end
 
 		local sentAnyItem = false
-		
-		-- Try to send items based on custom UI selections
+		local function trySendToTarget(targetPlayerObj)
+			local anyAttempt = false
+			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
+			if stopRequested then return false, anyAttempt end
+			-- attempt pets (stop after first successful send this cycle)
+			if sendMode == "Pets" or sendMode == "Both" then
+				for _, pet in ipairs(petInventory) do
+					pet = refreshItemFromData(pet.uid, false, pet)
+					if stopRequested then break end
+					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, false) then
+						anyAttempt = true
+						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
+					end
+				end
+			end
+			-- attempt eggs (stop after first successful send this cycle)
+			if sendMode == "Eggs" or sendMode == "Both" then
+				for _, egg in ipairs(eggInventory) do
+					egg = refreshItemFromData(egg.uid, true, egg)
+					if stopRequested then break end
+					local tList = selectedEggTypes or {}
+					local mList = selectedEggMuts or {}
+					if shouldSendItem(egg, tList, mList, true) then
+						anyAttempt = true
+						if sendItemToPlayer(egg, targetPlayerObj, "egg") then return true, true end
+					end
+				end
+			end
+			return false, anyAttempt
+		end
+
+		-- Iterate chosen target only (round-robin returns a single target)
 		for _, targetPlayerObj in ipairs(targets) do
-			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then continue end
-			if stopRequested then break end
-			
-			-- Try to send eggs
-			for itemId, amount in pairs(customUI.sendAmounts) do
-				if amount > 0 and EggData[itemId] then
-					local eggInventory = getPlayerEggInventory()
-					local available = eggInventory[EggData[itemId].Name] or 0
-					
-					if available > 0 then
-						-- Create a mock egg item for sending
-						local eggItem = {
-							uid = itemId .. "_" .. tick(), -- Unique ID
-							type = EggData[itemId].Name,
-							mutation = "",
-							locked = false,
-							placed = false
-						}
-						
-						if sendItemToPlayer(eggItem, targetPlayerObj, "egg") then
-							customUI.sendAmounts[itemId] = math.max(0, amount - 1)
-							sentAnyItem = true
-							break -- Send one item per cycle
-						end
-					end
-				end
+			local ok = false
+			local attempts = 0
+			while attempts < 2 and not ok do
+				local r1 = trySendToTarget(targetPlayerObj)
+				ok = r1
+				attempts = attempts + 1
 			end
-			
-			-- Try to send fruits (if fruit sending is implemented)
-			if not sentAnyItem then
-				for itemId, amount in pairs(customUI.sendAmounts) do
-					if amount > 0 and FruitData[itemId] then
-						local fruitInventory = getPlayerFruitInventory()
-						local available = fruitInventory[FruitData[itemId].Name] or 0
-						
-						if available > 0 then
-							-- Create a mock fruit item for sending
-							local fruitItem = {
-								uid = itemId .. "_" .. tick(),
-								type = FruitData[itemId].Name,
-								mutation = "",
-								locked = false,
-								placed = false
-							}
-							
-							if sendItemToPlayer(fruitItem, targetPlayerObj, "fruit") then
-								customUI.sendAmounts[itemId] = math.max(0, amount - 1)
-								sentAnyItem = true
-								break
-							end
-						end
-					end
-				end
+			if ok then
+				sentAnyItem = true
+				break
 			end
-			
-			if sentAnyItem then break end
+		end
+
+		-- auto-delete by speed removed
+
+		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
+			-- Clamp internal counters and sync with WebhookSystem to avoid overshoot
+			sessionLimits.sendPetCount = sessionLimits.maxSendPet
+			if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then
+				_G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet)
+			end
+			-- Trigger Discord session summary via global WebhookSystem (if available)
+			if _G.WebhookSystem and _G.WebhookSystem.SendTradeSessionSummary then
+				-- Build compact logs for this session
+				local logs = {}
+				for _, log in ipairs(sessionLogs) do table.insert(logs, log) end
+				task.spawn(function()
+					_G.WebhookSystem.SendTradeSessionSummary(logs)
+				end)
+			end
+			-- (Legacy) Local webhook summary is deprecated
+			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+				task.spawn(function()
+					sendWebhookSummary()
+				end)
+			end
+			-- Reset counters for next session but remember cumulative memory
+			sessionLimits.stickyCountMemory = sessionLimits.sendPetCount
+			sessionLimits.sendPetCount = 0
+			sessionLimits.limitReachedNotified = false
+			trashEnabled = false
+			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
+			-- Also clear per-item progress trackers to avoid duplicates
+			clearSendProgress()
 		end
 
 		updateStatus()
+		-- Gentle global throttle to avoid bursts and improve consistency
 		task.wait(0.45)
 		if stopRequested then break end
 	end
+	-- After loop exits, send summary if there are logs and a webhook URL
+	if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
+		task.spawn(function()
+			sendWebhookSummary()
+		end)
+	end
 end
 
--- Initialize function (Completely Revamped)
+-- Initialize function
 function SendTrashSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Window = dependencies.Window
     Config = dependencies.Config
     local providedTab = dependencies.Tab
     
-    -- Start data watchers
+    -- Load saved webhook URL from config
+    -- webhook load disabled
+    
+    -- Start precise event-driven watchers for T/M replication
     startDataWatchers()
     
-    -- Create the Auto Trade tab (simplified)
-    local TrashTab = providedTab or Window:Tab({ Title = "🚀 | Auto Trade"})
-    
-    -- Single button to open the custom UI
-    TrashTab:Button({
-        Title = "🎯 Open Auto Trade System",
-        Desc = "Complete auto trading interface with item selection, targets, and amounts",
-        Callback = function()
-            if not customUI.screenGui then
-                createNewAutoTradeUI()
-                refreshNewAutoTradeContent()
-            end
-            customUI.screenGui.Enabled = true
-        end
-    })
+    -- Create the Send Trash tab (or reuse provided Tab from main script)
+    local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Send Trash"})
     
     -- Status display
-    local statusDisplay = TrashTab:Paragraph({
-        Title = "Auto Trade Status:",
-        Desc = "Click the button above to open the Auto Trade System",
-        Image = "activity",
-        ImageSize = 20
+    statusParagraph = TrashTab:Paragraph({
+        Title = "Trash System Status:",
+        Desc = "Loading pet information...",
+        Image = "trash-2",
+        ImageSize = 22
     })
     
-    -- Update status periodically
-    task.spawn(function()
-        while true do
-            if statusDisplay and statusDisplay.SetDesc then
-                local totalSelected = 0
-                local totalAmount = 0
-                for itemId, amount in pairs(customUI.sendAmounts or {}) do
-                    if amount > 0 then
-                        totalSelected = totalSelected + 1
-                        totalAmount = totalAmount + amount
-                    end
-                end
-                
-                if totalSelected > 0 then
-                    local status = string.format("Active: %d items selected, %d total to send", totalSelected, totalAmount)
-                    if trashEnabled then
-                        status = status .. " | 🟢 RUNNING"
-                    else
-                        status = status .. " | 🔴 STOPPED"
-                    end
-                    statusDisplay:SetDesc(status)
-                else
-                    statusDisplay:SetDesc("No items selected for trading")
-                end
+    -- Keep tracking toggle
+    keepTrackingToggle = TrashTab:Toggle({
+        Title = "Keep Tracking When Empty",
+        Desc = "Continue monitoring even when no items match filters",
+        Value = false,
+        Callback = function(state)
+            keepTrackingWhenEmpty = state
+            if state then
+                WindUI:Notify({ Title = "Keep Tracking", Content = "Keeps monitoring when no items are available", Duration = 3 })
+            else
+                WindUI:Notify({ Title = "Stop When Empty", Content = "Stops when no items match filters", Duration = 3 })
             end
-            task.wait(2)
         end
-    end)
+    })
     
-    -- Load saved settings
+    
+    -- Session limit input
+    sessionLimitInput = TrashTab:Input({
+        Title = "Session Limit",
+        Desc = "Maximum items to send/sell per session (default: 50)",
+        Default = "50",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            local numValue = tonumber(value) or 50
+            if numValue < 1 then numValue = 1 end -- Minimum of 1
+            sessionLimits.maxSendPet = numValue
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            print("Session limits updated: " .. numValue .. " items per session")
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
+        end,
+    })
+
+    -- Reset session limits button (moved directly under Session Limit)
+    TrashTab:Button({
+        Title = "Reset Session Limits",
+        Desc = "Reset counters for this session",
+        Callback = function()
+            sessionLimits.sendPetCount = 0
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            webhookSent = false
+            sessionLogs = {}
+            actionCounter = 0
+            updateStatus()
+            WindUI:Notify({ Title = "Session Reset", Content = "Limits reset", Duration = 2 })
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
+        end
+    })
+
+    -- Main toggle
+    trashToggle = TrashTab:Toggle({
+        Title = "Send Trash",
+        Desc = "Automatically send selected pets/eggs",
+        Value = false,
+        Callback = function(state)
+			trashEnabled = state
+			
+			if state then
+				-- Start of a new run/session: do not reset logs, only reset webhookSent
+				webhookSent = false
+				stopRequested = false
+				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
+				task.spawn(function()
+					syncSelectorsFromControls()
+					processTrash()
+				end)
+				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
+			else
+				-- Graceful stop: request stop, allow in-flight send to conclude
+				stopRequested = true
+				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
+				-- no immediate webhook here; let processTrash() handle it after it exits
+			end
+		end
+    })
+    
+    TrashTab:Section({ Title = "Target Settings", Icon = "target" })
+    
+    -- Send mode dropdown
+    sendModeDropdown = TrashTab:Dropdown({
+        Title = "Send Type",
+        Desc = "Choose what to send",
+        Values = {"Pets", "Eggs", "Both"},
+        Value = "Both",
+        Callback = function(selection) end
+    })
+    
+    -- Target player dropdown
+    targetPlayerDropdown = TrashTab:Dropdown({
+        Title = "Target Player",
+        Desc = "Random cycles through players",
+        Values = refreshPlayerList(),
+        Value = "Random Player",
+        Callback = function(selection)
+            selectedTargetName = selection or "Random Player"
+            -- Reset random target state when user changes selection
+            randomTargetState.current = nil
+            randomTargetState.fails = 0
+        end
+    })
+    
+    -- Refresh Target List button (placed directly below target dropdown)
+    TrashTab:Button({
+        Title = "Refresh Target List",
+        Desc = "Update player list",
+        Callback = function()
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            end
+        end
+    })
+    
+    TrashTab:Section({ Title = "Pet Speed Filters", Icon = "zap" })
+    
+    -- Pet minimum speed input
+    petMinSpeedInput = TrashTab:Input({
+        Title = "⚡ Min Pet Speed",
+        Desc = "Minimum speed to send pets (supports K/M/B/T)",
+        Value = "0",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            local parsedValue = parseSpeedInput(value)
+            petMinSpeed = parsedValue
+            print("Pet min speed set to:", petMinSpeed)
+        end
+    })
+    
+    -- Pet maximum speed input
+    petMaxSpeedInput = TrashTab:Input({
+        Title = "⚡ Max Pet Speed", 
+        Desc = "Maximum speed to send pets (supports K/M/B/T)",
+        Value = "999999999",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            local parsedValue = parseSpeedInput(value)
+            petMaxSpeed = parsedValue
+            print("Pet max speed set to:", petMaxSpeed)
+        end
+    })
+    
+    TrashTab:Section({ Title = "Egg Filters", Icon = "mail" })
+    
+    -- Send egg type filter (now include-only)
+    sendEggTypeDropdown = TrashTab:Dropdown({
+        Title = "Egg Types",
+        Desc = "Types to send (empty = all)",
+        Values = getAllEggTypes(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggTypes = selectionToList(selection)
+        end
+    })
+    
+    -- Send egg mutation filter (now include-only)
+    sendEggMutationDropdown = TrashTab:Dropdown({
+        Title = "Egg Mutations", 
+        Desc = "Mutations to send (empty = all)",
+        Values = getAllMutations(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggMuts = selectionToList(selection)
+        end
+    })
+    
+    -- Selling UI removed per request
+    
+    TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
+    
+    -- Webhook input (optional) - Auto-saves to config
+    -- webhook UI removed
+    
+    -- Ensure the loaded webhook URL is displayed in the input field
+    --
+    
+    -- Removed generic "Refresh Lists" button (target-specific refresh placed under target dropdown)
+    
+    -- Cache refresh button
+    TrashTab:Button({
+        Title = "🔄 Refresh Cache",
+        Desc = "Force refresh inventory cache and clear send progress",
+        Callback = function()
+            forceRefreshCache()
+            clearSendProgress()
+            updateStatus()
+            
+            WindUI:Notify({
+                Title = "🔄 Cache Refreshed",
+                Content = "Inventory cache and send progress cleared!",
+                Duration = 3
+            })
+        end
+    })
+
+    -- Removed: Fix Unknown Items and Force Resolve Names buttons
+
+    -- Send current inventory webhook button
+    -- webhook send button removed
+    
+    
+    -- Register UI elements with config
     if Config then
-        local savedSelections = Config:GetSetting("autoTradeSelections")
-        local savedAmounts = Config:GetSetting("autoTradeSendAmounts")
-        local savedTarget = Config:GetSetting("autoTradeTarget")
-        
-        if savedSelections then
-            customUI.selectedItems = savedSelections
-        end
-        
-        if savedAmounts then
-            customUI.sendAmounts = savedAmounts
-        end
-        
-        if savedTarget then
-            selectedTargetName = savedTarget
-        end
+        Config:Register("trashEnabled", trashToggle)
+        Config:Register("sendMode", sendModeDropdown)
+        Config:Register("targetPlayer", targetPlayerDropdown)
+        Config:Register("petMinSpeed", petMinSpeedInput)
+        Config:Register("petMaxSpeed", petMaxSpeedInput)
+        Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
+        Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
+        Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
+        -- webhook config removed
+        -- Selling config removed
+        -- speed threshold removed
+        Config:Register("sessionLimit", sessionLimitInput)
     end
+    
+    -- Initial status update
+    task.spawn(function()
+        task.wait(1)
+        -- Ensure selectors reflect dropdowns after config load
+        syncSelectorsFromControls()
+        updateStatus()
+    end)
 end
 
 return SendTrashSystem
