@@ -24,7 +24,7 @@ local HardcodedEggTypes = {
 }
 
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Dino", "Snow"
+    "Golden", "Diamond", "Electric", "Fire", "Dino"
 }
 
 -- Services
@@ -38,30 +38,10 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI
 local Window
 local Config
-local trashToggle
-local targetPlayerDropdown
-local sendModeDropdown
-local petMinSpeedInput
-local petMaxSpeedInput
-local sendEggTypeDropdown
-local sendEggMutationDropdown
-local sessionLimitInput
-local statusParagraph
-local keepTrackingToggle
+-- All other UI variables removed - only Auto Trade UI button remains
 
--- State variables
-local trashEnabled = false
--- auto delete min speed removed
-local actionCounter = 0
-local selectedTargetName = "Random Player" -- cache target selection
-local selectedPetTypes, selectedPetMuts, selectedEggTypes, selectedEggMuts -- cached selectors
-local petMinSpeed, petMaxSpeed = 0, 999999999 -- speed range for pets
-local lastReceiverName, lastReceiverId -- for webhook author/avatar
-local stopRequested = false -- graceful stop flag
-local keepTrackingWhenEmpty = false -- new setting to control stop behavior
-
--- Random target state (for "Random Player" mode)
-local randomTargetState = { rrIndex = 1 }
+-- State variables (most removed since UI elements are gone)
+-- Only keeping essential variables for the Auto Trade UI integration
 
 -- Blacklist & sticky removed per request; using round-robin random dispatch
 
@@ -240,66 +220,9 @@ local function waitForInventoryRemoval(itemUID, isEgg, timeoutSecs)
     return removed
 end
 
--- Webhook removed
-local webhookUrl = ""
-local sessionLogs = {}
-local webhookSent = false
+-- Session management removed since UI is gone
 
--- Session limits
-local sessionLimits = {
-    sendPetCount = 0,
-    maxSendPet = 50,
-    limitReachedNotified = false, -- Track if user has been notified
-    stickyCountMemory = 0 -- Persist count across mid-flight stops
-}
-
--- Pretty Discord embed assets
-local EggIconMap = {
-    BasicEgg = 129248801621928,
-    RareEgg = 71012831091414,
-    SuperRareEgg = 93845452154351,
-    SeaweedEgg = 87125339619211,
-    EpicEgg = 116395645531721,
-    LegendEgg = 90834918351014,
-    ClownfishEgg = 124419920608938,
-    PrismaticEgg = 79960683434582,
-    LionfishEgg = 100181295820053,
-    HyperEgg = 104958288296273,
-    VoidEgg = 122396162708984,
-    BowserEgg = 71500536051510,
-    SharkEgg = 71032472532652,
-    DemonEgg = 126412407639969,
-    CornEgg = 94739512852461,
-    AnglerfishEgg = 121296998588378,
-    BoneDragonEgg = 83209913424562,
-    UltraEgg = 83909590718799,
-    DinoEgg = 80783528632315,
-    FlyEgg = 109240587278187,
-    UnicornEgg = 123427249205445,
-    OctopusEgg = 84758700095552,
-    AncientEgg = 113910587565739,
-    SeaDragonEgg = 130514093439717,
-    UnicornProEgg = 140138063696377,
-}
-
-local function robloxIconUrl(assetId)
-    return nil
-end
-
-local function getIconUrlFor(kind, typeName)
-    return nil
-end
-
--- Cute emoji for readability in Discord
-local EggEmojiMap = {}
-
-local function getAvatarUrl(userId)
-    return nil
-end
-
-local function sendWebhookSummary()
-    -- disabled
-end
+-- Webhook and icon mapping removed since not needed
 
 
 
@@ -570,34 +493,7 @@ local function selectionToList(selection)
     return result
 end
 
--- Sync cached selector variables from current UI controls (needed after config load)
-local function syncSelectorsFromControls()
-    local function readControl(ctrl)
-        if not ctrl then return nil end
-        local ok, v
-        if ctrl.GetValue then
-            ok, v = pcall(function() return ctrl:GetValue() end)
-        elseif ctrl.Value ~= nil then
-            ok, v = true, ctrl.Value
-        end
-        if ok then return v end
-        return nil
-    end
-
-    -- Sync pet speed values
-    local minSpeedVal = readControl(petMinSpeedInput)
-    local maxSpeedVal = readControl(petMaxSpeedInput)
-    
-    if minSpeedVal ~= nil then petMinSpeed = parseSpeedInput(tostring(minSpeedVal)) end
-    if maxSpeedVal ~= nil then petMaxSpeed = parseSpeedInput(tostring(maxSpeedVal)) end
-    
-    -- Sync egg filters (keep existing logic)
-    local eggTypes = readControl(sendEggTypeDropdown)
-    local eggMuts = readControl(sendEggMutationDropdown)
-
-    if eggTypes ~= nil then selectedEggTypes = selectionToList(eggTypes) end
-    if eggMuts ~= nil then selectedEggMuts = selectionToList(eggMuts) end
-end
+-- Sync function removed since UI controls are gone
 
 -- Get pet inventory
 --- Update inventory cache for better performance
@@ -789,227 +685,7 @@ local function getEggInventory()
     return eggs
 end
 
---- Send current inventory webhook
-local function sendCurrentInventoryWebhook()
-    -- disabled
-
-    -- Small helpers
-    local function compactNumber(n)
-        if type(n) ~= "number" then return tostring(n) end
-        local a = math.abs(n)
-        if a >= 1e12 then return string.format("%.2fT", n/1e12) end
-        if a >= 1e9  then return string.format("%.2fB", n/1e9)  end
-        if a >= 1e6  then return string.format("%.2fM", n/1e6)  end
-        if a >= 1e3  then return string.format("%.2fK", n/1e3)  end
-        return tostring(math.floor(n))
-    end
-    local function takeTopLines(map, prefix, maxLines)
-        local arr = {}
-        for name, count in pairs(map) do
-            table.insert(arr, { name = name, count = count })
-        end
-        table.sort(arr, function(a, b)
-            if a.count ~= b.count then return a.count > b.count end
-            return (a.name or "") < (b.name or "")
-        end)
-        local out = {}
-        local limit = math.min(maxLines or 10, #arr)
-        for i = 1, limit do
-            table.insert(out, string.format("%s %s × %d", prefix, arr[i].name, arr[i].count))
-        end
-        if #arr > limit then
-            table.insert(out, string.format("… and %d more", #arr - limit))
-        end
-        return table.concat(out, "\n")
-    end
-
-    -- Force refresh inventory cache for precision
-    forceRefreshCache()
-
-    local petInventoryAll = getPetInventory()
-    local eggInventoryAll = getEggInventory()
-    local allPetCount = petInventoryAll and #petInventoryAll or 0
-    local allEggCount = eggInventoryAll and #eggInventoryAll or 0
-
-    -- Filter to only items with D attribute empty or missing (unplaced/available)
-    local function hasEmptyOrNoD(uid, isEgg)
-        local dataRoot = LocalPlayer and LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Data")
-        if not dataRoot then return false end
-        local folder = dataRoot:FindFirstChild(isEgg and "Egg" or "Pets")
-        if not folder then return false end
-        local conf = folder:FindFirstChild(uid)
-        if not conf or not conf:IsA("Configuration") then return false end
-        local dAttr = safeGetAttribute(conf, "D", nil)
-        if dAttr == nil then return true end
-        if type(dAttr) == "string" then
-            local s = dAttr
-            return s == "" or s == "nil"
-        end
-        return false
-    end
-
-    local petInventory, eggInventory = {}, {}
-    for _, pet in ipairs(petInventoryAll or {}) do
-        if pet and pet.uid and hasEmptyOrNoD(pet.uid, false) then
-            table.insert(petInventory, pet)
-        end
-    end
-    for _, egg in ipairs(eggInventoryAll or {}) do
-        if egg and egg.uid and hasEmptyOrNoD(egg.uid, true) then
-            table.insert(eggInventory, egg)
-        end
-    end
-
-    local unplacedPetCount = #petInventory
-    local unplacedEggCount = #eggInventory
-
-    -- Build summaries (type + mutation distributions)
-    local petsByType, eggsByType = {}, {}
-    local petMutations, eggMutations = {}, {}
-    local eggMutsByType = {}
-    local petMutsByType = {}
-    for _, pet in ipairs(petInventory) do
-        local t = pet.type or "Unknown"
-        petsByType[t] = (petsByType[t] or 0) + 1
-        local m = pet.mutation
-        if m and m ~= "" and m ~= "None" then
-            petMutations[m] = (petMutations[m] or 0) + 1
-            petMutsByType[t] = petMutsByType[t] or {}
-            petMutsByType[t][m] = (petMutsByType[t][m] or 0) + 1
-        end
-    end
-    for _, egg in ipairs(eggInventory) do
-        local t = egg.type or "Unknown"
-        eggsByType[t] = (eggsByType[t] or 0) + 1
-        local m = egg.mutation
-        if m and m ~= "" and m ~= "None" then
-            eggMutations[m] = (eggMutations[m] or 0) + 1
-            eggMutsByType[t] = eggMutsByType[t] or {}
-            eggMutsByType[t][m] = (eggMutsByType[t][m] or 0) + 1
-        end
-    end
-
-    -- Hierarchical eggs display with per-type mutations
-    local function eggHierarchy(maxTypes, maxMutsPerType)
-        local typesArr = {}
-        for name, count in pairs(eggsByType) do
-            table.insert(typesArr, { name = name, count = count })
-        end
-        table.sort(typesArr, function(a, b)
-            if a.count ~= b.count then return a.count > b.count end
-            return (a.name or "") < (b.name or "")
-        end)
-
-        local lines = {}
-        local limit = math.min(maxTypes or 10, #typesArr)
-        for i = 1, limit do
-            local t = typesArr[i]
-            table.insert(lines, string.format(":trophy: %s × %d", t.name, t.count))
-            local muts = eggMutsByType[t.name] or {}
-            local mutsArr = {}
-            for m, c in pairs(muts) do table.insert(mutsArr, { m = m, c = c }) end
-            table.sort(mutsArr, function(a, b)
-                if a.c ~= b.c then return a.c > b.c end
-                return (a.m or "") < (b.m or "")
-            end)
-            local mLimit = math.min(maxMutsPerType or 5, #mutsArr)
-            for j = 1, mLimit do
-                table.insert(lines, string.format("L :dna: %s × %d", mutsArr[j].m, mutsArr[j].c))
-            end
-            if #mutsArr > mLimit then
-                table.insert(lines, string.format("L … and %d more", #mutsArr - mLimit))
-            end
-        end
-        if #typesArr > limit then
-            table.insert(lines, string.format("… and %d more egg types", #typesArr - limit))
-        end
-        return table.concat(lines, "\n"), (typesArr[1] and typesArr[1].name or nil)
-    end
-
-    local topEggsText, topEggName = eggHierarchy(12, 5)
-
-    -- Hierarchical pets display with per-type mutations
-    local function petHierarchy(maxTypes, maxMutsPerType)
-        local typesArr = {}
-        for name, count in pairs(petsByType) do
-            table.insert(typesArr, { name = name, count = count })
-        end
-        table.sort(typesArr, function(a, b)
-            if a.count ~= b.count then return a.count > b.count end
-            return (a.name or "") < (b.name or "")
-        end)
-
-        local lines = {}
-        local limit = math.min(maxTypes or 10, #typesArr)
-        for i = 1, limit do
-            local t = typesArr[i]
-            table.insert(lines, string.format("🐾 %s × %d", t.name, t.count))
-            local muts = petMutsByType[t.name] or {}
-            local mutsArr = {}
-            for m, c in pairs(muts) do table.insert(mutsArr, { m = m, c = c }) end
-            table.sort(mutsArr, function(a, b)
-                if a.c ~= b.c then return a.c > b.c end
-                return (a.m or "") < (b.m or "")
-            end)
-            local mLimit = math.min(maxMutsPerType or 5, #mutsArr)
-            for j = 1, mLimit do
-                table.insert(lines, string.format("L :dna: %s × %d", mutsArr[j].m, mutsArr[j].c))
-            end
-            if #mutsArr > mLimit then
-                table.insert(lines, string.format("L … and %d more", #mutsArr - mLimit))
-            end
-        end
-        if #typesArr > limit then
-            table.insert(lines, string.format("… and %d more pet types", #typesArr - limit))
-        end
-        return table.concat(lines, "\n")
-    end
-
-    local topPetsText = petHierarchy(12, 5)
-
-    local playerName = Players.LocalPlayer and Players.LocalPlayer.Name or "Unknown"
-    local playerId = Players.LocalPlayer and Players.LocalPlayer.UserId or nil
-    local authorBlock = {
-        name = playerName .. " — Inventory Snapshot",
-        icon_url = playerId and getAvatarUrl(playerId) or nil
-    }
-    local thumb = topEggName and getIconUrlFor("egg", topEggName) or nil
-    local netWorth = (Players.LocalPlayer and Players.LocalPlayer:GetAttribute("NetWorth")) or 0
-    local unknownNote = inventoryCache and inventoryCache.unknownCount or 0
-
-    -- Compose embed
-    local overviewValue = table.concat({
-        "Net Worth: **" .. compactNumber(netWorth) .. "**",
-        string.format("Pets: **%d** (unplaced **%d**)", allPetCount, unplacedPetCount),
-        string.format("Eggs: **%d** (unplaced **%d**)", allEggCount, unplacedEggCount)
-    }, "\n")
-
-    local fields = {
-        { name = "Overview", value = overviewValue, inline = false },
-    }
-    if topPetsText ~= "" then table.insert(fields, { name = "Top Pets", value = topPetsText, inline = true }) end
-    if topEggsText ~= "" then table.insert(fields, { name = "Top Eggs", value = topEggsText, inline = true }) end
-    if unknownNote and unknownNote > 0 then
-        table.insert(fields, { name = "Note", value = "Some items are still loading (" .. tostring(unknownNote) .. ")", inline = false })
-    end
-
-    local payload = {
-        embeds = {
-            {
-                title = "ZEBUX • Inventory Snapshot",
-                description = "A precise snapshot of your current inventory.",
-                color = 5793266, -- Discord blurple-ish
-                author = authorBlock,
-                thumbnail = thumb and { url = thumb } or nil,
-                fields = fields,
-                footer = { text = "Build A Zoo" },
-                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-            }
-        }
-    }
-
-    -- webhook disabled
-end
+-- Inventory webhook function removed since not needed
 
 -- Refresh live attributes (T/M/locked/placed) for a given uid directly from PlayerGui.Data
 local function refreshItemFromData(uid, isEgg, into)
@@ -1056,17 +732,9 @@ function shouldSendItem(item, includeTypes, includeMutations, isEgg)
     -- Don't send locked items
     if item.locked then return false end
     
-    -- For pets: use speed filtering instead of type/mutation
+    -- For pets: speed filtering removed since UI controls are gone
     if not isEgg then
-        -- Get pet speed using the existing getPetSpeed function
-        local petSpeed = getPetSpeed({ Name = item.uid })
-        
-        -- Check if speed is within the specified range
-        if petSpeed < petMinSpeed or petSpeed > petMaxSpeed then
-            return false
-        end
-        
-        return true -- If speed is in range, send the pet
+        return true -- Accept all pets since no filtering UI
     end
     
     -- For eggs: keep the original type/mutation filtering logic
@@ -1129,15 +797,8 @@ local function focusItem(itemUID)
 end
 
 -- Send item (pet or egg) to player
---- Send item (pet or egg) to player with verification and retry
+--- Send item function simplified since session limits removed
 local function sendItemToPlayer(item, target, itemType)
-	if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-		if not sessionLimits.limitReachedNotified then
-			WindUI:Notify({ Title = "⚠️ Send Limit Reached", Content = "Reached maximum send limit for this session (" .. sessionLimits.maxSendPet .. ")", Duration = 5 })
-			sessionLimits.limitReachedNotified = true
-		end
-		return false
-	end
 
 	local itemUID = item.uid
 	local isEgg = itemType == "egg"
@@ -1181,14 +842,7 @@ local function sendItemToPlayer(item, target, itemType)
 	local focusSuccess = focusItem(itemUID)
 	if focusSuccess then task.wait(0.1) end
 
-	-- Re-verify name/type/mutation live right before sending to ensure it still matches filters
-	local typesSel = (itemType == "egg") and (selectedEggTypes or {}) or (selectedPetTypes or {})
-	local mutsSel = (itemType == "egg") and (selectedEggMuts or {}) or (selectedPetMuts or {})
-	local stillMatches, fresh = verifyItemMatchesFiltersLive(itemUID, isEgg, typesSel, mutsSel)
-	if not stillMatches then
-		sendInProgress[itemUID] = nil
-		return false
-	end
+	-- Filter verification removed since UI controls are gone
 
 	-- Ensure player is still online
 	if not targetPlayerObj or targetPlayerObj.Parent ~= Players then
@@ -1206,14 +860,9 @@ local function sendItemToPlayer(item, target, itemType)
 		-- Robust confirmation: wait until inventory actually removes the item
 		local removed = waitForInventoryRemoval(itemUID, isEgg, 3.0)
 		if removed then
-			-- Use freshest data captured earlier if available to ensure correct type/name/mutation in logs
 			success = true
-			sessionLimits.sendPetCount = sessionLimits.sendPetCount + 1
-			actionCounter = actionCounter + 1
-			local logged = fresh or item
-			table.insert(sessionLogs, { kind = itemType, uid = itemUID, type = logged and logged.type or item.type, mutation = (logged and logged.mutation) and logged.mutation or ((item.mutation ~= nil and item.mutation ~= "" and item.mutation) or "None"), receiver = targetPlayerObj.Name })
+			-- Session tracking removed
 		else
-			-- Not removed → treat as failure (do not count/log)
 			success = false
 		end
 	end
@@ -1248,224 +897,8 @@ end
 -- Auto-delete slow pets
 -- auto-delete slow pets removed per request
 
--- Update status display
-local function updateStatus()
-    if not statusParagraph then return end
-    
-    local petInventory = getPetInventory()
-    local eggInventory = getEggInventory()
-    
-    -- Format speed values nicely
-    local function formatSpeed(speed)
-        if speed >= 1000000000000 then
-            return string.format("%.1fT", speed / 1000000000000)
-        elseif speed >= 1000000000 then
-            return string.format("%.1fB", speed / 1000000000)
-        elseif speed >= 1000000 then
-            return string.format("%.1fM", speed / 1000000)
-        elseif speed >= 1000 then
-            return string.format("%.1fK", speed / 1000)
-        else
-            return tostring(speed)
-        end
-    end
-    
-    local statusText = string.format(
-        "🐾 Pets in inventory: %d\n" ..
-        "🥚 Eggs in inventory: %d\n" ..
-        "⚡ Pet speed range: %s - %s\n" ..
-        "📤 Items sent this session: %d/%d\n" ..
-        "🔄 Actions performed: %d\n" ..
-        "📡 Keep tracking when empty: %s",
-        #petInventory,
-        #eggInventory,
-        formatSpeed(petMinSpeed),
-        formatSpeed(petMaxSpeed),
-        sessionLimits.sendPetCount, sessionLimits.maxSendPet,
-        actionCounter,
-        keepTrackingWhenEmpty and "Enabled" or "Disabled"
-    )
-
-    -- Blacklist removed
-
-    statusParagraph:SetDesc(statusText)
-end
-
--- Main trash processing function
-local function processTrash()
-	while trashEnabled do
-		-- Get send mode setting
-		local sendMode = "Both" -- Default
-		if sendModeDropdown then
-			local success, result = nil, nil
-			if sendModeDropdown.GetValue then
-				success, result = pcall(function() return sendModeDropdown:GetValue() end)
-			elseif sendModeDropdown.Value then
-				success, result = pcall(function() return sendModeDropdown.Value end)
-			end
-			sendMode = (success and result) and result or "Both"
-		else
-			sendMode = "Both"
-		end
-
-		local petInventory = {}
-		local eggInventory = {}
-		if sendMode == "Pets" or sendMode == "Both" then petInventory = getPetInventory() end
-		if sendMode == "Eggs" or sendMode == "Both" then eggInventory = getEggInventory() end
-
-		-- Check if any items match the current selectors
-		local matchingPets = 0
-		local matchingEggs = 0
-		
-		if sendMode == "Pets" or sendMode == "Both" then
-			for _, pet in ipairs(petInventory) do
-				pet = refreshItemFromData(pet.uid, false, pet)
-				if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, false) then
-					matchingPets = matchingPets + 1
-				end
-			end
-		end
-		
-		if sendMode == "Eggs" or sendMode == "Both" then
-			for _, egg in ipairs(eggInventory) do
-				egg = refreshItemFromData(egg.uid, true, egg)
-				local tList = selectedEggTypes or {}
-				local mList = selectedEggMuts or {}
-				if shouldSendItem(egg, tList, mList, true) then
-					matchingEggs = matchingEggs + 1
-				end
-			end
-		end
-		
-		if matchingPets == 0 and matchingEggs == 0 then
-			if not keepTrackingWhenEmpty then
-				-- Stop immediately if nothing matches selectors (no fallback behavior)
-				trashEnabled = false
-				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-				WindUI:Notify({ Title = "Send Trash Stopped", Content = "No items matched your selectors.", Duration = 4 })
-				break
-			else
-				-- Keep tracking mode: wait and continue monitoring
-				updateStatus()
-				task.wait(2.0) -- Wait longer when no items match selectors
-				continue
-			end
-		end
-
-		-- Determine targets with sticky preference
-		local targets = {}
-		local randomMode = (selectedTargetName == "Random Player")
-		if randomMode then
-			targets = getRoundRobinTargets()
-			if #targets > 0 then
-				if randomTargetState.rrIndex > #targets then randomTargetState.rrIndex = 1 end
-				targets = { targets[randomTargetState.rrIndex] }
-				randomTargetState.rrIndex = randomTargetState.rrIndex + 1
-			end
-		else
-			local tp = resolveTargetPlayerByName(selectedTargetName)
-			if tp then
-				targets = { tp }
-			else
-				trashEnabled = false
-				if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-				WindUI:Notify({ Title = "Send Trash Stopped", Content = "Target unavailable.", Duration = 4 })
-				break
-			end
-		end
-
-		local sentAnyItem = false
-		local function trySendToTarget(targetPlayerObj)
-			local anyAttempt = false
-			if not targetPlayerObj or targetPlayerObj.Parent ~= Players then return false, false end
-			if stopRequested then return false, anyAttempt end
-			-- attempt pets (stop after first successful send this cycle)
-			if sendMode == "Pets" or sendMode == "Both" then
-				for _, pet in ipairs(petInventory) do
-					pet = refreshItemFromData(pet.uid, false, pet)
-					if stopRequested then break end
-					if shouldSendItem(pet, selectedPetTypes, selectedPetMuts, false) then
-						anyAttempt = true
-						if sendItemToPlayer(pet, targetPlayerObj, "pet") then return true, true end
-					end
-				end
-			end
-			-- attempt eggs (stop after first successful send this cycle)
-			if sendMode == "Eggs" or sendMode == "Both" then
-				for _, egg in ipairs(eggInventory) do
-					egg = refreshItemFromData(egg.uid, true, egg)
-					if stopRequested then break end
-					local tList = selectedEggTypes or {}
-					local mList = selectedEggMuts or {}
-					if shouldSendItem(egg, tList, mList, true) then
-						anyAttempt = true
-						if sendItemToPlayer(egg, targetPlayerObj, "egg") then return true, true end
-					end
-				end
-			end
-			return false, anyAttempt
-		end
-
-		-- Iterate chosen target only (round-robin returns a single target)
-		for _, targetPlayerObj in ipairs(targets) do
-			local ok = false
-			local attempts = 0
-			while attempts < 2 and not ok do
-				local r1 = trySendToTarget(targetPlayerObj)
-				ok = r1
-				attempts = attempts + 1
-			end
-			if ok then
-				sentAnyItem = true
-				break
-			end
-		end
-
-		-- auto-delete by speed removed
-
-		if sessionLimits.sendPetCount >= sessionLimits.maxSendPet then
-			-- Clamp internal counters and sync with WebhookSystem to avoid overshoot
-			sessionLimits.sendPetCount = sessionLimits.maxSendPet
-			if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then
-				_G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet)
-			end
-			-- Trigger Discord session summary via global WebhookSystem (if available)
-			if _G.WebhookSystem and _G.WebhookSystem.SendTradeSessionSummary then
-				-- Build compact logs for this session
-				local logs = {}
-				for _, log in ipairs(sessionLogs) do table.insert(logs, log) end
-				task.spawn(function()
-					_G.WebhookSystem.SendTradeSessionSummary(logs)
-				end)
-			end
-			-- (Legacy) Local webhook summary is deprecated
-			if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-				task.spawn(function()
-					sendWebhookSummary()
-				end)
-			end
-			-- Reset counters for next session but remember cumulative memory
-			sessionLimits.stickyCountMemory = sessionLimits.sendPetCount
-			sessionLimits.sendPetCount = 0
-			sessionLimits.limitReachedNotified = false
-			trashEnabled = false
-			if trashToggle then pcall(function() trashToggle:SetValue(false) end) end
-			-- Also clear per-item progress trackers to avoid duplicates
-			clearSendProgress()
-		end
-
-		updateStatus()
-		-- Gentle global throttle to avoid bursts and improve consistency
-		task.wait(0.45)
-		if stopRequested then break end
-	end
-	-- After loop exits, send summary if there are logs and a webhook URL
-	if not webhookSent and webhookUrl ~= "" and #sessionLogs > 0 then
-		task.spawn(function()
-			sendWebhookSummary()
-		end)
-	end
-end
+-- Main processing functions removed since UI elements are gone
+-- Only Auto Trade UI integration remains
 
 -- Initialize function
 function SendTrashSystem.Init(dependencies)
@@ -1483,242 +916,62 @@ function SendTrashSystem.Init(dependencies)
     -- Create the Send Trash tab (or reuse provided Tab from main script)
     local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Send Trash"})
     
-    -- Status display
-    statusParagraph = TrashTab:Paragraph({
-        Title = "Trash System Status:",
-        Desc = "Loading pet information...",
-        Image = "trash-2",
-        ImageSize = 22
-    })
+    -- All other UI elements removed - only Auto Trade UI button remains
     
-    -- Keep tracking toggle
-    keepTrackingToggle = TrashTab:Toggle({
-        Title = "Keep Tracking When Empty",
-        Desc = "Continue monitoring even when no items match filters",
-        Value = false,
-        Callback = function(state)
-            keepTrackingWhenEmpty = state
-            if state then
-                WindUI:Notify({ Title = "Keep Tracking", Content = "Keeps monitoring when no items are available", Duration = 3 })
+    TrashTab:Section({ Title = "🔄 Auto Trade System", Icon = "arrow-right" })
+    
+    -- Auto Trade UI Button with toggle functionality
+    TrashTab:Button({
+        Title = "🔄 Toggle Auto Trade UI",
+        Desc = "Open or close the custom auto trade interface",
+        Callback = function()
+            -- Check if AutoTradeUI already exists globally
+            if _G.AutoTradeUI then
+                -- Toggle existing UI
+                if _G.AutoTradeUI.IsVisible and _G.AutoTradeUI.IsVisible() then
+                    _G.AutoTradeUI.Hide()
+                    WindUI:Notify({
+                        Title = "🔄 Auto Trade UI",
+                        Content = "Auto trade interface closed!",
+                        Duration = 2
+                    })
+                else
+                    _G.AutoTradeUI.Show()
+                    WindUI:Notify({
+                        Title = "🔄 Auto Trade UI",
+                        Content = "Auto trade interface opened!",
+                        Duration = 2
+                    })
+                end
             else
-                WindUI:Notify({ Title = "Stop When Empty", Content = "Stops when no items match filters", Duration = 3 })
+                -- Load and create new AutoTradeUI
+                local success, AutoTradeUI = pcall(function()
+                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua"))()
+                end)
+                
+                if success and AutoTradeUI then
+                    -- Store globally for future toggles
+                    _G.AutoTradeUI = AutoTradeUI
+                    AutoTradeUI.Init(WindUI)
+                    AutoTradeUI.Show()
+                    WindUI:Notify({
+                        Title = "🔄 Auto Trade UI",
+                        Content = "Custom auto trade interface loaded!",
+                        Duration = 3
+                    })
+                else
+                    WindUI:Notify({
+                        Title = "❌ Error",
+                        Content = "Failed to load Auto Trade UI",
+                        Duration = 5
+                    })
+                end
             end
         end
     })
     
     
-    -- Session limit input
-    sessionLimitInput = TrashTab:Input({
-        Title = "Session Limit",
-        Desc = "Maximum items to send/sell per session (default: 50)",
-        Default = "50",
-        Numeric = true,
-        Finished = true,
-        Callback = function(value)
-            local numValue = tonumber(value) or 50
-            if numValue < 1 then numValue = 1 end -- Minimum of 1
-            sessionLimits.maxSendPet = numValue
-            sessionLimits.limitReachedNotified = false -- Reset notification
-            print("Session limits updated: " .. numValue .. " items per session")
-            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
-        end,
-    })
-
-    -- Reset session limits button (moved directly under Session Limit)
-    TrashTab:Button({
-        Title = "Reset Session Limits",
-        Desc = "Reset counters for this session",
-        Callback = function()
-            sessionLimits.sendPetCount = 0
-            sessionLimits.limitReachedNotified = false -- Reset notification
-            webhookSent = false
-            sessionLogs = {}
-            actionCounter = 0
-            updateStatus()
-            WindUI:Notify({ Title = "Session Reset", Content = "Limits reset", Duration = 2 })
-            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
-        end
-    })
-
-    -- Main toggle
-    trashToggle = TrashTab:Toggle({
-        Title = "Send Trash",
-        Desc = "Automatically send selected pets/eggs",
-        Value = false,
-        Callback = function(state)
-			trashEnabled = state
-			
-			if state then
-				-- Start of a new run/session: do not reset logs, only reset webhookSent
-				webhookSent = false
-				stopRequested = false
-				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
-				task.spawn(function()
-					syncSelectorsFromControls()
-					processTrash()
-				end)
-				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
-			else
-				-- Graceful stop: request stop, allow in-flight send to conclude
-				stopRequested = true
-				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
-				-- no immediate webhook here; let processTrash() handle it after it exits
-			end
-		end
-    })
-    
-    TrashTab:Section({ Title = "Target Settings", Icon = "target" })
-    
-    -- Send mode dropdown
-    sendModeDropdown = TrashTab:Dropdown({
-        Title = "Send Type",
-        Desc = "Choose what to send",
-        Values = {"Pets", "Eggs", "Both"},
-        Value = "Both",
-        Callback = function(selection) end
-    })
-    
-    -- Target player dropdown
-    targetPlayerDropdown = TrashTab:Dropdown({
-        Title = "Target Player",
-        Desc = "Random cycles through players",
-        Values = refreshPlayerList(),
-        Value = "Random Player",
-        Callback = function(selection)
-            selectedTargetName = selection or "Random Player"
-            -- Reset random target state when user changes selection
-            randomTargetState.current = nil
-            randomTargetState.fails = 0
-        end
-    })
-    
-    -- Refresh Target List button (placed directly below target dropdown)
-    TrashTab:Button({
-        Title = "Refresh Target List",
-        Desc = "Update player list",
-        Callback = function()
-            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
-                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
-            end
-        end
-    })
-    
-    TrashTab:Section({ Title = "Pet Speed Filters", Icon = "zap" })
-    
-    -- Pet minimum speed input
-    petMinSpeedInput = TrashTab:Input({
-        Title = "⚡ Min Pet Speed",
-        Desc = "Minimum speed to send pets (supports K/M/B/T)",
-        Value = "0",
-        Numeric = false,
-        Finished = true,
-        Callback = function(value)
-            local parsedValue = parseSpeedInput(value)
-            petMinSpeed = parsedValue
-            print("Pet min speed set to:", petMinSpeed)
-        end
-    })
-    
-    -- Pet maximum speed input
-    petMaxSpeedInput = TrashTab:Input({
-        Title = "⚡ Max Pet Speed", 
-        Desc = "Maximum speed to send pets (supports K/M/B/T)",
-        Value = "999999999",
-        Numeric = false,
-        Finished = true,
-        Callback = function(value)
-            local parsedValue = parseSpeedInput(value)
-            petMaxSpeed = parsedValue
-            print("Pet max speed set to:", petMaxSpeed)
-        end
-    })
-    
-    TrashTab:Section({ Title = "Egg Filters", Icon = "mail" })
-    
-    -- Send egg type filter (now include-only)
-    sendEggTypeDropdown = TrashTab:Dropdown({
-        Title = "Egg Types",
-        Desc = "Types to send (empty = all)",
-        Values = getAllEggTypes(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedEggTypes = selectionToList(selection)
-        end
-    })
-    
-    -- Send egg mutation filter (now include-only)
-    sendEggMutationDropdown = TrashTab:Dropdown({
-        Title = "Egg Mutations", 
-        Desc = "Mutations to send (empty = all)",
-        Values = getAllMutations(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedEggMuts = selectionToList(selection)
-        end
-    })
-    
-    -- Selling UI removed per request
-    
-    TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
-    
-    -- Webhook input (optional) - Auto-saves to config
-    -- webhook UI removed
-    
-    -- Ensure the loaded webhook URL is displayed in the input field
-    --
-    
-    -- Removed generic "Refresh Lists" button (target-specific refresh placed under target dropdown)
-    
-    -- Cache refresh button
-    TrashTab:Button({
-        Title = "🔄 Refresh Cache",
-        Desc = "Force refresh inventory cache and clear send progress",
-        Callback = function()
-            forceRefreshCache()
-            clearSendProgress()
-            updateStatus()
-            
-            WindUI:Notify({
-                Title = "🔄 Cache Refreshed",
-                Content = "Inventory cache and send progress cleared!",
-                Duration = 3
-            })
-        end
-    })
-
-    -- Removed: Fix Unknown Items and Force Resolve Names buttons
-
-    -- Send current inventory webhook button
-    -- webhook send button removed
-    
-    
-    -- Register UI elements with config
-    if Config then
-        Config:Register("trashEnabled", trashToggle)
-        Config:Register("sendMode", sendModeDropdown)
-        Config:Register("targetPlayer", targetPlayerDropdown)
-        Config:Register("petMinSpeed", petMinSpeedInput)
-        Config:Register("petMaxSpeed", petMaxSpeedInput)
-        Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
-        Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
-        Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
-        -- webhook config removed
-        -- Selling config removed
-        -- speed threshold removed
-        Config:Register("sessionLimit", sessionLimitInput)
-    end
-    
-    -- Initial status update
-    task.spawn(function()
-        task.wait(1)
-        -- Ensure selectors reflect dropdowns after config load
-        syncSelectorsFromControls()
-        updateStatus()
-    end)
+    -- No UI elements to register with config - all removed except Auto Trade UI button
 end
 
 return SendTrashSystem
