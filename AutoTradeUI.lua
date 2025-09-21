@@ -1362,8 +1362,7 @@ local function createItemCard(itemId, itemData, category, parent)
         inputCorner.CornerRadius = UDim.new(0, 4)
         inputCorner.Parent = sendInput
         
-        -- Auto-save as user types (with gentle debounce)
-        local saveDebounce = nil
+        -- Only save when user presses Enter (user controls when to save)
         local function updateConfig()
             local inputText = sendInput.Text
             local value = tonumber(inputText) or 0
@@ -1386,26 +1385,11 @@ local function createItemCard(itemId, itemData, category, parent)
             saveConfig()
         end
         
-        sendInput:GetPropertyChangedSignal("Text"):Connect(function()
-            -- Cancel previous save if still pending
-            if saveDebounce then
-                task.cancel(saveDebounce)
-            end
-            
-            -- Schedule save after short delay (no text filtering!)
-            saveDebounce = task.delay(0.5, function()
+        -- Only save when user presses Enter
+        sendInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
                 updateConfig()
-                saveDebounce = nil
-            end)
-        end)
-        
-        -- Also save immediately when focus is lost
-        sendInput.FocusLost:Connect(function()
-            if saveDebounce then
-                task.cancel(saveDebounce)
-                saveDebounce = nil
             end
-            updateConfig()
         end)
         
         -- Show warning initially if needed with new format
@@ -1540,10 +1524,7 @@ refreshContent = function()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed input functionality (auto-save as you type)
-        local minSaveDebounce = nil
-        local maxSaveDebounce = nil
-        
+        -- Speed input functionality (only save when user presses Enter)
         local function updateMinSpeed()
             local inputText = minInput.Text
             local newValue = tonumber(inputText) or 0
@@ -1568,42 +1549,18 @@ refreshContent = function()
             end
         end
         
-        -- Min speed auto-save
-        minInput:GetPropertyChangedSignal("Text"):Connect(function()
-            if minSaveDebounce then
-                task.cancel(minSaveDebounce)
-            end
-            minSaveDebounce = task.delay(0.5, function()
+        -- Min speed - only save when Enter is pressed
+        minInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
                 updateMinSpeed()
-                minSaveDebounce = nil
-            end)
+            end
         end)
         
-        minInput.FocusLost:Connect(function()
-            if minSaveDebounce then
-                task.cancel(minSaveDebounce)
-                minSaveDebounce = nil
-            end
-            updateMinSpeed()
-        end)
-        
-        -- Max speed auto-save
-        maxInput:GetPropertyChangedSignal("Text"):Connect(function()
-            if maxSaveDebounce then
-                task.cancel(maxSaveDebounce)
-            end
-            maxSaveDebounce = task.delay(0.5, function()
+        -- Max speed - only save when Enter is pressed
+        maxInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
                 updateMaxSpeed()
-                maxSaveDebounce = nil
-            end)
-        end)
-        
-        maxInput.FocusLost:Connect(function()
-            if maxSaveDebounce then
-                task.cancel(maxSaveDebounce)
-                maxSaveDebounce = nil
             end
-            updateMaxSpeed()
         end)
     end
     
