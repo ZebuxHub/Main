@@ -62,27 +62,34 @@ local EggData = {
     BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
     RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
     SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+    SeaweedEgg = { Name = "Seaweed Egg", Price = "200", Icon = "rbxassetid://87125339619211", Rarity = 2 },
     EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
     LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+    ClownfishEgg = { Name = "Clownfish Egg", Price = "200", Icon = "rbxassetid://124419920608938", Rarity = 3 },
     PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+    LionfishEgg = { Name = "Lionfish Egg", Price = "200", Icon = "rbxassetid://100181295820053", Rarity = 4 },
     HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
     VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
     BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+    SharkEgg = { Name = "Shark Egg", Price = "150,000,000", Icon = "rbxassetid://71032472532652", Rarity = 5 },
     DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
     CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
+    AnglerfishEgg = { Name = "Anglerfish Egg", Price = "150,000,000", Icon = "rbxassetid://121296998588378", Rarity = 5 },
     BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
     UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
     DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
     FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
     UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
     AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
+    SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "999,999,999,999", Icon = "rbxassetid://130514093439717", Rarity = 6 },
     UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 },
     SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3 },
     DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4 },
     RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5 },
     SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6 },
     GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6 },
-    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6 }
+    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6 },
+    OctopusEgg = { Name = "Octopus Egg", Price = "10,000,000,000", Icon = "rbxassetid://84758700095552", Rarity = 6 }
 }
 
 local FruitData = {
@@ -168,6 +175,53 @@ local function safeGetAttribute(obj, attrName, default)
     local success, result = pcall(function() return obj:GetAttribute(attrName) end)
     return success and result or default
 end
+
+-- Tooltip System
+local activeTooltip = nil
+local function createTooltip(text, parent, targetElement)
+    if activeTooltip then
+        activeTooltip:Destroy()
+        activeTooltip = nil
+    end
+    
+    local tooltip = Instance.new("TextLabel")
+    tooltip.Name = "Tooltip"
+    tooltip.Size = UDim2.new(0, 200, 0, 40)
+    tooltip.Position = UDim2.new(0, 0, 0, -45)
+    tooltip.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    tooltip.BorderSizePixel = 0
+    tooltip.Text = text
+    tooltip.TextSize = 10
+    tooltip.Font = Enum.Font.Gotham
+    tooltip.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tooltip.TextWrapped = true
+    tooltip.TextXAlignment = Enum.TextXAlignment.Center
+    tooltip.TextYAlignment = Enum.TextYAlignment.Center
+    tooltip.ZIndex = 200
+    tooltip.Parent = targetElement
+    
+    local tooltipCorner = Instance.new("UICorner")
+    tooltipCorner.CornerRadius = UDim.new(0, 4)
+    tooltipCorner.Parent = tooltip
+    
+    local tooltipStroke = Instance.new("UIStroke")
+    tooltipStroke.Color = Color3.fromRGB(80, 80, 80)
+    tooltipStroke.Thickness = 1
+    tooltipStroke.Parent = tooltip
+    
+    activeTooltip = tooltip
+    return tooltip
+end
+
+local function hideTooltip()
+    if activeTooltip then
+        activeTooltip:Destroy()
+        activeTooltip = nil
+    end
+end
+
+-- Forward declaration
+local refreshContent
 
 -- Inventory Functions
 local function getPlayerInventory()
@@ -737,6 +791,7 @@ local function createTargetSection(parent)
     dropdownList.ScrollBarImageColor3 = colors.primary
     dropdownList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     dropdownList.ScrollingDirection = Enum.ScrollingDirection.Y
+    dropdownList.ZIndex = 100
     dropdownList.Parent = targetSection
     
     local dropdownListCorner = Instance.new("UICorner")
@@ -852,6 +907,7 @@ local function createFilterBar(parent)
     sortList.BackgroundColor3 = colors.surface
     sortList.BorderSizePixel = 0
     sortList.Visible = false
+    sortList.ZIndex = 100
     sortList.Parent = filterBar
     
     local sortListCorner = Instance.new("UICorner")
@@ -972,11 +1028,11 @@ local function createFilterBar(parent)
     
     -- Tooltip hover events
     configToggle.MouseEnter:Connect(function()
-        configTooltip.Visible = true
+        createTooltip("Show only items with 'Send until' values configured", filterBar, configToggle)
     end)
     
     configToggle.MouseLeave:Connect(function()
-        configTooltip.Visible = false
+        hideTooltip()
     end)
     
     return filterBar
@@ -1164,11 +1220,11 @@ local function createItemCard(itemId, itemData, category, parent)
     ownedLabel.TextXAlignment = Enum.TextXAlignment.Left
     ownedLabel.Parent = card
     
-    -- Warning icon for insufficient items
+    -- Warning icon for insufficient items (same line as owned count)
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
     warningIcon.Size = UDim2.new(0, 60, 0, 16)
-    warningIcon.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 40)
+    warningIcon.Position = UDim2.new(0, 120, 0, 60) -- Same line as owned label
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
     warningIcon.TextSize = 10
@@ -1312,7 +1368,7 @@ local function createPetSpeedControls(parent)
 end
 
 -- Refresh Content
-local function refreshContent()
+refreshContent = function()
     if not ScreenGui or not ScreenGui.Parent then return end
     
     local tabSection = ScreenGui.MainFrame:FindFirstChild("TabSection")
@@ -1654,6 +1710,15 @@ function setupEventHandlers()
     end)
     
     -- Send button
+    -- Add tooltip for Send button
+    sendBtn.MouseEnter:Connect(function()
+        createTooltip("Manually send one item to the selected target player", targetSection, sendBtn)
+    end)
+    
+    sendBtn.MouseLeave:Connect(function()
+        hideTooltip()
+    end)
+    
     sendBtn.MouseButton1Click:Connect(function()
         if isTrading then return end
         
@@ -1683,6 +1748,15 @@ function setupEventHandlers()
     end)
     
     -- Auto trade toggle
+    -- Add tooltip for Auto Trade toggle
+    autoTradeToggle.MouseEnter:Connect(function()
+        createTooltip("Enable/disable automatic trading for all configured items", targetSection, autoTradeToggle)
+    end)
+    
+    autoTradeToggle.MouseLeave:Connect(function()
+        hideTooltip()
+    end)
+    
     autoTradeToggle.MouseButton1Click:Connect(function()
         autoTradeEnabled = not autoTradeEnabled
         autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
