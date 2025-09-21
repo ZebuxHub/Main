@@ -1,4 +1,4 @@
--- AutoTradeUI.lua - Advanced Auto Trade System with Custom UI
+-- AutoTradeUI.lua - Custom Auto Trade System for Build A Zoo
 -- Author: Zebux
 -- Version: 1.0
 
@@ -12,9 +12,11 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 
--- UI Variables
+-- Local Player
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- UI Variables
 local ScreenGui = nil
 local MainFrame = nil
 local isDragging = false
@@ -24,17 +26,38 @@ local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
 
--- Trade State
-local selectedTarget = nil
+-- State Variables
+local selectedTarget = "Random Player"
+local currentTab = "Pets" -- "Pets", "Eggs", "Fruits"
+local petMode = "Individual" -- "Individual" or "Speed"
 local autoTradeEnabled = false
-local tradeSettings = {
-    eggs = {},
-    fruits = {},
-    pets = {}
+local petSpeedMin = 0
+local petSpeedMax = 999999999
+
+-- Data Storage
+local itemConfigs = {
+    pets = {}, -- {petType: {sendUntil: number, enabled: boolean}}
+    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean}}
+    fruits = {} -- {fruitType: {sendUntil: number, enabled: boolean}}
 }
+
+-- Filter States
+local searchText = ""
+local sortMode = "name_asc" -- name_asc, name_desc, owned_desc, owned_asc, price_asc, price_desc
+local showZeroItems = true
+local rarityFilter = "all" -- all, 1, 2, 3, 4, 5, 6
+local configuredOnly = false
+
+-- Trading State
+local isTrading = false
+local tradeCooldown = false
+local retryAttempts = {}
 local savedPosition = nil
 
--- Data from other modules
+-- External Dependencies
+local WindUI = nil
+
+-- Hardcoded Data (from existing systems)
 local EggData = {
     BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
     RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
@@ -54,12 +77,12 @@ local EggData = {
     UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
     AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
     UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 },
-    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3, IsNew = true },
-    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4, IsNew = true },
-    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5, IsNew = true },
-    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6, IsNew = true },
-    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6, IsNew = true },
-    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6, IsNew = true }
+    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3 },
+    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4 },
+    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5 },
+    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6 },
+    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6 },
+    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6 }
 }
 
 local FruitData = {
@@ -78,8 +101,20 @@ local FruitData = {
     ColossalPinecone = { Name = "Colossal Pinecone", Price = "40,000,000,000", Icon = "🌲", Rarity = 6 },
     VoltGinkgo = { Name = "Volt Ginkgo", Price = "80,000,000,000", Icon = "⚡", Rarity = 6 },
     DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Price = "40,000,000,000", Icon = "💠", Rarity = 6 },
-    Durian = { Name = "Durian", Price = "80,000,000,000", Icon = "🥥", Rarity = 6, IsNew = true },
-    DragonFruit = { Name = "Dragon Fruit", Price = "1,500,000,000", Icon = "🐲", Rarity = 6, IsNew = true }
+    Durian = { Name = "Durian", Price = "80,000,000,000", Icon = "🥥", Rarity = 6 },
+    DragonFruit = { Name = "Dragon Fruit", Price = "1,500,000,000", Icon = "🐲", Rarity = 6 }
+}
+
+local HardcodedPetTypes = {
+    "Capy1", "Capy2", "Pig", "Capy3", "Dog", "AngelFish", "Cat", "CapyL1", "Cow", "CapyL2", 
+    "Sheep", "CapyL3", "Horse", "Zebra", "Bighead", "Giraffe", "Hippo", "Elephant", "Rabbit", 
+    "Mouse", "Butterflyfish", "Ankylosaurus", "Needlefish", "Wolverine", "Tiger", "Fox", "Hairtail", 
+    "Panda", "Tuna", "Catfish", "Toucan", "Bee", "Snake", "Butterfly", "Tigerfish", "Okapi", 
+    "Panther", "Penguin", "Velociraptor", "Stegosaurus", "Seaturtle", "Bear", "Flounder", "Lion", 
+    "Lionfish", "Rhino", "Kangroo", "Gorilla", "Alligator", "Ostrich", "Triceratops", "Pachycephalosaur", 
+    "Sawfish", "Pterosaur", "ElectricEel", "Wolf", "Rex", "Dolphin", "Dragon", "Baldeagle", "Shark", 
+    "Griffin", "Brontosaurus", "Anglerfish", "Plesiosaur", "Alpaca", "Spinosaurus", "Manta", "Unicorn", 
+    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock"
 }
 
 -- macOS Dark Theme Colors
@@ -99,226 +134,173 @@ local colors = {
     maximize = Color3.fromRGB(48, 209, 88),
     success = Color3.fromRGB(48, 209, 88),
     warning = Color3.fromRGB(255, 159, 10),
-    error = Color3.fromRGB(255, 69, 58)
+    error = Color3.fromRGB(255, 69, 58),
+    disabled = Color3.fromRGB(100, 100, 100)
 }
 
 -- Utility Functions
 local function formatNumber(num)
-    if type(num) == "string" then
-        return num
-    end
-    if num >= 1e12 then
-        return string.format("%.1fT", num / 1e12)
-    elseif num >= 1e9 then
-        return string.format("%.1fB", num / 1e9)
-    elseif num >= 1e6 then
-        return string.format("%.1fM", num / 1e6)
-    elseif num >= 1e3 then
-        return string.format("%.1fK", num / 1e3)
-    else
-        return tostring(num)
-    end
+    if type(num) == "string" then return num end
+    if num >= 1e12 then return string.format("%.1fT", num / 1e12)
+    elseif num >= 1e9 then return string.format("%.1fB", num / 1e9)
+    elseif num >= 1e6 then return string.format("%.1fM", num / 1e6)
+    elseif num >= 1e3 then return string.format("%.1fK", num / 1e3)
+    else return tostring(num) end
+end
+
+local function parsePrice(priceStr)
+    if type(priceStr) == "number" then return priceStr end
+    local cleanPrice = priceStr:gsub(",", "")
+    return tonumber(cleanPrice) or 0
 end
 
 local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 20 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 10 then return Color3.fromRGB(255, 159, 10)
-    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85)
+    if rarity >= 6 then return Color3.fromRGB(255, 45, 85)
     elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58)
     elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222)
     elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214)
     elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88)
-    else return Color3.fromRGB(174, 174, 178)
-    end
+    else return Color3.fromRGB(174, 174, 178) end
 end
 
--- Get screen size for responsive UI
-local function getScreenSize()
-    local camera = workspace.CurrentCamera
-    if camera then
-        return camera.ViewportSize
-    end
-    return Vector2.new(1920, 1080) -- Default fallback
-end
-
--- Calculate responsive size
-local function getResponsiveSize(baseWidth, baseHeight)
-    local screenSize = getScreenSize()
-    local scaleX = screenSize.X / 1920 -- Base resolution 1920x1080
-    local scaleY = screenSize.Y / 1080
-    local scale = math.min(scaleX, scaleY) -- Use smaller scale to maintain aspect ratio
-    scale = math.max(0.6, math.min(1.2, scale)) -- Clamp between 60% and 120%
-    
-    return UDim2.new(0, baseWidth * scale, 0, baseHeight * scale)
+local function safeGetAttribute(obj, attrName, default)
+    if not obj then return default end
+    local success, result = pcall(function() return obj:GetAttribute(attrName) end)
+    return success and result or default
 end
 
 -- Inventory Functions
-local function normalizeFruitName(name)
-    if type(name) ~= "string" then return "" end
-    local lowered = string.lower(name)
-    lowered = lowered:gsub("[%s_%-%./]", "")
-    return lowered
-end
-
-local function getPlayerFruitInventory()
-    local fruitInventory = {}
+local function getPlayerInventory()
+    local inventory = { pets = {}, eggs = {}, fruits = {} }
     
-    if not LocalPlayer or not LocalPlayer.PlayerGui then
-        return fruitInventory
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return inventory
     end
     
-    local data = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not data then
-        return fruitInventory
-    end
-    
-    local asset = data:FindFirstChild("Asset")
-    if not asset then
-        return fruitInventory
-    end
-    
-    -- Read from Attributes on Asset
-    local ok, attrs = pcall(function()
-        return asset:GetAttributes()
-    end)
-    
-    if ok and type(attrs) == "table" then
-        for id, item in pairs(FruitData) do
-            local display = item.Name or id
-            local amount = attrs[display] or attrs[id]
-            
-            if amount == nil then
-                -- Fallback by normalized key search
-                local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
-                for k, v in pairs(attrs) do
-                    local nk = normalizeFruitName(k)
-                    if nk == wantA or nk == wantB then
-                        amount = v
-                        break
-                    end
+    -- Get Pets
+    local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+    if petsFolder then
+        for _, petData in pairs(petsFolder:GetChildren()) do
+            if petData:IsA("Configuration") then
+                local petType = safeGetAttribute(petData, "T", nil)
+                if petType and petType ~= "" then
+                    inventory.pets[petType] = (inventory.pets[petType] or 0) + 1
                 end
             end
-            
+        end
+    end
+    
+    -- Get Eggs
+    local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+    if eggsFolder then
+        for _, eggData in pairs(eggsFolder:GetChildren()) do
+            if eggData:IsA("Configuration") then
+                local eggType = safeGetAttribute(eggData, "T", nil)
+                if eggType and eggType ~= "" then
+                    inventory.eggs[eggType] = (inventory.eggs[eggType] or 0) + 1
+                end
+            end
+        end
+    end
+    
+    -- Get Fruits
+    local asset = LocalPlayer.PlayerGui.Data:FindFirstChild("Asset")
+    if asset then
+        for id, item in pairs(FruitData) do
+            local amount = safeGetAttribute(asset, item.Name, 0)
             if type(amount) == "string" then amount = tonumber(amount) or 0 end
-            if type(amount) == "number" and amount > 0 then
-                fruitInventory[display] = amount
+            if amount > 0 then
+                inventory.fruits[id] = amount
             end
         end
     end
     
-    return fruitInventory
+    return inventory
 end
 
-local function getPlayerEggInventory()
-    local eggInventory = {}
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui then
-        return eggInventory
+local function getPetSpeed(petUID)
+    local lp = Players.LocalPlayer
+    local pg = lp and lp:FindFirstChild("PlayerGui")
+    local ss = pg and pg:FindFirstChild("ScreenStorage")
+    local frame = ss and ss:FindFirstChild("Frame")
+    local content = frame and frame:FindFirstChild("ContentPet")
+    local scroll = content and content:FindFirstChild("ScrollingFrame")
+    local item = scroll and scroll:FindFirstChild(petUID)
+    local btn = item and item:FindFirstChild("BTN")
+    local stat = btn and btn:FindFirstChild("Stat")
+    local price = stat and stat:FindFirstChild("Price")
+    local valueLabel = price and price:FindFirstChild("Value")
+    local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+    if not txt and price and price:IsA("TextLabel") then
+        txt = price.Text
     end
-    
-    local data = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not data then
-        return eggInventory
+    if txt then
+        local n = tonumber((txt:gsub("[^%d]", ""))) or 0
+        return n
     end
-    
-    local eggsFolder = data:FindFirstChild("Egg")
-    if not eggsFolder then
-        return eggInventory
-    end
-    
-    for _, eggData in pairs(eggsFolder:GetChildren()) do
-        if eggData:IsA("Configuration") then
-            local eggType = eggData:GetAttribute("T")
-            if eggType then
-                eggInventory[eggType] = (eggInventory[eggType] or 0) + 1
-            end
-        end
-    end
-    
-    return eggInventory
-end
-
-local function getPlayerPetInventory()
-    local petInventory = {}
-    
-    if not LocalPlayer or not LocalPlayer.PlayerGui then
-        return petInventory
-    end
-    
-    local data = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not data then
-        return petInventory
-    end
-    
-    local petsFolder = data:FindFirstChild("Pets")
-    if not petsFolder then
-        return petInventory
-    end
-    
-    for _, petData in pairs(petsFolder:GetChildren()) do
-        if petData:IsA("Configuration") then
-            local petType = petData:GetAttribute("T")
-            if petType then
-                petInventory[petType] = (petInventory[petType] or 0) + 1
-            end
-        end
-    end
-    
-    return petInventory
+    return 0
 end
 
 -- Player Functions
 local function getPlayerList()
-    local playerList = {}
-    
+    local playerList = {"Random Player"}
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            table.insert(playerList, player)
+            table.insert(playerList, player.Name)
         end
     end
-    
     return playerList
 end
 
-local function getPlayerAvatar(player)
-    if player and player.UserId then
-        return "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=150&height=150&format=png"
+local function getRandomPlayer()
+    local players = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(players, player)
+        end
     end
-    return ""
+    if #players > 0 then
+        return players[math.random(1, #players)]
+    end
+    return nil
 end
 
--- Trade Functions
+local function getPlayerByName(name)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Name == name or player.DisplayName == name then
+            return player
+        end
+    end
+    return nil
+end
+
+-- Trading Functions
 local function saveCurrentPosition()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         savedPosition = LocalPlayer.Character.HumanoidRootPart.CFrame
     end
 end
 
-local function teleportToPlayer(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then
-        return false
-    end
-    
-    local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    
-    if not targetRoot or not myRoot then
-        return false
-    end
-    
-    -- Teleport near the target player
-    local offset = Vector3.new(5, 0, 5) -- 5 studs away
-    myRoot.CFrame = targetRoot.CFrame + offset
-    
-    return true
-end
-
-local function teleportBack()
+local function returnToSavedPosition()
     if savedPosition and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         LocalPlayer.Character.HumanoidRootPart.CFrame = savedPosition
     end
+end
+
+local function teleportToPlayer(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return false, "Target player not found or no character"
+    end
+    
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return false, "Local player has no character"
+    end
+    
+    local success, err = pcall(function()
+        LocalPlayer.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(5, 0, 0)
+    end)
+    
+    return success, err and tostring(err) or nil
 end
 
 local function focusItem(itemUID)
@@ -326,8 +308,7 @@ local function focusItem(itemUID)
         local args = {"Focus", itemUID}
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
     end)
-    
-    return success
+    return success, err and tostring(err) or nil
 end
 
 local function giftToPlayer(targetPlayer)
@@ -335,96 +316,284 @@ local function giftToPlayer(targetPlayer)
         local args = {targetPlayer}
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("GiftRE"):FireServer(unpack(args))
     end)
-    
-    return success
+    return success, err and tostring(err) or nil
 end
 
-local function findItemUID(itemName, itemType)
-    if not LocalPlayer or not LocalPlayer.PlayerGui then
-        return nil
+local function performTrade(itemUID, itemType, targetPlayer)
+    if isTrading or tradeCooldown then
+        return false, "Trade in progress or cooldown active"
     end
     
-    local data = LocalPlayer.PlayerGui:FindFirstChild("Data")
-    if not data then
-        return nil
+    isTrading = true
+    local tradeKey = itemUID .. "_" .. (targetPlayer and targetPlayer.Name or "random")
+    
+    -- Save position
+    saveCurrentPosition()
+    
+    -- Get target player
+    local target = targetPlayer
+    if not target and selectedTarget == "Random Player" then
+        target = getRandomPlayer()
+    elseif not target and selectedTarget ~= "Random Player" then
+        target = getPlayerByName(selectedTarget)
     end
     
-    local folder = nil
-    if itemType == "egg" then
-        folder = data:FindFirstChild("Egg")
-    elseif itemType == "fruit" then
-        folder = data:FindFirstChild("Asset")
-    elseif itemType == "pet" then
-        folder = data:FindFirstChild("Pets")
+    if not target then
+        isTrading = false
+        return false, "No target player available"
     end
     
-    if not folder then
-        return nil
-    end
-    
-    if itemType == "fruit" then
-        -- For fruits, we need to check attributes
-        local amount = folder:GetAttribute(itemName)
-        if amount and amount > 0 then
-            return itemName -- For fruits, the name is the identifier
+    -- Teleport to player
+    local tpSuccess, tpErr = teleportToPlayer(target)
+    if not tpSuccess then
+        isTrading = false
+        returnToSavedPosition()
+        
+        -- Increment retry count
+        retryAttempts[tradeKey] = (retryAttempts[tradeKey] or 0) + 1
+        if retryAttempts[tradeKey] >= 5 then
+            retryAttempts[tradeKey] = 0
+            if WindUI then
+                WindUI:Notify({
+                    Title = "❌ Trade Failed",
+                    Content = "Failed to teleport to " .. target.Name .. " after 5 attempts",
+                    Duration = 5
+                })
+            end
+            return false, "Teleport failed after 5 attempts"
         end
-    else
-        -- For eggs and pets, check configurations
-        for _, item in pairs(folder:GetChildren()) do
-            if item:IsA("Configuration") then
-                local itemTypeAttr = item:GetAttribute("T")
-                if itemTypeAttr == itemName then
-                    return item.Name -- Return the UID
+        
+        return false, "Teleport failed: " .. (tpErr or "Unknown error")
+    end
+    
+    -- Wait a moment for teleport to complete
+    task.wait(0.5)
+    
+    -- Focus item
+    local focusSuccess, focusErr = focusItem(itemUID)
+    if not focusSuccess then
+        isTrading = false
+        returnToSavedPosition()
+        return false, "Failed to focus item: " .. (focusErr or "Unknown error")
+    end
+    
+    -- Wait for focus
+    task.wait(0.2)
+    
+    -- Gift to player
+    local giftSuccess, giftErr = giftToPlayer(target)
+    if not giftSuccess then
+        isTrading = false
+        returnToSavedPosition()
+        return false, "Failed to gift item: " .. (giftErr or "Unknown error")
+    end
+    
+    -- Wait for gift to process
+    task.wait(0.5)
+    
+    -- Return to saved position
+    returnToSavedPosition()
+    
+    -- Reset retry count on success
+    retryAttempts[tradeKey] = 0
+    
+    -- Set cooldown
+    tradeCooldown = true
+    task.spawn(function()
+        task.wait(1) -- 1 second cooldown
+        tradeCooldown = false
+    end)
+    
+    isTrading = false
+    
+    -- Send webhook notification if available
+    if _G.WebhookSystem and _G.WebhookSystem.SendTradeWebhook then
+        local fromItems = {{
+            type = itemType,
+            mutation = "",
+            count = 1
+        }}
+        _G.WebhookSystem.SendTradeWebhook(LocalPlayer.Name, target.Name, fromItems, {})
+    end
+    
+    return true, "Trade successful"
+end
+
+-- Auto Trade Logic
+local function shouldSendItem(itemType, category, ownedAmount)
+    local config = itemConfigs[category][itemType]
+    if not config or not config.enabled then return false end
+    
+    local sendUntil = config.sendUntil or 0
+    return ownedAmount > sendUntil
+end
+
+local function getItemsToSend()
+    local inventory = getPlayerInventory()
+    local itemsToSend = {}
+    
+    -- Check Eggs
+    for eggType, ownedAmount in pairs(inventory.eggs) do
+        if shouldSendItem(eggType, "eggs", ownedAmount) then
+            -- Find egg UID from inventory
+            local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
+            if eggsFolder then
+                for _, eggData in pairs(eggsFolder:GetChildren()) do
+                    if eggData:IsA("Configuration") then
+                        local eggDataType = safeGetAttribute(eggData, "T", nil)
+                        if eggDataType == eggType then
+                            table.insert(itemsToSend, {
+                                uid = eggData.Name,
+                                type = eggType,
+                                category = "eggs"
+                            })
+                            break -- Only send one at a time
+                        end
+                    end
                 end
             end
         end
     end
     
-    return nil
+    -- Check Fruits
+    for fruitType, ownedAmount in pairs(inventory.fruits) do
+        if shouldSendItem(fruitType, "fruits", ownedAmount) then
+            -- For fruits, we need to find the fruit UID differently
+            -- This might need adjustment based on how fruits are stored
+            table.insert(itemsToSend, {
+                uid = fruitType, -- This might need to be adjusted
+                type = fruitType,
+                category = "fruits"
+            })
+        end
+    end
+    
+    -- Check Pets
+    if petMode == "Speed" then
+        -- Speed mode: send all pets in speed range
+        local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+        if petsFolder then
+            for _, petData in pairs(petsFolder:GetChildren()) do
+                if petData:IsA("Configuration") then
+                    local petType = safeGetAttribute(petData, "T", nil)
+                    if petType and petType ~= "" then
+                        local petSpeed = getPetSpeed(petData.Name)
+                        if petSpeed >= petSpeedMin and petSpeed <= petSpeedMax then
+                            table.insert(itemsToSend, {
+                                uid = petData.Name,
+                                type = petType,
+                                category = "pets"
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    else
+        -- Individual mode: check configured pets
+        for petType, ownedAmount in pairs(inventory.pets) do
+            if shouldSendItem(petType, "pets", ownedAmount) then
+                -- Find pet UID from inventory
+                local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+                if petsFolder then
+                    for _, petData in pairs(petsFolder:GetChildren()) do
+                        if petData:IsA("Configuration") then
+                            local petDataType = safeGetAttribute(petData, "T", nil)
+                            if petDataType == petType then
+                                table.insert(itemsToSend, {
+                                    uid = petData.Name,
+                                    type = petType,
+                                    category = "pets"
+                                })
+                                break -- Only send one at a time
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return itemsToSend
 end
 
-local function sendItem(itemName, itemType, targetPlayer)
-    if not targetPlayer or not targetPlayer.Parent then
-        return false, "Target player not found"
+local autoTradeConnection = nil
+local function startAutoTrade()
+    if autoTradeConnection then
+        autoTradeConnection:Disconnect()
     end
     
-    -- Save current position
-    saveCurrentPosition()
-    
-    -- Teleport to target player
-    if not teleportToPlayer(targetPlayer) then
-        return false, "Failed to teleport to target"
+    autoTradeConnection = RunService.Heartbeat:Connect(function()
+        if not autoTradeEnabled or isTrading then return end
+        
+        local itemsToSend = getItemsToSend()
+        if #itemsToSend > 0 then
+            local item = itemsToSend[1] -- Send one item at a time
+            local success, err = performTrade(item.uid, item.type, nil)
+            if not success and WindUI then
+                WindUI:Notify({
+                    Title = "❌ Auto Trade Error",
+                    Content = err or "Unknown error",
+                    Duration = 3
+                })
+            end
+        end
+        
+        task.wait(0.1) -- Small delay to prevent excessive checking
+    end)
+end
+
+local function stopAutoTrade()
+    if autoTradeConnection then
+        autoTradeConnection:Disconnect()
+        autoTradeConnection = nil
     end
+end
+
+-- Config System
+local function saveConfig()
+    local configData = {
+        itemConfigs = itemConfigs,
+        petMode = petMode,
+        petSpeedMin = petSpeedMin,
+        petSpeedMax = petSpeedMax,
+        currentTab = currentTab,
+        searchText = searchText,
+        sortMode = sortMode,
+        showZeroItems = showZeroItems,
+        rarityFilter = rarityFilter,
+        configuredOnly = configuredOnly
+    }
     
-    task.wait(0.5) -- Wait for teleport to complete
+    local success, err = pcall(function()
+        if not isfolder("Zebux") then makefolder("Zebux") end
+        if not isfolder("Zebux/AutoTrade") then makefolder("Zebux/AutoTrade") end
+        writefile("Zebux/AutoTrade/config.json", HttpService:JSONEncode(configData))
+    end)
     
-    -- Find item UID
-    local itemUID = findItemUID(itemName, itemType)
-    if not itemUID then
-        teleportBack()
-        return false, "Item not found in inventory"
+    return success
+end
+
+local function loadConfig()
+    local success, configData = pcall(function()
+        if isfile("Zebux/AutoTrade/config.json") then
+            return HttpService:JSONDecode(readfile("Zebux/AutoTrade/config.json"))
+        end
+        return nil
+    end)
+    
+    if success and configData then
+        itemConfigs = configData.itemConfigs or itemConfigs
+        petMode = configData.petMode or petMode
+        petSpeedMin = configData.petSpeedMin or petSpeedMin
+        petSpeedMax = configData.petSpeedMax or petSpeedMax
+        currentTab = configData.currentTab or currentTab
+        searchText = configData.searchText or searchText
+        sortMode = configData.sortMode or sortMode
+        showZeroItems = configData.showZeroItems ~= nil and configData.showZeroItems or showZeroItems
+        rarityFilter = configData.rarityFilter or rarityFilter
+        configuredOnly = configData.configuredOnly ~= nil and configData.configuredOnly or configuredOnly
     end
-    
-    -- Focus the item
-    if not focusItem(itemUID) then
-        teleportBack()
-        return false, "Failed to focus item"
-    end
-    
-    task.wait(0.2) -- Wait for focus
-    
-    -- Gift to player
-    if not giftToPlayer(targetPlayer) then
-        teleportBack()
-        return false, "Failed to gift item"
-    end
-    
-    task.wait(0.5) -- Wait for gift to process
-    
-    -- Teleport back
-    teleportBack()
-    
-    return true, "Item sent successfully"
 end
 
 -- UI Creation Functions
@@ -436,7 +605,7 @@ local function createWindowControls(parent)
     controlsContainer.BackgroundTransparency = 1
     controlsContainer.Parent = parent
     
-    -- Close Button (Red)
+    -- Close Button
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
     closeBtn.Size = UDim2.new(0, 12, 0, 12)
@@ -450,7 +619,7 @@ local function createWindowControls(parent)
     closeCorner.CornerRadius = UDim.new(0.5, 0)
     closeCorner.Parent = closeBtn
     
-    -- Minimize Button (Yellow)
+    -- Minimize Button
     local minimizeBtn = Instance.new("TextButton")
     minimizeBtn.Name = "MinimizeBtn"
     minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
@@ -464,310 +633,674 @@ local function createWindowControls(parent)
     minimizeCorner.CornerRadius = UDim.new(0.5, 0)
     minimizeCorner.Parent = minimizeBtn
     
-    -- Maximize Button (Green)
-    local maximizeBtn = Instance.new("TextButton")
-    maximizeBtn.Name = "MaximizeBtn"
-    maximizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    maximizeBtn.Position = UDim2.new(0, 36, 0, 0)
-    maximizeBtn.BackgroundColor3 = colors.maximize
-    maximizeBtn.BorderSizePixel = 0
-    maximizeBtn.Text = ""
-    maximizeBtn.Parent = controlsContainer
-    
-    local maximizeCorner = Instance.new("UICorner")
-    maximizeCorner.CornerRadius = UDim.new(0.5, 0)
-    maximizeCorner.Parent = maximizeBtn
-    
     return controlsContainer
 end
 
-local function createTargetPlayerCard(player, parent)
-    local card = Instance.new("Frame")
-    card.Name = "PlayerCard_" .. player.Name
-    card.Size = UDim2.new(1, -16, 0, 80)
-    card.BackgroundColor3 = selectedTarget == player and colors.selected or colors.surface
-    card.BorderSizePixel = 0
-    card.Parent = parent
+local function createTargetSection(parent)
+    local targetSection = Instance.new("Frame")
+    targetSection.Name = "TargetSection"
+    targetSection.Size = UDim2.new(0.35, -8, 1, -80)
+    targetSection.Position = UDim2.new(0, 16, 0, 80)
+    targetSection.BackgroundColor3 = colors.surface
+    targetSection.BorderSizePixel = 0
+    targetSection.Parent = parent
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
+    corner.Parent = targetSection
     
     local stroke = Instance.new("UIStroke")
     stroke.Color = colors.border
     stroke.Thickness = 1
-    stroke.Parent = card
+    stroke.Parent = targetSection
     
-    -- Player Avatar
+    -- Target Player Avatar (placeholder)
     local avatar = Instance.new("ImageLabel")
     avatar.Name = "Avatar"
-    avatar.Size = UDim2.new(0, 60, 0, 60)
-    avatar.Position = UDim2.new(0, 10, 0.5, -30)
-    avatar.BackgroundTransparency = 1
-    avatar.Image = getPlayerAvatar(player)
-    avatar.Parent = card
+    avatar.Size = UDim2.new(0, 80, 0, 80)
+    avatar.Position = UDim2.new(0.5, -40, 0, 20)
+    avatar.BackgroundColor3 = colors.hover
+    avatar.BorderSizePixel = 0
+    avatar.Image = "" -- Will be set dynamically
+    avatar.Parent = targetSection
     
     local avatarCorner = Instance.new("UICorner")
-    avatarCorner.CornerRadius = UDim.new(0.5, 0)
+    avatarCorner.CornerRadius = UDim.new(0, 8)
     avatarCorner.Parent = avatar
     
-    -- Player Name
+    -- Target Player Name
     local nameLabel = Instance.new("TextLabel")
-    nameLabel.Name = "PlayerName"
-    nameLabel.Size = UDim2.new(1, -80, 0, 25)
-    nameLabel.Position = UDim2.new(0, 80, 0, 10)
+    nameLabel.Name = "NameLabel"
+    nameLabel.Size = UDim2.new(1, -20, 0, 30)
+    nameLabel.Position = UDim2.new(0, 10, 0, 110)
     nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = player.DisplayName ~= player.Name and (player.DisplayName .. " (@" .. player.Name .. ")") or player.Name
-    nameLabel.TextSize = 14
+    nameLabel.Text = selectedTarget
+    nameLabel.TextSize = 16
     nameLabel.Font = Enum.Font.GothamSemibold
     nameLabel.TextColor3 = colors.text
-    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Center
     nameLabel.TextWrapped = true
-    nameLabel.Parent = card
+    nameLabel.Parent = targetSection
+    
+    -- Target Selection Dropdown
+    local targetDropdown = Instance.new("TextButton")
+    targetDropdown.Name = "TargetDropdown"
+    targetDropdown.Size = UDim2.new(1, -20, 0, 35)
+    targetDropdown.Position = UDim2.new(0, 10, 0, 150)
+    targetDropdown.BackgroundColor3 = colors.hover
+    targetDropdown.BorderSizePixel = 0
+    targetDropdown.Text = "Change Target"
+    targetDropdown.TextSize = 14
+    targetDropdown.Font = Enum.Font.Gotham
+    targetDropdown.TextColor3 = colors.text
+    targetDropdown.Parent = targetSection
+    
+    local dropdownCorner = Instance.new("UICorner")
+    dropdownCorner.CornerRadius = UDim.new(0, 6)
+    dropdownCorner.Parent = targetDropdown
     
     -- Send Button
     local sendBtn = Instance.new("TextButton")
     sendBtn.Name = "SendBtn"
-    sendBtn.Size = UDim2.new(0, 80, 0, 25)
-    sendBtn.Position = UDim2.new(1, -90, 1, -35)
+    sendBtn.Size = UDim2.new(1, -20, 0, 40)
+    sendBtn.Position = UDim2.new(0, 10, 0, 200)
     sendBtn.BackgroundColor3 = colors.primary
     sendBtn.BorderSizePixel = 0
-    sendBtn.Text = "SEND"
-    sendBtn.TextSize = 12
+    sendBtn.Text = "Send Now"
+    sendBtn.TextSize = 16
     sendBtn.Font = Enum.Font.GothamBold
-    sendBtn.TextColor3 = colors.text
-    sendBtn.Parent = card
+    sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sendBtn.Parent = targetSection
     
     local sendCorner = Instance.new("UICorner")
-    sendCorner.CornerRadius = UDim.new(0, 4)
+    sendCorner.CornerRadius = UDim.new(0, 8)
     sendCorner.Parent = sendBtn
     
-    -- Click to select target
-    local clickBtn = Instance.new("TextButton")
-    clickBtn.Name = "ClickBtn"
-    clickBtn.Size = UDim2.new(1, 0, 1, 0)
-    clickBtn.BackgroundTransparency = 1
-    clickBtn.Text = ""
-    clickBtn.Parent = card
+    -- Auto Trade Toggle
+    local autoTradeToggle = Instance.new("TextButton")
+    autoTradeToggle.Name = "AutoTradeToggle"
+    autoTradeToggle.Size = UDim2.new(1, -20, 0, 35)
+    autoTradeToggle.Position = UDim2.new(0, 10, 0, 250)
+    autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
+    autoTradeToggle.BorderSizePixel = 0
+    autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
+    autoTradeToggle.TextSize = 14
+    autoTradeToggle.Font = Enum.Font.GothamSemibold
+    autoTradeToggle.TextColor3 = colors.text
+    autoTradeToggle.Parent = targetSection
     
-    clickBtn.MouseButton1Click:Connect(function()
-        selectedTarget = player
-        AutoTradeUI.RefreshTargets()
-    end)
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 6)
+    toggleCorner.Parent = autoTradeToggle
     
-    -- Send button functionality
-    sendBtn.MouseButton1Click:Connect(function()
-        selectedTarget = player
-        AutoTradeUI.StartSending()
-    end)
-    
-    -- Hover effects
-    clickBtn.MouseEnter:Connect(function()
-        if selectedTarget ~= player then
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
-        end
-    end)
-    
-    clickBtn.MouseLeave:Connect(function()
-        if selectedTarget ~= player then
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-        end
-    end)
-    
-    return card
+    return targetSection
 end
 
-local function createItemCard(itemId, itemData, itemType, parent)
-    local card = Instance.new("Frame")
-    card.Name = itemId
-    card.Size = UDim2.new(1, -16, 0, 100)
-    card.BackgroundColor3 = colors.surface
-    card.BorderSizePixel = 0
-    card.Parent = parent
+local function createFilterBar(parent)
+    local filterBar = Instance.new("Frame")
+    filterBar.Name = "FilterBar"
+    filterBar.Size = UDim2.new(0.65, -8, 0, 50)
+    filterBar.Position = UDim2.new(0.35, 8, 0, 80)
+    filterBar.BackgroundColor3 = colors.surface
+    filterBar.BorderSizePixel = 0
+    filterBar.Parent = parent
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
+    corner.Parent = filterBar
     
     local stroke = Instance.new("UIStroke")
     stroke.Color = colors.border
     stroke.Thickness = 1
-    stroke.Parent = card
+    stroke.Parent = filterBar
     
-    -- Item Icon
-    local icon = nil
-    if itemType == "egg" then
-        icon = Instance.new("ImageLabel")
-        icon.Image = itemData.Icon
-        icon.ScaleType = Enum.ScaleType.Fit
-    else
-        icon = Instance.new("TextLabel")
-        icon.Text = itemData.Icon
-        icon.TextSize = 32
-        icon.Font = Enum.Font.GothamBold
-        icon.TextColor3 = getRarityColor(itemData.Rarity)
+    -- Search Box
+    local searchBox = Instance.new("TextBox")
+    searchBox.Name = "SearchBox"
+    searchBox.Size = UDim2.new(0.3, -5, 0, 30)
+    searchBox.Position = UDim2.new(0, 10, 0, 10)
+    searchBox.BackgroundColor3 = colors.hover
+    searchBox.BorderSizePixel = 0
+    searchBox.Text = searchText
+    searchBox.PlaceholderText = "Search..."
+    searchBox.TextSize = 12
+    searchBox.Font = Enum.Font.Gotham
+    searchBox.TextColor3 = colors.text
+    searchBox.TextXAlignment = Enum.TextXAlignment.Left
+    searchBox.Parent = filterBar
+    
+    local searchCorner = Instance.new("UICorner")
+    searchCorner.CornerRadius = UDim.new(0, 4)
+    searchCorner.Parent = searchBox
+    
+    -- Sort Dropdown (simplified as button for now)
+    local sortBtn = Instance.new("TextButton")
+    sortBtn.Name = "SortBtn"
+    sortBtn.Size = UDim2.new(0.2, -5, 0, 30)
+    sortBtn.Position = UDim2.new(0.3, 5, 0, 10)
+    sortBtn.BackgroundColor3 = colors.hover
+    sortBtn.BorderSizePixel = 0
+    sortBtn.Text = "Sort: Name"
+    sortBtn.TextSize = 12
+    sortBtn.Font = Enum.Font.Gotham
+    sortBtn.TextColor3 = colors.text
+    sortBtn.Parent = filterBar
+    
+    local sortCorner = Instance.new("UICorner")
+    sortCorner.CornerRadius = UDim.new(0, 4)
+    sortCorner.Parent = sortBtn
+    
+    -- Show Zero Toggle
+    local zeroToggle = Instance.new("TextButton")
+    zeroToggle.Name = "ZeroToggle"
+    zeroToggle.Size = UDim2.new(0.15, -5, 0, 30)
+    zeroToggle.Position = UDim2.new(0.5, 5, 0, 10)
+    zeroToggle.BackgroundColor3 = showZeroItems and colors.primary or colors.hover
+    zeroToggle.BorderSizePixel = 0
+    zeroToggle.Text = "Show 0x"
+    zeroToggle.TextSize = 12
+    zeroToggle.Font = Enum.Font.Gotham
+    zeroToggle.TextColor3 = colors.text
+    zeroToggle.Parent = filterBar
+    
+    local zeroCorner = Instance.new("UICorner")
+    zeroCorner.CornerRadius = UDim.new(0, 4)
+    zeroCorner.Parent = zeroToggle
+    
+    -- Configured Only Toggle
+    local configToggle = Instance.new("TextButton")
+    configToggle.Name = "ConfigToggle"
+    configToggle.Size = UDim2.new(0.2, -5, 0, 30)
+    configToggle.Position = UDim2.new(0.65, 5, 0, 10)
+    configToggle.BackgroundColor3 = configuredOnly and colors.primary or colors.hover
+    configToggle.BorderSizePixel = 0
+    configToggle.Text = "Configured"
+    configToggle.TextSize = 12
+    configToggle.Font = Enum.Font.Gotham
+    configToggle.TextColor3 = colors.text
+    configToggle.Parent = filterBar
+    
+    local configCorner = Instance.new("UICorner")
+    configCorner.CornerRadius = UDim.new(0, 4)
+    configCorner.Parent = configToggle
+    
+    return filterBar
+end
+
+local function createTabSection(parent)
+    local tabSection = Instance.new("Frame")
+    tabSection.Name = "TabSection"
+    tabSection.Size = UDim2.new(0.65, -8, 1, -140)
+    tabSection.Position = UDim2.new(0.35, 8, 0, 140)
+    tabSection.BackgroundColor3 = colors.surface
+    tabSection.BorderSizePixel = 0
+    tabSection.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = tabSection
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = colors.border
+    stroke.Thickness = 1
+    stroke.Parent = tabSection
+    
+    -- Tab Buttons
+    local tabContainer = Instance.new("Frame")
+    tabContainer.Name = "TabContainer"
+    tabContainer.Size = UDim2.new(1, -20, 0, 40)
+    tabContainer.Position = UDim2.new(0, 10, 0, 10)
+    tabContainer.BackgroundTransparency = 1
+    tabContainer.Parent = tabSection
+    
+    local petsTab = Instance.new("TextButton")
+    petsTab.Name = "PetsTab"
+    petsTab.Size = UDim2.new(0.33, -4, 1, 0)
+    petsTab.Position = UDim2.new(0, 0, 0, 0)
+    petsTab.BackgroundColor3 = currentTab == "Pets" and colors.primary or colors.hover
+    petsTab.BorderSizePixel = 0
+    petsTab.Text = "Pets"
+    petsTab.TextSize = 14
+    petsTab.Font = Enum.Font.GothamSemibold
+    petsTab.TextColor3 = colors.text
+    petsTab.Parent = tabContainer
+    
+    local petsCorner = Instance.new("UICorner")
+    petsCorner.CornerRadius = UDim.new(0, 6)
+    petsCorner.Parent = petsTab
+    
+    local eggsTab = Instance.new("TextButton")
+    eggsTab.Name = "EggsTab"
+    eggsTab.Size = UDim2.new(0.33, -4, 1, 0)
+    eggsTab.Position = UDim2.new(0.33, 2, 0, 0)
+    eggsTab.BackgroundColor3 = currentTab == "Eggs" and colors.primary or colors.hover
+    eggsTab.BorderSizePixel = 0
+    eggsTab.Text = "Eggs"
+    eggsTab.TextSize = 14
+    eggsTab.Font = Enum.Font.GothamSemibold
+    eggsTab.TextColor3 = colors.text
+    eggsTab.Parent = tabContainer
+    
+    local eggsCorner = Instance.new("UICorner")
+    eggsCorner.CornerRadius = UDim.new(0, 6)
+    eggsCorner.Parent = eggsTab
+    
+    local fruitsTab = Instance.new("TextButton")
+    fruitsTab.Name = "FruitsTab"
+    fruitsTab.Size = UDim2.new(0.33, -4, 1, 0)
+    fruitsTab.Position = UDim2.new(0.66, 4, 0, 0)
+    fruitsTab.BackgroundColor3 = currentTab == "Fruits" and colors.primary or colors.hover
+    fruitsTab.BorderSizePixel = 0
+    fruitsTab.Text = "Fruits"
+    fruitsTab.TextSize = 14
+    fruitsTab.Font = Enum.Font.GothamSemibold
+    fruitsTab.TextColor3 = colors.text
+    fruitsTab.Parent = tabContainer
+    
+    local fruitsCorner = Instance.new("UICorner")
+    fruitsCorner.CornerRadius = UDim.new(0, 6)
+    fruitsCorner.Parent = fruitsTab
+    
+    -- Content Area
+    local contentArea = Instance.new("Frame")
+    contentArea.Name = "ContentArea"
+    contentArea.Size = UDim2.new(1, -20, 1, -70)
+    contentArea.Position = UDim2.new(0, 10, 0, 60)
+    contentArea.BackgroundTransparency = 1
+    contentArea.Parent = tabSection
+    
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Name = "ScrollFrame"
+    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.ScrollBarImageColor3 = colors.primary
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    scrollFrame.Parent = contentArea
+    
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 5)
+    listLayout.Parent = scrollFrame
+    
+    return tabSection
+end
+
+-- Item Card Creation
+local function createItemCard(itemId, itemData, category, parent)
+    local inventory = getPlayerInventory()
+    local ownedAmount = 0
+    
+    if category == "pets" then
+        ownedAmount = inventory.pets[itemId] or 0
+    elseif category == "eggs" then
+        ownedAmount = inventory.eggs[itemId] or 0
+    elseif category == "fruits" then
+        ownedAmount = inventory.fruits[itemId] or 0
     end
     
-    icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 60, 0, 60)
-    icon.Position = UDim2.new(0, 10, 0.5, -30)
-    icon.BackgroundTransparency = 1
-    icon.Parent = card
+    -- Check if item should be shown based on filters
+    if not showZeroItems and ownedAmount == 0 then return nil end
+    if configuredOnly and not (itemConfigs[category][itemId] and itemConfigs[category][itemId].enabled) then return nil end
     
-    -- Item Name
+    local card = Instance.new("Frame")
+    card.Name = itemId
+    card.Size = UDim2.new(1, 0, 0, 60)
+    card.BackgroundColor3 = colors.hover
+    card.BorderSizePixel = 0
+    card.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = card
+    
+    -- Icon (for eggs and fruits)
+    if category ~= "pets" then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "Icon"
+        icon.Size = UDim2.new(0, 40, 0, 40)
+        icon.Position = UDim2.new(0, 10, 0, 10)
+        icon.BackgroundTransparency = 1
+        if category == "eggs" then
+            icon.Image = itemData.Icon or ""
+        else
+            -- For fruits, create text icon
+            icon:Destroy()
+            icon = Instance.new("TextLabel")
+            icon.Name = "Icon"
+            icon.Size = UDim2.new(0, 40, 0, 40)
+            icon.Position = UDim2.new(0, 10, 0, 10)
+            icon.BackgroundTransparency = 1
+            icon.Text = itemData.Icon or "🍎"
+            icon.TextSize = 24
+            icon.Font = Enum.Font.GothamBold
+            icon.TextColor3 = getRarityColor(itemData.Rarity)
+            icon.Parent = card
+        end
+        if category == "eggs" then
+            icon.Parent = card
+        end
+    end
+    
+    -- Name
     local nameLabel = Instance.new("TextLabel")
-    nameLabel.Name = "ItemName"
+    nameLabel.Name = "NameLabel"
     nameLabel.Size = UDim2.new(0, 150, 0, 20)
-    nameLabel.Position = UDim2.new(0, 80, 0, 10)
+    nameLabel.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 5)
     nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = itemData.Name
-    nameLabel.TextSize = 12
+    nameLabel.Text = itemData.Name or itemId
+    nameLabel.TextSize = 14
     nameLabel.Font = Enum.Font.GothamSemibold
-    nameLabel.TextColor3 = colors.text
+    nameLabel.TextColor3 = ownedAmount > 0 and colors.text or colors.disabled
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    nameLabel.TextWrapped = true
     nameLabel.Parent = card
     
-    -- Amount Owned
-    local amountLabel = Instance.new("TextLabel")
-    amountLabel.Name = "AmountOwned"
-    amountLabel.Size = UDim2.new(0, 150, 0, 15)
-    amountLabel.Position = UDim2.new(0, 80, 0, 30)
-    amountLabel.BackgroundTransparency = 1
-    amountLabel.Text = "Loading..."
-    amountLabel.TextSize = 10
-    amountLabel.Font = Enum.Font.Gotham
-    amountLabel.TextColor3 = colors.textSecondary
-    amountLabel.TextXAlignment = Enum.TextXAlignment.Left
-    amountLabel.Parent = card
+    -- Owned Amount
+    local ownedLabel = Instance.new("TextLabel")
+    ownedLabel.Name = "OwnedLabel"
+    ownedLabel.Size = UDim2.new(0, 80, 0, 16)
+    ownedLabel.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 25)
+    ownedLabel.BackgroundTransparency = 1
+    ownedLabel.Text = "Own: " .. ownedAmount .. "x"
+    ownedLabel.TextSize = 12
+    ownedLabel.Font = Enum.Font.Gotham
+    ownedLabel.TextColor3 = colors.textSecondary
+    ownedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ownedLabel.Parent = card
     
-    -- Send Amount Input
-    local sendInput = Instance.new("TextBox")
-    sendInput.Name = "SendAmount"
-    sendInput.Size = UDim2.new(0, 60, 0, 25)
-    sendInput.Position = UDim2.new(0, 80, 1, -35)
-    sendInput.BackgroundColor3 = colors.hover
-    sendInput.BorderSizePixel = 0
-    sendInput.Text = tostring(tradeSettings[itemType .. "s"][itemId] or 0)
-    sendInput.PlaceholderText = "0"
-    sendInput.TextSize = 12
-    sendInput.Font = Enum.Font.Gotham
-    sendInput.TextColor3 = colors.text
-    sendInput.TextXAlignment = Enum.TextXAlignment.Center
-    sendInput.Parent = card
+    -- Warning icon for insufficient items
+    local warningIcon = Instance.new("TextLabel")
+    warningIcon.Name = "WarningIcon"
+    warningIcon.Size = UDim2.new(0, 20, 0, 20)
+    warningIcon.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 40)
+    warningIcon.BackgroundTransparency = 1
+    warningIcon.Text = "⚠️"
+    warningIcon.TextSize = 12
+    warningIcon.Font = Enum.Font.Gotham
+    warningIcon.TextColor3 = colors.warning
+    warningIcon.Visible = false
+    warningIcon.Parent = card
     
-    local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 4)
-    inputCorner.Parent = sendInput
-    
-    -- Send Amount Label
-    local sendLabel = Instance.new("TextLabel")
-    sendLabel.Name = "SendLabel"
-    sendLabel.Size = UDim2.new(0, 80, 0, 15)
-    sendLabel.Position = UDim2.new(0, 80, 0, 50)
-    sendLabel.BackgroundTransparency = 1
-    sendLabel.Text = "Send when ≥:"
-    sendLabel.TextSize = 9
-    sendLabel.Font = Enum.Font.Gotham
-    sendLabel.TextColor3 = colors.textTertiary
-    sendLabel.TextXAlignment = Enum.TextXAlignment.Left
-    sendLabel.Parent = card
-    
-    -- Update inventory display
-    local function updateInventoryDisplay()
-        local inventory = nil
-        if itemType == "egg" then
-            inventory = getPlayerEggInventory()
-        elseif itemType == "fruit" then
-            inventory = getPlayerFruitInventory()
-        elseif itemType == "pet" then
-            inventory = getPlayerPetInventory()
-        end
+    -- Send Until Input (not for speed mode pets)
+    local sendInput = nil
+    if not (category == "pets" and petMode == "Speed") then
+        sendInput = Instance.new("TextBox")
+        sendInput.Name = "SendInput"
+        sendInput.Size = UDim2.new(0, 80, 0, 25)
+        sendInput.Position = UDim2.new(1, -90, 0, 17.5)
+        sendInput.BackgroundColor3 = colors.surface
+        sendInput.BorderSizePixel = 0
+        sendInput.Text = tostring((itemConfigs[category][itemId] and itemConfigs[category][itemId].sendUntil) or 0)
+        sendInput.PlaceholderText = "Keep"
+        sendInput.TextSize = 12
+        sendInput.Font = Enum.Font.Gotham
+        sendInput.TextColor3 = colors.text
+        sendInput.TextXAlignment = Enum.TextXAlignment.Center
+        sendInput.Parent = card
         
-        local amount = 0
-        if inventory then
-            amount = inventory[itemData.Name] or inventory[itemId] or 0
-        end
+        local inputCorner = Instance.new("UICorner")
+        inputCorner.CornerRadius = UDim.new(0, 4)
+        inputCorner.Parent = sendInput
         
-        amountLabel.Text = "Owned: " .. amount .. "x"
+        -- Update config when input changes
+        sendInput.FocusLost:Connect(function()
+            local value = tonumber(sendInput.Text) or 0
+            if not itemConfigs[category][itemId] then
+                itemConfigs[category][itemId] = {}
+            end
+            itemConfigs[category][itemId].sendUntil = value
+            itemConfigs[category][itemId].enabled = value > 0
+            
+            -- Show warning if owned amount is less than send until value
+            warningIcon.Visible = ownedAmount > 0 and ownedAmount <= value
+            
+            saveConfig()
+        end)
         
-        if amount == 0 then
-            amountLabel.TextColor3 = colors.error
-        else
-            amountLabel.TextColor3 = colors.textSecondary
-        end
-    end
-    
-    -- Update immediately and every 2 seconds
-    updateInventoryDisplay()
-    local connection = RunService.Heartbeat:Connect(function()
-        local currentTime = tick()
-        if currentTime % 2 < 0.1 then -- Update every 2 seconds
-            updateInventoryDisplay()
-        end
-    end)
-    
-    -- Clean up connection when card is destroyed
-    card.AncestryChanged:Connect(function()
-        if not card.Parent then
-            connection:Disconnect()
-        end
-    end)
-    
-    -- Save send amount when changed
-    sendInput.FocusLost:Connect(function()
-        local amount = tonumber(sendInput.Text) or 0
-        tradeSettings[itemType .. "s"][itemId] = amount
-        AutoTradeUI.SaveSettings()
-    end)
-    
-    -- Add "New" indicator for new items
-    if itemData.IsNew then
-        local newIndicator = Instance.new("TextLabel")
-        newIndicator.Name = "NewIndicator"
-        newIndicator.Size = UDim2.new(0, 30, 0, 16)
-        newIndicator.Position = UDim2.new(1, -34, 0, 2)
-        newIndicator.BackgroundColor3 = colors.error
-        newIndicator.BorderSizePixel = 0
-        newIndicator.Text = "NEW"
-        newIndicator.TextSize = 8
-        newIndicator.Font = Enum.Font.GothamBold
-        newIndicator.TextColor3 = colors.text
-        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
-        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
-        newIndicator.Parent = card
-        
-        local newCorner = Instance.new("UICorner")
-        newCorner.CornerRadius = UDim.new(0, 3)
-        newCorner.Parent = newIndicator
+        -- Show warning initially if needed
+        local currentSendUntil = (itemConfigs[category][itemId] and itemConfigs[category][itemId].sendUntil) or 0
+        warningIcon.Visible = ownedAmount > 0 and ownedAmount <= currentSendUntil
     end
     
     return card
 end
 
--- Main UI Creation
+-- Pet Speed Mode UI
+local function createPetSpeedControls(parent)
+    local speedFrame = Instance.new("Frame")
+    speedFrame.Name = "SpeedFrame"
+    speedFrame.Size = UDim2.new(1, 0, 0, 80)
+    speedFrame.BackgroundColor3 = colors.surface
+    speedFrame.BorderSizePixel = 0
+    speedFrame.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = speedFrame
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = colors.border
+    stroke.Thickness = 1
+    stroke.Parent = speedFrame
+    
+    -- Mode Toggle
+    local modeToggle = Instance.new("TextButton")
+    modeToggle.Name = "ModeToggle"
+    modeToggle.Size = UDim2.new(0, 120, 0, 25)
+    modeToggle.Position = UDim2.new(0, 10, 0, 10)
+    modeToggle.BackgroundColor3 = petMode == "Speed" and colors.primary or colors.hover
+    modeToggle.BorderSizePixel = 0
+    modeToggle.Text = "Mode: " .. petMode
+    modeToggle.TextSize = 12
+    modeToggle.Font = Enum.Font.Gotham
+    modeToggle.TextColor3 = colors.text
+    modeToggle.Parent = speedFrame
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 4)
+    toggleCorner.Parent = modeToggle
+    
+    -- Speed inputs (only visible in speed mode)
+    local minSpeedInput = Instance.new("TextBox")
+    minSpeedInput.Name = "MinSpeedInput"
+    minSpeedInput.Size = UDim2.new(0, 80, 0, 25)
+    minSpeedInput.Position = UDim2.new(0, 10, 0, 45)
+    minSpeedInput.BackgroundColor3 = colors.hover
+    minSpeedInput.BorderSizePixel = 0
+    minSpeedInput.Text = tostring(petSpeedMin)
+    minSpeedInput.PlaceholderText = "Min Speed"
+    minSpeedInput.TextSize = 12
+    minSpeedInput.Font = Enum.Font.Gotham
+    minSpeedInput.TextColor3 = colors.text
+    minSpeedInput.TextXAlignment = Enum.TextXAlignment.Center
+    minSpeedInput.Visible = petMode == "Speed"
+    minSpeedInput.Parent = speedFrame
+    
+    local minCorner = Instance.new("UICorner")
+    minCorner.CornerRadius = UDim.new(0, 4)
+    minCorner.Parent = minSpeedInput
+    
+    local maxSpeedInput = Instance.new("TextBox")
+    maxSpeedInput.Name = "MaxSpeedInput"
+    maxSpeedInput.Size = UDim2.new(0, 80, 0, 25)
+    maxSpeedInput.Position = UDim2.new(0, 100, 0, 45)
+    maxSpeedInput.BackgroundColor3 = colors.hover
+    maxSpeedInput.BorderSizePixel = 0
+    maxSpeedInput.Text = tostring(petSpeedMax)
+    maxSpeedInput.PlaceholderText = "Max Speed"
+    maxSpeedInput.TextSize = 12
+    maxSpeedInput.Font = Enum.Font.Gotham
+    maxSpeedInput.TextColor3 = colors.text
+    maxSpeedInput.TextXAlignment = Enum.TextXAlignment.Center
+    maxSpeedInput.Visible = petMode == "Speed"
+    maxSpeedInput.Parent = speedFrame
+    
+    local maxCorner = Instance.new("UICorner")
+    maxCorner.CornerRadius = UDim.new(0, 4)
+    maxCorner.Parent = maxSpeedInput
+    
+    return speedFrame, modeToggle, minSpeedInput, maxSpeedInput
+end
+
+-- Refresh Content
+local function refreshContent()
+    if not ScreenGui or not ScreenGui.Parent then return end
+    
+    local tabSection = ScreenGui.MainFrame:FindFirstChild("TabSection")
+    if not tabSection then return end
+    
+    local scrollFrame = tabSection.ContentArea.ScrollFrame
+    
+    -- Clear existing content
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("Frame") and child.Name ~= "UIListLayout" then
+            child:Destroy()
+        end
+    end
+    
+    -- Add pet speed controls if in pets tab
+    if currentTab == "Pets" then
+        local speedFrame, modeToggle, minInput, maxInput = createPetSpeedControls(scrollFrame)
+        speedFrame.LayoutOrder = 1
+        
+        -- Mode toggle functionality
+        modeToggle.MouseButton1Click:Connect(function()
+            petMode = petMode == "Individual" and "Speed" or "Individual"
+            modeToggle.Text = "Mode: " .. petMode
+            modeToggle.BackgroundColor3 = petMode == "Speed" and colors.primary or colors.hover
+            minInput.Visible = petMode == "Speed"
+            maxInput.Visible = petMode == "Speed"
+            saveConfig()
+            refreshContent() -- Refresh to show/hide individual pet configs
+        end)
+        
+        -- Speed input functionality
+        minInput.FocusLost:Connect(function()
+            petSpeedMin = tonumber(minInput.Text) or 0
+            saveConfig()
+        end)
+        
+        maxInput.FocusLost:Connect(function()
+            petSpeedMax = tonumber(maxInput.Text) or 999999999
+            saveConfig()
+        end)
+    end
+    
+    -- Get data based on current tab
+    local data = {}
+    local category = ""
+    
+    if currentTab == "Pets" then
+        category = "pets"
+        if petMode == "Individual" then
+            for _, petType in ipairs(HardcodedPetTypes) do
+                data[petType] = { Name = petType }
+            end
+        else
+            -- In speed mode, show pets that match current speed range
+            local inventory = getPlayerInventory()
+            local petsFolder = LocalPlayer.PlayerGui.Data and LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
+            if petsFolder then
+                for _, petData in pairs(petsFolder:GetChildren()) do
+                    if petData:IsA("Configuration") then
+                        local petType = safeGetAttribute(petData, "T", nil)
+                        if petType and petType ~= "" then
+                            local petSpeed = getPetSpeed(petData.Name)
+                            if petSpeed >= petSpeedMin and petSpeed <= petSpeedMax then
+                                data[petType] = { Name = petType }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    elseif currentTab == "Eggs" then
+        category = "eggs"
+        data = EggData
+    elseif currentTab == "Fruits" then
+        category = "fruits"
+        data = FruitData
+    end
+    
+    -- Filter and sort data
+    local filteredData = {}
+    local searchLower = string.lower(searchText)
+    
+    for id, item in pairs(data) do
+        local name = item.Name or id
+        if searchText == "" or string.find(string.lower(name), searchLower, 1, true) then
+            filteredData[id] = item
+        end
+    end
+    
+    -- Convert to array and sort
+    local sortedData = {}
+    for id, item in pairs(filteredData) do
+        table.insert(sortedData, {id = id, data = item})
+    end
+    
+    -- Sort based on sortMode
+    local inventory = getPlayerInventory()
+    table.sort(sortedData, function(a, b)
+        if sortMode == "name_asc" then
+            return (a.data.Name or a.id) < (b.data.Name or b.id)
+        elseif sortMode == "name_desc" then
+            return (a.data.Name or a.id) > (b.data.Name or b.id)
+        elseif sortMode == "owned_desc" then
+            local ownedA = inventory[category][a.id] or 0
+            local ownedB = inventory[category][b.id] or 0
+            return ownedA > ownedB
+        elseif sortMode == "owned_asc" then
+            local ownedA = inventory[category][a.id] or 0
+            local ownedB = inventory[category][b.id] or 0
+            return ownedA < ownedB
+        end
+        return false
+    end)
+    
+    -- Create item cards
+    local layoutOrder = currentTab == "Pets" and 2 or 1
+    for _, item in ipairs(sortedData) do
+        local card = createItemCard(item.id, item.data, category, scrollFrame)
+        if card then
+            card.LayoutOrder = layoutOrder
+            layoutOrder = layoutOrder + 1
+        end
+    end
+end
+
+-- Create Main UI
 function AutoTradeUI.CreateUI()
     if ScreenGui then
         ScreenGui:Destroy()
     end
     
+    -- Calculate screen-relative size
+    local screenSize = workspace.CurrentCamera.ViewportSize
+    local baseWidth = 900
+    local baseHeight = 600
+    local scaleX = math.min(screenSize.X / 1920, 1) -- Scale down on smaller screens
+    local scaleY = math.min(screenSize.Y / 1080, 1)
+    local scale = math.min(scaleX, scaleY)
+    
+    local finalWidth = baseWidth * scale
+    local finalHeight = baseHeight * scale
+    
     ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "AutoTradeUI"
     ScreenGui.Parent = PlayerGui
     
-    -- Calculate responsive size
-    local baseSize = getResponsiveSize(1000, 600)
-    
     MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = baseSize
-    MainFrame.Position = UDim2.new(0.5, -baseSize.X.Offset/2, 0.5, -baseSize.Y.Offset/2)
+    MainFrame.Size = UDim2.new(0, finalWidth, 0, finalHeight)
+    MainFrame.Position = UDim2.new(0.5, -finalWidth/2, 0.5, -finalHeight/2)
     MainFrame.BackgroundColor3 = colors.background
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
     
     originalSize = MainFrame.Size
-    minimizedSize = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, 60)
+    minimizedSize = UDim2.new(0, finalWidth, 0, 60)
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 12)
@@ -788,303 +1321,39 @@ function AutoTradeUI.CreateUI()
     title.Position = UDim2.new(0, 100, 0, 12)
     title.BackgroundTransparency = 1
     title.Text = "Auto Trade System"
-    title.TextSize = 14
-    title.Font = Enum.Font.GothamSemibold
+    title.TextSize = 16
+    title.Font = Enum.Font.GothamBold
     title.TextColor3 = colors.text
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = MainFrame
     
-    -- Auto Trade Toggle
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Name = "ToggleFrame"
-    toggleFrame.Size = UDim2.new(1, -32, 0, 40)
-    toggleFrame.Position = UDim2.new(0, 16, 0, 40)
-    toggleFrame.BackgroundColor3 = colors.surface
-    toggleFrame.BorderSizePixel = 0
-    toggleFrame.Parent = MainFrame
+    -- Create sections
+    local targetSection = createTargetSection(MainFrame)
+    local filterBar = createFilterBar(MainFrame)
+    local tabSection = createTabSection(MainFrame)
     
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 8)
-    toggleCorner.Parent = toggleFrame
+    -- Window control events
+    local closeBtn = windowControls.CloseBtn
+    local minimizeBtn = windowControls.MinimizeBtn
     
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.Name = "ToggleLabel"
-    toggleLabel.Size = UDim2.new(1, -80, 1, 0)
-    toggleLabel.Position = UDim2.new(0, 16, 0, 0)
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Text = "Auto Trade: Keep sending items when thresholds are met"
-    toggleLabel.TextSize = 12
-    toggleLabel.Font = Enum.Font.Gotham
-    toggleLabel.TextColor3 = colors.text
-    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    toggleLabel.TextYAlignment = Enum.TextYAlignment.Center
-    toggleLabel.TextWrapped = true
-    toggleLabel.Parent = toggleFrame
+    closeBtn.MouseButton1Click:Connect(function()
+        AutoTradeUI.Hide()
+    end)
     
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Name = "ToggleBtn"
-    toggleBtn.Size = UDim2.new(0, 60, 0, 24)
-    toggleBtn.Position = UDim2.new(1, -76, 0.5, -12)
-    toggleBtn.BackgroundColor3 = autoTradeEnabled and colors.success or colors.textTertiary
-    toggleBtn.BorderSizePixel = 0
-    toggleBtn.Text = autoTradeEnabled and "ON" or "OFF"
-    toggleBtn.TextSize = 10
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextColor3 = colors.text
-    toggleBtn.Parent = toggleFrame
-    
-    local toggleBtnCorner = Instance.new("UICorner")
-    toggleBtnCorner.CornerRadius = UDim.new(0, 12)
-    toggleBtnCorner.Parent = toggleBtn
-    
-    -- Main Content Area
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Name = "ContentFrame"
-    contentFrame.Size = UDim2.new(1, -32, 1, -120)
-    contentFrame.Position = UDim2.new(0, 16, 0, 100)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.Parent = MainFrame
-    
-    -- Left Side - Target Players
-    local leftFrame = Instance.new("Frame")
-    leftFrame.Name = "LeftFrame"
-    leftFrame.Size = UDim2.new(0.3, -8, 1, 0)
-    leftFrame.Position = UDim2.new(0, 0, 0, 0)
-    leftFrame.BackgroundColor3 = colors.surface
-    leftFrame.BorderSizePixel = 0
-    leftFrame.Parent = contentFrame
-    
-    local leftCorner = Instance.new("UICorner")
-    leftCorner.CornerRadius = UDim.new(0, 8)
-    leftCorner.Parent = leftFrame
-    
-    local leftTitle = Instance.new("TextLabel")
-    leftTitle.Name = "LeftTitle"
-    leftTitle.Size = UDim2.new(1, -16, 0, 30)
-    leftTitle.Position = UDim2.new(0, 8, 0, 8)
-    leftTitle.BackgroundTransparency = 1
-    leftTitle.Text = "Target Players"
-    leftTitle.TextSize = 14
-    leftTitle.Font = Enum.Font.GothamSemibold
-    leftTitle.TextColor3 = colors.text
-    leftTitle.TextXAlignment = Enum.TextXAlignment.Center
-    leftTitle.Parent = leftFrame
-    
-    -- Refresh Players Button
-    local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Name = "RefreshBtn"
-    refreshBtn.Size = UDim2.new(1, -16, 0, 25)
-    refreshBtn.Position = UDim2.new(0, 8, 0, 40)
-    refreshBtn.BackgroundColor3 = colors.primary
-    refreshBtn.BorderSizePixel = 0
-    refreshBtn.Text = "🔄 Refresh Players"
-    refreshBtn.TextSize = 10
-    refreshBtn.Font = Enum.Font.GothamBold
-    refreshBtn.TextColor3 = colors.text
-    refreshBtn.Parent = leftFrame
-    
-    local refreshCorner = Instance.new("UICorner")
-    refreshCorner.CornerRadius = UDim.new(0, 4)
-    refreshCorner.Parent = refreshBtn
-    
-    -- Players Scroll Frame
-    local playersScroll = Instance.new("ScrollingFrame")
-    playersScroll.Name = "PlayersScroll"
-    playersScroll.Size = UDim2.new(1, -16, 1, -80)
-    playersScroll.Position = UDim2.new(0, 8, 0, 72)
-    playersScroll.BackgroundTransparency = 1
-    playersScroll.ScrollBarThickness = 4
-    playersScroll.ScrollBarImageColor3 = colors.primary
-    playersScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    playersScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    playersScroll.Parent = leftFrame
-    
-    local playersLayout = Instance.new("UIListLayout")
-    playersLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    playersLayout.Padding = UDim.new(0, 8)
-    playersLayout.Parent = playersScroll
-    
-    -- Right Side - Items Configuration
-    local rightFrame = Instance.new("Frame")
-    rightFrame.Name = "RightFrame"
-    rightFrame.Size = UDim2.new(0.7, -8, 1, 0)
-    rightFrame.Position = UDim2.new(0.3, 8, 0, 0)
-    rightFrame.BackgroundColor3 = colors.surface
-    rightFrame.BorderSizePixel = 0
-    rightFrame.Parent = contentFrame
-    
-    local rightCorner = Instance.new("UICorner")
-    rightCorner.CornerRadius = UDim.new(0, 8)
-    rightCorner.Parent = rightFrame
-    
-    -- Item Type Tabs
-    local tabFrame = Instance.new("Frame")
-    tabFrame.Name = "TabFrame"
-    tabFrame.Size = UDim2.new(1, -16, 0, 35)
-    tabFrame.Position = UDim2.new(0, 8, 0, 8)
-    tabFrame.BackgroundTransparency = 1
-    tabFrame.Parent = rightFrame
-    
-    local eggsTab = Instance.new("TextButton")
-    eggsTab.Name = "EggsTab"
-    eggsTab.Size = UDim2.new(0.33, -4, 1, 0)
-    eggsTab.Position = UDim2.new(0, 0, 0, 0)
-    eggsTab.BackgroundColor3 = colors.primary
-    eggsTab.BorderSizePixel = 0
-    eggsTab.Text = "🥚 Eggs"
-    eggsTab.TextSize = 12
-    eggsTab.Font = Enum.Font.GothamSemibold
-    eggsTab.TextColor3 = colors.text
-    eggsTab.Parent = tabFrame
-    
-    local eggsCorner = Instance.new("UICorner")
-    eggsCorner.CornerRadius = UDim.new(0, 6)
-    eggsCorner.Parent = eggsTab
-    
-    local fruitsTab = Instance.new("TextButton")
-    fruitsTab.Name = "FruitsTab"
-    fruitsTab.Size = UDim2.new(0.33, -4, 1, 0)
-    fruitsTab.Position = UDim2.new(0.33, 2, 0, 0)
-    fruitsTab.BackgroundColor3 = colors.textTertiary
-    fruitsTab.BorderSizePixel = 0
-    fruitsTab.Text = "🍎 Fruits"
-    fruitsTab.TextSize = 12
-    fruitsTab.Font = Enum.Font.GothamSemibold
-    fruitsTab.TextColor3 = colors.text
-    fruitsTab.Parent = tabFrame
-    
-    local fruitsCorner = Instance.new("UICorner")
-    fruitsCorner.CornerRadius = UDim.new(0, 6)
-    fruitsCorner.Parent = fruitsTab
-    
-    local petsTab = Instance.new("TextButton")
-    petsTab.Name = "PetsTab"
-    petsTab.Size = UDim2.new(0.33, -4, 1, 0)
-    petsTab.Position = UDim2.new(0.66, 4, 0, 0)
-    petsTab.BackgroundColor3 = colors.textTertiary
-    petsTab.BorderSizePixel = 0
-    petsTab.Text = "🐾 Pets"
-    petsTab.TextSize = 12
-    petsTab.Font = Enum.Font.GothamSemibold
-    petsTab.TextColor3 = colors.text
-    petsTab.Parent = tabFrame
-    
-    local petsCorner = Instance.new("UICorner")
-    petsCorner.CornerRadius = UDim.new(0, 6)
-    petsCorner.Parent = petsTab
-    
-    -- Items Scroll Frame
-    local itemsScroll = Instance.new("ScrollingFrame")
-    itemsScroll.Name = "ItemsScroll"
-    itemsScroll.Size = UDim2.new(1, -16, 1, -55)
-    itemsScroll.Position = UDim2.new(0, 8, 0, 47)
-    itemsScroll.BackgroundTransparency = 1
-    itemsScroll.ScrollBarThickness = 4
-    itemsScroll.ScrollBarImageColor3 = colors.primary
-    itemsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    itemsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    itemsScroll.Parent = rightFrame
-    
-    local itemsLayout = Instance.new("UIListLayout")
-    itemsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    itemsLayout.Padding = UDim.new(0, 8)
-    itemsLayout.Parent = itemsScroll
-    
-    -- Store references in a separate table to avoid conflicts
-    local UIRefs = {
-        ToggleBtn = toggleBtn,
-        RefreshBtn = refreshBtn,
-        PlayersScroll = playersScroll,
-        ItemsScroll = itemsScroll,
-        EggsTab = eggsTab,
-        FruitsTab = fruitsTab,
-        PetsTab = petsTab,
-        CurrentTab = "eggs"
-    }
-    
-    -- Store reference for access in other functions
-    MainFrame.UIRefs = UIRefs
-    
-    -- Event Handlers with safety checks
-    local closeBtn = windowControls and windowControls:FindFirstChild("CloseBtn")
-    local minimizeBtn = windowControls and windowControls:FindFirstChild("MinimizeBtn")
-    local maximizeBtn = windowControls and windowControls:FindFirstChild("MaximizeBtn")
-    
-    if closeBtn then
-        closeBtn.MouseButton1Click:Connect(function()
-            AutoTradeUI.Hide()
-        end)
-    end
-    
-    if minimizeBtn then
-        minimizeBtn.MouseButton1Click:Connect(function()
-            if isMinimized then
-                MainFrame.Size = originalSize
-                contentFrame.Visible = true
-                toggleFrame.Visible = true
-                isMinimized = false
-            else
-                MainFrame.Size = minimizedSize
-                contentFrame.Visible = false
-                toggleFrame.Visible = false
-                isMinimized = true
-            end
-        end)
-    end
-    
-    if maximizeBtn then
-        maximizeBtn.MouseButton1Click:Connect(function()
-            local screenSize = getScreenSize()
-            if MainFrame.Size == originalSize then
-                local maxSize = getResponsiveSize(screenSize.X * 0.9, screenSize.Y * 0.9)
-                MainFrame.Size = maxSize
-                MainFrame.Position = UDim2.new(0.5, -maxSize.X.Offset/2, 0.5, -maxSize.Y.Offset/2)
-            else
-                MainFrame.Size = originalSize
-                MainFrame.Position = UDim2.new(0.5, -originalSize.X.Offset/2, 0.5, -originalSize.Y.Offset/2)
-            end
-        end)
-    end
-    
-    toggleBtn.MouseButton1Click:Connect(function()
-        autoTradeEnabled = not autoTradeEnabled
-        toggleBtn.BackgroundColor3 = autoTradeEnabled and colors.success or colors.textTertiary
-        toggleBtn.Text = autoTradeEnabled and "ON" or "OFF"
-        
-        if autoTradeEnabled then
-            AutoTradeUI.StartAutoTrade()
+    minimizeBtn.MouseButton1Click:Connect(function()
+        if isMinimized then
+            MainFrame.Size = originalSize
+            targetSection.Visible = true
+            filterBar.Visible = true
+            tabSection.Visible = true
+            isMinimized = false
         else
-            AutoTradeUI.StopAutoTrade()
+            MainFrame.Size = minimizedSize
+            targetSection.Visible = false
+            filterBar.Visible = false
+            tabSection.Visible = false
+            isMinimized = true
         end
-    end)
-    
-    refreshBtn.MouseButton1Click:Connect(function()
-        AutoTradeUI.RefreshTargets()
-    end)
-    
-    -- Tab switching
-    eggsTab.MouseButton1Click:Connect(function()
-        UIRefs.CurrentTab = "eggs"
-        eggsTab.BackgroundColor3 = colors.primary
-        fruitsTab.BackgroundColor3 = colors.textTertiary
-        petsTab.BackgroundColor3 = colors.textTertiary
-        AutoTradeUI.RefreshItems()
-    end)
-    
-    fruitsTab.MouseButton1Click:Connect(function()
-        UIRefs.CurrentTab = "fruits"
-        eggsTab.BackgroundColor3 = colors.textTertiary
-        fruitsTab.BackgroundColor3 = colors.primary
-        petsTab.BackgroundColor3 = colors.textTertiary
-        AutoTradeUI.RefreshItems()
-    end)
-    
-    petsTab.MouseButton1Click:Connect(function()
-        UIRefs.CurrentTab = "pets"
-        eggsTab.BackgroundColor3 = colors.textTertiary
-        fruitsTab.BackgroundColor3 = colors.textTertiary
-        petsTab.BackgroundColor3 = colors.primary
-        AutoTradeUI.RefreshItems()
     end)
     
     -- Dragging functionality
@@ -1118,313 +1387,215 @@ function AutoTradeUI.CreateUI()
         end
     end)
     
+    -- Setup event handlers
+    setupEventHandlers()
+    
     return ScreenGui
 end
 
--- Refresh Functions
-function AutoTradeUI.RefreshTargets()
-    if not ScreenGui or not MainFrame or not MainFrame.UIRefs then return end
+-- Setup Event Handlers
+function setupEventHandlers()
+    if not ScreenGui then return end
     
-    local playersScroll = MainFrame.UIRefs.PlayersScroll
+    -- Target section events
+    local targetSection = ScreenGui.MainFrame.TargetSection
+    local targetDropdown = targetSection.TargetDropdown
+    local sendBtn = targetSection.SendBtn
+    local autoTradeToggle = targetSection.AutoTradeToggle
     
-    -- Clear existing players
-    for _, child in pairs(playersScroll:GetChildren()) do
-        if child:IsA("Frame") and child.Name:find("PlayerCard_") then
-            child:Destroy()
-        end
-    end
-    
-    -- Add current players
-    local players = getPlayerList()
-    for i, player in ipairs(players) do
-        local card = createTargetPlayerCard(player, playersScroll)
-        card.LayoutOrder = i
-    end
-end
-
-function AutoTradeUI.RefreshItems()
-    if not ScreenGui or not MainFrame or not MainFrame.UIRefs then return end
-    
-    local itemsScroll = MainFrame.UIRefs.ItemsScroll
-    local currentTab = MainFrame.UIRefs.CurrentTab or "eggs"
-    
-    -- Clear existing items
-    for _, child in pairs(itemsScroll:GetChildren()) do
-        if child:IsA("Frame") and not child:IsA("UIListLayout") then
-            child:Destroy()
-        end
-    end
-    
-    -- Add items based on current tab
-    local data = nil
-    local itemType = ""
-    
-    if currentTab == "eggs" then
-        data = EggData
-        itemType = "egg"
-    elseif currentTab == "fruits" then
-        data = FruitData
-        itemType = "fruit"
-    elseif currentTab == "pets" then
-        -- Basic pet data structure
-        data = {
-            Capy1 = { Name = "Capy1", Icon = "🐹", Rarity = 1 },
-            Pig = { Name = "Pig", Icon = "🐷", Rarity = 1 },
-            Dog = { Name = "Dog", Icon = "🐕", Rarity = 1 },
-            Cat = { Name = "Cat", Icon = "🐱", Rarity = 1 },
-            Cow = { Name = "Cow", Icon = "🐄", Rarity = 2 },
-            Sheep = { Name = "Sheep", Icon = "🐑", Rarity = 2 },
-            Horse = { Name = "Horse", Icon = "🐴", Rarity = 2 },
-            Tiger = { Name = "Tiger", Icon = "🐅", Rarity = 3 },
-            Lion = { Name = "Lion", Icon = "🦁", Rarity = 3 },
-            Bear = { Name = "Bear", Icon = "🐻", Rarity = 3 },
-            Dragon = { Name = "Dragon", Icon = "🐉", Rarity = 6 },
-            Phoenix = { Name = "Phoenix", Icon = "🔥", Rarity = 6 },
-            Unicorn = { Name = "Unicorn", Icon = "🦄", Rarity = 6 }
-        }
-        itemType = "pet"
-    end
-    
-    if data then
-        local i = 1
-        for itemId, itemData in pairs(data) do
-            local card = createItemCard(itemId, itemData, itemType, itemsScroll)
-            card.LayoutOrder = i
-            i = i + 1
-        end
-    end
-end
-
--- Auto Trade Logic
-local autoTradeConnection = nil
-
-function AutoTradeUI.StartAutoTrade()
-    if autoTradeConnection then
-        autoTradeConnection:Disconnect()
-    end
-    
-    autoTradeConnection = RunService.Heartbeat:Connect(function()
-        if not autoTradeEnabled or not selectedTarget then
-            return
+    -- Target dropdown (simplified - cycles through players)
+    targetDropdown.MouseButton1Click:Connect(function()
+        local playerList = getPlayerList()
+        local currentIndex = 1
+        for i, name in ipairs(playerList) do
+            if name == selectedTarget then
+                currentIndex = i
+                break
+            end
         end
         
-        -- Check all configured items
-        for itemType, items in pairs(tradeSettings) do
-            for itemId, threshold in pairs(items) do
-                if threshold > 0 then
-                    local inventory = nil
-                    local actualItemType = itemType:sub(1, -2) -- Remove 's' from end
-                    
-                    if actualItemType == "egg" then
-                        inventory = getPlayerEggInventory()
-                    elseif actualItemType == "fruit" then
-                        inventory = getPlayerFruitInventory()
-                    elseif actualItemType == "pet" then
-                        inventory = getPlayerPetInventory()
-                    end
-                    
-                    if inventory then
-                        local itemData = nil
-                        if actualItemType == "egg" then
-                            itemData = EggData[itemId]
-                        elseif actualItemType == "fruit" then
-                            itemData = FruitData[itemId]
-                        end
-                        
-                        if itemData then
-                            local currentAmount = inventory[itemData.Name] or inventory[itemId] or 0
-                            
-                            if currentAmount >= threshold then
-                                -- Send the item
-                                task.spawn(function()
-                                    local success, message = sendItem(itemData.Name, actualItemType, selectedTarget)
-                                    if success then
-                                        print("✅ Sent " .. itemData.Name .. " to " .. selectedTarget.Name)
-                                    else
-                                        print("❌ Failed to send " .. itemData.Name .. ": " .. message)
-                                    end
-                                end)
-                                
-                                -- Small delay to prevent spam
-                                task.wait(1)
-                            end
-                        end
-                    end
+        local nextIndex = currentIndex + 1
+        if nextIndex > #playerList then
+            nextIndex = 1
+        end
+        
+        selectedTarget = playerList[nextIndex]
+        targetSection.NameLabel.Text = selectedTarget
+        
+        -- Update avatar if not random
+        if selectedTarget ~= "Random Player" then
+            local player = getPlayerByName(selectedTarget)
+            if player then
+                local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=150&height=150&format=png"
+                targetSection.Avatar.Image = avatarUrl
+            end
+        else
+            targetSection.Avatar.Image = ""
+        end
+    end)
+    
+    -- Send button
+    sendBtn.MouseButton1Click:Connect(function()
+        if isTrading then return end
+        
+        local itemsToSend = getItemsToSend()
+        if #itemsToSend > 0 then
+            local item = itemsToSend[1]
+            task.spawn(function()
+                local success, err = performTrade(item.uid, item.type, nil)
+                if not success and WindUI then
+                    WindUI:Notify({
+                        Title = "❌ Trade Failed",
+                        Content = err or "Unknown error",
+                        Duration = 5
+                    })
                 end
-            end
-        end
-        
-        -- Check every 2 seconds
-        task.wait(2)
-    end)
-end
-
-function AutoTradeUI.StopAutoTrade()
-    if autoTradeConnection then
-        autoTradeConnection:Disconnect()
-        autoTradeConnection = nil
-    end
-end
-
-function AutoTradeUI.StartSending()
-    if not selectedTarget then
-        return
-    end
-    
-    -- Send all configured items once
-    task.spawn(function()
-        for itemType, items in pairs(tradeSettings) do
-            for itemId, threshold in pairs(items) do
-                if threshold > 0 then
-                    local inventory = nil
-                    local actualItemType = itemType:sub(1, -2) -- Remove 's' from end
-                    
-                    if actualItemType == "egg" then
-                        inventory = getPlayerEggInventory()
-                    elseif actualItemType == "fruit" then
-                        inventory = getPlayerFruitInventory()
-                    elseif actualItemType == "pet" then
-                        inventory = getPlayerPetInventory()
-                    end
-                    
-                    if inventory then
-                        local itemData = nil
-                        if actualItemType == "egg" then
-                            itemData = EggData[itemId]
-                        elseif actualItemType == "fruit" then
-                            itemData = FruitData[itemId]
-                        end
-                        
-                        if itemData then
-                            local currentAmount = inventory[itemData.Name] or inventory[itemId] or 0
-                            
-                            if currentAmount >= threshold then
-                                local success, message = sendItem(itemData.Name, actualItemType, selectedTarget)
-                                if success then
-                                    print("✅ Sent " .. itemData.Name .. " to " .. selectedTarget.Name)
-                                else
-                                    print("❌ Failed to send " .. itemData.Name .. ": " .. message)
-                                end
-                                
-                                task.wait(1) -- Delay between sends
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- Settings Management
-function AutoTradeUI.SaveSettings()
-    -- Save to file system if available
-    local settingsData = {
-        tradeSettings = tradeSettings,
-        selectedTarget = selectedTarget and selectedTarget.Name or nil,
-        autoTradeEnabled = autoTradeEnabled
-    }
-    
-    local success, encoded = pcall(function()
-        return HttpService:JSONEncode(settingsData)
-    end)
-    
-    if success and _G.writefile then
-        pcall(function()
-            if not _G.isfolder("Zebux") then
-                _G.makefolder("Zebux")
-            end
-            if not _G.isfolder("Zebux/Build A Zoo") then
-                _G.makefolder("Zebux/Build A Zoo")
-            end
-            _G.writefile("Zebux/Build A Zoo/AutoTradeSettings.json", encoded)
-        end)
-    end
-end
-
-function AutoTradeUI.LoadSettings()
-    if _G.readfile and _G.isfile and _G.isfile("Zebux/Build A Zoo/AutoTradeSettings.json") then
-        local success, data = pcall(function()
-            return _G.readfile("Zebux/Build A Zoo/AutoTradeSettings.json")
-        end)
-        
-        if success then
-            local success2, decoded = pcall(function()
-                return HttpService:JSONDecode(data)
             end)
-            
-            if success2 and type(decoded) == "table" then
-                tradeSettings = decoded.tradeSettings or tradeSettings
-                autoTradeEnabled = decoded.autoTradeEnabled or false
-                
-                if decoded.selectedTarget then
-                    -- Find player by name
-                    for _, player in ipairs(getPlayerList()) do
-                        if player.Name == decoded.selectedTarget then
-                            selectedTarget = player
-                            break
-                        end
-                    end
-                end
+        else
+            if WindUI then
+                WindUI:Notify({
+                    Title = "⚠️ No Items",
+                    Content = "No items configured for trading",
+                    Duration = 3
+                })
             end
         end
-    end
+    end)
+    
+    -- Auto trade toggle
+    autoTradeToggle.MouseButton1Click:Connect(function()
+        autoTradeEnabled = not autoTradeEnabled
+        autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
+        autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
+        
+        if autoTradeEnabled then
+            startAutoTrade()
+        else
+            stopAutoTrade()
+        end
+        
+        saveConfig()
+    end)
+    
+    -- Filter bar events
+    local filterBar = ScreenGui.MainFrame.FilterBar
+    local searchBox = filterBar.SearchBox
+    local zeroToggle = filterBar.ZeroToggle
+    local configToggle = filterBar.ConfigToggle
+    
+    searchBox.Changed:Connect(function(prop)
+        if prop == "Text" then
+            searchText = searchBox.Text
+            saveConfig()
+            refreshContent()
+        end
+    end)
+    
+    zeroToggle.MouseButton1Click:Connect(function()
+        showZeroItems = not showZeroItems
+        zeroToggle.BackgroundColor3 = showZeroItems and colors.primary or colors.hover
+        saveConfig()
+        refreshContent()
+    end)
+    
+    configToggle.MouseButton1Click:Connect(function()
+        configuredOnly = not configuredOnly
+        configToggle.BackgroundColor3 = configuredOnly and colors.primary or colors.hover
+        saveConfig()
+        refreshContent()
+    end)
+    
+    -- Tab events
+    local tabSection = ScreenGui.MainFrame.TabSection
+    local tabContainer = tabSection.TabContainer
+    local petsTab = tabContainer.PetsTab
+    local eggsTab = tabContainer.EggsTab
+    local fruitsTab = tabContainer.FruitsTab
+    
+    petsTab.MouseButton1Click:Connect(function()
+        currentTab = "Pets"
+        petsTab.BackgroundColor3 = colors.primary
+        eggsTab.BackgroundColor3 = colors.hover
+        fruitsTab.BackgroundColor3 = colors.hover
+        saveConfig()
+        refreshContent()
+    end)
+    
+    eggsTab.MouseButton1Click:Connect(function()
+        currentTab = "Eggs"
+        petsTab.BackgroundColor3 = colors.hover
+        eggsTab.BackgroundColor3 = colors.primary
+        fruitsTab.BackgroundColor3 = colors.hover
+        saveConfig()
+        refreshContent()
+    end)
+    
+    fruitsTab.MouseButton1Click:Connect(function()
+        currentTab = "Fruits"
+        petsTab.BackgroundColor3 = colors.hover
+        eggsTab.BackgroundColor3 = colors.hover
+        fruitsTab.BackgroundColor3 = colors.primary
+        saveConfig()
+        refreshContent()
+    end)
 end
 
 -- Public Functions
+function AutoTradeUI.Init(windUIRef)
+    WindUI = windUIRef
+    loadConfig()
+end
+
 function AutoTradeUI.Show()
-    print("AutoTradeUI.Show() called")
-    
-    local success, error = pcall(function()
-        AutoTradeUI.LoadSettings()
-        
-        if not ScreenGui then
-            print("Creating new UI...")
-            AutoTradeUI.CreateUI()
-        end
-        
-        if ScreenGui then
-            ScreenGui.Enabled = true
-            print("UI enabled")
-            
-            -- Initial refresh with delay
-            task.spawn(function()
-                task.wait(0.2)
-                print("Refreshing targets and items...")
-                pcall(AutoTradeUI.RefreshTargets)
-                pcall(AutoTradeUI.RefreshItems)
-            end)
-        else
-            print("ERROR: ScreenGui is nil after CreateUI")
-        end
-    end)
-    
-    if not success then
-        print("ERROR in AutoTradeUI.Show():", error)
-        -- Try to create a simple notification if possible
-        if game:GetService("StarterGui") then
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "AutoTradeUI Error",
-                Text = tostring(error),
-                Duration = 5
-            })
-        end
+    if not ScreenGui then
+        AutoTradeUI.CreateUI()
     end
+    
+    ScreenGui.Enabled = true
+    refreshContent()
 end
 
 function AutoTradeUI.Hide()
-    AutoTradeUI.SaveSettings()
-    AutoTradeUI.StopAutoTrade()
-    
     if ScreenGui then
-        ScreenGui:Destroy()
-        ScreenGui = nil
-        MainFrame = nil
+        ScreenGui.Enabled = false
+    end
+    
+    -- Stop auto trade when hiding
+    if autoTradeEnabled then
+        autoTradeEnabled = false
+        stopAutoTrade()
+        saveConfig()
+    end
+end
+
+function AutoTradeUI.Toggle()
+    if ScreenGui and ScreenGui.Enabled then
+        AutoTradeUI.Hide()
+    else
+        AutoTradeUI.Show()
     end
 end
 
 function AutoTradeUI.IsVisible()
     return ScreenGui and ScreenGui.Enabled
 end
+
+-- Monitor inventory changes for auto-trade
+local inventoryConnection = nil
+local function startInventoryMonitoring()
+    if inventoryConnection then
+        inventoryConnection:Disconnect()
+    end
+    
+    inventoryConnection = RunService.Heartbeat:Connect(function()
+        if autoTradeEnabled and not isTrading then
+            -- Check for items to send every few seconds
+            task.wait(2)
+        end
+    end)
+end
+
+-- Start monitoring when module loads
+startInventoryMonitoring()
 
 return AutoTradeUI
