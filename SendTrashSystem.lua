@@ -632,16 +632,21 @@ local function createCustomUI()
         refreshCustomUIContent()
     end)
     
+    -- Set default page to eggs
+    customUI.currentPage = "eggs"
+    
     return customUI.screenGui
 end
 
 local function createItemCard(itemId, itemData, parent, itemType)
+    print("Creating card:", itemId, itemData.Name, itemType)
     local card = Instance.new("Frame")
     card.Name = itemId
     card.Size = UDim2.new(1, 0, 1, 0)
     card.BackgroundColor3 = colors.surface
     card.BorderSizePixel = 0
     card.Parent = parent
+    print("Card created and parented")
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
@@ -747,10 +752,22 @@ local function createItemCard(itemId, itemData, parent, itemType)
 end
 
 function refreshCustomUIContent()
-    if not customUI.screenGui then return end
+    if not customUI.screenGui then 
+        print("No screenGui found")
+        return 
+    end
     
-    local scrollFrame = customUI.mainFrame:FindFirstChild("ScrollFrame")
-    if not scrollFrame then return end
+    local contentFrame = customUI.mainFrame:FindFirstChild("ContentFrame")
+    if not contentFrame then 
+        print("No ContentFrame found")
+        return 
+    end
+    
+    local scrollFrame = contentFrame:FindFirstChild("ScrollFrame")
+    if not scrollFrame then 
+        print("No ScrollFrame found")
+        return 
+    end
     
     -- Clear existing content
     for _, child in pairs(scrollFrame:GetChildren()) do
@@ -763,12 +780,21 @@ function refreshCustomUIContent()
     if customUI.currentPage == "eggs" then
         data = EggData
         itemType = "egg"
+        local count = 0
+        for _ in pairs(data) do count = count + 1 end
+        print("Loading eggs, data count:", count)
     elseif customUI.currentPage == "fruits" then
         data = FruitData
         itemType = "fruit"
+        local count = 0
+        for _ in pairs(data) do count = count + 1 end
+        print("Loading fruits, data count:", count)
     else
+        print("Unknown page:", customUI.currentPage)
         return -- Pets not implemented yet
     end
+    
+    print("Current page:", customUI.currentPage, "Item type:", itemType)
     
     -- Sort by inventory amount (high to low)
     local sortedData = {}
@@ -790,7 +816,9 @@ function refreshCustomUIContent()
     end)
     
     -- Create cards
+    print("Creating", #sortedData, "cards")
     for i, item in ipairs(sortedData) do
+        print("Creating card for:", item.id, item.data.Name)
         local card = createItemCard(item.id, item.data, scrollFrame, itemType)
         card.LayoutOrder = i
         
