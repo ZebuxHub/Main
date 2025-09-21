@@ -920,30 +920,52 @@ function SendTrashSystem.Init(dependencies)
     
     TrashTab:Section({ Title = "🔄 Auto Trade System", Icon = "arrow-right" })
     
-    -- New Auto Trade UI Button (only button remaining)
+    -- Auto Trade UI Button with toggle functionality
     TrashTab:Button({
-        Title = "🔄 Open Auto Trade UI",
-        Desc = "Open the new custom auto trade interface",
+        Title = "🔄 Toggle Auto Trade UI",
+        Desc = "Open or close the custom auto trade interface",
         Callback = function()
-            -- Load and show AutoTradeUI
-            local success, AutoTradeUI = pcall(function()
-                return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua"))()
-            end)
-            
-            if success and AutoTradeUI then
-                AutoTradeUI.Init(WindUI)
-                AutoTradeUI.Show()
-                WindUI:Notify({
-                    Title = "🔄 Auto Trade UI",
-                    Content = "Custom auto trade interface opened!",
-                    Duration = 3
-                })
+            -- Check if AutoTradeUI already exists globally
+            if _G.AutoTradeUI then
+                -- Toggle existing UI
+                if _G.AutoTradeUI.IsVisible and _G.AutoTradeUI.IsVisible() then
+                    _G.AutoTradeUI.Hide()
+                    WindUI:Notify({
+                        Title = "🔄 Auto Trade UI",
+                        Content = "Auto trade interface closed!",
+                        Duration = 2
+                    })
+                else
+                    _G.AutoTradeUI.Show()
+                    WindUI:Notify({
+                        Title = "🔄 Auto Trade UI",
+                        Content = "Auto trade interface opened!",
+                        Duration = 2
+                    })
+                end
             else
-                WindUI:Notify({
-                    Title = "❌ Error",
-                    Content = "Failed to load Auto Trade UI",
-                    Duration = 5
-                })
+                -- Load and create new AutoTradeUI
+                local success, AutoTradeUI = pcall(function()
+                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/AutoTradeUI.lua"))()
+                end)
+                
+                if success and AutoTradeUI then
+                    -- Store globally for future toggles
+                    _G.AutoTradeUI = AutoTradeUI
+                    AutoTradeUI.Init(WindUI)
+                    AutoTradeUI.Show()
+                    WindUI:Notify({
+                        Title = "🔄 Auto Trade UI",
+                        Content = "Custom auto trade interface loaded!",
+                        Duration = 3
+                    })
+                else
+                    WindUI:Notify({
+                        Title = "❌ Error",
+                        Content = "Failed to load Auto Trade UI",
+                        Duration = 5
+                    })
+                end
             end
         end
     })
