@@ -245,12 +245,12 @@ local function updateGiftCountDisplay()
     if not giftCountLabel then return end
     
     local currentCount = getTodayGiftCount()
-    giftCountLabel.Text = "Today Gift: " .. currentCount .. "/200"
+    giftCountLabel.Text = "Today Gift: " .. currentCount .. "/500"
     
     -- Change color if approaching or at limit
-    if currentCount >= 200 then
+    if currentCount >= 500 then
         giftCountLabel.TextColor3 = colors.error or Color3.fromRGB(255, 69, 58)
-    elseif currentCount >= 180 then
+    elseif currentCount >= 450 then
         giftCountLabel.TextColor3 = colors.warning or Color3.fromRGB(255, 149, 0)
     else
         giftCountLabel.TextColor3 = colors.textSecondary
@@ -437,15 +437,15 @@ local function performTrade(itemUID, itemType, targetPlayer, shouldReturnToPosit
     
     -- Check daily gift limit
     local currentGiftCount = getTodayGiftCount()
-    if currentGiftCount >= 200 then
+    if currentGiftCount >= 500 then
         if WindUI then
             WindUI:Notify({
                 Title = "🚫 Daily Limit Reached",
-                Content = "You've reached the daily gift limit of 200. Cannot send more items today.",
+                Content = "You've reached the daily gift limit of 500. Cannot send more items today.",
                 Duration = 5
             })
         end
-        return false, "Daily gift limit reached (200/200)"
+        return false, "Daily gift limit reached (500/500)"
     end
     
     isTrading = true
@@ -665,7 +665,7 @@ local function startAutoTrade()
         
         -- Check daily gift limit before attempting to trade
         local currentGiftCount = getTodayGiftCount()
-        if currentGiftCount >= 200 then
+        if currentGiftCount >= 500 then
             -- Stop auto-trade and notify user
             autoTradeEnabled = false
             if ScreenGui and ScreenGui.MainFrame and ScreenGui.MainFrame.TargetSection then
@@ -679,7 +679,7 @@ local function startAutoTrade()
             if WindUI then
                 WindUI:Notify({
                     Title = "🚫 Auto Trade Stopped",
-                    Content = "Daily gift limit reached (200/200). Auto-trade has been disabled.",
+                    Content = "Daily gift limit reached (500/500). Auto-trade has been disabled.",
                     Duration = 5
                 })
             end
@@ -938,7 +938,7 @@ local function createTargetSection(parent)
     giftCountLabel.Size = UDim2.new(1, -20, 0, 25)
     giftCountLabel.Position = UDim2.new(0, 10, 0, 295)
     giftCountLabel.BackgroundTransparency = 1
-    giftCountLabel.Text = "Today Gift: 0/200"
+    giftCountLabel.Text = "Today Gift: 0/500"
     giftCountLabel.TextSize = 12
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
@@ -1353,14 +1353,31 @@ local function createItemCard(itemId, itemData, category, parent)
         sendInput.Font = Enum.Font.Gotham
         sendInput.TextColor3 = colors.text
         sendInput.TextXAlignment = Enum.TextXAlignment.Center
+        sendInput.ClearTextOnFocus = false
         sendInput.Parent = card
+        
+        -- Input validation to only allow numbers
+        sendInput:GetPropertyChangedSignal("Text"):Connect(function()
+            local text = sendInput.Text
+            local filteredText = text:gsub("[^%d]", "") -- Only allow digits
+            if text ~= filteredText then
+                sendInput.Text = filteredText
+            end
+        end)
         
         local inputCorner = Instance.new("UICorner")
         inputCorner.CornerRadius = UDim.new(0, 4)
         inputCorner.Parent = sendInput
         
-        -- Update config when input changes
-        sendInput.FocusLost:Connect(function()
+        -- Update config when input changes (with debouncing)
+        local inputDebounce = false
+        sendInput.FocusLost:Connect(function(enterPressed)
+            if inputDebounce then return end
+            inputDebounce = true
+            
+            -- Add small delay to prevent rapid firing
+            task.wait(0.1)
+            
             local value = tonumber(sendInput.Text) or 0
             if not itemConfigs[category][itemId] then
                 itemConfigs[category][itemId] = {}
@@ -1378,6 +1395,7 @@ local function createItemCard(itemId, itemData, category, parent)
             end
             
             saveConfig()
+            inputDebounce = false
         end)
         
         -- Show warning initially if needed with new format
@@ -1443,7 +1461,17 @@ local function createPetSpeedControls(parent)
     minSpeedInput.TextColor3 = colors.text
     minSpeedInput.TextXAlignment = Enum.TextXAlignment.Center
     minSpeedInput.Visible = petMode == "Speed"
+    minSpeedInput.ClearTextOnFocus = false
     minSpeedInput.Parent = speedFrame
+    
+    -- Input validation for min speed (allow numbers and common suffixes)
+    minSpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local text = minSpeedInput.Text
+        local filteredText = text:gsub("[^%d%.KkMmBbTt]", "") -- Allow digits, decimal, and suffixes
+        if text ~= filteredText then
+            minSpeedInput.Text = filteredText
+        end
+    end)
     
     local minCorner = Instance.new("UICorner")
     minCorner.CornerRadius = UDim.new(0, 4)
@@ -1462,7 +1490,17 @@ local function createPetSpeedControls(parent)
     maxSpeedInput.TextColor3 = colors.text
     maxSpeedInput.TextXAlignment = Enum.TextXAlignment.Center
     maxSpeedInput.Visible = petMode == "Speed"
+    maxSpeedInput.ClearTextOnFocus = false
     maxSpeedInput.Parent = speedFrame
+    
+    -- Input validation for max speed (allow numbers and common suffixes)
+    maxSpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local text = maxSpeedInput.Text
+        local filteredText = text:gsub("[^%d%.KkMmBbTt]", "") -- Allow digits, decimal, and suffixes
+        if text ~= filteredText then
+            maxSpeedInput.Text = filteredText
+        end
+    end)
     
     local maxCorner = Instance.new("UICorner")
     maxCorner.CornerRadius = UDim.new(0, 4)
@@ -1506,31 +1544,44 @@ refreshContent = function()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed input functionality (real-time updates)
-        minInput.Changed:Connect(function(prop)
-            if prop == "Text" then
-                local newValue = tonumber(minInput.Text) or 0
-                if newValue ~= petSpeedMin then
-                    petSpeedMin = newValue
-                    saveConfig()
-                    if petMode == "Speed" then
-                        refreshContent() -- Refresh to show pets matching new speed range
-                    end
+        -- Speed input functionality (debounced updates)
+        local minInputDebounce = false
+        local maxInputDebounce = false
+        
+        minInput.FocusLost:Connect(function()
+            if minInputDebounce then return end
+            minInputDebounce = true
+            
+            task.wait(0.1)
+            
+            local newValue = tonumber(minInput.Text) or 0
+            if newValue ~= petSpeedMin then
+                petSpeedMin = newValue
+                saveConfig()
+                if petMode == "Speed" then
+                    refreshContent() -- Refresh to show pets matching new speed range
                 end
             end
+            
+            minInputDebounce = false
         end)
         
-        maxInput.Changed:Connect(function(prop)
-            if prop == "Text" then
-                local newValue = tonumber(maxInput.Text) or 999999999
-                if newValue ~= petSpeedMax then
-                    petSpeedMax = newValue
-                    saveConfig()
-                    if petMode == "Speed" then
-                        refreshContent() -- Refresh to show pets matching new speed range
-                    end
+        maxInput.FocusLost:Connect(function()
+            if maxInputDebounce then return end
+            maxInputDebounce = true
+            
+            task.wait(0.1)
+            
+            local newValue = tonumber(maxInput.Text) or 999999999
+            if newValue ~= petSpeedMax then
+                petSpeedMax = newValue
+                saveConfig()
+                if petMode == "Speed" then
+                    refreshContent() -- Refresh to show pets matching new speed range
                 end
             end
+            
+            maxInputDebounce = false
         end)
     end
     
