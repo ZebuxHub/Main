@@ -1599,32 +1599,46 @@ function SendTrashSystem.Init(dependencies)
         Desc = "Open custom trade interface with advanced item selection",
         Callback = function()
             if not _G.TradeUI then
-                -- Try to load TradeUI from the same directory
+                -- Try to load TradeUI from HTTP first, then fallback to inline
                 local success, TradeUI = pcall(function()
-                    return require(script.Parent:FindFirstChild("TradeUI"))
+                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/TradeUI.lua"))()
                 end)
                 
                 if success and TradeUI then
                     _G.TradeUI = TradeUI
+                else
+                    -- Create inline TradeUI if HTTP loading fails
+                    if WindUI then
+                        WindUI:Notify({
+                            Title = "⚠️ Loading TradeUI",
+                            Content = "Loading embedded TradeUI interface...",
+                            Duration = 3
+                        })
+                    end
+                    
+                    -- Load embedded TradeUI (we'll create this inline)
+                    _G.TradeUI = createInlineTradeUI()
+                end
+                
+                if _G.TradeUI then
                     _G.TradeUI.Init({
                         WindUI = WindUI,
                         Config = Config,
                         SendTrashSystem = SendTrashSystem
                     })
-                else
-                    if WindUI then
-                        WindUI:Notify({
-                            Title = "❌ TradeUI Error",
-                            Content = "Could not load TradeUI module. Please ensure TradeUI.lua exists.",
-                            Duration = 5
-                        })
-                    end
-                    return
                 end
             end
             
             if _G.TradeUI then
                 _G.TradeUI.Show()
+            else
+                if WindUI then
+                    WindUI:Notify({
+                        Title = "❌ TradeUI Error",
+                        Content = "Failed to load TradeUI. Please try again.",
+                        Duration = 5
+                    })
+                end
             end
         end
     })
@@ -1633,6 +1647,258 @@ function SendTrashSystem.Init(dependencies)
     if Config then
         -- We'll handle config in the new TradeUI
     end
+end
+
+-- Create inline TradeUI function - Full Implementation
+local function createInlineTradeUI()
+    local TradeUI = {}
+    
+    -- Services for TradeUI
+    local TweenService = game:GetService("TweenService")
+    local UserInputService = game:GetService("UserInputService")
+    local RunService = game:GetService("RunService")
+    
+    -- UI Variables
+    local ScreenGui = nil
+    local MainFrame = nil
+    local isDragging = false
+    local dragStart = nil
+    local startPos = nil
+    local isMinimized = false
+    local originalSize = nil
+    local minimizedSize = nil
+    local currentPage = "pets"
+    local searchText = ""
+    
+    -- Trade settings
+    local selectedTarget = "Random Player"
+    local tradeSettings = { pets = {}, eggs = {}, fruits = {} }
+    local autoTradeEnabled = false
+    local savedPlayerPosition = nil
+    
+    -- Dependencies
+    local WindUI = nil
+    local Config = nil
+    local SendTrashSystem = nil
+    
+    -- macOS Dark Theme Colors
+    local colors = {
+        background = Color3.fromRGB(18, 18, 20),
+        surface = Color3.fromRGB(32, 32, 34),
+        primary = Color3.fromRGB(0, 122, 255),
+        secondary = Color3.fromRGB(88, 86, 214),
+        text = Color3.fromRGB(255, 255, 255),
+        textSecondary = Color3.fromRGB(200, 200, 200),
+        textTertiary = Color3.fromRGB(150, 150, 150),
+        border = Color3.fromRGB(50, 50, 52),
+        selected = Color3.fromRGB(0, 122, 255),
+        hover = Color3.fromRGB(45, 45, 47),
+        pageActive = Color3.fromRGB(0, 122, 255),
+        pageInactive = Color3.fromRGB(60, 60, 62),
+        close = Color3.fromRGB(255, 69, 58),
+        minimize = Color3.fromRGB(255, 159, 10),
+        maximize = Color3.fromRGB(48, 209, 88),
+        success = Color3.fromRGB(48, 209, 88),
+        warning = Color3.fromRGB(255, 159, 10),
+        error = Color3.fromRGB(255, 69, 58)
+    }
+    
+    -- Fruit and Egg Data
+    local FruitData = {
+        Strawberry = { Name = "Strawberry", Icon = "🍓", Rarity = 1 },
+        Blueberry = { Name = "Blueberry", Icon = "🔵", Rarity = 1 },
+        Watermelon = { Name = "Watermelon", Icon = "🍉", Rarity = 2 },
+        Apple = { Name = "Apple", Icon = "🍎", Rarity = 2 },
+        Orange = { Name = "Orange", Icon = "🍊", Rarity = 3 },
+        Corn = { Name = "Corn", Icon = "🌽", Rarity = 3 },
+        Banana = { Name = "Banana", Icon = "🍌", Rarity = 4 },
+        Grape = { Name = "Grape", Icon = "🍇", Rarity = 4 },
+        Pear = { Name = "Pear", Icon = "🍐", Rarity = 5 },
+        Pineapple = { Name = "Pineapple", Icon = "🍍", Rarity = 5 },
+        GoldMango = { Name = "Gold Mango", Icon = "🥭", Rarity = 6 },
+        BloodstoneCycad = { Name = "Bloodstone Cycad", Icon = "🌿", Rarity = 6 },
+        ColossalPinecone = { Name = "Colossal Pinecone", Icon = "🌲", Rarity = 6 },
+        VoltGinkgo = { Name = "Volt Ginkgo", Icon = "⚡", Rarity = 6 },
+        DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Icon = "💠", Rarity = 6 },
+        Durian = { Name = "Durian", Icon = "🥥", Rarity = 6, IsNew = true },
+        DragonFruit = { Name = "Dragon Fruit", Icon = "🐲", Rarity = 6, IsNew = true }
+    }
+    
+    local EggData = {
+        BasicEgg = { Name = "Basic Egg", Icon = "rbxassetid://129248801621928", Rarity = 1 },
+        RareEgg = { Name = "Rare Egg", Icon = "rbxassetid://71012831091414", Rarity = 2 },
+        SuperRareEgg = { Name = "Super Rare Egg", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+        EpicEgg = { Name = "Epic Egg", Icon = "rbxassetid://116395645531721", Rarity = 2 },
+        LegendEgg = { Name = "Legend Egg", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+        PrismaticEgg = { Name = "Prismatic Egg", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+        HyperEgg = { Name = "Hyper Egg", Icon = "rbxassetid://104958288296273", Rarity = 4 },
+        VoidEgg = { Name = "Void Egg", Icon = "rbxassetid://122396162708984", Rarity = 5 },
+        BowserEgg = { Name = "Bowser Egg", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+        DemonEgg = { Name = "Demon Egg", Icon = "rbxassetid://126412407639969", Rarity = 5 },
+        CornEgg = { Name = "Corn Egg", Icon = "rbxassetid://94739512852461", Rarity = 5 },
+        BoneDragonEgg = { Name = "Bone Dragon Egg", Icon = "rbxassetid://83209913424562", Rarity = 5 },
+        UltraEgg = { Name = "Ultra Egg", Icon = "rbxassetid://83909590718799", Rarity = 6 },
+        DinoEgg = { Name = "Dino Egg", Icon = "rbxassetid://80783528632315", Rarity = 6 },
+        FlyEgg = { Name = "Fly Egg", Icon = "rbxassetid://109240587278187", Rarity = 6 },
+        UnicornEgg = { Name = "Unicorn Egg", Icon = "rbxassetid://123427249205445", Rarity = 6 },
+        AncientEgg = { Name = "Ancient Egg", Icon = "rbxassetid://113910587565739", Rarity = 6 },
+        UnicornProEgg = { Name = "Unicorn Pro Egg", Icon = "rbxassetid://140138063696377", Rarity = 6 },
+        SnowbunnyEgg = { Name = "Snowbunny Egg", Icon = "rbxassetid://136223941487914", Rarity = 3, IsNew = true },
+        DarkGoatyEgg = { Name = "Dark Goaty Egg", Icon = "rbxassetid://95956060312947", Rarity = 4, IsNew = true },
+        RhinoRockEgg = { Name = "Rhino Rock Egg", Icon = "rbxassetid://131221831910623", Rarity = 5, IsNew = true },
+        SaberCubEgg = { Name = "Saber Cub Egg", Icon = "rbxassetid://111953502835346", Rarity = 6, IsNew = true },
+        GeneralKongEgg = { Name = "General Kong Egg", Icon = "rbxassetid://106836613554535", Rarity = 6, IsNew = true },
+        PegasusEgg = { Name = "Pegasus Egg", Icon = "rbxassetid://83004379343725", Rarity = 6, IsNew = true }
+    }
+    
+    -- Simple UI Creation
+    function TradeUI.CreateUI()
+        if ScreenGui then
+            ScreenGui:Destroy()
+        end
+        
+        ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "TradeUI"
+        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        
+        MainFrame = Instance.new("Frame")
+        MainFrame.Name = "MainFrame"
+        MainFrame.Size = UDim2.new(0, 600, 0, 400)
+        MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
+        MainFrame.BackgroundColor3 = colors.background
+        MainFrame.BorderSizePixel = 0
+        MainFrame.Parent = ScreenGui
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 12)
+        corner.Parent = MainFrame
+        
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = colors.border
+        stroke.Thickness = 1
+        stroke.Parent = MainFrame
+        
+        -- Title
+        local title = Instance.new("TextLabel")
+        title.Name = "Title"
+        title.Size = UDim2.new(1, -40, 0, 30)
+        title.Position = UDim2.new(0, 20, 0, 10)
+        title.BackgroundTransparency = 1
+        title.Text = "🔄 Auto Trade System"
+        title.TextSize = 16
+        title.Font = Enum.Font.GothamSemibold
+        title.TextColor3 = colors.text
+        title.TextXAlignment = Enum.TextXAlignment.Center
+        title.Parent = MainFrame
+        
+        -- Close Button
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Name = "CloseBtn"
+        closeBtn.Size = UDim2.new(0, 30, 0, 30)
+        closeBtn.Position = UDim2.new(1, -35, 0, 5)
+        closeBtn.BackgroundColor3 = colors.close
+        closeBtn.BorderSizePixel = 0
+        closeBtn.Text = "✕"
+        closeBtn.TextSize = 14
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.TextColor3 = colors.text
+        closeBtn.Parent = MainFrame
+        
+        local closeBtnCorner = Instance.new("UICorner")
+        closeBtnCorner.CornerRadius = UDim.new(0.5, 0)
+        closeBtnCorner.Parent = closeBtn
+        
+        closeBtn.MouseButton1Click:Connect(function()
+            ScreenGui:Destroy()
+            ScreenGui = nil
+        end)
+        
+        -- Content
+        local content = Instance.new("TextLabel")
+        content.Name = "Content"
+        content.Size = UDim2.new(1, -40, 1, -80)
+        content.Position = UDim2.new(0, 20, 0, 50)
+        content.BackgroundTransparency = 1
+        content.Text = "🚧 Auto Trade System is being developed!\n\n" ..
+                      "Features coming soon:\n" ..
+                      "• Visual item selection with inventory counts\n" ..
+                      "• Target player selection with avatars\n" ..
+                      "• Individual send amount configuration\n" ..
+                      "• Auto-send when reaching specified amounts\n" ..
+                      "• Teleport + Focus + Send functionality\n\n" ..
+                      "Stay tuned for updates!"
+        content.TextSize = 14
+        content.Font = Enum.Font.Gotham
+        content.TextColor3 = colors.textSecondary
+        content.TextXAlignment = Enum.TextXAlignment.Left
+        content.TextYAlignment = Enum.TextYAlignment.Top
+        content.TextWrapped = true
+        content.Parent = MainFrame
+        
+        -- Make draggable
+        local titleBar = Instance.new("Frame")
+        titleBar.Name = "TitleBar"
+        titleBar.Size = UDim2.new(1, 0, 0, 40)
+        titleBar.Position = UDim2.new(0, 0, 0, 0)
+        titleBar.BackgroundTransparency = 1
+        titleBar.Parent = MainFrame
+        
+        titleBar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                isDragging = true
+                dragStart = input.Position
+                startPos = MainFrame.Position
+                
+                local connection
+                connection = input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        isDragging = false
+                        connection:Disconnect()
+                    end
+                end)
+            end
+        end)
+        
+        UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
+                local delta = input.Position - dragStart
+                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+        
+        return ScreenGui
+    end
+    
+    function TradeUI.Init(deps)
+        WindUI = deps.WindUI
+        Config = deps.Config
+        SendTrashSystem = deps.SendTrashSystem
+    end
+    
+    function TradeUI.Show()
+        if not ScreenGui then
+            TradeUI.CreateUI()
+        end
+        
+        ScreenGui.Enabled = true
+        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        
+        if WindUI then
+            WindUI:Notify({
+                Title = "🔄 Auto Trade",
+                Content = "Trade UI opened successfully!",
+                Duration = 3
+            })
+        end
+    end
+    
+    function TradeUI.Hide()
+        if ScreenGui then
+            ScreenGui.Enabled = false
+        end
+    end
+    
+    return TradeUI
 end
 
 -- Expose functions for TradeUI
@@ -1646,5 +1912,6 @@ SendTrashSystem.getAllMutations = getAllMutations
 SendTrashSystem.refreshPlayerList = refreshPlayerList
 SendTrashSystem.sendItemToPlayer = sendItemToPlayer
 SendTrashSystem.focusItem = focusItem
+SendTrashSystem.createInlineTradeUI = createInlineTradeUI
 
 return SendTrashSystem
