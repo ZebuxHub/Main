@@ -1363,7 +1363,13 @@ local function createItemCard(itemId, itemData, category, parent)
         sendInput.Position = UDim2.new(1, -90, 0, 17.5)
         sendInput.BackgroundColor3 = colors.surface
         sendInput.BorderSizePixel = 0
-        sendInput.Text = tostring((itemConfigs[category][itemId] and itemConfigs[category][itemId].sendUntil) or 0)
+        -- Only show value if user has actually configured this item, otherwise leave empty
+        local config = itemConfigs[category][itemId]
+        if config and config.enabled then
+            sendInput.Text = tostring(config.sendUntil or 0)
+        else
+            sendInput.Text = "" -- Empty field, shows placeholder "Keep"
+        end
         sendInput.PlaceholderText = "Keep"
         sendInput.TextSize = 12
         sendInput.Font = Enum.Font.Gotham
@@ -1427,13 +1433,29 @@ local function createItemCard(itemId, itemData, category, parent)
         end)
         
         -- Show warning initially if needed with new format
-        local currentSendUntil = (itemConfigs[category][itemId] and itemConfigs[category][itemId].sendUntil) or 0
-        if ownedAmount > 0 and ownedAmount <= currentSendUntil then
-            local difference = currentSendUntil - ownedAmount
-            warningIcon.Text = difference .. "X ⚠️"
-            warningIcon.Visible = true
+        local config = itemConfigs[category][itemId]
+        if config and config.enabled then
+            local currentSendUntil = config.sendUntil or 0
+            if currentSendUntil == 0 then
+                -- When target is 0, show warning if we have items to send
+                if ownedAmount > 0 then
+                    warningIcon.Text = ownedAmount .. "X ⚠️"
+                    warningIcon.Visible = true
+                else
+                    warningIcon.Visible = false
+                end
+            else
+                -- When target > 0, show warning if we don't have enough
+                if ownedAmount > 0 and ownedAmount <= currentSendUntil then
+                    local difference = currentSendUntil - ownedAmount
+                    warningIcon.Text = difference .. "X ⚠️"
+                    warningIcon.Visible = true
+                else
+                    warningIcon.Visible = false
+                end
+            end
         else
-            warningIcon.Visible = false
+            warningIcon.Visible = false -- No warning if not configured
         end
     end
     
