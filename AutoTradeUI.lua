@@ -220,8 +220,10 @@ local function hideTooltip()
     end
 end
 
--- Forward declaration
+-- Forward declarations
 local refreshContent
+local updateOwnedAmounts
+local updateTargetDropdown
 
 -- Daily Gift Functions
 local function getTodayGiftCount()
@@ -1356,36 +1358,46 @@ local function createItemCard(itemId, itemData, category, parent)
         sendInput.ClearTextOnFocus = false
         sendInput.Parent = card
         
-        -- Removed aggressive real-time validation - let user type freely
+        -- Input validation to only allow numbers
+        sendInput:GetPropertyChangedSignal("Text"):Connect(function()
+            local text = sendInput.Text
+            local filteredText = text:gsub("[^%d]", "") -- Only allow digits
+            if text ~= filteredText then
+                sendInput.Text = filteredText
+            end
+        end)
         
         local inputCorner = Instance.new("UICorner")
         inputCorner.CornerRadius = UDim.new(0, 4)
         inputCorner.Parent = sendInput
         
-        -- Use same approach as search filter - simple Changed event
-        sendInput.Changed:Connect(function(prop)
-            if prop == "Text" then
-                local inputText = sendInput.Text
-                local value = tonumber(inputText) or 0
-                
-                if not itemConfigs[category][itemId] then
-                    itemConfigs[category][itemId] = {}
-                end
-                itemConfigs[category][itemId].sendUntil = value
-                itemConfigs[category][itemId].enabled = value > 0
-                
-                -- Update warning with new format: "nX ⚠️" (using current owned amount)
-                if ownedAmount > 0 and ownedAmount <= value then
-                    local difference = value - ownedAmount
-                    warningIcon.Text = difference .. "X ⚠️"
-                    warningIcon.Visible = true
-                else
-                    warningIcon.Visible = false
-                end
-                
-                saveConfig()
-                -- Note: refreshContent() is NOT called here - owned amounts update via inventory monitoring
+        -- Update config when input changes (with debouncing)
+        local inputDebounce = false
+        sendInput.FocusLost:Connect(function(enterPressed)
+            if inputDebounce then return end
+            inputDebounce = true
+            
+            -- Add small delay to prevent rapid firing
+            task.wait(0.1)
+            
+            local value = tonumber(sendInput.Text) or 0
+            if not itemConfigs[category][itemId] then
+                itemConfigs[category][itemId] = {}
             end
+            itemConfigs[category][itemId].sendUntil = value
+            itemConfigs[category][itemId].enabled = value > 0
+            
+            -- Update warning with new format: "nX ⚠️"
+            if ownedAmount > 0 and ownedAmount <= value then
+                local difference = value - ownedAmount
+                warningIcon.Text = difference .. "X ⚠️"
+                warningIcon.Visible = true
+            else
+                warningIcon.Visible = false
+            end
+            
+            saveConfig()
+            inputDebounce = false
         end)
         
         -- Show warning initially if needed with new format
@@ -1454,7 +1466,14 @@ local function createPetSpeedControls(parent)
     minSpeedInput.ClearTextOnFocus = false
     minSpeedInput.Parent = speedFrame
     
-    -- Removed aggressive real-time validation for min speed input
+    -- Input validation for min speed (allow numbers and common suffixes)
+    minSpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local text = minSpeedInput.Text
+        local filteredText = text:gsub("[^%d%.KkMmBbTt]", "") -- Allow digits, decimal, and suffixes
+        if text ~= filteredText then
+            minSpeedInput.Text = filteredText
+        end
+    end)
     
     local minCorner = Instance.new("UICorner")
     minCorner.CornerRadius = UDim.new(0, 4)
@@ -1476,7 +1495,14 @@ local function createPetSpeedControls(parent)
     maxSpeedInput.ClearTextOnFocus = false
     maxSpeedInput.Parent = speedFrame
     
-    -- Removed aggressive real-time validation for max speed input
+    -- Input validation for max speed (allow numbers and common suffixes)
+    maxSpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local text = maxSpeedInput.Text
+        local filteredText = text:gsub("[^%d%.KkMmBbTt]", "") -- Allow digits, decimal, and suffixes
+        if text ~= filteredText then
+            maxSpeedInput.Text = filteredText
+        end
+    end)
     
     local maxCorner = Instance.new("UICorner")
     maxCorner.CornerRadius = UDim.new(0, 4)
@@ -1485,7 +1511,115 @@ local function createPetSpeedControls(parent)
     return speedFrame, modeToggle, minSpeedInput, maxSpeedInput
 end
 
--- Refresh Content
+-- Targeted update functions
+updateOwnedAmounts = function()
+    if not ScreenGui or not ScreenGui.Parent then return end
+    
+    local tabSection = ScreenGui.MainFrame:FindFirstChild("TabSection")
+    if not tabSection then return end
+    
+    local scrollFrame = tabSection.ContentArea.ScrollFrame
+    local inventory = getPlayerInventory()
+    
+    -- Update owned amounts for all visible item cards
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("Frame") and child.Name ~= "UIListLayout" then
+            local ownedLabel = child:FindFirstChild("OwnedLabel")
+            if ownedLabel and ownedLabel:IsA("TextLabel") then
+                -- Extract item info from the card name
+                local itemId = child.Name
+                local ownedAmount = 0
+                
+                -- Determine category based on current tab
+                if currentTab == "Pets" then
+                    ownedAmount = inventory.pets[itemId] or 0
+                elseif currentTab == "Eggs" then
+                    ownedAmount = inventory.eggs[itemId] or 0
+                elseif currentTab == "Fruits" then
+                    ownedAmount = inventory.fruits[itemId] or 0
+                end
+                
+                -- Update the owned label
+                ownedLabel.Text = "Own: " .. ownedAmount .. "x"
+                
+                -- Update warning icon if needed
+                local warningIcon = child:FindFirstChild("WarningIcon")
+                if warningIcon then
+                    local sendUntil = 0
+                    local category = currentTab:lower()
+                    if itemConfigs[category] and itemConfigs[category][itemId] then
+                        sendUntil = itemConfigs[category][itemId].sendUntil or 0
+                    end
+                    
+                    if ownedAmount > 0 and ownedAmount <= sendUntil then
+                        local difference = sendUntil - ownedAmount
+                        warningIcon.Text = difference .. "X ⚠️"
+                        warningIcon.Visible = true
+                    else
+                        warningIcon.Visible = false
+                    end
+                end
+            end
+        end
+    end
+end
+
+updateTargetDropdown = function()
+    if not ScreenGui or not ScreenGui.Parent then return end
+    
+    local targetSection = ScreenGui.MainFrame:FindFirstChild("TargetSection")
+    if not targetSection then return end
+    
+    local dropdownList = targetSection:FindFirstChild("DropdownList")
+    if not dropdownList then return end
+    
+    -- Clear existing options
+    for _, child in pairs(dropdownList:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Repopulate with current players
+    local playerList = getPlayerList()
+    for i, playerName in ipairs(playerList) do
+        local option = Instance.new("TextButton")
+        option.Name = "Option" .. i
+        option.Size = UDim2.new(1, 0, 0, 25)
+        option.BackgroundColor3 = colors.hover
+        option.BorderSizePixel = 0
+        option.Text = playerName
+        option.TextSize = 12
+        option.Font = Enum.Font.Gotham
+        option.TextColor3 = colors.text
+        option.TextXAlignment = Enum.TextXAlignment.Left
+        option.ZIndex = 101
+        option.Parent = dropdownList
+        
+        local optionPadding = Instance.new("UIPadding")
+        optionPadding.PaddingLeft = UDim.new(0, 8)
+        optionPadding.Parent = option
+        
+        option.MouseButton1Click:Connect(function()
+            selectedTarget = playerName
+            if targetSection.NameLabel then
+                targetSection.NameLabel.Text = playerName
+            end
+            dropdownList.Visible = false
+            saveConfig()
+        end)
+        
+        option.MouseEnter:Connect(function()
+            option.BackgroundColor3 = colors.primary
+        end)
+        
+        option.MouseLeave:Connect(function()
+            option.BackgroundColor3 = colors.hover
+        end)
+    end
+end
+
+-- Refresh Content (only recreates UI when necessary)
 refreshContent = function()
     if not ScreenGui or not ScreenGui.Parent then return end
     
@@ -1520,33 +1654,44 @@ refreshContent = function()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed inputs - use same approach as search filter
-        minInput.Changed:Connect(function(prop)
-            if prop == "Text" then
-                local inputText = minInput.Text
-                local newValue = tonumber(inputText) or 0
-                if newValue ~= petSpeedMin then
-                    petSpeedMin = newValue
-                    saveConfig()
-                    if petMode == "Speed" then
-                        refreshContent() -- Refresh to show pets matching new speed range
-                    end
+        -- Speed input functionality (debounced updates)
+        local minInputDebounce = false
+        local maxInputDebounce = false
+        
+        minInput.FocusLost:Connect(function()
+            if minInputDebounce then return end
+            minInputDebounce = true
+            
+            task.wait(0.1)
+            
+            local newValue = tonumber(minInput.Text) or 0
+            if newValue ~= petSpeedMin then
+                petSpeedMin = newValue
+                saveConfig()
+                if petMode == "Speed" then
+                    refreshContent() -- Refresh to show pets matching new speed range
                 end
             end
+            
+            minInputDebounce = false
         end)
         
-        maxInput.Changed:Connect(function(prop)
-            if prop == "Text" then
-                local inputText = maxInput.Text
-                local newValue = tonumber(inputText) or 100
-                if newValue ~= petSpeedMax then
-                    petSpeedMax = newValue
-                    saveConfig()
-                    if petMode == "Speed" then
-                        refreshContent() -- Refresh to show pets matching new speed range
-                    end
+        maxInput.FocusLost:Connect(function()
+            if maxInputDebounce then return end
+            maxInputDebounce = true
+            
+            task.wait(0.1)
+            
+            local newValue = tonumber(maxInput.Text) or 999999999
+            if newValue ~= petSpeedMax then
+                petSpeedMax = newValue
+                saveConfig()
+                if petMode == "Speed" then
+                    refreshContent() -- Refresh to show pets matching new speed range
                 end
             end
+            
+            maxInputDebounce = false
         end)
     end
     
@@ -2022,11 +2167,13 @@ local function startInventoryMonitoring()
     inventoryConnection = RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         
-        -- Update UI every 2 seconds for real-time inventory amounts and gift count
-        if currentTime - lastInventoryUpdate >= 2 then
+        -- Update UI every 5 seconds for real-time inventory amounts and gift count
+        if currentTime - lastInventoryUpdate >= 5 then
             lastInventoryUpdate = currentTime
             if ScreenGui and ScreenGui.Enabled then
-                refreshContent() -- This now includes gift count update
+                updateOwnedAmounts() -- Only update owned amounts, don't recreate UI
+                updateGiftCountDisplay() -- Update gift counter
+                updateTargetDropdown() -- Update player list
             end
         end
         
