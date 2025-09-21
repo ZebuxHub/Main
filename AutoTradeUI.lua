@@ -1362,6 +1362,15 @@ local function createItemCard(itemId, itemData, category, parent)
         inputCorner.CornerRadius = UDim.new(0, 4)
         inputCorner.Parent = sendInput
         
+        -- Prevent automatic refresh while typing in "Send until" inputs
+        sendInput.Focused:Connect(function()
+            isUserTyping = true -- Prevent automatic refreshContent() calls
+        end)
+        
+        sendInput.FocusLost:Connect(function()
+            isUserTyping = false -- Allow automatic refreshContent() calls again
+        end)
+        
         -- Use same approach as search filter - simple Changed event
         sendInput.Changed:Connect(function(prop)
             if prop == "Text" then
@@ -1519,7 +1528,18 @@ refreshContent = function()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed inputs - use same approach as search filter
+        -- Speed inputs - prevent automatic refresh while typing
+        minInput.Focused:Connect(function()
+            isUserTyping = true -- Prevent automatic refreshContent() calls
+        end)
+        
+        minInput.FocusLost:Connect(function()
+            isUserTyping = false -- Allow automatic refreshContent() calls again
+            if petMode == "Speed" then
+                refreshContent() -- Now safe to refresh
+            end
+        end)
+        
         minInput.Changed:Connect(function(prop)
             if prop == "Text" then
                 local inputText = minInput.Text
@@ -1527,10 +1547,19 @@ refreshContent = function()
                 if newValue ~= petSpeedMin then
                     petSpeedMin = newValue
                     saveConfig()
-                    if petMode == "Speed" then
-                        refreshContent() -- Refresh to show pets matching new speed range
-                    end
+                    -- Don't call refreshContent() here - user is typing!
                 end
+            end
+        end)
+        
+        maxInput.Focused:Connect(function()
+            isUserTyping = true -- Prevent automatic refreshContent() calls
+        end)
+        
+        maxInput.FocusLost:Connect(function()
+            isUserTyping = false -- Allow automatic refreshContent() calls again
+            if petMode == "Speed" then
+                refreshContent() -- Now safe to refresh
             end
         end)
         
@@ -1541,9 +1570,7 @@ refreshContent = function()
                 if newValue ~= petSpeedMax then
                     petSpeedMax = newValue
                     saveConfig()
-                    if petMode == "Speed" then
-                        refreshContent() -- Refresh to show pets matching new speed range
-                    end
+                    -- Don't call refreshContent() here - user is typing!
                 end
             end
         end)
@@ -2010,9 +2037,63 @@ function AutoTradeUI.IsVisible()
     return ScreenGui and ScreenGui.Enabled
 end
 
+-- Smart refresh function that only updates owned amounts without touching inputs
+local function updateOwnedAmounts()
+    if not ScreenGui or not ScreenGui.Parent then return end
+    
+    local tabSection = ScreenGui.MainFrame:FindFirstChild("TabSection")
+    if not tabSection then return end
+    
+    local scrollFrame = tabSection.ContentArea.ScrollFrame
+    local inventory = getPlayerInventory()
+    
+    -- Update owned amounts for all item cards
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("Frame") and child.Name ~= "UIListLayout" then
+            local ownedLabel = child:FindFirstChild("OwnedLabel")
+            local warningIcon = child:FindFirstChild("WarningIcon")
+            local sendInput = child:FindFirstChild("SendInput")
+            
+            if ownedLabel and sendInput then
+                -- Get item info from the card
+                local itemId = child.Name
+                local category = ""
+                if currentTab == "Pets" then
+                    category = "pets"
+                elseif currentTab == "Eggs" then
+                    category = "eggs"
+                elseif currentTab == "Fruits" then
+                    category = "fruits"
+                end
+                
+                -- Update owned amount
+                local ownedAmount = inventory[category][itemId] or 0
+                ownedLabel.Text = "Own: " .. ownedAmount .. "x"
+                
+                -- Update warning icon based on current input value (don't change input!)
+                if warningIcon then
+                    local currentValue = tonumber(sendInput.Text) or 0
+                    if ownedAmount > 0 and ownedAmount <= currentValue then
+                        local difference = currentValue - ownedAmount
+                        warningIcon.Text = difference .. "X ⚠️"
+                        warningIcon.Visible = true
+                    else
+                        warningIcon.Visible = false
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Update gift count display
+    updateGiftCountDisplay()
+end
+
 -- Monitor inventory changes for auto-trade and real-time updates
 local inventoryConnection = nil
 local lastInventoryUpdate = 0
+local isUserTyping = false -- Track if user is actively typing
+
 local function startInventoryMonitoring()
     if inventoryConnection then
         inventoryConnection:Disconnect()
@@ -2021,11 +2102,17 @@ local function startInventoryMonitoring()
     inventoryConnection = RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         
-        -- Update UI every 2 seconds for real-time inventory amounts and gift count
+        -- Update owned amounts every 2 seconds
         if currentTime - lastInventoryUpdate >= 2 then
             lastInventoryUpdate = currentTime
             if ScreenGui and ScreenGui.Enabled then
-                refreshContent() -- This now includes gift count update
+                if isUserTyping then
+                    -- User is typing - only update owned amounts, don't touch inputs
+                    updateOwnedAmounts()
+                else
+                    -- User not typing - full refresh is safe
+                    refreshContent()
+                end
             end
         end
         
