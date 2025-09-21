@@ -1266,6 +1266,7 @@ local function createItemCard(itemId, itemData, category, parent)
     card.Size = UDim2.new(1, 0, 0, 60)
     card.BackgroundColor3 = colors.hover
     card.BorderSizePixel = 0
+    card.ZIndex = 1 -- Base z-index for card
     card.Parent = parent
     
     local corner = Instance.new("UICorner")
@@ -1293,6 +1294,7 @@ local function createItemCard(itemId, itemData, category, parent)
             icon.TextSize = 24
             icon.Font = Enum.Font.GothamBold
             icon.TextColor3 = getRarityColor(itemData.Rarity)
+            icon.ZIndex = 2
             icon.Parent = card
         end
         if category == "eggs" then
@@ -1311,26 +1313,29 @@ local function createItemCard(itemId, itemData, category, parent)
     nameLabel.Font = Enum.Font.GothamSemibold
     nameLabel.TextColor3 = ownedAmount > 0 and colors.text or colors.disabled
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.ZIndex = 2
     nameLabel.Parent = card
     
     -- Owned Amount
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
     ownedLabel.Size = UDim2.new(0, 80, 0, 16)
-    ownedLabel.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 25)
+    local ownedLabelX = category == "pets" and 10 or 60
+    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 25)
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
     ownedLabel.TextSize = 12
     ownedLabel.Font = Enum.Font.Gotham
     ownedLabel.TextColor3 = colors.textSecondary
     ownedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ownedLabel.ZIndex = 2
     ownedLabel.Parent = card
     
     -- Warning icon for insufficient items (same line as owned count)
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
-    warningIcon.Size = UDim2.new(0, 60, 0, 16)
-    warningIcon.Position = UDim2.new(0, 120, 0, 60) -- Same line as owned label
+    warningIcon.Size = UDim2.new(0, 70, 0, 16)
+    warningIcon.Position = UDim2.new(0, ownedLabelX + 85, 0, 25) -- Same line as owned label, positioned after it
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
     warningIcon.TextSize = 10
@@ -1338,6 +1343,7 @@ local function createItemCard(itemId, itemData, category, parent)
     warningIcon.TextColor3 = colors.warning
     warningIcon.TextXAlignment = Enum.TextXAlignment.Left
     warningIcon.Visible = false
+    warningIcon.ZIndex = 10 -- Ensure it appears above other elements
     warningIcon.Parent = card
     
     -- Send Until Input (not for speed mode pets)
@@ -1356,6 +1362,7 @@ local function createItemCard(itemId, itemData, category, parent)
         sendInput.TextColor3 = colors.text
         sendInput.TextXAlignment = Enum.TextXAlignment.Center
         sendInput.ClearTextOnFocus = false
+        sendInput.ZIndex = 2
         sendInput.Parent = card
         
         -- Input validation to only allow numbers
