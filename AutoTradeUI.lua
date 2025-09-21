@@ -992,7 +992,6 @@ function AutoTradeUI.CreateUI()
     
     -- Store references in a separate table to avoid conflicts
     local UIRefs = {
-        WindowControls = windowControls,
         ToggleBtn = toggleBtn,
         RefreshBtn = refreshBtn,
         PlayersScroll = playersScroll,
@@ -1006,40 +1005,46 @@ function AutoTradeUI.CreateUI()
     -- Store reference for access in other functions
     MainFrame.UIRefs = UIRefs
     
-    -- Event Handlers
-    local closeBtn = windowControls:FindFirstChild("CloseBtn")
-    local minimizeBtn = windowControls:FindFirstChild("MinimizeBtn")
-    local maximizeBtn = windowControls:FindFirstChild("MaximizeBtn")
+    -- Event Handlers with safety checks
+    local closeBtn = windowControls and windowControls:FindFirstChild("CloseBtn")
+    local minimizeBtn = windowControls and windowControls:FindFirstChild("MinimizeBtn")
+    local maximizeBtn = windowControls and windowControls:FindFirstChild("MaximizeBtn")
     
-    closeBtn.MouseButton1Click:Connect(function()
-        AutoTradeUI.Hide()
-    end)
+    if closeBtn then
+        closeBtn.MouseButton1Click:Connect(function()
+            AutoTradeUI.Hide()
+        end)
+    end
     
-    minimizeBtn.MouseButton1Click:Connect(function()
-        if isMinimized then
-            MainFrame.Size = originalSize
-            contentFrame.Visible = true
-            toggleFrame.Visible = true
-            isMinimized = false
-        else
-            MainFrame.Size = minimizedSize
-            contentFrame.Visible = false
-            toggleFrame.Visible = false
-            isMinimized = true
-        end
-    end)
+    if minimizeBtn then
+        minimizeBtn.MouseButton1Click:Connect(function()
+            if isMinimized then
+                MainFrame.Size = originalSize
+                contentFrame.Visible = true
+                toggleFrame.Visible = true
+                isMinimized = false
+            else
+                MainFrame.Size = minimizedSize
+                contentFrame.Visible = false
+                toggleFrame.Visible = false
+                isMinimized = true
+            end
+        end)
+    end
     
-    maximizeBtn.MouseButton1Click:Connect(function()
-        local screenSize = getScreenSize()
-        if MainFrame.Size == originalSize then
-            local maxSize = getResponsiveSize(screenSize.X * 0.9, screenSize.Y * 0.9)
-            MainFrame.Size = maxSize
-            MainFrame.Position = UDim2.new(0.5, -maxSize.X.Offset/2, 0.5, -maxSize.Y.Offset/2)
-        else
-            MainFrame.Size = originalSize
-            MainFrame.Position = UDim2.new(0.5, -originalSize.X.Offset/2, 0.5, -originalSize.Y.Offset/2)
-        end
-    end)
+    if maximizeBtn then
+        maximizeBtn.MouseButton1Click:Connect(function()
+            local screenSize = getScreenSize()
+            if MainFrame.Size == originalSize then
+                local maxSize = getResponsiveSize(screenSize.X * 0.9, screenSize.Y * 0.9)
+                MainFrame.Size = maxSize
+                MainFrame.Position = UDim2.new(0.5, -maxSize.X.Offset/2, 0.5, -maxSize.Y.Offset/2)
+            else
+                MainFrame.Size = originalSize
+                MainFrame.Position = UDim2.new(0.5, -originalSize.X.Offset/2, 0.5, -originalSize.Y.Offset/2)
+            end
+        end)
+    end
     
     toggleBtn.MouseButton1Click:Connect(function()
         autoTradeEnabled = not autoTradeEnabled
@@ -1370,26 +1375,40 @@ end
 function AutoTradeUI.Show()
     print("AutoTradeUI.Show() called")
     
-    AutoTradeUI.LoadSettings()
-    
-    if not ScreenGui then
-        print("Creating new UI...")
-        AutoTradeUI.CreateUI()
-    end
-    
-    if ScreenGui then
-        ScreenGui.Enabled = true
-        print("UI enabled")
+    local success, error = pcall(function()
+        AutoTradeUI.LoadSettings()
         
-        -- Initial refresh with delay
-        task.spawn(function()
-            task.wait(0.2)
-            print("Refreshing targets and items...")
-            AutoTradeUI.RefreshTargets()
-            AutoTradeUI.RefreshItems()
-        end)
-    else
-        print("ERROR: ScreenGui is nil after CreateUI")
+        if not ScreenGui then
+            print("Creating new UI...")
+            AutoTradeUI.CreateUI()
+        end
+        
+        if ScreenGui then
+            ScreenGui.Enabled = true
+            print("UI enabled")
+            
+            -- Initial refresh with delay
+            task.spawn(function()
+                task.wait(0.2)
+                print("Refreshing targets and items...")
+                pcall(AutoTradeUI.RefreshTargets)
+                pcall(AutoTradeUI.RefreshItems)
+            end)
+        else
+            print("ERROR: ScreenGui is nil after CreateUI")
+        end
+    end)
+    
+    if not success then
+        print("ERROR in AutoTradeUI.Show():", error)
+        -- Try to create a simple notification if possible
+        if game:GetService("StarterGui") then
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "AutoTradeUI Error",
+                Text = tostring(error),
+                Duration = 5
+            })
+        end
     end
 end
 
