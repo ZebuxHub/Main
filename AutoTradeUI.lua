@@ -1423,16 +1423,11 @@ local function createItemCard(itemId, itemData, category, parent)
             if config and config.enabled then
                 local currentValue = config.sendUntil or 0
                 if currentValue == 0 then
-                    -- When target is 0, show warning if we have items to send
-                    if ownedAmount > 0 then
-                        warningIcon.Text = ownedAmount .. "X ⚠️"
-                        warningIcon.Visible = true
-                    else
-                        warningIcon.Visible = false
-                    end
+                    -- When target is 0 (send all), no warning needed
+                    warningIcon.Visible = false
                 else
-                    -- When target > 0, show warning if we don't have enough
-                    if ownedAmount > 0 and ownedAmount <= currentValue then
+                    -- When target > 0, show warning only if we don't have enough
+                    if ownedAmount < currentValue then
                         local difference = currentValue - ownedAmount
                         warningIcon.Text = difference .. "X ⚠️"
                         warningIcon.Visible = true
@@ -1454,16 +1449,11 @@ local function createItemCard(itemId, itemData, category, parent)
         if config and config.enabled then
             local currentSendUntil = config.sendUntil or 0
             if currentSendUntil == 0 then
-                -- When target is 0, show warning if we have items to send
-                if ownedAmount > 0 then
-                    warningIcon.Text = ownedAmount .. "X ⚠️"
-                    warningIcon.Visible = true
-                else
-                    warningIcon.Visible = false
-                end
+                -- When target is 0 (send all), no warning needed
+                warningIcon.Visible = false
             else
-                -- When target > 0, show warning if we don't have enough
-                if ownedAmount > 0 and ownedAmount <= currentSendUntil then
+                -- When target > 0, show warning only if we don't have enough
+                if ownedAmount < currentSendUntil then
                     local difference = currentSendUntil - ownedAmount
                     warningIcon.Text = difference .. "X ⚠️"
                     warningIcon.Visible = true
@@ -1617,16 +1607,11 @@ updateOwnedAmounts = function()
                     end
                     
                     if sendUntil == 0 then
-                        -- When target is 0, show warning if we have items to send
-                        if ownedAmount > 0 then
-                            warningIcon.Text = ownedAmount .. "X ⚠️"
-                            warningIcon.Visible = true
-                        else
-                            warningIcon.Visible = false
-                        end
+                        -- When target is 0 (send all), no warning needed
+                        warningIcon.Visible = false
                     else
-                        -- When target > 0, show warning if we don't have enough
-                        if ownedAmount > 0 and ownedAmount <= sendUntil then
+                        -- When target > 0, show warning only if we don't have enough
+                        if ownedAmount < sendUntil then
                             local difference = sendUntil - ownedAmount
                             warningIcon.Text = difference .. "X ⚠️"
                             warningIcon.Visible = true
