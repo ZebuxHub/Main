@@ -990,20 +990,26 @@ function AutoTradeUI.CreateUI()
     itemsLayout.Padding = UDim.new(0, 8)
     itemsLayout.Parent = itemsScroll
     
-    -- Store references
-    MainFrame.WindowControls = windowControls
-    MainFrame.ToggleBtn = toggleBtn
-    MainFrame.RefreshBtn = refreshBtn
-    MainFrame.PlayersScroll = playersScroll
-    MainFrame.ItemsScroll = itemsScroll
-    MainFrame.EggsTab = eggsTab
-    MainFrame.FruitsTab = fruitsTab
-    MainFrame.PetsTab = petsTab
+    -- Store references in a separate table to avoid conflicts
+    local UIRefs = {
+        WindowControls = windowControls,
+        ToggleBtn = toggleBtn,
+        RefreshBtn = refreshBtn,
+        PlayersScroll = playersScroll,
+        ItemsScroll = itemsScroll,
+        EggsTab = eggsTab,
+        FruitsTab = fruitsTab,
+        PetsTab = petsTab,
+        CurrentTab = "eggs"
+    }
+    
+    -- Store reference for access in other functions
+    MainFrame.UIRefs = UIRefs
     
     -- Event Handlers
-    local closeBtn = windowControls.CloseBtn
-    local minimizeBtn = windowControls.MinimizeBtn
-    local maximizeBtn = windowControls.MaximizeBtn
+    local closeBtn = windowControls:FindFirstChild("CloseBtn")
+    local minimizeBtn = windowControls:FindFirstChild("MinimizeBtn")
+    local maximizeBtn = windowControls:FindFirstChild("MaximizeBtn")
     
     closeBtn.MouseButton1Click:Connect(function()
         AutoTradeUI.Hide()
@@ -1052,10 +1058,8 @@ function AutoTradeUI.CreateUI()
     end)
     
     -- Tab switching
-    local currentTab = "eggs"
-    
     eggsTab.MouseButton1Click:Connect(function()
-        currentTab = "eggs"
+        UIRefs.CurrentTab = "eggs"
         eggsTab.BackgroundColor3 = colors.primary
         fruitsTab.BackgroundColor3 = colors.textTertiary
         petsTab.BackgroundColor3 = colors.textTertiary
@@ -1063,7 +1067,7 @@ function AutoTradeUI.CreateUI()
     end)
     
     fruitsTab.MouseButton1Click:Connect(function()
-        currentTab = "fruits"
+        UIRefs.CurrentTab = "fruits"
         eggsTab.BackgroundColor3 = colors.textTertiary
         fruitsTab.BackgroundColor3 = colors.primary
         petsTab.BackgroundColor3 = colors.textTertiary
@@ -1071,14 +1075,12 @@ function AutoTradeUI.CreateUI()
     end)
     
     petsTab.MouseButton1Click:Connect(function()
-        currentTab = "pets"
+        UIRefs.CurrentTab = "pets"
         eggsTab.BackgroundColor3 = colors.textTertiary
         fruitsTab.BackgroundColor3 = colors.textTertiary
         petsTab.BackgroundColor3 = colors.primary
         AutoTradeUI.RefreshItems()
     end)
-    
-    MainFrame.CurrentTab = currentTab
     
     -- Dragging functionality
     local titleBar = Instance.new("Frame")
@@ -1116,9 +1118,9 @@ end
 
 -- Refresh Functions
 function AutoTradeUI.RefreshTargets()
-    if not ScreenGui or not MainFrame then return end
+    if not ScreenGui or not MainFrame or not MainFrame.UIRefs then return end
     
-    local playersScroll = MainFrame.PlayersScroll
+    local playersScroll = MainFrame.UIRefs.PlayersScroll
     
     -- Clear existing players
     for _, child in pairs(playersScroll:GetChildren()) do
@@ -1136,14 +1138,14 @@ function AutoTradeUI.RefreshTargets()
 end
 
 function AutoTradeUI.RefreshItems()
-    if not ScreenGui or not MainFrame then return end
+    if not ScreenGui or not MainFrame or not MainFrame.UIRefs then return end
     
-    local itemsScroll = MainFrame.ItemsScroll
-    local currentTab = MainFrame.CurrentTab or "eggs"
+    local itemsScroll = MainFrame.UIRefs.ItemsScroll
+    local currentTab = MainFrame.UIRefs.CurrentTab or "eggs"
     
     -- Clear existing items
     for _, child in pairs(itemsScroll:GetChildren()) do
-        if child:IsA("Frame") then
+        if child:IsA("Frame") and not child:IsA("UIListLayout") then
             child:Destroy()
         end
     end
@@ -1159,9 +1161,21 @@ function AutoTradeUI.RefreshItems()
         data = FruitData
         itemType = "fruit"
     elseif currentTab == "pets" then
-        -- For pets, we'll use a simplified data structure
+        -- Basic pet data structure
         data = {
-            -- Add pet types here when needed
+            Capy1 = { Name = "Capy1", Icon = "🐹", Rarity = 1 },
+            Pig = { Name = "Pig", Icon = "🐷", Rarity = 1 },
+            Dog = { Name = "Dog", Icon = "🐕", Rarity = 1 },
+            Cat = { Name = "Cat", Icon = "🐱", Rarity = 1 },
+            Cow = { Name = "Cow", Icon = "🐄", Rarity = 2 },
+            Sheep = { Name = "Sheep", Icon = "🐑", Rarity = 2 },
+            Horse = { Name = "Horse", Icon = "🐴", Rarity = 2 },
+            Tiger = { Name = "Tiger", Icon = "🐅", Rarity = 3 },
+            Lion = { Name = "Lion", Icon = "🦁", Rarity = 3 },
+            Bear = { Name = "Bear", Icon = "🐻", Rarity = 3 },
+            Dragon = { Name = "Dragon", Icon = "🐉", Rarity = 6 },
+            Phoenix = { Name = "Phoenix", Icon = "🔥", Rarity = 6 },
+            Unicorn = { Name = "Unicorn", Icon = "🦄", Rarity = 6 }
         }
         itemType = "pet"
     end
@@ -1354,18 +1368,29 @@ end
 
 -- Public Functions
 function AutoTradeUI.Show()
+    print("AutoTradeUI.Show() called")
+    
     AutoTradeUI.LoadSettings()
     
     if not ScreenGui then
+        print("Creating new UI...")
         AutoTradeUI.CreateUI()
     end
     
-    ScreenGui.Enabled = true
-    
-    -- Initial refresh
-    task.wait(0.1)
-    AutoTradeUI.RefreshTargets()
-    AutoTradeUI.RefreshItems()
+    if ScreenGui then
+        ScreenGui.Enabled = true
+        print("UI enabled")
+        
+        -- Initial refresh with delay
+        task.spawn(function()
+            task.wait(0.2)
+            print("Refreshing targets and items...")
+            AutoTradeUI.RefreshTargets()
+            AutoTradeUI.RefreshItems()
+        end)
+    else
+        print("ERROR: ScreenGui is nil after CreateUI")
+    end
 end
 
 function AutoTradeUI.Hide()
