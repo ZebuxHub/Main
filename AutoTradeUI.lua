@@ -177,13 +177,14 @@ local function getPlayerInventory()
         return inventory
     end
     
-    -- Get Pets
+    -- Get Pets (exclude placed pets with D attribute)
     local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
     if petsFolder then
         for _, petData in pairs(petsFolder:GetChildren()) do
             if petData:IsA("Configuration") then
                 local petType = safeGetAttribute(petData, "T", nil)
-                if petType and petType ~= "" then
+                local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
+                if petType and petType ~= "" and not isPlaced then
                     inventory.pets[petType] = (inventory.pets[petType] or 0) + 1
                 end
             end
@@ -284,6 +285,7 @@ end
 local function returnToSavedPosition()
     if savedPosition and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         LocalPlayer.Character.HumanoidRootPart.CFrame = savedPosition
+        savedPosition = nil -- Clear saved position after returning
     end
 end
 
@@ -319,7 +321,7 @@ local function giftToPlayer(targetPlayer)
     return success, err and tostring(err) or nil
 end
 
-local function performTrade(itemUID, itemType, targetPlayer)
+local function performTrade(itemUID, itemType, targetPlayer, shouldReturnToPosition)
     if isTrading or tradeCooldown then
         return false, "Trade in progress or cooldown active"
     end
@@ -327,8 +329,10 @@ local function performTrade(itemUID, itemType, targetPlayer)
     isTrading = true
     local tradeKey = itemUID .. "_" .. (targetPlayer and targetPlayer.Name or "random")
     
-    -- Save position
-    saveCurrentPosition()
+    -- Save position only if not already saved
+    if not savedPosition then
+        saveCurrentPosition()
+    end
     
     -- Get target player
     local target = targetPlayer
@@ -340,6 +344,9 @@ local function performTrade(itemUID, itemType, targetPlayer)
     
     if not target then
         isTrading = false
+        if shouldReturnToPosition then
+            returnToSavedPosition()
+        end
         return false, "No target player available"
     end
     
@@ -347,7 +354,9 @@ local function performTrade(itemUID, itemType, targetPlayer)
     local tpSuccess, tpErr = teleportToPlayer(target)
     if not tpSuccess then
         isTrading = false
-        returnToSavedPosition()
+        if shouldReturnToPosition then
+            returnToSavedPosition()
+        end
         
         -- Increment retry count
         retryAttempts[tradeKey] = (retryAttempts[tradeKey] or 0) + 1
@@ -373,7 +382,9 @@ local function performTrade(itemUID, itemType, targetPlayer)
     local focusSuccess, focusErr = focusItem(itemUID)
     if not focusSuccess then
         isTrading = false
-        returnToSavedPosition()
+        if shouldReturnToPosition then
+            returnToSavedPosition()
+        end
         return false, "Failed to focus item: " .. (focusErr or "Unknown error")
     end
     
@@ -384,15 +395,19 @@ local function performTrade(itemUID, itemType, targetPlayer)
     local giftSuccess, giftErr = giftToPlayer(target)
     if not giftSuccess then
         isTrading = false
-        returnToSavedPosition()
+        if shouldReturnToPosition then
+            returnToSavedPosition()
+        end
         return false, "Failed to gift item: " .. (giftErr or "Unknown error")
     end
     
     -- Wait for gift to process
     task.wait(0.5)
     
-    -- Return to saved position
-    returnToSavedPosition()
+    -- Only return to saved position if requested (for manual trades or when auto-trade is done)
+    if shouldReturnToPosition then
+        returnToSavedPosition()
+    end
     
     -- Reset retry count on success
     retryAttempts[tradeKey] = 0
@@ -529,13 +544,19 @@ local function startAutoTrade()
         local itemsToSend = getItemsToSend()
         if #itemsToSend > 0 then
             local item = itemsToSend[1] -- Send one item at a time
-            local success, err = performTrade(item.uid, item.type, nil)
+            -- Don't return to position during auto-trade, only when stopping
+            local success, err = performTrade(item.uid, item.type, nil, false)
             if not success and WindUI then
                 WindUI:Notify({
                     Title = "❌ Auto Trade Error",
                     Content = err or "Unknown error",
                     Duration = 3
                 })
+            end
+        else
+            -- No more items to send, return to saved position if we have one
+            if savedPosition then
+                returnToSavedPosition()
             end
         end
         
@@ -547,6 +568,10 @@ local function stopAutoTrade()
     if autoTradeConnection then
         autoTradeConnection:Disconnect()
         autoTradeConnection = nil
+    end
+    -- Return to saved position when stopping auto-trade
+    if savedPosition then
+        returnToSavedPosition()
     end
 end
 
@@ -689,7 +714,7 @@ local function createTargetSection(parent)
     targetDropdown.Position = UDim2.new(0, 10, 0, 150)
     targetDropdown.BackgroundColor3 = colors.hover
     targetDropdown.BorderSizePixel = 0
-    targetDropdown.Text = "Change Target"
+    targetDropdown.Text = "Select Target ▼"
     targetDropdown.TextSize = 14
     targetDropdown.Font = Enum.Font.Gotham
     targetDropdown.TextColor3 = colors.text
@@ -698,6 +723,34 @@ local function createTargetSection(parent)
     local dropdownCorner = Instance.new("UICorner")
     dropdownCorner.CornerRadius = UDim.new(0, 6)
     dropdownCorner.Parent = targetDropdown
+    
+    -- Dropdown List (initially hidden)
+    local dropdownList = Instance.new("ScrollingFrame")
+    dropdownList.Name = "DropdownList"
+    dropdownList.Size = UDim2.new(1, -20, 0, 120)
+    dropdownList.Position = UDim2.new(0, 10, 0, 190)
+    dropdownList.BackgroundColor3 = colors.surface
+    dropdownList.BorderSizePixel = 0
+    dropdownList.Visible = false
+    dropdownList.ScrollBarThickness = 4
+    dropdownList.ScrollBarImageColor3 = colors.primary
+    dropdownList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    dropdownList.ScrollingDirection = Enum.ScrollingDirection.Y
+    dropdownList.Parent = targetSection
+    
+    local dropdownListCorner = Instance.new("UICorner")
+    dropdownListCorner.CornerRadius = UDim.new(0, 6)
+    dropdownListCorner.Parent = dropdownList
+    
+    local dropdownListStroke = Instance.new("UIStroke")
+    dropdownListStroke.Color = colors.border
+    dropdownListStroke.Thickness = 1
+    dropdownListStroke.Parent = dropdownList
+    
+    local dropdownLayout = Instance.new("UIListLayout")
+    dropdownLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    dropdownLayout.Padding = UDim.new(0, 2)
+    dropdownLayout.Parent = dropdownList
     
     -- Send Button
     local sendBtn = Instance.new("TextButton")
@@ -773,14 +826,14 @@ local function createFilterBar(parent)
     searchCorner.CornerRadius = UDim.new(0, 4)
     searchCorner.Parent = searchBox
     
-    -- Sort Dropdown (simplified as button for now)
+    -- Sort Dropdown
     local sortBtn = Instance.new("TextButton")
     sortBtn.Name = "SortBtn"
     sortBtn.Size = UDim2.new(0.2, -5, 0, 30)
     sortBtn.Position = UDim2.new(0.3, 5, 0, 10)
     sortBtn.BackgroundColor3 = colors.hover
     sortBtn.BorderSizePixel = 0
-    sortBtn.Text = "Sort: Name"
+    sortBtn.Text = "Sort: Name ▼"
     sortBtn.TextSize = 12
     sortBtn.Font = Enum.Font.Gotham
     sortBtn.TextColor3 = colors.text
@@ -789,6 +842,72 @@ local function createFilterBar(parent)
     local sortCorner = Instance.new("UICorner")
     sortCorner.CornerRadius = UDim.new(0, 4)
     sortCorner.Parent = sortBtn
+    
+    -- Sort Dropdown List
+    local sortList = Instance.new("Frame")
+    sortList.Name = "SortList"
+    sortList.Size = UDim2.new(0.2, -5, 0, 120)
+    sortList.Position = UDim2.new(0.3, 5, 0, 45)
+    sortList.BackgroundColor3 = colors.surface
+    sortList.BorderSizePixel = 0
+    sortList.Visible = false
+    sortList.Parent = filterBar
+    
+    local sortListCorner = Instance.new("UICorner")
+    sortListCorner.CornerRadius = UDim.new(0, 4)
+    sortListCorner.Parent = sortList
+    
+    local sortListStroke = Instance.new("UIStroke")
+    sortListStroke.Color = colors.border
+    sortListStroke.Thickness = 1
+    sortListStroke.Parent = sortList
+    
+    local sortLayout = Instance.new("UIListLayout")
+    sortLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    sortLayout.Padding = UDim.new(0, 1)
+    sortLayout.Parent = sortList
+    
+    -- Sort Options
+    local sortOptions = {
+        {text = "Name A-Z", mode = "name_asc"},
+        {text = "Name Z-A", mode = "name_desc"},
+        {text = "Most Owned", mode = "owned_desc"},
+        {text = "Least Owned", mode = "owned_asc"}
+    }
+    
+    for i, option in ipairs(sortOptions) do
+        local sortOption = Instance.new("TextButton")
+        sortOption.Name = "SortOption" .. i
+        sortOption.Size = UDim2.new(1, 0, 0, 25)
+        sortOption.BackgroundColor3 = colors.hover
+        sortOption.BorderSizePixel = 0
+        sortOption.Text = option.text
+        sortOption.TextSize = 11
+        sortOption.Font = Enum.Font.Gotham
+        sortOption.TextColor3 = colors.text
+        sortOption.TextXAlignment = Enum.TextXAlignment.Left
+        sortOption.Parent = sortList
+        
+        local optionPadding = Instance.new("UIPadding")
+        optionPadding.PaddingLeft = UDim.new(0, 8)
+        optionPadding.Parent = sortOption
+        
+        sortOption.MouseEnter:Connect(function()
+            sortOption.BackgroundColor3 = colors.primary
+        end)
+        
+        sortOption.MouseLeave:Connect(function()
+            sortOption.BackgroundColor3 = colors.hover
+        end)
+        
+        sortOption.MouseButton1Click:Connect(function()
+            sortMode = option.mode
+            sortBtn.Text = "Sort: " .. option.text:gsub(" ", "") .. " ▼"
+            sortList.Visible = false
+            saveConfig()
+            refreshContent()
+        end)
+    end
     
     -- Show Zero Toggle
     local zeroToggle = Instance.new("TextButton")
@@ -823,6 +942,41 @@ local function createFilterBar(parent)
     local configCorner = Instance.new("UICorner")
     configCorner.CornerRadius = UDim.new(0, 4)
     configCorner.Parent = configToggle
+    
+    -- Tooltip for Configured filter
+    local configTooltip = Instance.new("TextLabel")
+    configTooltip.Name = "ConfigTooltip"
+    configTooltip.Size = UDim2.new(0, 200, 0, 40)
+    configTooltip.Position = UDim2.new(0.65, 5, 0, 45)
+    configTooltip.BackgroundColor3 = colors.background
+    configTooltip.BorderSizePixel = 0
+    configTooltip.Text = "Show only items with 'Send until' values configured"
+    configTooltip.TextSize = 10
+    configTooltip.Font = Enum.Font.Gotham
+    configTooltip.TextColor3 = colors.text
+    configTooltip.TextWrapped = true
+    configTooltip.TextXAlignment = Enum.TextXAlignment.Center
+    configTooltip.TextYAlignment = Enum.TextYAlignment.Center
+    configTooltip.Visible = false
+    configTooltip.Parent = filterBar
+    
+    local tooltipCorner = Instance.new("UICorner")
+    tooltipCorner.CornerRadius = UDim.new(0, 4)
+    tooltipCorner.Parent = configTooltip
+    
+    local tooltipStroke = Instance.new("UIStroke")
+    tooltipStroke.Color = colors.border
+    tooltipStroke.Thickness = 1
+    tooltipStroke.Parent = configTooltip
+    
+    -- Tooltip hover events
+    configToggle.MouseEnter:Connect(function()
+        configTooltip.Visible = true
+    end)
+    
+    configToggle.MouseLeave:Connect(function()
+        configTooltip.Visible = false
+    end)
     
     return filterBar
 end
@@ -1175,15 +1329,31 @@ local function refreshContent()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed input functionality
-        minInput.FocusLost:Connect(function()
-            petSpeedMin = tonumber(minInput.Text) or 0
-            saveConfig()
+        -- Speed input functionality (real-time updates)
+        minInput.Changed:Connect(function(prop)
+            if prop == "Text" then
+                local newValue = tonumber(minInput.Text) or 0
+                if newValue ~= petSpeedMin then
+                    petSpeedMin = newValue
+                    saveConfig()
+                    if petMode == "Speed" then
+                        refreshContent() -- Refresh to show pets matching new speed range
+                    end
+                end
+            end
         end)
         
-        maxInput.FocusLost:Connect(function()
-            petSpeedMax = tonumber(maxInput.Text) or 999999999
-            saveConfig()
+        maxInput.Changed:Connect(function(prop)
+            if prop == "Text" then
+                local newValue = tonumber(maxInput.Text) or 999999999
+                if newValue ~= petSpeedMax then
+                    petSpeedMax = newValue
+                    saveConfig()
+                    if petMode == "Speed" then
+                        refreshContent() -- Refresh to show pets matching new speed range
+                    end
+                end
+            end
         end)
     end
     
@@ -1317,7 +1487,7 @@ function AutoTradeUI.CreateUI()
     -- Title
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.Size = UDim2.new(1, -140, 0, 20)
+    title.Size = UDim2.new(1, -200, 0, 20)
     title.Position = UDim2.new(0, 100, 0, 12)
     title.BackgroundTransparency = 1
     title.Text = "Auto Trade System"
@@ -1327,6 +1497,23 @@ function AutoTradeUI.CreateUI()
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = MainFrame
     
+    -- Refresh Button
+    local refreshBtn = Instance.new("TextButton")
+    refreshBtn.Name = "RefreshBtn"
+    refreshBtn.Size = UDim2.new(0, 50, 0, 25)
+    refreshBtn.Position = UDim2.new(1, -60, 0, 10)
+    refreshBtn.BackgroundColor3 = colors.primary
+    refreshBtn.BorderSizePixel = 0
+    refreshBtn.Text = "🔄"
+    refreshBtn.TextSize = 14
+    refreshBtn.Font = Enum.Font.GothamBold
+    refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    refreshBtn.Parent = MainFrame
+    
+    local refreshCorner = Instance.new("UICorner")
+    refreshCorner.CornerRadius = UDim.new(0, 6)
+    refreshCorner.Parent = refreshBtn
+    
     -- Create sections
     local targetSection = createTargetSection(MainFrame)
     local filterBar = createFilterBar(MainFrame)
@@ -1335,6 +1522,7 @@ function AutoTradeUI.CreateUI()
     -- Window control events
     local closeBtn = windowControls.CloseBtn
     local minimizeBtn = windowControls.MinimizeBtn
+    local refreshBtn = MainFrame.RefreshBtn
     
     closeBtn.MouseButton1Click:Connect(function()
         AutoTradeUI.Hide()
@@ -1353,6 +1541,18 @@ function AutoTradeUI.CreateUI()
             filterBar.Visible = false
             tabSection.Visible = false
             isMinimized = true
+        end
+    end)
+    
+    -- Refresh button functionality
+    refreshBtn.MouseButton1Click:Connect(function()
+        refreshContent()
+        if WindUI then
+            WindUI:Notify({
+                Title = "🔄 Refreshed",
+                Content = "All data has been updated",
+                Duration = 2
+            })
         end
     end)
     
@@ -1403,34 +1603,67 @@ function setupEventHandlers()
     local sendBtn = targetSection.SendBtn
     local autoTradeToggle = targetSection.AutoTradeToggle
     
-    -- Target dropdown (simplified - cycles through players)
-    targetDropdown.MouseButton1Click:Connect(function()
+    -- Target dropdown functionality
+    local function updateTargetDropdown()
+        local dropdownList = targetSection.DropdownList
+        -- Clear existing options
+        for _, child in pairs(dropdownList:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
+        
         local playerList = getPlayerList()
-        local currentIndex = 1
-        for i, name in ipairs(playerList) do
-            if name == selectedTarget then
-                currentIndex = i
-                break
-            end
+        for i, playerName in ipairs(playerList) do
+            local option = Instance.new("TextButton")
+            option.Name = "Option" .. i
+            option.Size = UDim2.new(1, 0, 0, 25)
+            option.BackgroundColor3 = colors.hover
+            option.BorderSizePixel = 0
+            option.Text = playerName
+            option.TextSize = 12
+            option.Font = Enum.Font.Gotham
+            option.TextColor3 = colors.text
+            option.TextXAlignment = Enum.TextXAlignment.Left
+            option.Parent = dropdownList
+            
+            local optionPadding = Instance.new("UIPadding")
+            optionPadding.PaddingLeft = UDim.new(0, 8)
+            optionPadding.Parent = option
+            
+            option.MouseEnter:Connect(function()
+                option.BackgroundColor3 = colors.primary
+            end)
+            
+            option.MouseLeave:Connect(function()
+                option.BackgroundColor3 = colors.hover
+            end)
+            
+            option.MouseButton1Click:Connect(function()
+                selectedTarget = playerName
+                targetSection.NameLabel.Text = selectedTarget
+                targetDropdown.Text = "Select Target ▼"
+                dropdownList.Visible = false
+                
+                -- Update avatar if not random
+                if selectedTarget ~= "Random Player" then
+                    local player = getPlayerByName(selectedTarget)
+                    if player then
+                        local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=150&height=150&format=png"
+                        targetSection.Avatar.Image = avatarUrl
+                    end
+                else
+                    targetSection.Avatar.Image = ""
+                end
+            end)
         end
-        
-        local nextIndex = currentIndex + 1
-        if nextIndex > #playerList then
-            nextIndex = 1
-        end
-        
-        selectedTarget = playerList[nextIndex]
-        targetSection.NameLabel.Text = selectedTarget
-        
-        -- Update avatar if not random
-        if selectedTarget ~= "Random Player" then
-            local player = getPlayerByName(selectedTarget)
-            if player then
-                local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=150&height=150&format=png"
-                targetSection.Avatar.Image = avatarUrl
-            end
-        else
-            targetSection.Avatar.Image = ""
+    end
+    
+    targetDropdown.MouseButton1Click:Connect(function()
+        local dropdownList = targetSection.DropdownList
+        dropdownList.Visible = not dropdownList.Visible
+        if dropdownList.Visible then
+            updateTargetDropdown()
         end
     end)
     
@@ -1442,7 +1675,8 @@ function setupEventHandlers()
         if #itemsToSend > 0 then
             local item = itemsToSend[1]
             task.spawn(function()
-                local success, err = performTrade(item.uid, item.type, nil)
+                -- Manual send should return to position after trade
+                local success, err = performTrade(item.uid, item.type, nil, true)
                 if not success and WindUI then
                     WindUI:Notify({
                         Title = "❌ Trade Failed",
@@ -1480,6 +1714,8 @@ function setupEventHandlers()
     -- Filter bar events
     local filterBar = ScreenGui.MainFrame.FilterBar
     local searchBox = filterBar.SearchBox
+    local sortBtn = filterBar.SortBtn
+    local sortList = filterBar.SortList
     local zeroToggle = filterBar.ZeroToggle
     local configToggle = filterBar.ConfigToggle
     
@@ -1489,6 +1725,11 @@ function setupEventHandlers()
             saveConfig()
             refreshContent()
         end
+    end)
+    
+    -- Sort dropdown functionality
+    sortBtn.MouseButton1Click:Connect(function()
+        sortList.Visible = not sortList.Visible
     end)
     
     zeroToggle.MouseButton1Click:Connect(function()
@@ -1580,14 +1821,25 @@ function AutoTradeUI.IsVisible()
     return ScreenGui and ScreenGui.Enabled
 end
 
--- Monitor inventory changes for auto-trade
+-- Monitor inventory changes for auto-trade and real-time updates
 local inventoryConnection = nil
+local lastInventoryUpdate = 0
 local function startInventoryMonitoring()
     if inventoryConnection then
         inventoryConnection:Disconnect()
     end
     
     inventoryConnection = RunService.Heartbeat:Connect(function()
+        local currentTime = tick()
+        
+        -- Update UI every 2 seconds for real-time inventory amounts
+        if currentTime - lastInventoryUpdate >= 2 then
+            lastInventoryUpdate = currentTime
+            if ScreenGui and ScreenGui.Enabled then
+                refreshContent()
+            end
+        end
+        
         if autoTradeEnabled and not isTrading then
             -- Check for items to send every few seconds
             task.wait(2)
