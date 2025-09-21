@@ -24,7 +24,7 @@ local HardcodedEggTypes = {
 }
 
 local HardcodedMutations = {
-    "Golden", "Diamond", "Electric", "Fire", "Dino"
+    "Golden", "Diamond", "Electric", "Fire", "Dino", "Snow"
 }
 
 -- Services
@@ -469,119 +469,6 @@ local function getAllMutations()
     table.sort(sortedMutations)
     
     return sortedMutations
-end
-
--- Hardcoded fruit data for sending
-local HardcodedFruits = {
-    "Strawberry", "Blueberry", "Watermelon", "Apple", "Orange", "Corn", "Banana", 
-    "Grape", "Pear", "Pineapple", "GoldMango", "BloodstoneCycad", "ColossalPinecone", 
-    "VoltGinkgo", "DeepseaPearlFruit", "Durian", "DragonFruit"
-}
-
--- Name normalization helpers for fruit inventory mapping
-local function normalizeFruitName(name)
-    if type(name) ~= "string" then return "" end
-    local lowered = string.lower(name)
-    lowered = lowered:gsub("[%s_%-%./]", "")
-    return lowered
-end
-
--- Get player's fruit inventory
-local function getPlayerFruitInventory()
-    local localPlayer = Players.LocalPlayer
-    if not localPlayer then
-        return {}
-    end
-
-    local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then
-        return {}
-    end
-
-    local data = playerGui:FindFirstChild("Data")
-    if not data then
-        return {}
-    end
-
-    local asset = data:FindFirstChild("Asset")
-    if not asset then
-        return {}
-    end
-
-    local fruitInventory = {}
-
-    -- Read from Attributes on Asset (primary source)
-    local attrMap = {}
-    local ok, attrs = pcall(function()
-        return asset:GetAttributes()
-    end)
-    if ok and type(attrs) == "table" then
-        attrMap = attrs
-    end
-    
-    for _, fruitName in ipairs(HardcodedFruits) do
-        local amount = attrMap[fruitName]
-        if amount == nil then
-            -- Fallback by normalized key search
-            local want = normalizeFruitName(fruitName)
-            for k, v in pairs(attrMap) do
-                local nk = normalizeFruitName(k)
-                if nk == want then
-                    amount = v
-                    break
-                end
-            end
-        end
-        if type(amount) == "string" then amount = tonumber(amount) or 0 end
-        if type(amount) == "number" and amount > 0 then
-            fruitInventory[fruitName] = amount
-        end
-    end
-
-    -- Also support legacy children-based values as fallback/merge
-    for _, child in pairs(asset:GetChildren()) do
-        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-            local childName = child.Name
-            -- Check if this matches any of our hardcoded fruits
-            for _, fruitName in ipairs(HardcodedFruits) do
-                if normalizeFruitName(childName) == normalizeFruitName(fruitName) then
-                    local amount = child.Value
-                    if type(amount) == "string" then amount = tonumber(amount) or 0 end
-                    if type(amount) == "number" and amount > 0 then
-                        fruitInventory[fruitName] = amount
-                    end
-                    break
-                end
-            end
-        end
-    end
-
-    return fruitInventory
-end
-
--- Get all fruits from inventory + hardcoded list
-local function getAllFruits()
-    local fruits = {}
-    
-    -- Add hardcoded fruits
-    for _, fruitName in ipairs(HardcodedFruits) do
-        fruits[fruitName] = true
-    end
-    
-    -- Add fruits from inventory
-    local fruitInventory = getPlayerFruitInventory()
-    for fruitName, _ in pairs(fruitInventory) do
-        fruits[fruitName] = true
-    end
-    
-    -- Convert to sorted array
-    local sortedFruits = {}
-    for fruitName in pairs(fruits) do
-        table.insert(sortedFruits, fruitName)
-    end
-    table.sort(sortedFruits)
-    
-    return sortedFruits
 end
 
 -- Get player list for sending pets
@@ -1587,331 +1474,251 @@ function SendTrashSystem.Init(dependencies)
     Config = dependencies.Config
     local providedTab = dependencies.Tab
     
+    -- Load saved webhook URL from config
+    -- webhook load disabled
+    
     -- Start precise event-driven watchers for T/M replication
     startDataWatchers()
     
     -- Create the Send Trash tab (or reuse provided Tab from main script)
-    local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Auto Trade"})
+    local TrashTab = providedTab or Window:Tab({ Title = "🗑️ | Send Trash"})
     
-    -- Only add a button to open the custom trade UI
-    TrashTab:Button({
-        Title = "🔄 Open Auto Trade",
-        Desc = "Open custom trade interface with advanced item selection",
-        Callback = function()
-            if not _G.TradeUI then
-                -- Try to load TradeUI from HTTP first, then fallback to inline
-                local success, TradeUI = pcall(function()
-                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/ZebuxHub/Main/refs/heads/main/TradeUI.lua"))()
-                end)
-                
-                if success and TradeUI then
-                    _G.TradeUI = TradeUI
-                else
-                    -- Create inline TradeUI if HTTP loading fails
-                    if WindUI then
-                        WindUI:Notify({
-                            Title = "⚠️ Loading TradeUI",
-                            Content = "Loading embedded TradeUI interface...",
-                            Duration = 3
-                        })
-                    end
-                    
-                    -- Load embedded TradeUI (we'll create this inline)
-                    _G.TradeUI = createInlineTradeUI()
-                end
-                
-                if _G.TradeUI then
-                    _G.TradeUI.Init({
-                        WindUI = WindUI,
-                        Config = Config,
-                        SendTrashSystem = SendTrashSystem
-                    })
-                end
-            end
-            
-            if _G.TradeUI then
-                _G.TradeUI.Show()
+    -- Status display
+    statusParagraph = TrashTab:Paragraph({
+        Title = "Trash System Status:",
+        Desc = "Loading pet information...",
+        Image = "trash-2",
+        ImageSize = 22
+    })
+    
+    -- Keep tracking toggle
+    keepTrackingToggle = TrashTab:Toggle({
+        Title = "Keep Tracking When Empty",
+        Desc = "Continue monitoring even when no items match filters",
+        Value = false,
+        Callback = function(state)
+            keepTrackingWhenEmpty = state
+            if state then
+                WindUI:Notify({ Title = "Keep Tracking", Content = "Keeps monitoring when no items are available", Duration = 3 })
             else
-                if WindUI then
-                    WindUI:Notify({
-                        Title = "❌ TradeUI Error",
-                        Content = "Failed to load TradeUI. Please try again.",
-                        Duration = 5
-                    })
-                end
+                WindUI:Notify({ Title = "Stop When Empty", Content = "Stops when no items match filters", Duration = 3 })
             end
         end
     })
     
-    -- Register minimal config
-    if Config then
-        -- We'll handle config in the new TradeUI
-    end
-end
+    
+    -- Session limit input
+    sessionLimitInput = TrashTab:Input({
+        Title = "Session Limit",
+        Desc = "Maximum items to send/sell per session (default: 50)",
+        Default = "50",
+        Numeric = true,
+        Finished = true,
+        Callback = function(value)
+            local numValue = tonumber(value) or 50
+            if numValue < 1 then numValue = 1 end -- Minimum of 1
+            sessionLimits.maxSendPet = numValue
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            print("Session limits updated: " .. numValue .. " items per session")
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
+        end,
+    })
 
--- Create inline TradeUI function - Full Implementation
-local function createInlineTradeUI()
-    local TradeUI = {}
-    
-    -- Services for TradeUI
-    local TweenService = game:GetService("TweenService")
-    local UserInputService = game:GetService("UserInputService")
-    local RunService = game:GetService("RunService")
-    
-    -- UI Variables
-    local ScreenGui = nil
-    local MainFrame = nil
-    local isDragging = false
-    local dragStart = nil
-    local startPos = nil
-    local isMinimized = false
-    local originalSize = nil
-    local minimizedSize = nil
-    local currentPage = "pets"
-    local searchText = ""
-    
-    -- Trade settings
-    local selectedTarget = "Random Player"
-    local tradeSettings = { pets = {}, eggs = {}, fruits = {} }
-    local autoTradeEnabled = false
-    local savedPlayerPosition = nil
-    
-    -- Dependencies
-    local WindUI = nil
-    local Config = nil
-    local SendTrashSystem = nil
-    
-    -- macOS Dark Theme Colors
-    local colors = {
-        background = Color3.fromRGB(18, 18, 20),
-        surface = Color3.fromRGB(32, 32, 34),
-        primary = Color3.fromRGB(0, 122, 255),
-        secondary = Color3.fromRGB(88, 86, 214),
-        text = Color3.fromRGB(255, 255, 255),
-        textSecondary = Color3.fromRGB(200, 200, 200),
-        textTertiary = Color3.fromRGB(150, 150, 150),
-        border = Color3.fromRGB(50, 50, 52),
-        selected = Color3.fromRGB(0, 122, 255),
-        hover = Color3.fromRGB(45, 45, 47),
-        pageActive = Color3.fromRGB(0, 122, 255),
-        pageInactive = Color3.fromRGB(60, 60, 62),
-        close = Color3.fromRGB(255, 69, 58),
-        minimize = Color3.fromRGB(255, 159, 10),
-        maximize = Color3.fromRGB(48, 209, 88),
-        success = Color3.fromRGB(48, 209, 88),
-        warning = Color3.fromRGB(255, 159, 10),
-        error = Color3.fromRGB(255, 69, 58)
-    }
-    
-    -- Fruit and Egg Data
-    local FruitData = {
-        Strawberry = { Name = "Strawberry", Icon = "🍓", Rarity = 1 },
-        Blueberry = { Name = "Blueberry", Icon = "🔵", Rarity = 1 },
-        Watermelon = { Name = "Watermelon", Icon = "🍉", Rarity = 2 },
-        Apple = { Name = "Apple", Icon = "🍎", Rarity = 2 },
-        Orange = { Name = "Orange", Icon = "🍊", Rarity = 3 },
-        Corn = { Name = "Corn", Icon = "🌽", Rarity = 3 },
-        Banana = { Name = "Banana", Icon = "🍌", Rarity = 4 },
-        Grape = { Name = "Grape", Icon = "🍇", Rarity = 4 },
-        Pear = { Name = "Pear", Icon = "🍐", Rarity = 5 },
-        Pineapple = { Name = "Pineapple", Icon = "🍍", Rarity = 5 },
-        GoldMango = { Name = "Gold Mango", Icon = "🥭", Rarity = 6 },
-        BloodstoneCycad = { Name = "Bloodstone Cycad", Icon = "🌿", Rarity = 6 },
-        ColossalPinecone = { Name = "Colossal Pinecone", Icon = "🌲", Rarity = 6 },
-        VoltGinkgo = { Name = "Volt Ginkgo", Icon = "⚡", Rarity = 6 },
-        DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Icon = "💠", Rarity = 6 },
-        Durian = { Name = "Durian", Icon = "🥥", Rarity = 6, IsNew = true },
-        DragonFruit = { Name = "Dragon Fruit", Icon = "🐲", Rarity = 6, IsNew = true }
-    }
-    
-    local EggData = {
-        BasicEgg = { Name = "Basic Egg", Icon = "rbxassetid://129248801621928", Rarity = 1 },
-        RareEgg = { Name = "Rare Egg", Icon = "rbxassetid://71012831091414", Rarity = 2 },
-        SuperRareEgg = { Name = "Super Rare Egg", Icon = "rbxassetid://93845452154351", Rarity = 2 },
-        EpicEgg = { Name = "Epic Egg", Icon = "rbxassetid://116395645531721", Rarity = 2 },
-        LegendEgg = { Name = "Legend Egg", Icon = "rbxassetid://90834918351014", Rarity = 3 },
-        PrismaticEgg = { Name = "Prismatic Egg", Icon = "rbxassetid://79960683434582", Rarity = 4 },
-        HyperEgg = { Name = "Hyper Egg", Icon = "rbxassetid://104958288296273", Rarity = 4 },
-        VoidEgg = { Name = "Void Egg", Icon = "rbxassetid://122396162708984", Rarity = 5 },
-        BowserEgg = { Name = "Bowser Egg", Icon = "rbxassetid://71500536051510", Rarity = 5 },
-        DemonEgg = { Name = "Demon Egg", Icon = "rbxassetid://126412407639969", Rarity = 5 },
-        CornEgg = { Name = "Corn Egg", Icon = "rbxassetid://94739512852461", Rarity = 5 },
-        BoneDragonEgg = { Name = "Bone Dragon Egg", Icon = "rbxassetid://83209913424562", Rarity = 5 },
-        UltraEgg = { Name = "Ultra Egg", Icon = "rbxassetid://83909590718799", Rarity = 6 },
-        DinoEgg = { Name = "Dino Egg", Icon = "rbxassetid://80783528632315", Rarity = 6 },
-        FlyEgg = { Name = "Fly Egg", Icon = "rbxassetid://109240587278187", Rarity = 6 },
-        UnicornEgg = { Name = "Unicorn Egg", Icon = "rbxassetid://123427249205445", Rarity = 6 },
-        AncientEgg = { Name = "Ancient Egg", Icon = "rbxassetid://113910587565739", Rarity = 6 },
-        UnicornProEgg = { Name = "Unicorn Pro Egg", Icon = "rbxassetid://140138063696377", Rarity = 6 },
-        SnowbunnyEgg = { Name = "Snowbunny Egg", Icon = "rbxassetid://136223941487914", Rarity = 3, IsNew = true },
-        DarkGoatyEgg = { Name = "Dark Goaty Egg", Icon = "rbxassetid://95956060312947", Rarity = 4, IsNew = true },
-        RhinoRockEgg = { Name = "Rhino Rock Egg", Icon = "rbxassetid://131221831910623", Rarity = 5, IsNew = true },
-        SaberCubEgg = { Name = "Saber Cub Egg", Icon = "rbxassetid://111953502835346", Rarity = 6, IsNew = true },
-        GeneralKongEgg = { Name = "General Kong Egg", Icon = "rbxassetid://106836613554535", Rarity = 6, IsNew = true },
-        PegasusEgg = { Name = "Pegasus Egg", Icon = "rbxassetid://83004379343725", Rarity = 6, IsNew = true }
-    }
-    
-    -- Simple UI Creation
-    function TradeUI.CreateUI()
-        if ScreenGui then
-            ScreenGui:Destroy()
+    -- Reset session limits button (moved directly under Session Limit)
+    TrashTab:Button({
+        Title = "Reset Session Limits",
+        Desc = "Reset counters for this session",
+        Callback = function()
+            sessionLimits.sendPetCount = 0
+            sessionLimits.limitReachedNotified = false -- Reset notification
+            webhookSent = false
+            sessionLogs = {}
+            actionCounter = 0
+            updateStatus()
+            WindUI:Notify({ Title = "Session Reset", Content = "Limits reset", Duration = 2 })
+            if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(sessionLimits.sendPetCount, sessionLimits.maxSendPet) end
         end
-        
-        ScreenGui = Instance.new("ScreenGui")
-        ScreenGui.Name = "TradeUI"
-        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        
-        MainFrame = Instance.new("Frame")
-        MainFrame.Name = "MainFrame"
-        MainFrame.Size = UDim2.new(0, 600, 0, 400)
-        MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-        MainFrame.BackgroundColor3 = colors.background
-        MainFrame.BorderSizePixel = 0
-        MainFrame.Parent = ScreenGui
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 12)
-        corner.Parent = MainFrame
-        
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = colors.border
-        stroke.Thickness = 1
-        stroke.Parent = MainFrame
-        
-        -- Title
-        local title = Instance.new("TextLabel")
-        title.Name = "Title"
-        title.Size = UDim2.new(1, -40, 0, 30)
-        title.Position = UDim2.new(0, 20, 0, 10)
-        title.BackgroundTransparency = 1
-        title.Text = "🔄 Auto Trade System"
-        title.TextSize = 16
-        title.Font = Enum.Font.GothamSemibold
-        title.TextColor3 = colors.text
-        title.TextXAlignment = Enum.TextXAlignment.Center
-        title.Parent = MainFrame
-        
-        -- Close Button
-        local closeBtn = Instance.new("TextButton")
-        closeBtn.Name = "CloseBtn"
-        closeBtn.Size = UDim2.new(0, 30, 0, 30)
-        closeBtn.Position = UDim2.new(1, -35, 0, 5)
-        closeBtn.BackgroundColor3 = colors.close
-        closeBtn.BorderSizePixel = 0
-        closeBtn.Text = "✕"
-        closeBtn.TextSize = 14
-        closeBtn.Font = Enum.Font.GothamBold
-        closeBtn.TextColor3 = colors.text
-        closeBtn.Parent = MainFrame
-        
-        local closeBtnCorner = Instance.new("UICorner")
-        closeBtnCorner.CornerRadius = UDim.new(0.5, 0)
-        closeBtnCorner.Parent = closeBtn
-        
-        closeBtn.MouseButton1Click:Connect(function()
-            ScreenGui:Destroy()
-            ScreenGui = nil
-        end)
-        
-        -- Content
-        local content = Instance.new("TextLabel")
-        content.Name = "Content"
-        content.Size = UDim2.new(1, -40, 1, -80)
-        content.Position = UDim2.new(0, 20, 0, 50)
-        content.BackgroundTransparency = 1
-        content.Text = "🚧 Auto Trade System is being developed!\n\n" ..
-                      "Features coming soon:\n" ..
-                      "• Visual item selection with inventory counts\n" ..
-                      "• Target player selection with avatars\n" ..
-                      "• Individual send amount configuration\n" ..
-                      "• Auto-send when reaching specified amounts\n" ..
-                      "• Teleport + Focus + Send functionality\n\n" ..
-                      "Stay tuned for updates!"
-        content.TextSize = 14
-        content.Font = Enum.Font.Gotham
-        content.TextColor3 = colors.textSecondary
-        content.TextXAlignment = Enum.TextXAlignment.Left
-        content.TextYAlignment = Enum.TextYAlignment.Top
-        content.TextWrapped = true
-        content.Parent = MainFrame
-        
-        -- Make draggable
-        local titleBar = Instance.new("Frame")
-        titleBar.Name = "TitleBar"
-        titleBar.Size = UDim2.new(1, 0, 0, 40)
-        titleBar.Position = UDim2.new(0, 0, 0, 0)
-        titleBar.BackgroundTransparency = 1
-        titleBar.Parent = MainFrame
-        
-        titleBar.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                isDragging = true
-                dragStart = input.Position
-                startPos = MainFrame.Position
-                
-                local connection
-                connection = input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        isDragging = false
-                        connection:Disconnect()
-                    end
-                end)
-            end
-        end)
-        
-        UserInputService.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-                local delta = input.Position - dragStart
-                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            end
-        end)
-        
-        return ScreenGui
-    end
+    })
+
+    -- Main toggle
+    trashToggle = TrashTab:Toggle({
+        Title = "Send Trash",
+        Desc = "Automatically send selected pets/eggs",
+        Value = false,
+        Callback = function(state)
+			trashEnabled = state
+			
+			if state then
+				-- Start of a new run/session: do not reset logs, only reset webhookSent
+				webhookSent = false
+				stopRequested = false
+				if _G.WebhookSystem and _G.WebhookSystem.SyncTradeCounters then _G.WebhookSystem.SyncTradeCounters(0, sessionLimits.maxSendPet) end
+				task.spawn(function()
+					syncSelectorsFromControls()
+					processTrash()
+				end)
+				WindUI:Notify({ Title = "Send Trash", Content = "Started", Duration = 3 })
+			else
+				-- Graceful stop: request stop, allow in-flight send to conclude
+				stopRequested = true
+				WindUI:Notify({ Title = "Send Trash", Content = "Stopped", Duration = 3 })
+				-- no immediate webhook here; let processTrash() handle it after it exits
+			end
+		end
+    })
     
-    function TradeUI.Init(deps)
-        WindUI = deps.WindUI
-        Config = deps.Config
-        SendTrashSystem = deps.SendTrashSystem
-    end
+    TrashTab:Section({ Title = "Target Settings", Icon = "target" })
     
-    function TradeUI.Show()
-        if not ScreenGui then
-            TradeUI.CreateUI()
+    -- Send mode dropdown
+    sendModeDropdown = TrashTab:Dropdown({
+        Title = "Send Type",
+        Desc = "Choose what to send",
+        Values = {"Pets", "Eggs", "Both"},
+        Value = "Both",
+        Callback = function(selection) end
+    })
+    
+    -- Target player dropdown
+    targetPlayerDropdown = TrashTab:Dropdown({
+        Title = "Target Player",
+        Desc = "Random cycles through players",
+        Values = refreshPlayerList(),
+        Value = "Random Player",
+        Callback = function(selection)
+            selectedTargetName = selection or "Random Player"
+            -- Reset random target state when user changes selection
+            randomTargetState.current = nil
+            randomTargetState.fails = 0
         end
-        
-        ScreenGui.Enabled = true
-        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        
-        if WindUI then
+    })
+    
+    -- Refresh Target List button (placed directly below target dropdown)
+    TrashTab:Button({
+        Title = "Refresh Target List",
+        Desc = "Update player list",
+        Callback = function()
+            if targetPlayerDropdown and targetPlayerDropdown.SetValues then
+                pcall(function() targetPlayerDropdown:SetValues(refreshPlayerList()) end)
+            end
+        end
+    })
+    
+    TrashTab:Section({ Title = "Pet Speed Filters", Icon = "zap" })
+    
+    -- Pet minimum speed input
+    petMinSpeedInput = TrashTab:Input({
+        Title = "⚡ Min Pet Speed",
+        Desc = "Minimum speed to send pets (supports K/M/B/T)",
+        Value = "0",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            local parsedValue = parseSpeedInput(value)
+            petMinSpeed = parsedValue
+            print("Pet min speed set to:", petMinSpeed)
+        end
+    })
+    
+    -- Pet maximum speed input
+    petMaxSpeedInput = TrashTab:Input({
+        Title = "⚡ Max Pet Speed", 
+        Desc = "Maximum speed to send pets (supports K/M/B/T)",
+        Value = "999999999",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            local parsedValue = parseSpeedInput(value)
+            petMaxSpeed = parsedValue
+            print("Pet max speed set to:", petMaxSpeed)
+        end
+    })
+    
+    TrashTab:Section({ Title = "Egg Filters", Icon = "mail" })
+    
+    -- Send egg type filter (now include-only)
+    sendEggTypeDropdown = TrashTab:Dropdown({
+        Title = "Egg Types",
+        Desc = "Types to send (empty = all)",
+        Values = getAllEggTypes(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggTypes = selectionToList(selection)
+        end
+    })
+    
+    -- Send egg mutation filter (now include-only)
+    sendEggMutationDropdown = TrashTab:Dropdown({
+        Title = "Egg Mutations", 
+        Desc = "Mutations to send (empty = all)",
+        Values = getAllMutations(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            selectedEggMuts = selectionToList(selection)
+        end
+    })
+    
+    -- Selling UI removed per request
+    
+    TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
+    
+    -- Webhook input (optional) - Auto-saves to config
+    -- webhook UI removed
+    
+    -- Ensure the loaded webhook URL is displayed in the input field
+    --
+    
+    -- Removed generic "Refresh Lists" button (target-specific refresh placed under target dropdown)
+    
+    -- Cache refresh button
+    TrashTab:Button({
+        Title = "🔄 Refresh Cache",
+        Desc = "Force refresh inventory cache and clear send progress",
+        Callback = function()
+            forceRefreshCache()
+            clearSendProgress()
+            updateStatus()
+            
             WindUI:Notify({
-                Title = "🔄 Auto Trade",
-                Content = "Trade UI opened successfully!",
+                Title = "🔄 Cache Refreshed",
+                Content = "Inventory cache and send progress cleared!",
                 Duration = 3
             })
         end
-    end
-    
-    function TradeUI.Hide()
-        if ScreenGui then
-            ScreenGui.Enabled = false
-        end
-    end
-    
-    return TradeUI
-end
+    })
 
--- Expose functions for TradeUI
-SendTrashSystem.getPetInventory = getPetInventory
-SendTrashSystem.getEggInventory = getEggInventory
-SendTrashSystem.getPlayerFruitInventory = getPlayerFruitInventory
-SendTrashSystem.getAllPetTypes = getAllPetTypes
-SendTrashSystem.getAllEggTypes = getAllEggTypes
-SendTrashSystem.getAllFruits = getAllFruits
-SendTrashSystem.getAllMutations = getAllMutations
-SendTrashSystem.refreshPlayerList = refreshPlayerList
-SendTrashSystem.sendItemToPlayer = sendItemToPlayer
-SendTrashSystem.focusItem = focusItem
-SendTrashSystem.createInlineTradeUI = createInlineTradeUI
+    -- Removed: Fix Unknown Items and Force Resolve Names buttons
+
+    -- Send current inventory webhook button
+    -- webhook send button removed
+    
+    
+    -- Register UI elements with config
+    if Config then
+        Config:Register("trashEnabled", trashToggle)
+        Config:Register("sendMode", sendModeDropdown)
+        Config:Register("targetPlayer", targetPlayerDropdown)
+        Config:Register("petMinSpeed", petMinSpeedInput)
+        Config:Register("petMaxSpeed", petMaxSpeedInput)
+        Config:Register("sendEggTypeFilter", sendEggTypeDropdown)
+        Config:Register("sendEggMutationFilter", sendEggMutationDropdown)
+        Config:Register("keepTrackingWhenEmpty", keepTrackingToggle)
+        -- webhook config removed
+        -- Selling config removed
+        -- speed threshold removed
+        Config:Register("sessionLimit", sessionLimitInput)
+    end
+    
+    -- Initial status update
+    task.spawn(function()
+        task.wait(1)
+        -- Ensure selectors reflect dropdowns after config load
+        syncSelectorsFromControls()
+        updateStatus()
+    end)
+end
 
 return SendTrashSystem
