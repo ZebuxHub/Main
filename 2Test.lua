@@ -1663,39 +1663,9 @@ function SendTrashSystem.Init(dependencies)
     
     -- Selling UI removed per request
     
-    TrashTab:Section({ Title = "🛠️ Manual Controls", Icon = "settings" })
+    TrashTab:Section({ Title = "🔄 Auto Trade System", Icon = "arrow-right" })
     
-    -- Webhook input (optional) - Auto-saves to config
-    -- webhook UI removed
-    
-    -- Ensure the loaded webhook URL is displayed in the input field
-    --
-    
-    -- Removed generic "Refresh Lists" button (target-specific refresh placed under target dropdown)
-    
-    -- Cache refresh button
-    TrashTab:Button({
-        Title = "🔄 Refresh Cache",
-        Desc = "Force refresh inventory cache and clear send progress",
-        Callback = function()
-            forceRefreshCache()
-            clearSendProgress()
-            updateStatus()
-            
-            WindUI:Notify({
-                Title = "🔄 Cache Refreshed",
-                Content = "Inventory cache and send progress cleared!",
-                Duration = 3
-            })
-        end
-    })
-
-    -- Removed: Fix Unknown Items and Force Resolve Names buttons
-
-    -- Send current inventory webhook button
-    -- webhook send button removed
-    
-    -- New Auto Trade UI Button
+    -- New Auto Trade UI Button (only button remaining)
     TrashTab:Button({
         Title = "🔄 Open Auto Trade UI",
         Desc = "Open the new custom auto trade interface",
