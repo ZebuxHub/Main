@@ -1356,29 +1356,18 @@ local function createItemCard(itemId, itemData, category, parent)
         sendInput.ClearTextOnFocus = false
         sendInput.Parent = card
         
-        -- Input validation to only allow numbers
-        sendInput:GetPropertyChangedSignal("Text"):Connect(function()
-            local text = sendInput.Text
-            local filteredText = text:gsub("[^%d]", "") -- Only allow digits
-            if text ~= filteredText then
-                sendInput.Text = filteredText
-            end
-        end)
+        -- Removed aggressive real-time validation - let user type freely
         
         local inputCorner = Instance.new("UICorner")
         inputCorner.CornerRadius = UDim.new(0, 4)
         inputCorner.Parent = sendInput
         
-        -- Update config when input changes (with debouncing)
-        local inputDebounce = false
-        sendInput.FocusLost:Connect(function(enterPressed)
-            if inputDebounce then return end
-            inputDebounce = true
+        -- Auto-save as user types (with gentle debounce)
+        local saveDebounce = nil
+        local function updateConfig()
+            local inputText = sendInput.Text
+            local value = tonumber(inputText) or 0
             
-            -- Add small delay to prevent rapid firing
-            task.wait(0.1)
-            
-            local value = tonumber(sendInput.Text) or 0
             if not itemConfigs[category][itemId] then
                 itemConfigs[category][itemId] = {}
             end
@@ -1395,7 +1384,28 @@ local function createItemCard(itemId, itemData, category, parent)
             end
             
             saveConfig()
-            inputDebounce = false
+        end
+        
+        sendInput:GetPropertyChangedSignal("Text"):Connect(function()
+            -- Cancel previous save if still pending
+            if saveDebounce then
+                task.cancel(saveDebounce)
+            end
+            
+            -- Schedule save after short delay (no text filtering!)
+            saveDebounce = task.delay(0.5, function()
+                updateConfig()
+                saveDebounce = nil
+            end)
+        end)
+        
+        -- Also save immediately when focus is lost
+        sendInput.FocusLost:Connect(function()
+            if saveDebounce then
+                task.cancel(saveDebounce)
+                saveDebounce = nil
+            end
+            updateConfig()
         end)
         
         -- Show warning initially if needed with new format
@@ -1464,14 +1474,7 @@ local function createPetSpeedControls(parent)
     minSpeedInput.ClearTextOnFocus = false
     minSpeedInput.Parent = speedFrame
     
-    -- Input validation for min speed (allow numbers and common suffixes)
-    minSpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
-        local text = minSpeedInput.Text
-        local filteredText = text:gsub("[^%d%.KkMmBbTt]", "") -- Allow digits, decimal, and suffixes
-        if text ~= filteredText then
-            minSpeedInput.Text = filteredText
-        end
-    end)
+    -- Removed aggressive real-time validation for min speed input
     
     local minCorner = Instance.new("UICorner")
     minCorner.CornerRadius = UDim.new(0, 4)
@@ -1493,14 +1496,7 @@ local function createPetSpeedControls(parent)
     maxSpeedInput.ClearTextOnFocus = false
     maxSpeedInput.Parent = speedFrame
     
-    -- Input validation for max speed (allow numbers and common suffixes)
-    maxSpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
-        local text = maxSpeedInput.Text
-        local filteredText = text:gsub("[^%d%.KkMmBbTt]", "") -- Allow digits, decimal, and suffixes
-        if text ~= filteredText then
-            maxSpeedInput.Text = filteredText
-        end
-    end)
+    -- Removed aggressive real-time validation for max speed input
     
     local maxCorner = Instance.new("UICorner")
     maxCorner.CornerRadius = UDim.new(0, 4)
@@ -1544,17 +1540,13 @@ refreshContent = function()
             refreshContent() -- Refresh to show/hide individual pet configs
         end)
         
-        -- Speed input functionality (debounced updates)
-        local minInputDebounce = false
-        local maxInputDebounce = false
+        -- Speed input functionality (auto-save as you type)
+        local minSaveDebounce = nil
+        local maxSaveDebounce = nil
         
-        minInput.FocusLost:Connect(function()
-            if minInputDebounce then return end
-            minInputDebounce = true
-            
-            task.wait(0.1)
-            
-            local newValue = tonumber(minInput.Text) or 0
+        local function updateMinSpeed()
+            local inputText = minInput.Text
+            local newValue = tonumber(inputText) or 0
             if newValue ~= petSpeedMin then
                 petSpeedMin = newValue
                 saveConfig()
@@ -1562,17 +1554,11 @@ refreshContent = function()
                     refreshContent() -- Refresh to show pets matching new speed range
                 end
             end
-            
-            minInputDebounce = false
-        end)
+        end
         
-        maxInput.FocusLost:Connect(function()
-            if maxInputDebounce then return end
-            maxInputDebounce = true
-            
-            task.wait(0.1)
-            
-            local newValue = tonumber(maxInput.Text) or 999999999
+        local function updateMaxSpeed()
+            local inputText = maxInput.Text
+            local newValue = tonumber(inputText) or 100
             if newValue ~= petSpeedMax then
                 petSpeedMax = newValue
                 saveConfig()
@@ -1580,8 +1566,44 @@ refreshContent = function()
                     refreshContent() -- Refresh to show pets matching new speed range
                 end
             end
-            
-            maxInputDebounce = false
+        end
+        
+        -- Min speed auto-save
+        minInput:GetPropertyChangedSignal("Text"):Connect(function()
+            if minSaveDebounce then
+                task.cancel(minSaveDebounce)
+            end
+            minSaveDebounce = task.delay(0.5, function()
+                updateMinSpeed()
+                minSaveDebounce = nil
+            end)
+        end)
+        
+        minInput.FocusLost:Connect(function()
+            if minSaveDebounce then
+                task.cancel(minSaveDebounce)
+                minSaveDebounce = nil
+            end
+            updateMinSpeed()
+        end)
+        
+        -- Max speed auto-save
+        maxInput:GetPropertyChangedSignal("Text"):Connect(function()
+            if maxSaveDebounce then
+                task.cancel(maxSaveDebounce)
+            end
+            maxSaveDebounce = task.delay(0.5, function()
+                updateMaxSpeed()
+                maxSaveDebounce = nil
+            end)
+        end)
+        
+        maxInput.FocusLost:Connect(function()
+            if maxSaveDebounce then
+                task.cancel(maxSaveDebounce)
+                maxSaveDebounce = nil
+            end
+            updateMaxSpeed()
         end)
     end
     
