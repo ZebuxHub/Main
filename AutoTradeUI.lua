@@ -32,7 +32,7 @@ local currentTab = "Pets" -- "Pets", "Eggs", "Fruits"
   local petMode = "Individual" -- "Individual" or "Speed"
   local autoTradeEnabled = false
   local sendingSpeed = 2.0 -- Speed multiplier for sending process (2.0s = normal speed, down to 1.0s)
-  local globalMutationFilter = "Any" -- Global mutation filter for all pets/eggs
+  local globalMutationFilters = {"Any"} -- Global mutation filters for all pets/eggs (can be multiple)
   local oceanOnlyFilter = false -- Exclude ocean pets/eggs filter
   local petSpeedMin = 0
   local petSpeedMax = 999999999
@@ -587,10 +587,20 @@ end
 
 -- Check if an item matches the mutation filter
 local function itemMatchesMutations(item)
-    -- Apply global mutation filter first
-    if globalMutationFilter ~= "Any" then
+    -- Apply global mutation filters
+    if not (globalMutationFilters[1] == "Any" and #globalMutationFilters == 1) then
         local itemMutation = item:GetAttribute("M") or "None"
-        if itemMutation ~= globalMutationFilter then
+        
+        -- Check if item's mutation is in the selected filters
+        local matchesFilter = false
+        for _, filter in ipairs(globalMutationFilters) do
+            if filter == "Any" or itemMutation == filter then
+                matchesFilter = true
+                break
+            end
+        end
+        
+        if not matchesFilter then
             return false
         end
     end
@@ -603,15 +613,23 @@ local function itemMatchesOceanFilter(itemType, category)
     if oceanOnlyFilter and (category == "pets" or category == "eggs") then
         local itemData = nil
         if category == "pets" then
-            -- For pets, we need to check if they come from ocean eggs
-            -- This is more complex, so for now we'll skip ocean filtering for pets
-            return true
+            -- For pets, we can't easily determine if they're from ocean eggs
+            -- So we'll apply a simple rule: exclude known ocean pet types
+            -- This is a simplified approach - in a real implementation you'd track egg origins
+            local oceanPetTypes = {
+                "AngelFish", "Butterflyfish", "Needlefish", "Hairtail", "Clownfish", 
+                "Lionfish", "Shark", "Anglerfish", "SeaDragon", "Octopus"
+            }
+            for _, oceanPet in ipairs(oceanPetTypes) do
+                if itemType == oceanPet then
+                    return false -- Exclude ocean pets when filter is ON
+                end
+            end
         elseif category == "eggs" then
             itemData = EggData[itemType]
-        end
-        
-        if itemData and itemData.Category == "Ocean" then
-            return false -- Exclude ocean items when filter is ON
+            if itemData and itemData.Category == "Ocean" then
+                return false -- Exclude ocean eggs when filter is ON
+            end
         end
     end
     
@@ -1263,13 +1281,35 @@ local function createTargetSection(parent)
     globalMutationListLayout.Padding = UDim.new(0, 2)
     globalMutationListLayout.Parent = globalMutationList
     
+    -- Helper function to check if mutation is selected
+    local function isMutationSelected(mutationId)
+        for _, selected in ipairs(globalMutationFilters) do
+            if selected == mutationId then
+                return true
+            end
+        end
+        return false
+    end
+    
+    -- Helper function to update dropdown button text
+    local function updateDropdownText()
+        if #globalMutationFilters == 1 and globalMutationFilters[1] == "Any" then
+            globalMutationDropdown.Text = "Any ▼"
+        elseif #globalMutationFilters == 1 then
+            local mutationData = MutationData[globalMutationFilters[1]]
+            globalMutationDropdown.Text = (mutationData and mutationData.Icon or "?") .. " ▼"
+        else
+            globalMutationDropdown.Text = #globalMutationFilters .. " Selected ▼"
+        end
+    end
+    
     -- Create global mutation options
     local globalMutationOptions = {"Any", "Golden", "Diamond", "Electirc", "Fire", "Dino", "Snow"}
     for i, mutationId in ipairs(globalMutationOptions) do
         local option = Instance.new("TextButton")
         option.Name = "Option_" .. mutationId
         option.Size = UDim2.new(1, 0, 0, 25)
-        option.BackgroundColor3 = (mutationId == globalMutationFilter) and Color3.fromRGB(0, 132, 255) or colors.surface
+        option.BackgroundColor3 = isMutationSelected(mutationId) and Color3.fromRGB(0, 132, 255) or colors.surface
         option.BorderSizePixel = 0
         option.ZIndex = 101
         option.Parent = globalMutationList
@@ -1282,7 +1322,7 @@ local function createTargetSection(parent)
         end
         option.TextSize = 11
         option.Font = Enum.Font.Gotham
-        option.TextColor3 = (mutationId == globalMutationFilter) and Color3.fromRGB(255, 255, 255) or colors.text
+        option.TextColor3 = isMutationSelected(mutationId) and Color3.fromRGB(255, 255, 255) or colors.text
         option.TextXAlignment = Enum.TextXAlignment.Center
         
         local optionCorner = Instance.new("UICorner")
@@ -1291,26 +1331,53 @@ local function createTargetSection(parent)
         
         -- Hover effect
         option.MouseEnter:Connect(function()
-            if mutationId ~= globalMutationFilter then
+            if not isMutationSelected(mutationId) then
                 option.BackgroundColor3 = colors.hover
             end
         end)
         
         option.MouseLeave:Connect(function()
-            if mutationId ~= globalMutationFilter then
+            if not isMutationSelected(mutationId) then
                 option.BackgroundColor3 = colors.surface
             end
         end)
         
-        -- Selection
+        -- Multi-selection logic
         option.MouseButton1Click:Connect(function()
-            globalMutationFilter = mutationId
+            if mutationId == "Any" then
+                -- If "Any" is clicked, clear all other selections
+                globalMutationFilters = {"Any"}
+            else
+                -- Remove "Any" if it's selected and we're selecting something specific
+                if globalMutationFilters[1] == "Any" and #globalMutationFilters == 1 then
+                    globalMutationFilters = {}
+                end
+                
+                -- Toggle the mutation
+                local isSelected = isMutationSelected(mutationId)
+                if isSelected then
+                    -- Remove from selection
+                    for i, selected in ipairs(globalMutationFilters) do
+                        if selected == mutationId then
+                            table.remove(globalMutationFilters, i)
+                            break
+                        end
+                    end
+                    -- If no mutations selected, default to "Any"
+                    if #globalMutationFilters == 0 then
+                        globalMutationFilters = {"Any"}
+                    end
+                else
+                    -- Add to selection
+                    table.insert(globalMutationFilters, mutationId)
+                end
+            end
             
             -- Update all option backgrounds
             for _, child in pairs(globalMutationList:GetChildren()) do
                 if child:IsA("TextButton") then
                     local childMutationId = child.Name:gsub("Option_", "")
-                    if childMutationId == globalMutationFilter then
+                    if isMutationSelected(childMutationId) then
                         child.BackgroundColor3 = Color3.fromRGB(0, 132, 255)
                         child.TextColor3 = Color3.fromRGB(255, 255, 255)
                     else
@@ -1321,16 +1388,14 @@ local function createTargetSection(parent)
             end
             
             -- Update dropdown button text
-            if globalMutationFilter == "Any" then
-                globalMutationDropdown.Text = "Any ▼"
-            else
-                local mutationData = MutationData[globalMutationFilter]
-                globalMutationDropdown.Text = (mutationData and mutationData.Icon or "?") .. " ▼"
-            end
+            updateDropdownText()
             
-            -- Hide dropdown
-            globalMutationList.Visible = false
-            globalMutationList.Size = UDim2.new(1, -20, 0, 0)
+            -- Don't hide dropdown for multi-selection (let user select multiple)
+            -- Hide dropdown only if "Any" was selected
+            if mutationId == "Any" then
+                globalMutationList.Visible = false
+                globalMutationList.Size = UDim2.new(1, -20, 0, 0)
+            end
             
             -- Refresh content to apply filter
             if refreshContent then
@@ -1426,7 +1491,7 @@ local function createFilterBar(parent)
     -- Sort Dropdown
     local sortBtn = Instance.new("TextButton")
     sortBtn.Name = "SortBtn"
-    sortBtn.Size = UDim2.new(0.2, -5, 0, 30)
+    sortBtn.Size = UDim2.new(0.18, -5, 0, 30)
     sortBtn.Position = UDim2.new(0.3, 5, 0, 10)
     sortBtn.BackgroundColor3 = colors.hover
     sortBtn.BorderSizePixel = 0
@@ -1443,7 +1508,7 @@ local function createFilterBar(parent)
     -- Sort Dropdown List
     local sortList = Instance.new("Frame")
     sortList.Name = "SortList"
-    sortList.Size = UDim2.new(0.2, -5, 0, 120)
+    sortList.Size = UDim2.new(0.18, -5, 0, 120)
     sortList.Position = UDim2.new(0.3, 5, 0, 45)
     sortList.BackgroundColor3 = colors.surface
     sortList.BorderSizePixel = 0
@@ -1512,7 +1577,7 @@ local function createFilterBar(parent)
     local zeroToggle = Instance.new("TextButton")
     zeroToggle.Name = "ZeroToggle"
     zeroToggle.Size = UDim2.new(0.12, -5, 0, 30)
-    zeroToggle.Position = UDim2.new(0.45, 5, 0, 10)
+    zeroToggle.Position = UDim2.new(0.48, 8, 0, 10)
     zeroToggle.BackgroundColor3 = showZeroItems and colors.primary or colors.hover
     zeroToggle.BorderSizePixel = 0
     zeroToggle.Text = "Show 0x"
