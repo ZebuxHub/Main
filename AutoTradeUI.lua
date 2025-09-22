@@ -25,29 +25,19 @@ local startPos = nil
 local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
-local isResizing = false
-local resizeStart = nil
-local startSize = nil
-local minWidth = 500
-local minHeight = 350
-local maxWidth = 1200
-local maxHeight = 800
 
 -- State Variables
 local selectedTarget = "Random Player"
 local currentTab = "Pets" -- "Pets", "Eggs", "Fruits"
 local petMode = "Individual" -- "Individual" or "Speed"
 local autoTradeEnabled = false
-local sendingSpeed = 1.0 -- Speed multiplier for sending process (1.0x = normal speed, 2 second intervals)
-local globalMutationFilter = "Any" -- Global mutation filter for all pets/eggs
-local oceanOnlyFilter = false -- Ocean pets/eggs only filter
 local petSpeedMin = 0
 local petSpeedMax = 999999999
 
 -- Data Storage
 local itemConfigs = {
-    pets = {}, -- {petType: {sendUntil: number, enabled: boolean, mutations: {string}}}
-    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean, mutations: {string}}}
+    pets = {}, -- {petType: {sendUntil: number, enabled: boolean}}
+    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean}}
     fruits = {} -- {fruitType: {sendUntil: number, enabled: boolean}}
 }
 
@@ -67,113 +57,31 @@ local savedPosition = nil
 -- External Dependencies
 local WindUI = nil
 
--- Responsive Layout System
-local function updateResponsiveLayout()
-    if not MainFrame then return end
-    
-    local frameSize = MainFrame.AbsoluteSize
-    local isSmall = frameSize.X < 600 or frameSize.Y < 400
-    local isMedium = frameSize.X < 800 or frameSize.Y < 500
-    
-    -- Find UI elements
-    local targetSection = MainFrame:FindFirstChild("TargetSection")
-    local filterBar = MainFrame:FindFirstChild("FilterBar")
-    local tabSection = MainFrame:FindFirstChild("TabSection")
-    
-    if not targetSection or not filterBar or not tabSection then return end
-    
-    if isSmall then
-        -- Compact layout for small screens
-        targetSection.Size = UDim2.new(1, -16, 0, 200) -- Full width, fixed height
-        targetSection.Position = UDim2.new(0, 8, 0, 40)
-        
-        filterBar.Size = UDim2.new(1, -16, 0, 40) -- Full width, smaller height
-        filterBar.Position = UDim2.new(0, 8, 0, 250)
-        
-        tabSection.Size = UDim2.new(1, -16, 1, -300) -- Full width, remaining height
-        tabSection.Position = UDim2.new(0, 8, 0, 300)
-        
-        -- Hide some elements in target section for space
-        local avatar = targetSection:FindFirstChild("Avatar")
-        local nameLabel = targetSection:FindFirstChild("NameLabel")
-        if avatar then avatar.Visible = false end
-        if nameLabel then nameLabel.Visible = false end
-        
-    elseif isMedium then
-        -- Medium layout
-        targetSection.Size = UDim2.new(0.4, -8, 1, -80)
-        targetSection.Position = UDim2.new(0, 8, 0, 40)
-        
-        filterBar.Size = UDim2.new(0.6, -8, 0, 50)
-        filterBar.Position = UDim2.new(0.4, 8, 0, 40)
-        
-        tabSection.Size = UDim2.new(0.6, -8, 1, -100)
-        tabSection.Position = UDim2.new(0.4, 8, 0, 100)
-        
-        -- Show elements but smaller
-        local avatar = targetSection:FindFirstChild("Avatar")
-        local nameLabel = targetSection:FindFirstChild("NameLabel")
-        if avatar then 
-            avatar.Visible = true
-            avatar.Size = UDim2.new(0, 60, 0, 60)
-            avatar.Position = UDim2.new(0.5, -30, 0, 10)
-        end
-        if nameLabel then 
-            nameLabel.Visible = true
-            nameLabel.Position = UDim2.new(0, 10, 0, 80)
-        end
-        
-    else
-        -- Large layout (default)
-        targetSection.Size = UDim2.new(0.35, -8, 1, -80)
-        targetSection.Position = UDim2.new(0, 16, 0, 80)
-        
-        filterBar.Size = UDim2.new(0.65, -8, 0, 50)
-        filterBar.Position = UDim2.new(0.35, 8, 0, 80)
-        
-        tabSection.Size = UDim2.new(0.65, -8, 1, -140)
-        tabSection.Position = UDim2.new(0.35, 8, 0, 140)
-        
-        -- Show all elements at full size
-        local avatar = targetSection:FindFirstChild("Avatar")
-        local nameLabel = targetSection:FindFirstChild("NameLabel")
-        if avatar then 
-            avatar.Visible = true
-            avatar.Size = UDim2.new(0, 80, 0, 80)
-            avatar.Position = UDim2.new(0.5, -40, 0, 20)
-        end
-        if nameLabel then 
-            nameLabel.Visible = true
-            nameLabel.Position = UDim2.new(0, 10, 0, 110)
-        end
-    end
-end
-
 -- Hardcoded Data (from existing systems)
 local EggData = {
     BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
     RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
     SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
-    SeaweedEgg = { Name = "Seaweed Egg", Price = "200", Icon = "rbxassetid://87125339619211", Rarity = 2, Category = "Ocean" },
+    SeaweedEgg = { Name = "Seaweed Egg", Price = "200", Icon = "rbxassetid://87125339619211", Rarity = 2 },
     EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
     LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
-    ClownfishEgg = { Name = "Clownfish Egg", Price = "200", Icon = "rbxassetid://124419920608938", Rarity = 3, Category = "Ocean" },
+    ClownfishEgg = { Name = "Clownfish Egg", Price = "200", Icon = "rbxassetid://124419920608938", Rarity = 3 },
     PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
-    LionfishEgg = { Name = "Lionfish Egg", Price = "200", Icon = "rbxassetid://100181295820053", Rarity = 4, Category = "Ocean" },
+    LionfishEgg = { Name = "Lionfish Egg", Price = "200", Icon = "rbxassetid://100181295820053", Rarity = 4 },
     HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
     VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
     BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
-    SharkEgg = { Name = "Shark Egg", Price = "150,000,000", Icon = "rbxassetid://71032472532652", Rarity = 5, Category = "Ocean" },
+    SharkEgg = { Name = "Shark Egg", Price = "150,000,000", Icon = "rbxassetid://71032472532652", Rarity = 5 },
     DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
     CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
-    AnglerfishEgg = { Name = "Anglerfish Egg", Price = "150,000,000", Icon = "rbxassetid://121296998588378", Rarity = 5, Category = "Ocean" },
+    AnglerfishEgg = { Name = "Anglerfish Egg", Price = "150,000,000", Icon = "rbxassetid://121296998588378", Rarity = 5 },
     BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
     UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
     DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
     FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
     UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
     AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
-    SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "999,999,999,999", Icon = "rbxassetid://130514093439717", Rarity = 6, Category = "Ocean" },
+    SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "999,999,999,999", Icon = "rbxassetid://130514093439717", Rarity = 6 },
     UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 },
     SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3 },
     DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4 },
@@ -181,7 +89,7 @@ local EggData = {
     SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6 },
     GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6 },
     PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6 },
-    OctopusEgg = { Name = "Octopus Egg", Price = "10,000,000,000", Icon = "rbxassetid://84758700095552", Rarity = 6, Category = "Ocean" }
+    OctopusEgg = { Name = "Octopus Egg", Price = "10,000,000,000", Icon = "rbxassetid://84758700095552", Rarity = 6 }
 }
 
 local FruitData = {
@@ -202,15 +110,6 @@ local FruitData = {
     DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Price = "40,000,000,000", Icon = "💠", Rarity = 6 },
     Durian = { Name = "Durian", Price = "80,000,000,000", Icon = "🥥", Rarity = 6 },
     DragonFruit = { Name = "Dragon Fruit", Price = "1,500,000,000", Icon = "🐲", Rarity = 6 }
-}
-
-local MutationData = {
-    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
-    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
-    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 },
-    Snow = { Name = "Snow", Icon = "❄️", Rarity = 150 }
 }
 
 local HardcodedPetTypes = {
@@ -674,40 +573,6 @@ local function shouldSendItem(itemType, category, ownedAmount)
     end
 end
 
--- Check if an item matches the mutation filter
-local function itemMatchesMutations(item, requiredMutations)
-    -- Apply global mutation filter first
-    if globalMutationFilter ~= "Any" then
-        local itemMutation = item:GetAttribute("M") or "None"
-        if itemMutation ~= globalMutationFilter then
-            return false
-        end
-    end
-    
-    if not requiredMutations or #requiredMutations == 0 then
-        return true -- No mutation filter means accept all (that passed global filter)
-    end
-    
-    -- Check if "Any" is in the list
-    for _, mutation in ipairs(requiredMutations) do
-        if mutation == "Any" then
-            return true
-        end
-    end
-    
-    -- Get the item's mutation
-    local itemMutation = item:GetAttribute("M") or "None"
-    
-    -- Check if item's mutation is in the required list
-    for _, mutation in ipairs(requiredMutations) do
-        if itemMutation == mutation then
-            return true
-        end
-    end
-    
-    return false
-end
-
 local function getItemsToSend()
     local inventory = getPlayerInventory()
     local itemsToSend = {}
@@ -715,23 +580,17 @@ local function getItemsToSend()
     -- Check Eggs
     for eggType, ownedAmount in pairs(inventory.eggs) do
         if shouldSendItem(eggType, "eggs", ownedAmount) then
-            -- Get mutation requirements for this egg type
-            local config = itemConfigs.eggs[eggType]
-            local requiredMutations = config and config.mutations or {}
-            
-            -- Find egg UID from inventory that matches mutation requirements
+            -- Find egg UID from inventory
             local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
             if eggsFolder then
                 for _, eggData in pairs(eggsFolder:GetChildren()) do
                     if eggData:IsA("Configuration") then
                         local eggDataType = safeGetAttribute(eggData, "T", nil)
-                        local isPlaced = safeGetAttribute(eggData, "D", nil) ~= nil
-                        if eggDataType == eggType and not isPlaced and itemMatchesMutations(eggData, requiredMutations) then
+                        if eggDataType == eggType then
                             table.insert(itemsToSend, {
                                 uid = eggData.Name,
                                 type = eggType,
-                                category = "eggs",
-                                mutation = safeGetAttribute(eggData, "M", "None")
+                                category = "eggs"
                             })
                             break -- Only send one at a time
                         end
@@ -780,23 +639,18 @@ local function getItemsToSend()
         -- Individual mode: check configured pets (exclude placed pets)
         for petType, ownedAmount in pairs(inventory.pets) do
             if shouldSendItem(petType, "pets", ownedAmount) then
-                -- Get mutation requirements for this pet type
-                local config = itemConfigs.pets[petType]
-                local requiredMutations = config and config.mutations or {}
-                
-                -- Find pet UID from inventory that matches mutation requirements
+                -- Find pet UID from inventory
                 local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
                 if petsFolder then
                     for _, petData in pairs(petsFolder:GetChildren()) do
                         if petData:IsA("Configuration") then
                             local petDataType = safeGetAttribute(petData, "T", nil)
                             local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
-                            if petDataType == petType and not isPlaced and itemMatchesMutations(petData, requiredMutations) then
+                            if petDataType == petType and not isPlaced then
                                 table.insert(itemsToSend, {
                                     uid = petData.Name,
                                     type = petType,
-                                    category = "pets",
-                                    mutation = safeGetAttribute(petData, "M", "None")
+                                    category = "pets"
                                 })
                                 break -- Only send one at a time
                             end
@@ -1011,12 +865,12 @@ local function createTargetSection(parent)
     -- Target Selection Dropdown
     local targetDropdown = Instance.new("TextButton")
     targetDropdown.Name = "TargetDropdown"
-    targetDropdown.Size = UDim2.new(1, -20, 0, 25) -- Even smaller height
-    targetDropdown.Position = UDim2.new(0, 10, 0, 120) -- Moved up more
+    targetDropdown.Size = UDim2.new(1, -20, 0, 35)
+    targetDropdown.Position = UDim2.new(0, 10, 0, 150)
     targetDropdown.BackgroundColor3 = colors.hover
     targetDropdown.BorderSizePixel = 0
     targetDropdown.Text = "Select Target ▼"
-    targetDropdown.TextSize = 11 -- Smaller text
+    targetDropdown.TextSize = 14
     targetDropdown.Font = Enum.Font.Gotham
     targetDropdown.TextColor3 = colors.text
     targetDropdown.Parent = targetSection
@@ -1028,8 +882,8 @@ local function createTargetSection(parent)
     -- Dropdown List (initially hidden)
     local dropdownList = Instance.new("ScrollingFrame")
     dropdownList.Name = "DropdownList"
-    dropdownList.Size = UDim2.new(1, -20, 0, 80) -- Even smaller height
-    dropdownList.Position = UDim2.new(0, 10, 0, 150) -- Adjusted position
+    dropdownList.Size = UDim2.new(1, -20, 0, 120)
+    dropdownList.Position = UDim2.new(0, 10, 0, 190)
     dropdownList.BackgroundColor3 = colors.surface
     dropdownList.BorderSizePixel = 0
     dropdownList.Visible = false
@@ -1057,12 +911,12 @@ local function createTargetSection(parent)
     -- Send Button
     local sendBtn = Instance.new("TextButton")
     sendBtn.Name = "SendBtn"
-    sendBtn.Size = UDim2.new(1, -20, 0, 30) -- Even smaller height
-    sendBtn.Position = UDim2.new(0, 10, 1, -140) -- Position from bottom, more space
+    sendBtn.Size = UDim2.new(1, -20, 0, 40)
+    sendBtn.Position = UDim2.new(0, 10, 0, 200)
     sendBtn.BackgroundColor3 = colors.primary
     sendBtn.BorderSizePixel = 0
     sendBtn.Text = "Send Now"
-    sendBtn.TextSize = 13 -- Smaller text
+    sendBtn.TextSize = 16
     sendBtn.Font = Enum.Font.GothamBold
     sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     sendBtn.Parent = targetSection
@@ -1074,12 +928,12 @@ local function createTargetSection(parent)
     -- Auto Trade Toggle
     local autoTradeToggle = Instance.new("TextButton")
     autoTradeToggle.Name = "AutoTradeToggle"
-    autoTradeToggle.Size = UDim2.new(1, -20, 0, 25) -- Even smaller height
-    autoTradeToggle.Position = UDim2.new(0, 10, 1, -105) -- Position from bottom: more space
+    autoTradeToggle.Size = UDim2.new(1, -20, 0, 35)
+    autoTradeToggle.Position = UDim2.new(0, 10, 1, -70) -- Position from bottom: 70px from bottom
     autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
     autoTradeToggle.BorderSizePixel = 0
     autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
-    autoTradeToggle.TextSize = 11 -- Smaller text
+    autoTradeToggle.TextSize = 14
     autoTradeToggle.Font = Enum.Font.GothamSemibold
     autoTradeToggle.TextColor3 = colors.text
     autoTradeToggle.Parent = targetSection
@@ -1088,333 +942,18 @@ local function createTargetSection(parent)
     toggleCorner.CornerRadius = UDim.new(0, 6)
     toggleCorner.Parent = autoTradeToggle
     
-    -- Speed Control Slider
-    local speedFrame = Instance.new("Frame")
-    speedFrame.Name = "SpeedFrame"
-    speedFrame.Size = UDim2.new(1, -20, 0, 35) -- Even smaller height
-    speedFrame.Position = UDim2.new(0, 10, 1, -75) -- Position from bottom: more space
-    speedFrame.BackgroundTransparency = 1
-    speedFrame.Parent = targetSection
-    
-    local speedLabel = Instance.new("TextLabel")
-    speedLabel.Name = "SpeedLabel"
-    speedLabel.Size = UDim2.new(1, 0, 0, 20)
-    speedLabel.Position = UDim2.new(0, 0, 0, 0)
-    speedLabel.BackgroundTransparency = 1
-    speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
-    speedLabel.TextSize = 12
-    speedLabel.Font = Enum.Font.GothamSemibold
-    speedLabel.TextColor3 = colors.text
-    speedLabel.TextXAlignment = Enum.TextXAlignment.Center
-    speedLabel.Parent = speedFrame
-    
-    -- Speed Slider Background
-    local sliderBg = Instance.new("Frame")
-    sliderBg.Name = "SliderBg"
-    sliderBg.Size = UDim2.new(1, 0, 0, 6)
-    sliderBg.Position = UDim2.new(0, 0, 0, 25)
-    sliderBg.BackgroundColor3 = colors.hover
-    sliderBg.BorderSizePixel = 0
-    sliderBg.Parent = speedFrame
-    
-    local sliderBgCorner = Instance.new("UICorner")
-    sliderBgCorner.CornerRadius = UDim.new(0, 3)
-    sliderBgCorner.Parent = sliderBg
-    
-    -- Speed Slider Fill
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Name = "SliderFill"
-    sliderFill.Size = UDim2.new((sendingSpeed - 1.0) / 4.0, 0, 1, 0) -- Map 1.0-5.0 to 0-1
-    sliderFill.Position = UDim2.new(0, 0, 0, 0)
-    sliderFill.BackgroundColor3 = colors.primary
-    sliderFill.BorderSizePixel = 0
-    sliderFill.Parent = sliderBg
-    
-    local sliderFillCorner = Instance.new("UICorner")
-    sliderFillCorner.CornerRadius = UDim.new(0, 3)
-    sliderFillCorner.Parent = sliderFill
-    
-    -- Speed Slider Handle
-    local sliderHandle = Instance.new("Frame")
-    sliderHandle.Name = "SliderHandle"
-    sliderHandle.Size = UDim2.new(0, 16, 0, 16)
-    sliderHandle.Position = UDim2.new((sendingSpeed - 1.0) / 4.0, -8, 0, 20) -- Position relative to speedFrame, map 1.0-5.0 to 0-1
-    sliderHandle.BackgroundColor3 = colors.text
-    sliderHandle.BorderSizePixel = 0
-    sliderHandle.ZIndex = 2
-    sliderHandle.Parent = speedFrame
-    
-    local sliderHandleCorner = Instance.new("UICorner")
-    sliderHandleCorner.CornerRadius = UDim.new(0, 8)
-    sliderHandleCorner.Parent = sliderHandle
-    
-    -- Speed Slider Interaction
-    local isDraggingSlider = false
-    
-    sliderHandle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingSlider = true
-        end
-    end)
-    
-    sliderBg.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingSlider = true
-            -- Update slider position immediately
-            local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
-            relativeX = math.max(0, math.min(1, relativeX))
-            sendingSpeed = 1.0 + (relativeX * 4.0) -- Map 0-1 to 1.0-5.0
-            
-            -- Update UI
-            sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
-            sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
-            speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingSlider then
-            local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
-            relativeX = math.max(0, math.min(1, relativeX))
-            sendingSpeed = 1.0 + (relativeX * 4.0) -- Map 0-1 to 1.0-5.0
-            
-            -- Update UI
-            sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
-            sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
-            speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingSlider = false
-        end
-    end)
-    
     -- Daily Gift Counter Display
     local giftCountLabel = Instance.new("TextLabel")
     giftCountLabel.Name = "GiftCountLabel"
-    giftCountLabel.Size = UDim2.new(1, -20, 0, 15) -- Even smaller height
-    giftCountLabel.Position = UDim2.new(0, 10, 1, -15) -- Position from bottom: at very bottom
+    giftCountLabel.Size = UDim2.new(1, -20, 0, 25)
+    giftCountLabel.Position = UDim2.new(0, 10, 1, -30) -- Position from bottom: 30px from bottom
     giftCountLabel.BackgroundTransparency = 1
     giftCountLabel.Text = "Today Gift: 0/500"
-    giftCountLabel.TextSize = 9 -- Even smaller text
+    giftCountLabel.TextSize = 12
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
     giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
     giftCountLabel.Parent = targetSection
-    
-    -- Global Mutation Selector
-    local globalMutationLabel = Instance.new("TextLabel")
-    globalMutationLabel.Name = "GlobalMutationLabel"
-    globalMutationLabel.Size = UDim2.new(1, -20, 0, 15)
-    globalMutationLabel.Position = UDim2.new(0, 10, 0, 240)
-    globalMutationLabel.BackgroundTransparency = 1
-    globalMutationLabel.Text = "Global Mutation Filter"
-    globalMutationLabel.TextSize = 10
-    globalMutationLabel.Font = Enum.Font.GothamSemibold
-    globalMutationLabel.TextColor3 = colors.text
-    globalMutationLabel.TextXAlignment = Enum.TextXAlignment.Center
-    globalMutationLabel.Parent = targetSection
-    
-    local globalMutationDropdown = Instance.new("TextButton")
-    globalMutationDropdown.Name = "GlobalMutationDropdown"
-    globalMutationDropdown.Size = UDim2.new(1, -20, 0, 25)
-    globalMutationDropdown.Position = UDim2.new(0, 10, 0, 260)
-    globalMutationDropdown.BackgroundColor3 = colors.surface
-    globalMutationDropdown.BorderSizePixel = 0
-    globalMutationDropdown.Text = "Any ▼"
-    globalMutationDropdown.TextSize = 11
-    globalMutationDropdown.Font = Enum.Font.Gotham
-    globalMutationDropdown.TextColor3 = colors.text
-    globalMutationDropdown.Parent = targetSection
-    
-    local globalMutationCorner = Instance.new("UICorner")
-    globalMutationCorner.CornerRadius = UDim.new(0, 4)
-    globalMutationCorner.Parent = globalMutationDropdown
-    
-    -- Ocean Filter Checkbox
-    local oceanFilterFrame = Instance.new("Frame")
-    oceanFilterFrame.Name = "OceanFilterFrame"
-    oceanFilterFrame.Size = UDim2.new(1, -20, 0, 25)
-    oceanFilterFrame.Position = UDim2.new(0, 10, 0, 295)
-    oceanFilterFrame.BackgroundTransparency = 1
-    oceanFilterFrame.Parent = targetSection
-    
-    local oceanCheckbox = Instance.new("TextButton")
-    oceanCheckbox.Name = "OceanCheckbox"
-    oceanCheckbox.Size = UDim2.new(0, 20, 0, 20)
-    oceanCheckbox.Position = UDim2.new(0, 0, 0, 2.5)
-    oceanCheckbox.BackgroundColor3 = colors.surface
-    oceanCheckbox.BorderSizePixel = 0
-    oceanCheckbox.Text = ""
-    oceanCheckbox.Parent = oceanFilterFrame
-    
-    local oceanCheckboxCorner = Instance.new("UICorner")
-    oceanCheckboxCorner.CornerRadius = UDim.new(0, 3)
-    oceanCheckboxCorner.Parent = oceanCheckbox
-    
-    local oceanCheckboxStroke = Instance.new("UIStroke")
-    oceanCheckboxStroke.Color = colors.border
-    oceanCheckboxStroke.Thickness = 1
-    oceanCheckboxStroke.Parent = oceanCheckbox
-    
-    local oceanCheckmark = Instance.new("TextLabel")
-    oceanCheckmark.Name = "Checkmark"
-    oceanCheckmark.Size = UDim2.new(1, 0, 1, 0)
-    oceanCheckmark.BackgroundTransparency = 1
-    oceanCheckmark.Text = "✓"
-    oceanCheckmark.TextSize = 14
-    oceanCheckmark.Font = Enum.Font.GothamBold
-    oceanCheckmark.TextColor3 = colors.success
-    oceanCheckmark.TextXAlignment = Enum.TextXAlignment.Center
-    oceanCheckmark.TextYAlignment = Enum.TextYAlignment.Center
-    oceanCheckmark.Visible = false
-    oceanCheckmark.Parent = oceanCheckbox
-    
-    local oceanLabel = Instance.new("TextLabel")
-    oceanLabel.Name = "OceanLabel"
-    oceanLabel.Size = UDim2.new(1, -25, 0, 20)
-    oceanLabel.Position = UDim2.new(0, 25, 0, 2.5)
-    oceanLabel.BackgroundTransparency = 1
-    oceanLabel.Text = "Ocean Pets/Eggs Only"
-    oceanLabel.TextSize = 10
-    oceanLabel.Font = Enum.Font.Gotham
-    oceanLabel.TextColor3 = colors.text
-    oceanLabel.TextXAlignment = Enum.TextXAlignment.Left
-    oceanLabel.Parent = oceanFilterFrame
-    
-    -- Global Mutation Dropdown Functionality
-    local globalMutationList = Instance.new("ScrollingFrame")
-    globalMutationList.Name = "GlobalMutationList"
-    globalMutationList.Size = UDim2.new(1, -20, 0, 0)
-    globalMutationList.Position = UDim2.new(0, 10, 0, 290)
-    globalMutationList.BackgroundColor3 = colors.surface
-    globalMutationList.BorderSizePixel = 0
-    globalMutationList.Visible = false
-    globalMutationList.ScrollBarThickness = 4
-    globalMutationList.ScrollBarImageColor3 = colors.primary
-    globalMutationList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    globalMutationList.ScrollingDirection = Enum.ScrollingDirection.Y
-    globalMutationList.ZIndex = 100
-    globalMutationList.Parent = targetSection
-    
-    local globalMutationListCorner = Instance.new("UICorner")
-    globalMutationListCorner.CornerRadius = UDim.new(0, 4)
-    globalMutationListCorner.Parent = globalMutationList
-    
-    local globalMutationListLayout = Instance.new("UIListLayout")
-    globalMutationListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    globalMutationListLayout.Padding = UDim.new(0, 2)
-    globalMutationListLayout.Parent = globalMutationList
-    
-    -- Create global mutation options
-    local globalMutationOptions = {"Any", "Golden", "Diamond", "Electirc", "Fire", "Jurassic", "Snow"}
-    for i, mutationId in ipairs(globalMutationOptions) do
-        local option = Instance.new("TextButton")
-        option.Name = "Option_" .. mutationId
-        option.Size = UDim2.new(1, 0, 0, 25)
-        option.BackgroundColor3 = (mutationId == globalMutationFilter) and Color3.fromRGB(0, 132, 255) or colors.surface
-        option.BorderSizePixel = 0
-        option.ZIndex = 101
-        option.Parent = globalMutationList
-        
-        if mutationId == "Any" then
-            option.Text = "Any Mutation"
-        else
-            local mutationData = MutationData[mutationId]
-            option.Text = (mutationData and mutationData.Icon or "?") .. " " .. (mutationData and mutationData.Name or mutationId)
-        end
-        option.TextSize = 11
-        option.Font = Enum.Font.Gotham
-        option.TextColor3 = (mutationId == globalMutationFilter) and Color3.fromRGB(255, 255, 255) or colors.text
-        option.TextXAlignment = Enum.TextXAlignment.Center
-        
-        local optionCorner = Instance.new("UICorner")
-        optionCorner.CornerRadius = UDim.new(0, 4)
-        optionCorner.Parent = option
-        
-        -- Hover effect
-        option.MouseEnter:Connect(function()
-            if mutationId ~= globalMutationFilter then
-                option.BackgroundColor3 = colors.hover
-            end
-        end)
-        
-        option.MouseLeave:Connect(function()
-            if mutationId ~= globalMutationFilter then
-                option.BackgroundColor3 = colors.surface
-            end
-        end)
-        
-        -- Selection
-        option.MouseButton1Click:Connect(function()
-            globalMutationFilter = mutationId
-            
-            -- Update all option backgrounds
-            for _, child in pairs(globalMutationList:GetChildren()) do
-                if child:IsA("TextButton") then
-                    local childMutationId = child.Name:gsub("Option_", "")
-                    if childMutationId == globalMutationFilter then
-                        child.BackgroundColor3 = Color3.fromRGB(0, 132, 255)
-                        child.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    else
-                        child.BackgroundColor3 = colors.surface
-                        child.TextColor3 = colors.text
-                    end
-                end
-            end
-            
-            -- Update dropdown button text
-            if globalMutationFilter == "Any" then
-                globalMutationDropdown.Text = "Any ▼"
-            else
-                local mutationData = MutationData[globalMutationFilter]
-                globalMutationDropdown.Text = (mutationData and mutationData.Icon or "?") .. " ▼"
-            end
-            
-            -- Hide dropdown
-            globalMutationList.Visible = false
-            globalMutationList.Size = UDim2.new(1, -20, 0, 0)
-            
-            -- Refresh content to apply filter
-            if refreshContent then
-                refreshContent()
-            end
-        end)
-    end
-    
-    -- Global mutation dropdown toggle
-    globalMutationDropdown.MouseButton1Click:Connect(function()
-        if globalMutationList.Visible then
-            -- Hide dropdown
-            globalMutationList.Visible = false
-            globalMutationList.Size = UDim2.new(1, -20, 0, 0)
-        else
-            -- Show dropdown
-            local listHeight = math.min(#globalMutationOptions * 27, 150)
-            globalMutationList.Size = UDim2.new(1, -20, 0, listHeight)
-            globalMutationList.Visible = true
-        end
-    end)
-    
-    -- Ocean filter checkbox functionality
-    oceanCheckbox.MouseButton1Click:Connect(function()
-        oceanOnlyFilter = not oceanOnlyFilter
-        
-        if oceanOnlyFilter then
-            oceanCheckbox.BackgroundColor3 = colors.primary
-            oceanCheckmark.Visible = true
-        else
-            oceanCheckbox.BackgroundColor3 = colors.surface
-            oceanCheckmark.Visible = false
-        end
-        
-        -- Refresh content to apply filter
-        if refreshContent then
-            refreshContent()
-        end
-    end)
     
     return targetSection
 end
@@ -1707,7 +1246,7 @@ local function createTabSection(parent)
     
     local listLayout = Instance.new("UIListLayout")
     listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Padding = UDim.new(0, 8) -- Increased padding for better spacing
+    listLayout.Padding = UDim.new(0, 5)
     listLayout.Parent = scrollFrame
     
     return tabSection
@@ -1730,36 +1269,24 @@ local function createItemCard(itemId, itemData, category, parent)
     if not showZeroItems and ownedAmount == 0 then return nil end
     if configuredOnly and not (itemConfigs[category][itemId] and itemConfigs[category][itemId].enabled) then return nil end
     
-    -- Apply ocean filter
-    if oceanOnlyFilter and (category == "pets" or category == "eggs") then
-        if not (itemData.Category == "Ocean") then return nil end
-    end
-    
     local card = Instance.new("Frame")
     card.Name = itemId
-    card.Size = UDim2.new(1, 0, 0, 100) -- Much taller cards to prevent overlapping
-    card.BackgroundColor3 = ownedAmount > 0 and Color3.fromRGB(40, 40, 44) or Color3.fromRGB(30, 30, 32) -- Better card colors
+    card.Size = UDim2.new(1, 0, 0, 60)
+    card.BackgroundColor3 = colors.hover
     card.BorderSizePixel = 0
     card.ZIndex = 1 -- Base z-index for card
     card.Parent = parent
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8) -- Slightly more rounded
+    corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = card
-    
-    -- Add subtle border for better definition
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(60, 60, 67)
-    stroke.Thickness = 1
-    stroke.Transparency = 0.3
-    stroke.Parent = card
     
     -- Icon (for eggs and fruits)
     if category ~= "pets" then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 60, 0, 60) -- Even larger icon for taller cards
-        icon.Position = UDim2.new(0, 20, 0, 20) -- Better centered in taller card
+        icon.Size = UDim2.new(0, 40, 0, 40)
+        icon.Position = UDim2.new(0, 10, 0, 10)
         icon.BackgroundTransparency = 1
         if category == "eggs" then
             icon.Image = itemData.Icon or ""
@@ -1786,11 +1313,11 @@ local function createItemCard(itemId, itemData, category, parent)
     -- Name
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(0, 250, 0, 25) -- Larger text area
-    nameLabel.Position = UDim2.new(0, category == "pets" and 20 or 90, 0, 15) -- Better spacing for taller cards
+    nameLabel.Size = UDim2.new(0, 150, 0, 20)
+    nameLabel.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 5)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = itemData.Name or itemId
-    nameLabel.TextSize = 16 -- Larger text
+    nameLabel.TextSize = 14
     nameLabel.Font = Enum.Font.GothamSemibold
     nameLabel.TextColor3 = ownedAmount > 0 and colors.text or colors.disabled
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1800,12 +1327,12 @@ local function createItemCard(itemId, itemData, category, parent)
     -- Owned Amount
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
-    ownedLabel.Size = UDim2.new(0, 100, 0, 20) -- Larger area
-    local ownedLabelX = category == "pets" and 20 or 90 -- Match name position
-    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 45) -- Lower position for taller cards
+    ownedLabel.Size = UDim2.new(0, 80, 0, 16)
+    local ownedLabelX = category == "pets" and 10 or 60
+    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 25)
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
-    ownedLabel.TextSize = 13 -- Slightly larger
+    ownedLabel.TextSize = 12
     ownedLabel.Font = Enum.Font.Gotham
     ownedLabel.TextColor3 = colors.textSecondary
     ownedLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1815,11 +1342,11 @@ local function createItemCard(itemId, itemData, category, parent)
     -- Warning icon for insufficient items (same line as owned count)
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
-    warningIcon.Size = UDim2.new(0, 80, 0, 20) -- Larger area
-    warningIcon.Position = UDim2.new(0, ownedLabelX + 110, 0, 45) -- Same line as owned label, positioned after it
+    warningIcon.Size = UDim2.new(0, 70, 0, 16)
+    warningIcon.Position = UDim2.new(0, ownedLabelX + 85, 0, 25) -- Same line as owned label, positioned after it
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
-    warningIcon.TextSize = 12 -- Larger warning icon
+    warningIcon.TextSize = 10
     warningIcon.Font = Enum.Font.GothamSemibold
     warningIcon.TextColor3 = colors.warning
     warningIcon.TextXAlignment = Enum.TextXAlignment.Left
@@ -1829,38 +1356,11 @@ local function createItemCard(itemId, itemData, category, parent)
     
     -- Send Until Input (not for speed mode pets)
     local sendInput = nil
-    local mutationDropdown = nil
-    local hasMutations = (category == "pets" or category == "eggs")
-    
     if not (category == "pets" and petMode == "Speed") then
-        -- Input Label
-        local inputLabel = Instance.new("TextLabel")
-        inputLabel.Name = "InputLabel"
-        inputLabel.Size = UDim2.new(0, 70, 0, 15)
-        if hasMutations then
-            inputLabel.Position = UDim2.new(1, -150, 0, 10)
-        else
-            inputLabel.Position = UDim2.new(1, -100, 0, 10)
-        end
-        inputLabel.BackgroundTransparency = 1
-        inputLabel.Text = "Keep Amount"
-        inputLabel.TextSize = 10
-        inputLabel.Font = Enum.Font.GothamSemibold
-        inputLabel.TextColor3 = colors.textSecondary
-        inputLabel.TextXAlignment = Enum.TextXAlignment.Center
-        inputLabel.ZIndex = 2
-        inputLabel.Parent = card
-        
         sendInput = Instance.new("TextBox")
         sendInput.Name = "SendInput"
-        -- Adjust size and position to make room for mutation dropdown
-        if hasMutations then
-            sendInput.Size = UDim2.new(0, 70, 0, 30) -- Larger height, better width
-            sendInput.Position = UDim2.new(1, -150, 0, 30) -- More space from top
-        else
-            sendInput.Size = UDim2.new(0, 90, 0, 30) -- Larger for better usability
-            sendInput.Position = UDim2.new(1, -100, 0, 30) -- More space from top
-        end
+        sendInput.Size = UDim2.new(0, 80, 0, 25)
+        sendInput.Position = UDim2.new(1, -90, 0, 17.5)
         sendInput.BackgroundColor3 = colors.surface
         sendInput.BorderSizePixel = 0
         -- Only show value if user has actually configured this item, otherwise leave empty
@@ -1964,197 +1464,6 @@ local function createItemCard(itemId, itemData, category, parent)
         else
             warningIcon.Visible = false -- No warning if not configured
         end
-    end
-    
-    -- Mutation Dropdown (for pets and eggs only)
-    if hasMutations and not (category == "pets" and petMode == "Speed") then
-        -- Mutation Label
-        local mutationLabel = Instance.new("TextLabel")
-        mutationLabel.Name = "MutationLabel"
-        mutationLabel.Size = UDim2.new(0, 60, 0, 15)
-        mutationLabel.Position = UDim2.new(1, -70, 0, 10)
-        mutationLabel.BackgroundTransparency = 1
-        mutationLabel.Text = "Mutation"
-        mutationLabel.TextSize = 10
-        mutationLabel.Font = Enum.Font.GothamSemibold
-        mutationLabel.TextColor3 = colors.textSecondary
-        mutationLabel.TextXAlignment = Enum.TextXAlignment.Center
-        mutationLabel.ZIndex = 2
-        mutationLabel.Parent = card
-        
-        mutationDropdown = Instance.new("TextButton")
-        mutationDropdown.Name = "MutationDropdown"
-        mutationDropdown.Size = UDim2.new(0, 70, 0, 30) -- Larger for better usability
-        mutationDropdown.Position = UDim2.new(1, -70, 0, 30) -- More space from top
-        mutationDropdown.BackgroundColor3 = colors.surface
-        mutationDropdown.BorderSizePixel = 0
-        mutationDropdown.Text = "Any ▼"
-        mutationDropdown.TextSize = 11
-        mutationDropdown.Font = Enum.Font.Gotham
-        mutationDropdown.TextColor3 = colors.text
-        mutationDropdown.ZIndex = 2
-        mutationDropdown.Parent = card
-        
-        local mutationCorner = Instance.new("UICorner")
-        mutationCorner.CornerRadius = UDim.new(0, 4)
-        mutationCorner.Parent = mutationDropdown
-        
-        -- Create dropdown list (initially hidden)
-        local mutationList = Instance.new("Frame")
-        mutationList.Name = "MutationList"
-        mutationList.Size = UDim2.new(0, 140, 0, 0) -- Start with 0 height, wider for better text
-        mutationList.Position = UDim2.new(1, -140, 1, 2) -- Position to the left of the dropdown to stay within bounds
-        mutationList.BackgroundColor3 = colors.surface
-        mutationList.BorderSizePixel = 0
-        mutationList.Visible = false
-        mutationList.ZIndex = 100 -- High z-index to appear above other elements
-        mutationList.Parent = card -- Parent to card instead of dropdown for better positioning
-        
-        local mutationListCorner = Instance.new("UICorner")
-        mutationListCorner.CornerRadius = UDim.new(0, 4)
-        mutationListCorner.Parent = mutationList
-        
-        local mutationListStroke = Instance.new("UIStroke")
-        mutationListStroke.Color = colors.border
-        mutationListStroke.Thickness = 1
-        mutationListStroke.Parent = mutationList
-        
-        local mutationListLayout = Instance.new("UIListLayout")
-        mutationListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        mutationListLayout.FillDirection = Enum.FillDirection.Vertical
-        mutationListLayout.Parent = mutationList
-        
-        -- Create mutation options
-        local mutationOptions = {"Any"}
-        for mutationId, mutationData in pairs(MutationData) do
-            table.insert(mutationOptions, mutationId)
-        end
-        table.sort(mutationOptions, function(a, b)
-            if a == "Any" then return true end
-            if b == "Any" then return false end
-            return (MutationData[a] and MutationData[a].Rarity or 0) < (MutationData[b] and MutationData[b].Rarity or 0)
-        end)
-        
-        -- Track selected mutation (single selection like target dropdown)
-        local selectedMutation = "Any"
-        local config = itemConfigs[category][itemId]
-        if config and config.mutations and #config.mutations > 0 then
-            selectedMutation = config.mutations[1] -- Take first mutation for single selection
-        end
-        
-        for i, mutationId in ipairs(mutationOptions) do
-            local option = Instance.new("TextButton")
-            option.Name = "Option_" .. mutationId
-            option.Size = UDim2.new(1, 0, 0, 25)
-            option.BackgroundColor3 = (mutationId == selectedMutation) and Color3.fromRGB(0, 132, 255) or colors.surface
-            option.BorderSizePixel = 0
-            option.ZIndex = 101
-            option.Parent = mutationList
-            
-            -- Option text
-            if mutationId == "Any" then
-                option.Text = "Any Mutation"
-            else
-                local mutationData = MutationData[mutationId]
-                option.Text = (mutationData.Icon or "?") .. " " .. mutationData.Name
-            end
-            option.TextSize = 11
-            option.Font = Enum.Font.Gotham
-            option.TextColor3 = (mutationId == selectedMutation) and Color3.fromRGB(255, 255, 255) or colors.text
-            option.TextXAlignment = Enum.TextXAlignment.Center
-            
-            local optionCorner = Instance.new("UICorner")
-            optionCorner.CornerRadius = UDim.new(0, 4)
-            optionCorner.Parent = option
-            
-            -- Hover effect
-            option.MouseEnter:Connect(function()
-                if mutationId ~= selectedMutation then
-                    option.BackgroundColor3 = colors.hover
-                end
-            end)
-            
-            option.MouseLeave:Connect(function()
-                if mutationId ~= selectedMutation then
-                    option.BackgroundColor3 = colors.surface
-                end
-            end)
-            
-            -- Selection (single selection)
-            option.MouseButton1Click:Connect(function()
-                -- Update selected mutation
-                selectedMutation = mutationId
-                
-                -- Initialize config if needed
-                if not itemConfigs[category][itemId] then
-                    itemConfigs[category][itemId] = {}
-                end
-                
-                -- Set single mutation
-                if mutationId == "Any" then
-                    itemConfigs[category][itemId].mutations = {}
-                else
-                    itemConfigs[category][itemId].mutations = {mutationId}
-                end
-                
-                -- Update all option backgrounds
-                for _, child in pairs(mutationList:GetChildren()) do
-                    if child:IsA("TextButton") then
-                        local childMutationId = child.Name:gsub("Option_", "")
-                        if childMutationId == selectedMutation then
-                            child.BackgroundColor3 = Color3.fromRGB(0, 132, 255)
-                            child.TextColor3 = Color3.fromRGB(255, 255, 255)
-                        else
-                            child.BackgroundColor3 = colors.surface
-                            child.TextColor3 = colors.text
-                        end
-                    end
-                end
-                
-                -- Update dropdown button text
-                if selectedMutation == "Any" then
-                    mutationDropdown.Text = "Any ▼"
-                else
-                    local mutationData = MutationData[selectedMutation]
-                    mutationDropdown.Text = (mutationData and mutationData.Icon or "?") .. " ▼"
-                end
-                
-                -- Hide dropdown
-                mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 140, 0, 0)
-                
-                saveConfig()
-            end)
-        end
-        
-        -- Toggle dropdown
-        mutationDropdown.MouseButton1Click:Connect(function()
-            if mutationList.Visible then
-                -- Hide dropdown
-                mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 140, 0, 0)
-            else
-                -- Show dropdown
-                local optionCount = #mutationOptions
-                local listHeight = optionCount * 25
-                mutationList.Size = UDim2.new(0, 140, 0, listHeight)
-                mutationList.Visible = true
-            end
-        end)
-        
-        -- Close dropdown when clicking elsewhere
-        local function closeDropdown()
-            if mutationList.Visible then
-                mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 140, 0, 0)
-            end
-        end
-        
-        -- Add to a global list for closing dropdowns
-        if not _G.AutoTradeDropdowns then
-            _G.AutoTradeDropdowns = {}
-        end
-        table.insert(_G.AutoTradeDropdowns, closeDropdown)
     end
     
     return card
@@ -2532,79 +1841,18 @@ refreshContent = function()
 end
 
 -- Create Main UI
--- Window Controls Creation
-local function createWindowControls(parent)
-    local controls = {}
-    
-    -- Title Bar (for dragging)
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, -40, 0, 40) -- Leave space for close/minimize buttons
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundTransparency = 1
-    titleBar.ZIndex = 5
-    titleBar.Parent = parent
-    
-    -- Close Button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 20, 0, 20)
-    closeBtn.Position = UDim2.new(1, -25, 0, 10)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 69, 58)
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "×"
-    closeBtn.TextSize = 14
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.ZIndex = 6
-    closeBtn.Parent = parent
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 10)
-    closeCorner.Parent = closeBtn
-    
-    -- Minimize Button
-    local minimizeBtn = Instance.new("TextButton")
-    minimizeBtn.Name = "MinimizeBtn"
-    minimizeBtn.Size = UDim2.new(0, 20, 0, 20)
-    minimizeBtn.Position = UDim2.new(1, -50, 0, 10)
-    minimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
-    minimizeBtn.BorderSizePixel = 0
-    minimizeBtn.Text = "−"
-    minimizeBtn.TextSize = 14
-    minimizeBtn.Font = Enum.Font.GothamBold
-    minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    minimizeBtn.ZIndex = 6
-    minimizeBtn.Parent = parent
-    
-    local minimizeCorner = Instance.new("UICorner")
-    minimizeCorner.CornerRadius = UDim.new(0, 10)
-    minimizeCorner.Parent = minimizeBtn
-    
-    controls.CloseBtn = closeBtn
-    controls.MinimizeBtn = minimizeBtn
-    controls.TitleBar = titleBar
-    
-    return controls
-end
-
 function AutoTradeUI.CreateUI()
     if ScreenGui then
         ScreenGui:Destroy()
     end
     
-    -- Calculate screen-relative size optimized for 960x540
+    -- Calculate screen-relative size
     local screenSize = workspace.CurrentCamera.ViewportSize
-    local baseWidth = 700   -- Even smaller for 960x540
-    local baseHeight = 450  -- Compact height for better fit
-    
-    -- Optimized scaling for smaller screens like 960x540
-    local scaleX = math.min(screenSize.X / 960, 1.0)  -- No upscaling, max 1:1
-    local scaleY = math.min(screenSize.Y / 540, 1.0)
+    local baseWidth = 900
+    local baseHeight = 600
+    local scaleX = math.min(screenSize.X / 1920, 1) -- Scale down on smaller screens
+    local scaleY = math.min(screenSize.Y / 1080, 1)
     local scale = math.min(scaleX, scaleY)
-    
-    -- Ensure minimum usable size but allow smaller
-    scale = math.max(scale, 0.6) -- Allow down to 60% for very small screens
     
     local finalWidth = baseWidth * scale
     local finalHeight = baseHeight * scale
@@ -2627,33 +1875,6 @@ function AutoTradeUI.CreateUI()
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = MainFrame
-    
-    -- Resize Handle (bottom-right corner)
-    local resizeHandle = Instance.new("Frame")
-    resizeHandle.Name = "ResizeHandle"
-    resizeHandle.Size = UDim2.new(0, 20, 0, 20)
-    resizeHandle.Position = UDim2.new(1, -20, 1, -20)
-    resizeHandle.BackgroundColor3 = colors.border
-    resizeHandle.BorderSizePixel = 0
-    resizeHandle.ZIndex = 10
-    resizeHandle.Parent = MainFrame
-    
-    local resizeCorner = Instance.new("UICorner")
-    resizeCorner.CornerRadius = UDim.new(0, 6)
-    resizeCorner.Parent = resizeHandle
-    
-    -- Resize handle visual indicator
-    local resizeIcon = Instance.new("TextLabel")
-    resizeIcon.Size = UDim2.new(1, 0, 1, 0)
-    resizeIcon.BackgroundTransparency = 1
-    resizeIcon.Text = "⟲"
-    resizeIcon.TextSize = 12
-    resizeIcon.Font = Enum.Font.GothamBold
-    resizeIcon.TextColor3 = colors.textSecondary
-    resizeIcon.TextXAlignment = Enum.TextXAlignment.Center
-    resizeIcon.TextYAlignment = Enum.TextYAlignment.Center
-    resizeIcon.ZIndex = 11
-    resizeIcon.Parent = resizeHandle
     
     local stroke = Instance.new("UIStroke")
     stroke.Color = colors.border
@@ -2708,7 +1929,12 @@ function AutoTradeUI.CreateUI()
     end)
     
     -- Dragging functionality
-    local titleBar = windowControls.TitleBar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundTransparency = 1
+    titleBar.Parent = MainFrame
     
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -2726,53 +1952,15 @@ function AutoTradeUI.CreateUI()
         end
     end)
     
-    -- Resizing functionality
-    local resizeHandle = MainFrame.ResizeHandle
-    
-    resizeHandle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isResizing = true
-            resizeStart = input.Position
-            startSize = MainFrame.Size
-            
-            local connection
-            connection = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    isResizing = false
-                    connection:Disconnect()
-                end
-            end)
-        end
-    end)
-    
     UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            if isDragging then
-                local delta = input.Position - dragStart
-                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            elseif isResizing then
-                local delta = input.Position - resizeStart
-                local newWidth = math.max(minWidth, math.min(maxWidth, startSize.X.Offset + delta.X))
-                local newHeight = math.max(minHeight, math.min(maxHeight, startSize.Y.Offset + delta.Y))
-                MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
-                
-                -- Update originalSize so minimize/restore works correctly
-                if not isMinimized then
-                    originalSize = MainFrame.Size
-                end
-                
-                -- Update responsive layout
-                updateResponsiveLayout()
-            end
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
+            local delta = input.Position - dragStart
+            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     
     -- Setup event handlers
     setupEventHandlers()
-    
-    -- Apply initial responsive layout
-    task.wait(0.1) -- Wait for UI to render
-    updateResponsiveLayout()
     
     return ScreenGui
 end
@@ -3052,29 +2240,11 @@ local function startInventoryMonitoring()
         end
         
         if autoTradeEnabled and not isTrading then
-            -- Check for items to send with speed adjustment
-            local baseDelay = 2.0 -- Base delay in seconds
-            local adjustedDelay = baseDelay / sendingSpeed -- Faster speed = shorter delay
-            task.wait(adjustedDelay)
+            -- Check for items to send every few seconds
+            task.wait(2)
         end
     end)
 end
-
--- Function to close all mutation dropdowns
-local function closeAllMutationDropdowns()
-    if _G.AutoTradeDropdowns then
-        for _, closeFunc in ipairs(_G.AutoTradeDropdowns) do
-            closeFunc()
-        end
-    end
-end
-
--- Close dropdowns when clicking elsewhere
-UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        closeAllMutationDropdowns()
-    end
-end)
 
 -- Start monitoring when module loads
 startInventoryMonitoring()
