@@ -133,7 +133,72 @@ local HardcodedPetTypes = {
     "Lionfish", "Rhino", "Kangroo", "Gorilla", "Alligator", "Ostrich", "Triceratops", "Pachycephalosaur", 
     "Sawfish", "Pterosaur", "ElectricEel", "Wolf", "Rex", "Dolphin", "Dragon", "Baldeagle", "Shark", 
     "Griffin", "Brontosaurus", "Anglerfish", "Plesiosaur", "Alpaca", "Spinosaurus", "Manta", "Unicorn", 
-    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock"
+    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock",
+    "Sheep_E1", "Horse_E1", "Zebra_E1", "Giraffe_E1", "Hippo_E1", "Elephant_E1", "Rabbit_E1", 
+    "Mouse_E1", "Wolverine_E1", "Tiger_E1", "Fox_E1", "Panda_E1", "Toucan_E1", "Snake_E1", 
+    "Okapi_E1", "Panther_E1", "Seaturtle_E1", "Bear_E1", "Lion_E1", "Rhino_E1", "Kangroo_E1", 
+    "Gorilla_E1", "Wolf_E1", "Rex_E1", "Dragon_E1", "Griffin_E1", "Penguin_E1", "Ostrich_E1", 
+    "Baldeagle_E1", "Butterfly_E1", "Bee_E1"
+}
+
+-- Pet Category Data (for ocean filter)
+local PetCategoryData = {
+    -- Ocean Pets
+    AngelFish = { Category = "Ocean" },
+    Butterflyfish = { Category = "Ocean" },
+    Needlefish = { Category = "Ocean" },
+    Hairtail = { Category = "Ocean" },
+    Tuna = { Category = "Ocean" },
+    Catfish = { Category = "Ocean" },
+    Tigerfish = { Category = "Ocean" },
+    Flounder = { Category = "Ocean" },
+    Lionfish = { Category = "Ocean" },
+    ElectricEel = { Category = "Ocean" },
+    Dolphin = { Category = "Ocean" },
+    Shark = { Category = "Ocean" },
+    Anglerfish = { Category = "Ocean" },
+    Plesiosaur = { Category = "Ocean" },
+    Manta = { Category = "Ocean" },
+    Mosasaur = { Category = "Ocean" },
+    Octopus = { Category = "Ocean" },
+    Killerwhale = { Category = "Ocean" },
+    Sawfish = { Category = "Ocean" },
+    Seaturtle = { Category = "Ocean" },
+    Seaturtle_E1 = { Category = "Ocean" },
+    
+    -- Evolution Pets
+    Sheep_E1 = { Category = "Evolution" },
+    Horse_E1 = { Category = "Evolution" },
+    Zebra_E1 = { Category = "Evolution" },
+    Giraffe_E1 = { Category = "Evolution" },
+    Hippo_E1 = { Category = "Evolution" },
+    Elephant_E1 = { Category = "Evolution" },
+    Rabbit_E1 = { Category = "Evolution" },
+    Mouse_E1 = { Category = "Evolution" },
+    Wolverine_E1 = { Category = "Evolution" },
+    Tiger_E1 = { Category = "Evolution" },
+    Fox_E1 = { Category = "Evolution" },
+    Panda_E1 = { Category = "Evolution" },
+    Toucan_E1 = { Category = "Evolution" },
+    Snake_E1 = { Category = "Evolution" },
+    Okapi_E1 = { Category = "Evolution" },
+    Panther_E1 = { Category = "Evolution" },
+    Bear_E1 = { Category = "Evolution" },
+    Lion_E1 = { Category = "Evolution" },
+    Rhino_E1 = { Category = "Evolution" },
+    Kangroo_E1 = { Category = "Evolution" },
+    Gorilla_E1 = { Category = "Evolution" },
+    Wolf_E1 = { Category = "Evolution" },
+    Rex_E1 = { Category = "Evolution" },
+    Dragon_E1 = { Category = "Evolution" },
+    Griffin_E1 = { Category = "Evolution" },
+    Penguin_E1 = { Category = "Evolution" },
+    Ostrich_E1 = { Category = "Evolution" },
+    Baldeagle_E1 = { Category = "Evolution" },
+    Butterfly_E1 = { Category = "Evolution" },
+    Bee_E1 = { Category = "Evolution" },
+    
+    -- All other pets have Category = "" (normal pets)
 }
 
 -- macOS Dark Theme Colors
@@ -613,17 +678,10 @@ local function itemMatchesOceanFilter(itemType, category)
     if oceanOnlyFilter and (category == "pets" or category == "eggs") then
         local itemData = nil
         if category == "pets" then
-            -- For pets, we can't easily determine if they're from ocean eggs
-            -- So we'll apply a simple rule: exclude known ocean pet types
-            -- This is a simplified approach - in a real implementation you'd track egg origins
-            local oceanPetTypes = {
-                "AngelFish", "Butterflyfish", "Needlefish", "Hairtail", "Clownfish", 
-                "Lionfish", "Shark", "Anglerfish", "SeaDragon", "Octopus"
-            }
-            for _, oceanPet in ipairs(oceanPetTypes) do
-                if itemType == oceanPet then
-                    return false -- Exclude ocean pets when filter is ON
-                end
+            -- Check if pet is ocean type using PetCategoryData
+            local petData = PetCategoryData[itemType]
+            if petData and petData.Category == "Ocean" then
+                return false -- Exclude ocean pets when filter is ON
             end
         elseif category == "eggs" then
             itemData = EggData[itemType]
@@ -1253,7 +1311,7 @@ local function createTargetSection(parent)
     globalMutationLabel.TextSize = 10
     globalMutationLabel.Font = Enum.Font.GothamSemibold
     globalMutationLabel.TextColor3 = colors.text
-    globalMutationLabel.TextXAlignment = Enum.TextXAlignment.Left
+    globalMutationLabel.TextXAlignment = Enum.TextXAlignment.Center
     globalMutationLabel.Parent = mutationContainer
     
     local globalMutationDropdown = Instance.new("TextButton")
@@ -1370,7 +1428,7 @@ local function createTargetSection(parent)
     end
     
     -- Create global mutation options
-    local globalMutationOptions = {"Any", "Golden", "Diamond", "Electirc", "Fire", "Dino", "Snow"}
+    local globalMutationOptions = {"Any", "None", "Golden", "Diamond", "Electirc", "Fire", "Dino", "Snow"}
     for i, mutationId in ipairs(globalMutationOptions) do
         local option = Instance.new("TextButton")
         option.Name = "Option_" .. mutationId
