@@ -25,6 +25,13 @@ local startPos = nil
 local isMinimized = false
 local originalSize = nil
 local minimizedSize = nil
+local isResizing = false
+local resizeStart = nil
+local startSize = nil
+local minWidth = 500
+local minHeight = 350
+local maxWidth = 1200
+local maxHeight = 800
 
 -- State Variables
 local selectedTarget = "Random Player"
@@ -33,11 +40,12 @@ local petMode = "Individual" -- "Individual" or "Speed"
 local autoTradeEnabled = false
 local petSpeedMin = 0
 local petSpeedMax = 999999999
+local sendingSpeed = 1.0 -- Speed multiplier for sending process (0.5 = slower, 2.0 = faster)
 
 -- Data Storage
 local itemConfigs = {
-    pets = {}, -- {petType: {sendUntil: number, enabled: boolean}}
-    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean}}
+    pets = {}, -- {petType: {sendUntil: number, enabled: boolean, mutation: string}}
+    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean, mutation: string}}
     fruits = {} -- {fruitType: {sendUntil: number, enabled: boolean}}
 }
 
@@ -110,6 +118,15 @@ local FruitData = {
     DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Price = "40,000,000,000", Icon = "💠", Rarity = 6 },
     Durian = { Name = "Durian", Price = "80,000,000,000", Icon = "🥥", Rarity = 6 },
     DragonFruit = { Name = "Dragon Fruit", Price = "1,500,000,000", Icon = "🐲", Rarity = 6 }
+}
+
+local MutationData = {
+    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
+    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
+    Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
+    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
+    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 },
+    Snow = { Name = "Snow", Icon = "❄️", Rarity = 150 }
 }
 
 local HardcodedPetTypes = {
@@ -573,6 +590,17 @@ local function shouldSendItem(itemType, category, ownedAmount)
     end
 end
 
+-- Check if an item matches the mutation filter
+local function itemMatchesMutation(item, requiredMutation)
+    if not requiredMutation or requiredMutation == "Any" then
+        return true -- No mutation filter or "Any" means accept all
+    end
+    
+    -- Get the item's mutation
+    local itemMutation = item:GetAttribute("M") or "None"
+    return itemMutation == requiredMutation
+end
+
 local function getItemsToSend()
     local inventory = getPlayerInventory()
     local itemsToSend = {}
@@ -580,17 +608,23 @@ local function getItemsToSend()
     -- Check Eggs
     for eggType, ownedAmount in pairs(inventory.eggs) do
         if shouldSendItem(eggType, "eggs", ownedAmount) then
-            -- Find egg UID from inventory
+            -- Get mutation requirement for this egg type
+            local config = itemConfigs.eggs[eggType]
+            local requiredMutation = config and config.mutation or "Any"
+            
+            -- Find egg UID from inventory that matches mutation requirement
             local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
             if eggsFolder then
                 for _, eggData in pairs(eggsFolder:GetChildren()) do
                     if eggData:IsA("Configuration") then
                         local eggDataType = safeGetAttribute(eggData, "T", nil)
-                        if eggDataType == eggType then
+                        local isPlaced = safeGetAttribute(eggData, "D", nil) ~= nil
+                        if eggDataType == eggType and not isPlaced and itemMatchesMutation(eggData, requiredMutation) then
                             table.insert(itemsToSend, {
                                 uid = eggData.Name,
                                 type = eggType,
-                                category = "eggs"
+                                category = "eggs",
+                                mutation = safeGetAttribute(eggData, "M", "None")
                             })
                             break -- Only send one at a time
                         end
@@ -639,18 +673,23 @@ local function getItemsToSend()
         -- Individual mode: check configured pets (exclude placed pets)
         for petType, ownedAmount in pairs(inventory.pets) do
             if shouldSendItem(petType, "pets", ownedAmount) then
-                -- Find pet UID from inventory
+                -- Get mutation requirement for this pet type
+                local config = itemConfigs.pets[petType]
+                local requiredMutation = config and config.mutation or "Any"
+                
+                -- Find pet UID from inventory that matches mutation requirement
                 local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
                 if petsFolder then
                     for _, petData in pairs(petsFolder:GetChildren()) do
                         if petData:IsA("Configuration") then
                             local petDataType = safeGetAttribute(petData, "T", nil)
                             local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
-                            if petDataType == petType and not isPlaced then
+                            if petDataType == petType and not isPlaced and itemMatchesMutation(petData, requiredMutation) then
                                 table.insert(itemsToSend, {
                                     uid = petData.Name,
                                     type = petType,
-                                    category = "pets"
+                                    category = "pets",
+                                    mutation = safeGetAttribute(petData, "M", "None")
                                 })
                                 break -- Only send one at a time
                             end
@@ -941,6 +980,109 @@ local function createTargetSection(parent)
     local toggleCorner = Instance.new("UICorner")
     toggleCorner.CornerRadius = UDim.new(0, 6)
     toggleCorner.Parent = autoTradeToggle
+    
+    -- Speed Control Slider
+    local speedFrame = Instance.new("Frame")
+    speedFrame.Name = "SpeedFrame"
+    speedFrame.Size = UDim2.new(1, -20, 0, 50)
+    speedFrame.Position = UDim2.new(0, 10, 1, -125) -- Position from bottom: 125px from bottom
+    speedFrame.BackgroundTransparency = 1
+    speedFrame.Parent = targetSection
+    
+    local speedLabel = Instance.new("TextLabel")
+    speedLabel.Name = "SpeedLabel"
+    speedLabel.Size = UDim2.new(1, 0, 0, 20)
+    speedLabel.Position = UDim2.new(0, 0, 0, 0)
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
+    speedLabel.TextSize = 12
+    speedLabel.Font = Enum.Font.GothamSemibold
+    speedLabel.TextColor3 = colors.text
+    speedLabel.TextXAlignment = Enum.TextXAlignment.Center
+    speedLabel.Parent = speedFrame
+    
+    -- Speed Slider Background
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Name = "SliderBg"
+    sliderBg.Size = UDim2.new(1, 0, 0, 6)
+    sliderBg.Position = UDim2.new(0, 0, 0, 25)
+    sliderBg.BackgroundColor3 = colors.hover
+    sliderBg.BorderSizePixel = 0
+    sliderBg.Parent = speedFrame
+    
+    local sliderBgCorner = Instance.new("UICorner")
+    sliderBgCorner.CornerRadius = UDim.new(0, 3)
+    sliderBgCorner.Parent = sliderBg
+    
+    -- Speed Slider Fill
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Name = "SliderFill"
+    sliderFill.Size = UDim2.new((sendingSpeed - 0.5) / 1.5, 0, 1, 0) -- Map 0.5-2.0 to 0-1
+    sliderFill.Position = UDim2.new(0, 0, 0, 0)
+    sliderFill.BackgroundColor3 = colors.primary
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBg
+    
+    local sliderFillCorner = Instance.new("UICorner")
+    sliderFillCorner.CornerRadius = UDim.new(0, 3)
+    sliderFillCorner.Parent = sliderFill
+    
+    -- Speed Slider Handle
+    local sliderHandle = Instance.new("Frame")
+    sliderHandle.Name = "SliderHandle"
+    sliderHandle.Size = UDim2.new(0, 16, 0, 16)
+    sliderHandle.Position = UDim2.new((sendingSpeed - 0.5) / 1.5, -8, 0, -5) -- Center on slider
+    sliderHandle.BackgroundColor3 = colors.text
+    sliderHandle.BorderSizePixel = 0
+    sliderHandle.ZIndex = 2
+    sliderHandle.Parent = speedFrame
+    
+    local sliderHandleCorner = Instance.new("UICorner")
+    sliderHandleCorner.CornerRadius = UDim.new(0, 8)
+    sliderHandleCorner.Parent = sliderHandle
+    
+    -- Speed Slider Interaction
+    local isDraggingSlider = false
+    
+    sliderHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingSlider = true
+        end
+    end)
+    
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingSlider = true
+            -- Update slider position immediately
+            local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            sendingSpeed = 0.5 + (relativeX * 1.5) -- Map 0-1 to 0.5-2.0
+            
+            -- Update UI
+            sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sliderHandle.Position = UDim2.new(relativeX, -8, 0, -5)
+            speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingSlider then
+            local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            sendingSpeed = 0.5 + (relativeX * 1.5) -- Map 0-1 to 0.5-2.0
+            
+            -- Update UI
+            sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sliderHandle.Position = UDim2.new(relativeX, -8, 0, -5)
+            speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingSlider = false
+        end
+    end)
     
     -- Daily Gift Counter Display
     local giftCountLabel = Instance.new("TextLabel")
@@ -1356,11 +1498,20 @@ local function createItemCard(itemId, itemData, category, parent)
     
     -- Send Until Input (not for speed mode pets)
     local sendInput = nil
+    local mutationDropdown = nil
+    local hasMutations = (category == "pets" or category == "eggs")
+    
     if not (category == "pets" and petMode == "Speed") then
         sendInput = Instance.new("TextBox")
         sendInput.Name = "SendInput"
-        sendInput.Size = UDim2.new(0, 80, 0, 25)
-        sendInput.Position = UDim2.new(1, -90, 0, 17.5)
+        -- Adjust size and position to make room for mutation dropdown
+        if hasMutations then
+            sendInput.Size = UDim2.new(0, 60, 0, 25) -- Smaller width to make room for mutation dropdown
+            sendInput.Position = UDim2.new(1, -130, 0, 17.5) -- Move left to make room
+        else
+            sendInput.Size = UDim2.new(0, 80, 0, 25)
+            sendInput.Position = UDim2.new(1, -90, 0, 17.5)
+        end
         sendInput.BackgroundColor3 = colors.surface
         sendInput.BorderSizePixel = 0
         -- Only show value if user has actually configured this item, otherwise leave empty
@@ -1464,6 +1615,147 @@ local function createItemCard(itemId, itemData, category, parent)
         else
             warningIcon.Visible = false -- No warning if not configured
         end
+    end
+    
+    -- Mutation Dropdown (for pets and eggs only)
+    if hasMutations and not (category == "pets" and petMode == "Speed") then
+        mutationDropdown = Instance.new("TextButton")
+        mutationDropdown.Name = "MutationDropdown"
+        mutationDropdown.Size = UDim2.new(0, 60, 0, 25)
+        mutationDropdown.Position = UDim2.new(1, -60, 0, 17.5)
+        mutationDropdown.BackgroundColor3 = colors.surface
+        mutationDropdown.BorderSizePixel = 0
+        
+        -- Get current mutation selection
+        local config = itemConfigs[category][itemId]
+        local currentMutation = (config and config.mutation) or "Any"
+        mutationDropdown.Text = currentMutation == "Any" and "Any" or (MutationData[currentMutation] and MutationData[currentMutation].Icon or "?")
+        mutationDropdown.TextSize = 12
+        mutationDropdown.Font = Enum.Font.Gotham
+        mutationDropdown.TextColor3 = colors.text
+        mutationDropdown.ZIndex = 2
+        mutationDropdown.Parent = card
+        
+        local mutationCorner = Instance.new("UICorner")
+        mutationCorner.CornerRadius = UDim.new(0, 4)
+        mutationCorner.Parent = mutationDropdown
+        
+        -- Create dropdown list (initially hidden)
+        local mutationList = Instance.new("Frame")
+        mutationList.Name = "MutationList"
+        mutationList.Size = UDim2.new(0, 120, 0, 0) -- Start with 0 height
+        mutationList.Position = UDim2.new(0, 0, 1, 2)
+        mutationList.BackgroundColor3 = colors.surface
+        mutationList.BorderSizePixel = 0
+        mutationList.Visible = false
+        mutationList.ZIndex = 100 -- High z-index to appear above other elements
+        mutationList.Parent = mutationDropdown
+        
+        local mutationListCorner = Instance.new("UICorner")
+        mutationListCorner.CornerRadius = UDim.new(0, 4)
+        mutationListCorner.Parent = mutationList
+        
+        local mutationListStroke = Instance.new("UIStroke")
+        mutationListStroke.Color = colors.border
+        mutationListStroke.Thickness = 1
+        mutationListStroke.Parent = mutationList
+        
+        local mutationListLayout = Instance.new("UIListLayout")
+        mutationListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        mutationListLayout.FillDirection = Enum.FillDirection.Vertical
+        mutationListLayout.Parent = mutationList
+        
+        -- Create mutation options
+        local mutationOptions = {"Any"}
+        for mutationId, mutationData in pairs(MutationData) do
+            table.insert(mutationOptions, mutationId)
+        end
+        table.sort(mutationOptions, function(a, b)
+            if a == "Any" then return true end
+            if b == "Any" then return false end
+            return (MutationData[a] and MutationData[a].Rarity or 0) < (MutationData[b] and MutationData[b].Rarity or 0)
+        end)
+        
+        for i, mutationId in ipairs(mutationOptions) do
+            local option = Instance.new("TextButton")
+            option.Name = "Option_" .. mutationId
+            option.Size = UDim2.new(1, 0, 0, 25)
+            option.BackgroundColor3 = colors.surface
+            option.BorderSizePixel = 0
+            option.ZIndex = 101
+            option.Parent = mutationList
+            
+            if mutationId == "Any" then
+                option.Text = "Any Mutation"
+            else
+                local mutationData = MutationData[mutationId]
+                option.Text = (mutationData.Icon or "?") .. " " .. mutationData.Name
+            end
+            option.TextSize = 11
+            option.Font = Enum.Font.Gotham
+            option.TextColor3 = colors.text
+            option.TextXAlignment = Enum.TextXAlignment.Left
+            
+            local optionPadding = Instance.new("UIPadding")
+            optionPadding.PaddingLeft = UDim.new(0, 8)
+            optionPadding.Parent = option
+            
+            -- Hover effect
+            option.MouseEnter:Connect(function()
+                option.BackgroundColor3 = colors.hover
+            end)
+            
+            option.MouseLeave:Connect(function()
+                option.BackgroundColor3 = colors.surface
+            end)
+            
+            -- Selection
+            option.MouseButton1Click:Connect(function()
+                -- Update config
+                if not itemConfigs[category][itemId] then
+                    itemConfigs[category][itemId] = {}
+                end
+                itemConfigs[category][itemId].mutation = mutationId
+                
+                -- Update button text
+                mutationDropdown.Text = mutationId == "Any" and "Any" or (MutationData[mutationId] and MutationData[mutationId].Icon or "?")
+                
+                -- Hide dropdown
+                mutationList.Visible = false
+                mutationList.Size = UDim2.new(0, 120, 0, 0)
+                
+                saveConfig()
+            end)
+        end
+        
+        -- Toggle dropdown
+        mutationDropdown.MouseButton1Click:Connect(function()
+            if mutationList.Visible then
+                -- Hide dropdown
+                mutationList.Visible = false
+                mutationList.Size = UDim2.new(0, 120, 0, 0)
+            else
+                -- Show dropdown
+                local optionCount = #mutationOptions
+                local listHeight = optionCount * 25
+                mutationList.Size = UDim2.new(0, 120, 0, listHeight)
+                mutationList.Visible = true
+            end
+        end)
+        
+        -- Close dropdown when clicking elsewhere
+        local function closeDropdown()
+            if mutationList.Visible then
+                mutationList.Visible = false
+                mutationList.Size = UDim2.new(0, 120, 0, 0)
+            end
+        end
+        
+        -- Add to a global list for closing dropdowns
+        if not _G.AutoTradeDropdowns then
+            _G.AutoTradeDropdowns = {}
+        end
+        table.insert(_G.AutoTradeDropdowns, closeDropdown)
     end
     
     return card
@@ -1841,18 +2133,79 @@ refreshContent = function()
 end
 
 -- Create Main UI
+-- Window Controls Creation
+local function createWindowControls(parent)
+    local controls = {}
+    
+    -- Title Bar (for dragging)
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, -40, 0, 40) -- Leave space for close/minimize buttons
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundTransparency = 1
+    titleBar.ZIndex = 5
+    titleBar.Parent = parent
+    
+    -- Close Button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseBtn"
+    closeBtn.Size = UDim2.new(0, 20, 0, 20)
+    closeBtn.Position = UDim2.new(1, -25, 0, 10)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 69, 58)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "×"
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.ZIndex = 6
+    closeBtn.Parent = parent
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 10)
+    closeCorner.Parent = closeBtn
+    
+    -- Minimize Button
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Name = "MinimizeBtn"
+    minimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+    minimizeBtn.Position = UDim2.new(1, -50, 0, 10)
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+    minimizeBtn.BorderSizePixel = 0
+    minimizeBtn.Text = "−"
+    minimizeBtn.TextSize = 14
+    minimizeBtn.Font = Enum.Font.GothamBold
+    minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeBtn.ZIndex = 6
+    minimizeBtn.Parent = parent
+    
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(0, 10)
+    minimizeCorner.Parent = minimizeBtn
+    
+    controls.CloseBtn = closeBtn
+    controls.MinimizeBtn = minimizeBtn
+    controls.TitleBar = titleBar
+    
+    return controls
+end
+
 function AutoTradeUI.CreateUI()
     if ScreenGui then
         ScreenGui:Destroy()
     end
     
-    -- Calculate screen-relative size
+    -- Calculate screen-relative size optimized for 960x540
     local screenSize = workspace.CurrentCamera.ViewportSize
-    local baseWidth = 900
-    local baseHeight = 600
-    local scaleX = math.min(screenSize.X / 1920, 1) -- Scale down on smaller screens
-    local scaleY = math.min(screenSize.Y / 1080, 1)
+    local baseWidth = 700   -- Even smaller for 960x540
+    local baseHeight = 450  -- Compact height for better fit
+    
+    -- Optimized scaling for smaller screens like 960x540
+    local scaleX = math.min(screenSize.X / 960, 1.0)  -- No upscaling, max 1:1
+    local scaleY = math.min(screenSize.Y / 540, 1.0)
     local scale = math.min(scaleX, scaleY)
+    
+    -- Ensure minimum usable size but allow smaller
+    scale = math.max(scale, 0.6) -- Allow down to 60% for very small screens
     
     local finalWidth = baseWidth * scale
     local finalHeight = baseHeight * scale
@@ -1875,6 +2228,33 @@ function AutoTradeUI.CreateUI()
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = MainFrame
+    
+    -- Resize Handle (bottom-right corner)
+    local resizeHandle = Instance.new("Frame")
+    resizeHandle.Name = "ResizeHandle"
+    resizeHandle.Size = UDim2.new(0, 20, 0, 20)
+    resizeHandle.Position = UDim2.new(1, -20, 1, -20)
+    resizeHandle.BackgroundColor3 = colors.border
+    resizeHandle.BorderSizePixel = 0
+    resizeHandle.ZIndex = 10
+    resizeHandle.Parent = MainFrame
+    
+    local resizeCorner = Instance.new("UICorner")
+    resizeCorner.CornerRadius = UDim.new(0, 6)
+    resizeCorner.Parent = resizeHandle
+    
+    -- Resize handle visual indicator
+    local resizeIcon = Instance.new("TextLabel")
+    resizeIcon.Size = UDim2.new(1, 0, 1, 0)
+    resizeIcon.BackgroundTransparency = 1
+    resizeIcon.Text = "⟲"
+    resizeIcon.TextSize = 12
+    resizeIcon.Font = Enum.Font.GothamBold
+    resizeIcon.TextColor3 = colors.textSecondary
+    resizeIcon.TextXAlignment = Enum.TextXAlignment.Center
+    resizeIcon.TextYAlignment = Enum.TextYAlignment.Center
+    resizeIcon.ZIndex = 11
+    resizeIcon.Parent = resizeHandle
     
     local stroke = Instance.new("UIStroke")
     stroke.Color = colors.border
@@ -1929,12 +2309,7 @@ function AutoTradeUI.CreateUI()
     end)
     
     -- Dragging functionality
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundTransparency = 1
-    titleBar.Parent = MainFrame
+    local titleBar = windowControls.TitleBar
     
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1952,10 +2327,41 @@ function AutoTradeUI.CreateUI()
         end
     end)
     
+    -- Resizing functionality
+    local resizeHandle = MainFrame.ResizeHandle
+    
+    resizeHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isResizing = true
+            resizeStart = input.Position
+            startSize = MainFrame.Size
+            
+            local connection
+            connection = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isResizing = false
+                    connection:Disconnect()
+                end
+            end)
+        end
+    end)
+    
     UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-            local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            if isDragging then
+                local delta = input.Position - dragStart
+                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            elseif isResizing then
+                local delta = input.Position - resizeStart
+                local newWidth = math.max(minWidth, math.min(maxWidth, startSize.X.Offset + delta.X))
+                local newHeight = math.max(minHeight, math.min(maxHeight, startSize.Y.Offset + delta.Y))
+                MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+                
+                -- Update originalSize so minimize/restore works correctly
+                if not isMinimized then
+                    originalSize = MainFrame.Size
+                end
+            end
         end
     end)
     
@@ -2240,11 +2646,29 @@ local function startInventoryMonitoring()
         end
         
         if autoTradeEnabled and not isTrading then
-            -- Check for items to send every few seconds
-            task.wait(2)
+            -- Check for items to send with speed adjustment
+            local baseDelay = 2.0 -- Base delay in seconds
+            local adjustedDelay = baseDelay / sendingSpeed -- Faster speed = shorter delay
+            task.wait(adjustedDelay)
         end
     end)
 end
+
+-- Function to close all mutation dropdowns
+local function closeAllMutationDropdowns()
+    if _G.AutoTradeDropdowns then
+        for _, closeFunc in ipairs(_G.AutoTradeDropdowns) do
+            closeFunc()
+        end
+    end
+end
+
+-- Close dropdowns when clicking elsewhere
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        closeAllMutationDropdowns()
+    end
+end)
 
 -- Start monitoring when module loads
 startInventoryMonitoring()
