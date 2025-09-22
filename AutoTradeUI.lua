@@ -120,7 +120,7 @@ local MutationData = {
     Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
     Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
     Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Jurassic = { Name = "Jurassic", Icon = "🦕", Rarity = 100 },
+    Dino = { Name = "Jurassic", Icon = "🦕", Rarity = 100 },
     Snow = { Name = "Snow", Icon = "❄️", Rarity = 150 }
 }
 
@@ -598,13 +598,33 @@ local function itemMatchesMutations(item)
     return true
 end
 
+-- Check if an item should be sent based on ocean filter
+local function itemMatchesOceanFilter(itemType, category)
+    if oceanOnlyFilter and (category == "pets" or category == "eggs") then
+        local itemData = nil
+        if category == "pets" then
+            -- For pets, we need to check if they come from ocean eggs
+            -- This is more complex, so for now we'll skip ocean filtering for pets
+            return true
+        elseif category == "eggs" then
+            itemData = EggData[itemType]
+        end
+        
+        if itemData and itemData.Category == "Ocean" then
+            return false -- Exclude ocean items when filter is ON
+        end
+    end
+    
+    return true
+end
+
 local function getItemsToSend()
     local inventory = getPlayerInventory()
     local itemsToSend = {}
     
     -- Check Eggs
     for eggType, ownedAmount in pairs(inventory.eggs) do
-        if shouldSendItem(eggType, "eggs", ownedAmount) then
+        if shouldSendItem(eggType, "eggs", ownedAmount) and itemMatchesOceanFilter(eggType, "eggs") then
             -- Find egg UID from inventory that matches mutation requirements
             local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
             if eggsFolder then
@@ -665,7 +685,7 @@ local function getItemsToSend()
     else
         -- Individual mode: check configured pets (exclude placed pets)
         for petType, ownedAmount in pairs(inventory.pets) do
-            if shouldSendItem(petType, "pets", ownedAmount) then
+            if shouldSendItem(petType, "pets", ownedAmount) and itemMatchesOceanFilter(petType, "pets") then
                 -- Find pet UID from inventory
                 local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
                 if petsFolder then
@@ -1110,7 +1130,7 @@ local function createTargetSection(parent)
     globalMutationListLayout.Parent = globalMutationList
     
     -- Create global mutation options
-    local globalMutationOptions = {"Any", "Golden", "Diamond", "Electirc", "Fire", "Jurassic", "Snow"}
+    local globalMutationOptions = {"Any", "Golden", "Diamond", "Electirc", "Fire", "Dino", "Snow"}
     for i, mutationId in ipairs(globalMutationOptions) do
         local option = Instance.new("TextButton")
         option.Name = "Option_" .. mutationId
@@ -1196,75 +1216,6 @@ local function createTargetSection(parent)
             local listHeight = math.min(#globalMutationOptions * 27, 150)
             globalMutationList.Size = UDim2.new(1, -20, 0, listHeight)
             globalMutationList.Visible = true
-        end
-    end)
-    
-    -- Ocean Filter Checkbox
-    local oceanFilterFrame = Instance.new("Frame")
-    oceanFilterFrame.Name = "OceanFilterFrame"
-    oceanFilterFrame.Size = UDim2.new(1, -20, 0, 25)
-    oceanFilterFrame.Position = UDim2.new(0, 10, 0, 455)
-    oceanFilterFrame.BackgroundTransparency = 1
-    oceanFilterFrame.Parent = targetSection
-    
-    local oceanCheckbox = Instance.new("TextButton")
-    oceanCheckbox.Name = "OceanCheckbox"
-    oceanCheckbox.Size = UDim2.new(0, 20, 0, 20)
-    oceanCheckbox.Position = UDim2.new(0, 0, 0, 2.5)
-    oceanCheckbox.BackgroundColor3 = colors.surface
-    oceanCheckbox.BorderSizePixel = 0
-    oceanCheckbox.Text = ""
-    oceanCheckbox.Parent = oceanFilterFrame
-    
-    local oceanCheckboxCorner = Instance.new("UICorner")
-    oceanCheckboxCorner.CornerRadius = UDim.new(0, 3)
-    oceanCheckboxCorner.Parent = oceanCheckbox
-    
-    local oceanCheckboxStroke = Instance.new("UIStroke")
-    oceanCheckboxStroke.Color = colors.border
-    oceanCheckboxStroke.Thickness = 1
-    oceanCheckboxStroke.Parent = oceanCheckbox
-    
-    local oceanCheckmark = Instance.new("TextLabel")
-    oceanCheckmark.Name = "Checkmark"
-    oceanCheckmark.Size = UDim2.new(1, 0, 1, 0)
-    oceanCheckmark.BackgroundTransparency = 1
-    oceanCheckmark.Text = "✓"
-    oceanCheckmark.TextSize = 14
-    oceanCheckmark.Font = Enum.Font.GothamBold
-    oceanCheckmark.TextColor3 = colors.success
-    oceanCheckmark.TextXAlignment = Enum.TextXAlignment.Center
-    oceanCheckmark.TextYAlignment = Enum.TextYAlignment.Center
-    oceanCheckmark.Visible = false
-    oceanCheckmark.Parent = oceanCheckbox
-    
-    local oceanLabel = Instance.new("TextLabel")
-    oceanLabel.Name = "OceanLabel"
-    oceanLabel.Size = UDim2.new(1, -25, 0, 20)
-    oceanLabel.Position = UDim2.new(0, 25, 0, 2.5)
-    oceanLabel.BackgroundTransparency = 1
-    oceanLabel.Text = "Exclude Ocean Pets/Eggs"
-    oceanLabel.TextSize = 10
-    oceanLabel.Font = Enum.Font.Gotham
-    oceanLabel.TextColor3 = colors.text
-    oceanLabel.TextXAlignment = Enum.TextXAlignment.Left
-    oceanLabel.Parent = oceanFilterFrame
-    
-    -- Ocean filter checkbox functionality
-    oceanCheckbox.MouseButton1Click:Connect(function()
-        oceanOnlyFilter = not oceanOnlyFilter
-        
-        if oceanOnlyFilter then
-            oceanCheckbox.BackgroundColor3 = colors.primary
-            oceanCheckmark.Visible = true
-        else
-            oceanCheckbox.BackgroundColor3 = colors.surface
-            oceanCheckmark.Visible = false
-        end
-        
-        -- Refresh content to apply filter
-        if refreshContent then
-            refreshContent()
         end
     end)
     
@@ -1426,12 +1377,12 @@ local function createFilterBar(parent)
     -- Show Zero Toggle
     local zeroToggle = Instance.new("TextButton")
     zeroToggle.Name = "ZeroToggle"
-    zeroToggle.Size = UDim2.new(0.15, -5, 0, 30)
-    zeroToggle.Position = UDim2.new(0.5, 5, 0, 10)
+    zeroToggle.Size = UDim2.new(0.12, -5, 0, 30)
+    zeroToggle.Position = UDim2.new(0.45, 5, 0, 10)
     zeroToggle.BackgroundColor3 = showZeroItems and colors.primary or colors.hover
     zeroToggle.BorderSizePixel = 0
     zeroToggle.Text = "Show 0x"
-    zeroToggle.TextSize = 12
+    zeroToggle.TextSize = 11
     zeroToggle.Font = Enum.Font.Gotham
     zeroToggle.TextColor3 = colors.text
     zeroToggle.Parent = filterBar
@@ -1443,12 +1394,12 @@ local function createFilterBar(parent)
     -- Configured Only Toggle
     local configToggle = Instance.new("TextButton")
     configToggle.Name = "ConfigToggle"
-    configToggle.Size = UDim2.new(0.2, -5, 0, 30)
-    configToggle.Position = UDim2.new(0.65, 5, 0, 10)
+    configToggle.Size = UDim2.new(0.15, -5, 0, 30)
+    configToggle.Position = UDim2.new(0.57, 5, 0, 10)
     configToggle.BackgroundColor3 = configuredOnly and colors.primary or colors.hover
     configToggle.BorderSizePixel = 0
     configToggle.Text = "Configured"
-    configToggle.TextSize = 12
+    configToggle.TextSize = 11
     configToggle.Font = Enum.Font.Gotham
     configToggle.TextColor3 = colors.text
     configToggle.Parent = filterBar
@@ -1489,6 +1440,48 @@ local function createFilterBar(parent)
     end)
     
     configToggle.MouseLeave:Connect(function()
+        hideTooltip()
+    end)
+    
+    -- Ocean Filter Toggle (moved from left panel to filter bar)
+    local oceanToggle = Instance.new("TextButton")
+    oceanToggle.Name = "OceanToggle"
+    oceanToggle.Size = UDim2.new(0.16, -5, 0, 30)
+    oceanToggle.Position = UDim2.new(0.72, 5, 0, 10)
+    oceanToggle.BackgroundColor3 = oceanOnlyFilter and colors.warning or colors.hover
+    oceanToggle.BorderSizePixel = 0
+    oceanToggle.Text = oceanOnlyFilter and "Exclude 🌊" or "Include 🌊"
+    oceanToggle.TextSize = 10
+    oceanToggle.Font = Enum.Font.Gotham
+    oceanToggle.TextColor3 = colors.text
+    oceanToggle.Parent = filterBar
+    
+    local oceanCorner = Instance.new("UICorner")
+    oceanCorner.CornerRadius = UDim.new(0, 4)
+    oceanCorner.Parent = oceanToggle
+    
+    -- Ocean toggle functionality
+    oceanToggle.MouseButton1Click:Connect(function()
+        oceanOnlyFilter = not oceanOnlyFilter
+        
+        if oceanOnlyFilter then
+            oceanToggle.BackgroundColor3 = colors.warning
+            oceanToggle.Text = "Exclude 🌊"
+        else
+            oceanToggle.BackgroundColor3 = colors.hover
+            oceanToggle.Text = "Include 🌊"
+        end
+        
+        -- No need to refresh content since this only affects sending, not display
+    end)
+    
+    -- Ocean toggle tooltip
+    oceanToggle.MouseEnter:Connect(function()
+        local tooltipText = oceanOnlyFilter and "Exclude ocean pets/eggs from trading" or "Include ocean pets/eggs in trading"
+        createTooltip(tooltipText, filterBar, oceanToggle)
+    end)
+    
+    oceanToggle.MouseLeave:Connect(function()
         hideTooltip()
     end)
     
@@ -1612,10 +1605,6 @@ local function createItemCard(itemId, itemData, category, parent)
     if not showZeroItems and ownedAmount == 0 then return nil end
     if configuredOnly and not (itemConfigs[category][itemId] and itemConfigs[category][itemId].enabled) then return nil end
     
-    -- Apply ocean filter (exclude ocean pets/eggs when enabled)
-    if oceanOnlyFilter and (category == "pets" or category == "eggs") then
-        if itemData.Category == "Ocean" then return nil end
-    end
     
     local card = Instance.new("Frame")
     card.Name = itemId
