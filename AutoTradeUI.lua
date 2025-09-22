@@ -33,7 +33,7 @@ local currentTab = "Pets" -- "Pets", "Eggs", "Fruits"
   local autoTradeEnabled = false
   local sendingSpeed = 2.0 -- Speed multiplier for sending process (2.0s = normal speed, down to 1.0s)
   local globalMutationFilter = "Any" -- Global mutation filter for all pets/eggs
-  local oceanOnlyFilter = false -- Ocean pets/eggs only filter
+  local oceanOnlyFilter = false -- Exclude ocean pets/eggs filter
   local petSpeedMin = 0
   local petSpeedMax = 999999999
 
