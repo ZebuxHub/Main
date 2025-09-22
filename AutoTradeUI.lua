@@ -970,15 +970,39 @@ local function createTargetSection(parent)
     stroke.Thickness = 1
     stroke.Parent = targetSection
     
+    -- Add padding to prevent overlapping
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 15)
+    padding.PaddingBottom = UDim.new(0, 15)
+    padding.PaddingLeft = UDim.new(0, 15)
+    padding.PaddingRight = UDim.new(0, 15)
+    padding.Parent = targetSection
+    
+    -- Create main container with flexible layout
+    local contentContainer = Instance.new("Frame")
+    contentContainer.Name = "ContentContainer"
+    contentContainer.Size = UDim2.new(1, 0, 1, 0)
+    contentContainer.BackgroundTransparency = 1
+    contentContainer.Parent = targetSection
+    
+    -- Add layout for flexible positioning
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Top
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 10)
+    layout.Parent = contentContainer
+    
     -- Target Player Avatar (placeholder)
     local avatar = Instance.new("ImageLabel")
     avatar.Name = "Avatar"
     avatar.Size = UDim2.new(0, 80, 0, 80)
-    avatar.Position = UDim2.new(0.5, -40, 0, 20)
     avatar.BackgroundColor3 = colors.hover
     avatar.BorderSizePixel = 0
     avatar.Image = "" -- Will be set dynamically
-    avatar.Parent = targetSection
+    avatar.LayoutOrder = 1
+    avatar.Parent = contentContainer
     
     local avatarCorner = Instance.new("UICorner")
     avatarCorner.CornerRadius = UDim.new(0, 8)
@@ -987,8 +1011,7 @@ local function createTargetSection(parent)
     -- Target Player Name
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(1, -20, 0, 30)
-    nameLabel.Position = UDim2.new(0, 10, 0, 110)
+    nameLabel.Size = UDim2.new(1, 0, 0, 30)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = selectedTarget
     nameLabel.TextSize = 16
@@ -996,30 +1019,31 @@ local function createTargetSection(parent)
     nameLabel.TextColor3 = colors.text
     nameLabel.TextXAlignment = Enum.TextXAlignment.Center
     nameLabel.TextWrapped = true
-    nameLabel.Parent = targetSection
+    nameLabel.LayoutOrder = 2
+    nameLabel.Parent = contentContainer
     
     -- Target Selection Dropdown
     local targetDropdown = Instance.new("TextButton")
     targetDropdown.Name = "TargetDropdown"
-    targetDropdown.Size = UDim2.new(1, -20, 0, 30) -- Smaller height
-    targetDropdown.Position = UDim2.new(0, 10, 0, 140) -- Moved up
+    targetDropdown.Size = UDim2.new(1, 0, 0, 30)
     targetDropdown.BackgroundColor3 = colors.hover
     targetDropdown.BorderSizePixel = 0
     targetDropdown.Text = "Select Target ▼"
-    targetDropdown.TextSize = 12 -- Smaller text
+    targetDropdown.TextSize = 12
     targetDropdown.Font = Enum.Font.Gotham
     targetDropdown.TextColor3 = colors.text
-    targetDropdown.Parent = targetSection
+    targetDropdown.LayoutOrder = 3
+    targetDropdown.Parent = contentContainer
     
     local dropdownCorner = Instance.new("UICorner")
     dropdownCorner.CornerRadius = UDim.new(0, 6)
     dropdownCorner.Parent = targetDropdown
     
-    -- Dropdown List (initially hidden)
+    -- Dropdown List (initially hidden) - positioned relative to dropdown button
     local dropdownList = Instance.new("ScrollingFrame")
     dropdownList.Name = "DropdownList"
-    dropdownList.Size = UDim2.new(1, -20, 0, 100) -- Smaller height
-    dropdownList.Position = UDim2.new(0, 10, 0, 175) -- Adjusted position
+    dropdownList.Size = UDim2.new(1, 0, 0, 100)
+    dropdownList.Position = UDim2.new(0, 0, 1, 2) -- Position below the dropdown button
     dropdownList.BackgroundColor3 = colors.surface
     dropdownList.BorderSizePixel = 0
     dropdownList.Visible = false
@@ -1028,7 +1052,7 @@ local function createTargetSection(parent)
     dropdownList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     dropdownList.ScrollingDirection = Enum.ScrollingDirection.Y
     dropdownList.ZIndex = 100
-    dropdownList.Parent = targetSection
+    dropdownList.Parent = targetDropdown -- Parent to dropdown for proper positioning
     
     local dropdownListCorner = Instance.new("UICorner")
     dropdownListCorner.CornerRadius = UDim.new(0, 6)
@@ -1047,15 +1071,15 @@ local function createTargetSection(parent)
     -- Send Button
     local sendBtn = Instance.new("TextButton")
     sendBtn.Name = "SendBtn"
-    sendBtn.Size = UDim2.new(1, -20, 0, 35) -- Smaller height
-    sendBtn.Position = UDim2.new(0, 10, 1, -160) -- Position from bottom
+    sendBtn.Size = UDim2.new(1, 0, 0, 35)
     sendBtn.BackgroundColor3 = colors.primary
     sendBtn.BorderSizePixel = 0
     sendBtn.Text = "Send Now"
-    sendBtn.TextSize = 14 -- Smaller text
+    sendBtn.TextSize = 14
     sendBtn.Font = Enum.Font.GothamBold
     sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    sendBtn.Parent = targetSection
+    sendBtn.LayoutOrder = 4
+    sendBtn.Parent = contentContainer
     
     local sendCorner = Instance.new("UICorner")
     sendCorner.CornerRadius = UDim.new(0, 8)
@@ -1064,15 +1088,15 @@ local function createTargetSection(parent)
     -- Auto Trade Toggle
     local autoTradeToggle = Instance.new("TextButton")
     autoTradeToggle.Name = "AutoTradeToggle"
-    autoTradeToggle.Size = UDim2.new(1, -20, 0, 30) -- Smaller height
-    autoTradeToggle.Position = UDim2.new(0, 10, 1, -120) -- Position from bottom: 120px from bottom
+    autoTradeToggle.Size = UDim2.new(1, 0, 0, 30)
     autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
     autoTradeToggle.BorderSizePixel = 0
     autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
-    autoTradeToggle.TextSize = 12 -- Smaller text
+    autoTradeToggle.TextSize = 12
     autoTradeToggle.Font = Enum.Font.GothamSemibold
     autoTradeToggle.TextColor3 = colors.text
-    autoTradeToggle.Parent = targetSection
+    autoTradeToggle.LayoutOrder = 5
+    autoTradeToggle.Parent = contentContainer
     
     local toggleCorner = Instance.new("UICorner")
     toggleCorner.CornerRadius = UDim.new(0, 6)
@@ -1081,10 +1105,10 @@ local function createTargetSection(parent)
     -- Speed Control Slider
     local speedFrame = Instance.new("Frame")
     speedFrame.Name = "SpeedFrame"
-    speedFrame.Size = UDim2.new(1, -20, 0, 40) -- Smaller height
-    speedFrame.Position = UDim2.new(0, 10, 1, -85) -- Position from bottom: 85px from bottom
+    speedFrame.Size = UDim2.new(1, 0, 0, 40)
     speedFrame.BackgroundTransparency = 1
-    speedFrame.Parent = targetSection
+    speedFrame.LayoutOrder = 6
+    speedFrame.Parent = contentContainer
     
     local speedLabel = Instance.new("TextLabel")
     speedLabel.Name = "SpeedLabel"
@@ -1184,15 +1208,15 @@ local function createTargetSection(parent)
     -- Daily Gift Counter Display
     local giftCountLabel = Instance.new("TextLabel")
     giftCountLabel.Name = "GiftCountLabel"
-    giftCountLabel.Size = UDim2.new(1, -20, 0, 20) -- Smaller height
-    giftCountLabel.Position = UDim2.new(0, 10, 1, -40) -- Position from bottom: 40px from bottom
+    giftCountLabel.Size = UDim2.new(1, 0, 0, 20)
     giftCountLabel.BackgroundTransparency = 1
     giftCountLabel.Text = "Today Gift: 0/500"
-    giftCountLabel.TextSize = 10 -- Smaller text
+    giftCountLabel.TextSize = 10
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
     giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
-    giftCountLabel.Parent = targetSection
+    giftCountLabel.LayoutOrder = 7
+    giftCountLabel.Parent = contentContainer
     
     return targetSection
 end
