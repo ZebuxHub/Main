@@ -44,8 +44,8 @@ local sendingSpeed = 1.0 -- Speed multiplier for sending process (0.5 = slower, 
 
 -- Data Storage
 local itemConfigs = {
-    pets = {}, -- {petType: {sendUntil: number, enabled: boolean, mutation: string}}
-    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean, mutation: string}}
+    pets = {}, -- {petType: {sendUntil: number, enabled: boolean, mutations: {string}}}
+    eggs = {}, -- {eggType: {sendUntil: number, enabled: boolean, mutations: {string}}}
     fruits = {} -- {fruitType: {sendUntil: number, enabled: boolean}}
 }
 
@@ -64,6 +64,88 @@ local savedPosition = nil
 
 -- External Dependencies
 local WindUI = nil
+
+-- Responsive Layout System
+local function updateResponsiveLayout()
+    if not MainFrame then return end
+    
+    local frameSize = MainFrame.AbsoluteSize
+    local isSmall = frameSize.X < 600 or frameSize.Y < 400
+    local isMedium = frameSize.X < 800 or frameSize.Y < 500
+    
+    -- Find UI elements
+    local targetSection = MainFrame:FindFirstChild("TargetSection")
+    local filterBar = MainFrame:FindFirstChild("FilterBar")
+    local tabSection = MainFrame:FindFirstChild("TabSection")
+    
+    if not targetSection or not filterBar or not tabSection then return end
+    
+    if isSmall then
+        -- Compact layout for small screens
+        targetSection.Size = UDim2.new(1, -16, 0, 200) -- Full width, fixed height
+        targetSection.Position = UDim2.new(0, 8, 0, 40)
+        
+        filterBar.Size = UDim2.new(1, -16, 0, 40) -- Full width, smaller height
+        filterBar.Position = UDim2.new(0, 8, 0, 250)
+        
+        tabSection.Size = UDim2.new(1, -16, 1, -300) -- Full width, remaining height
+        tabSection.Position = UDim2.new(0, 8, 0, 300)
+        
+        -- Hide some elements in target section for space
+        local avatar = targetSection:FindFirstChild("Avatar")
+        local nameLabel = targetSection:FindFirstChild("NameLabel")
+        if avatar then avatar.Visible = false end
+        if nameLabel then nameLabel.Visible = false end
+        
+    elseif isMedium then
+        -- Medium layout
+        targetSection.Size = UDim2.new(0.4, -8, 1, -80)
+        targetSection.Position = UDim2.new(0, 8, 0, 40)
+        
+        filterBar.Size = UDim2.new(0.6, -8, 0, 50)
+        filterBar.Position = UDim2.new(0.4, 8, 0, 40)
+        
+        tabSection.Size = UDim2.new(0.6, -8, 1, -100)
+        tabSection.Position = UDim2.new(0.4, 8, 0, 100)
+        
+        -- Show elements but smaller
+        local avatar = targetSection:FindFirstChild("Avatar")
+        local nameLabel = targetSection:FindFirstChild("NameLabel")
+        if avatar then 
+            avatar.Visible = true
+            avatar.Size = UDim2.new(0, 60, 0, 60)
+            avatar.Position = UDim2.new(0.5, -30, 0, 10)
+        end
+        if nameLabel then 
+            nameLabel.Visible = true
+            nameLabel.Position = UDim2.new(0, 10, 0, 80)
+        end
+        
+    else
+        -- Large layout (default)
+        targetSection.Size = UDim2.new(0.35, -8, 1, -80)
+        targetSection.Position = UDim2.new(0, 16, 0, 80)
+        
+        filterBar.Size = UDim2.new(0.65, -8, 0, 50)
+        filterBar.Position = UDim2.new(0.35, 8, 0, 80)
+        
+        tabSection.Size = UDim2.new(0.65, -8, 1, -140)
+        tabSection.Position = UDim2.new(0.35, 8, 0, 140)
+        
+        -- Show all elements at full size
+        local avatar = targetSection:FindFirstChild("Avatar")
+        local nameLabel = targetSection:FindFirstChild("NameLabel")
+        if avatar then 
+            avatar.Visible = true
+            avatar.Size = UDim2.new(0, 80, 0, 80)
+            avatar.Position = UDim2.new(0.5, -40, 0, 20)
+        end
+        if nameLabel then 
+            nameLabel.Visible = true
+            nameLabel.Position = UDim2.new(0, 10, 0, 110)
+        end
+    end
+end
 
 -- Hardcoded Data (from existing systems)
 local EggData = {
@@ -591,14 +673,29 @@ local function shouldSendItem(itemType, category, ownedAmount)
 end
 
 -- Check if an item matches the mutation filter
-local function itemMatchesMutation(item, requiredMutation)
-    if not requiredMutation or requiredMutation == "Any" then
-        return true -- No mutation filter or "Any" means accept all
+local function itemMatchesMutations(item, requiredMutations)
+    if not requiredMutations or #requiredMutations == 0 then
+        return true -- No mutation filter means accept all
+    end
+    
+    -- Check if "Any" is in the list
+    for _, mutation in ipairs(requiredMutations) do
+        if mutation == "Any" then
+            return true
+        end
     end
     
     -- Get the item's mutation
     local itemMutation = item:GetAttribute("M") or "None"
-    return itemMutation == requiredMutation
+    
+    -- Check if item's mutation is in the required list
+    for _, mutation in ipairs(requiredMutations) do
+        if itemMutation == mutation then
+            return true
+        end
+    end
+    
+    return false
 end
 
 local function getItemsToSend()
@@ -608,18 +705,18 @@ local function getItemsToSend()
     -- Check Eggs
     for eggType, ownedAmount in pairs(inventory.eggs) do
         if shouldSendItem(eggType, "eggs", ownedAmount) then
-            -- Get mutation requirement for this egg type
+            -- Get mutation requirements for this egg type
             local config = itemConfigs.eggs[eggType]
-            local requiredMutation = config and config.mutation or "Any"
+            local requiredMutations = config and config.mutations or {}
             
-            -- Find egg UID from inventory that matches mutation requirement
+            -- Find egg UID from inventory that matches mutation requirements
             local eggsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Egg")
             if eggsFolder then
                 for _, eggData in pairs(eggsFolder:GetChildren()) do
                     if eggData:IsA("Configuration") then
                         local eggDataType = safeGetAttribute(eggData, "T", nil)
                         local isPlaced = safeGetAttribute(eggData, "D", nil) ~= nil
-                        if eggDataType == eggType and not isPlaced and itemMatchesMutation(eggData, requiredMutation) then
+                        if eggDataType == eggType and not isPlaced and itemMatchesMutations(eggData, requiredMutations) then
                             table.insert(itemsToSend, {
                                 uid = eggData.Name,
                                 type = eggType,
@@ -673,18 +770,18 @@ local function getItemsToSend()
         -- Individual mode: check configured pets (exclude placed pets)
         for petType, ownedAmount in pairs(inventory.pets) do
             if shouldSendItem(petType, "pets", ownedAmount) then
-                -- Get mutation requirement for this pet type
+                -- Get mutation requirements for this pet type
                 local config = itemConfigs.pets[petType]
-                local requiredMutation = config and config.mutation or "Any"
+                local requiredMutations = config and config.mutations or {}
                 
-                -- Find pet UID from inventory that matches mutation requirement
+                -- Find pet UID from inventory that matches mutation requirements
                 local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
                 if petsFolder then
                     for _, petData in pairs(petsFolder:GetChildren()) do
                         if petData:IsA("Configuration") then
                             local petDataType = safeGetAttribute(petData, "T", nil)
                             local isPlaced = safeGetAttribute(petData, "D", nil) ~= nil
-                            if petDataType == petType and not isPlaced and itemMatchesMutation(petData, requiredMutation) then
+                            if petDataType == petType and not isPlaced and itemMatchesMutations(petData, requiredMutations) then
                                 table.insert(itemsToSend, {
                                     uid = petData.Name,
                                     type = petType,
@@ -904,12 +1001,12 @@ local function createTargetSection(parent)
     -- Target Selection Dropdown
     local targetDropdown = Instance.new("TextButton")
     targetDropdown.Name = "TargetDropdown"
-    targetDropdown.Size = UDim2.new(1, -20, 0, 35)
-    targetDropdown.Position = UDim2.new(0, 10, 0, 150)
+    targetDropdown.Size = UDim2.new(1, -20, 0, 30) -- Smaller height
+    targetDropdown.Position = UDim2.new(0, 10, 0, 140) -- Moved up
     targetDropdown.BackgroundColor3 = colors.hover
     targetDropdown.BorderSizePixel = 0
     targetDropdown.Text = "Select Target ▼"
-    targetDropdown.TextSize = 14
+    targetDropdown.TextSize = 12 -- Smaller text
     targetDropdown.Font = Enum.Font.Gotham
     targetDropdown.TextColor3 = colors.text
     targetDropdown.Parent = targetSection
@@ -921,8 +1018,8 @@ local function createTargetSection(parent)
     -- Dropdown List (initially hidden)
     local dropdownList = Instance.new("ScrollingFrame")
     dropdownList.Name = "DropdownList"
-    dropdownList.Size = UDim2.new(1, -20, 0, 120)
-    dropdownList.Position = UDim2.new(0, 10, 0, 190)
+    dropdownList.Size = UDim2.new(1, -20, 0, 100) -- Smaller height
+    dropdownList.Position = UDim2.new(0, 10, 0, 175) -- Adjusted position
     dropdownList.BackgroundColor3 = colors.surface
     dropdownList.BorderSizePixel = 0
     dropdownList.Visible = false
@@ -950,12 +1047,12 @@ local function createTargetSection(parent)
     -- Send Button
     local sendBtn = Instance.new("TextButton")
     sendBtn.Name = "SendBtn"
-    sendBtn.Size = UDim2.new(1, -20, 0, 40)
-    sendBtn.Position = UDim2.new(0, 10, 0, 200)
+    sendBtn.Size = UDim2.new(1, -20, 0, 35) -- Smaller height
+    sendBtn.Position = UDim2.new(0, 10, 1, -160) -- Position from bottom
     sendBtn.BackgroundColor3 = colors.primary
     sendBtn.BorderSizePixel = 0
     sendBtn.Text = "Send Now"
-    sendBtn.TextSize = 16
+    sendBtn.TextSize = 14 -- Smaller text
     sendBtn.Font = Enum.Font.GothamBold
     sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     sendBtn.Parent = targetSection
@@ -967,12 +1064,12 @@ local function createTargetSection(parent)
     -- Auto Trade Toggle
     local autoTradeToggle = Instance.new("TextButton")
     autoTradeToggle.Name = "AutoTradeToggle"
-    autoTradeToggle.Size = UDim2.new(1, -20, 0, 35)
-    autoTradeToggle.Position = UDim2.new(0, 10, 1, -70) -- Position from bottom: 70px from bottom
+    autoTradeToggle.Size = UDim2.new(1, -20, 0, 30) -- Smaller height
+    autoTradeToggle.Position = UDim2.new(0, 10, 1, -120) -- Position from bottom: 120px from bottom
     autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
     autoTradeToggle.BorderSizePixel = 0
     autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
-    autoTradeToggle.TextSize = 14
+    autoTradeToggle.TextSize = 12 -- Smaller text
     autoTradeToggle.Font = Enum.Font.GothamSemibold
     autoTradeToggle.TextColor3 = colors.text
     autoTradeToggle.Parent = targetSection
@@ -984,8 +1081,8 @@ local function createTargetSection(parent)
     -- Speed Control Slider
     local speedFrame = Instance.new("Frame")
     speedFrame.Name = "SpeedFrame"
-    speedFrame.Size = UDim2.new(1, -20, 0, 50)
-    speedFrame.Position = UDim2.new(0, 10, 1, -125) -- Position from bottom: 125px from bottom
+    speedFrame.Size = UDim2.new(1, -20, 0, 40) -- Smaller height
+    speedFrame.Position = UDim2.new(0, 10, 1, -85) -- Position from bottom: 85px from bottom
     speedFrame.BackgroundTransparency = 1
     speedFrame.Parent = targetSection
     
@@ -1031,7 +1128,7 @@ local function createTargetSection(parent)
     local sliderHandle = Instance.new("Frame")
     sliderHandle.Name = "SliderHandle"
     sliderHandle.Size = UDim2.new(0, 16, 0, 16)
-    sliderHandle.Position = UDim2.new((sendingSpeed - 0.5) / 1.5, -8, 0, -5) -- Center on slider
+    sliderHandle.Position = UDim2.new((sendingSpeed - 0.5) / 1.5, -8, 0, 20) -- Position relative to speedFrame
     sliderHandle.BackgroundColor3 = colors.text
     sliderHandle.BorderSizePixel = 0
     sliderHandle.ZIndex = 2
@@ -1060,7 +1157,7 @@ local function createTargetSection(parent)
             
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
-            sliderHandle.Position = UDim2.new(relativeX, -8, 0, -5)
+            sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
             speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
         end
     end)
@@ -1073,7 +1170,7 @@ local function createTargetSection(parent)
             
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
-            sliderHandle.Position = UDim2.new(relativeX, -8, 0, -5)
+            sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
             speedLabel.Text = "Send Speed: " .. string.format("%.1fx", sendingSpeed)
         end
     end)
@@ -1087,11 +1184,11 @@ local function createTargetSection(parent)
     -- Daily Gift Counter Display
     local giftCountLabel = Instance.new("TextLabel")
     giftCountLabel.Name = "GiftCountLabel"
-    giftCountLabel.Size = UDim2.new(1, -20, 0, 25)
-    giftCountLabel.Position = UDim2.new(0, 10, 1, -30) -- Position from bottom: 30px from bottom
+    giftCountLabel.Size = UDim2.new(1, -20, 0, 20) -- Smaller height
+    giftCountLabel.Position = UDim2.new(0, 10, 1, -40) -- Position from bottom: 40px from bottom
     giftCountLabel.BackgroundTransparency = 1
     giftCountLabel.Text = "Today Gift: 0/500"
-    giftCountLabel.TextSize = 12
+    giftCountLabel.TextSize = 10 -- Smaller text
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
     giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -1626,10 +1723,23 @@ local function createItemCard(itemId, itemData, category, parent)
         mutationDropdown.BackgroundColor3 = colors.surface
         mutationDropdown.BorderSizePixel = 0
         
-        -- Get current mutation selection
+        -- Get current mutation selections
         local config = itemConfigs[category][itemId]
-        local currentMutation = (config and config.mutation) or "Any"
-        mutationDropdown.Text = currentMutation == "Any" and "Any" or (MutationData[currentMutation] and MutationData[currentMutation].Icon or "?")
+        local currentMutations = (config and config.mutations) or {}
+        
+        -- Update button text based on selections
+        local function updateMutationButtonText()
+            if #currentMutations == 0 then
+                mutationDropdown.Text = "Any"
+            elseif #currentMutations == 1 then
+                local mutation = currentMutations[1]
+                mutationDropdown.Text = mutation == "Any" and "Any" or (MutationData[mutation] and MutationData[mutation].Icon or "?")
+            else
+                mutationDropdown.Text = "Multi"
+            end
+        end
+        
+        updateMutationButtonText()
         mutationDropdown.TextSize = 12
         mutationDropdown.Font = Enum.Font.Gotham
         mutationDropdown.TextColor3 = colors.text
@@ -1685,11 +1795,46 @@ local function createItemCard(itemId, itemData, category, parent)
             option.ZIndex = 101
             option.Parent = mutationList
             
+            -- Checkbox
+            local checkbox = Instance.new("Frame")
+            checkbox.Name = "Checkbox"
+            checkbox.Size = UDim2.new(0, 16, 0, 16)
+            checkbox.Position = UDim2.new(0, 6, 0.5, -8)
+            checkbox.BackgroundColor3 = colors.hover
+            checkbox.BorderSizePixel = 0
+            checkbox.ZIndex = 102
+            checkbox.Parent = option
+            
+            local checkboxCorner = Instance.new("UICorner")
+            checkboxCorner.CornerRadius = UDim.new(0, 3)
+            checkboxCorner.Parent = checkbox
+            
+            local checkboxStroke = Instance.new("UIStroke")
+            checkboxStroke.Color = colors.border
+            checkboxStroke.Thickness = 1
+            checkboxStroke.Parent = checkbox
+            
+            -- Checkmark
+            local checkmark = Instance.new("TextLabel")
+            checkmark.Name = "Checkmark"
+            checkmark.Size = UDim2.new(1, 0, 1, 0)
+            checkmark.BackgroundTransparency = 1
+            checkmark.Text = "✓"
+            checkmark.TextSize = 12
+            checkmark.Font = Enum.Font.GothamBold
+            checkmark.TextColor3 = colors.success
+            checkmark.TextXAlignment = Enum.TextXAlignment.Center
+            checkmark.TextYAlignment = Enum.TextYAlignment.Center
+            checkmark.ZIndex = 103
+            checkmark.Visible = false
+            checkmark.Parent = checkbox
+            
+            -- Option text
             if mutationId == "Any" then
-                option.Text = "Any Mutation"
+                option.Text = "   Any Mutation"
             else
                 local mutationData = MutationData[mutationId]
-                option.Text = (mutationData.Icon or "?") .. " " .. mutationData.Name
+                option.Text = "   " .. (mutationData.Icon or "?") .. " " .. mutationData.Name
             end
             option.TextSize = 11
             option.Font = Enum.Font.Gotham
@@ -1697,32 +1842,110 @@ local function createItemCard(itemId, itemData, category, parent)
             option.TextXAlignment = Enum.TextXAlignment.Left
             
             local optionPadding = Instance.new("UIPadding")
-            optionPadding.PaddingLeft = UDim.new(0, 8)
+            optionPadding.PaddingLeft = UDim.new(0, 28) -- Leave space for checkbox
             optionPadding.Parent = option
+            
+            -- Update checkbox state
+            local function updateCheckboxState()
+                local isSelected = false
+                for _, selectedMutation in ipairs(currentMutations) do
+                    if selectedMutation == mutationId then
+                        isSelected = true
+                        break
+                    end
+                end
+                
+                if isSelected then
+                    checkbox.BackgroundColor3 = colors.primary
+                    checkmark.Visible = true
+                else
+                    checkbox.BackgroundColor3 = colors.hover
+                    checkmark.Visible = false
+                end
+            end
+            
+            updateCheckboxState()
             
             -- Hover effect
             option.MouseEnter:Connect(function()
-                option.BackgroundColor3 = colors.hover
+                if not checkmark.Visible then
+                    option.BackgroundColor3 = colors.hover
+                end
             end)
             
             option.MouseLeave:Connect(function()
                 option.BackgroundColor3 = colors.surface
             end)
             
-            -- Selection
+            -- Selection (toggle)
             option.MouseButton1Click:Connect(function()
-                -- Update config
+                -- Initialize config if needed
                 if not itemConfigs[category][itemId] then
                     itemConfigs[category][itemId] = {}
                 end
-                itemConfigs[category][itemId].mutation = mutationId
+                if not itemConfigs[category][itemId].mutations then
+                    itemConfigs[category][itemId].mutations = {}
+                end
+                
+                -- Handle "Any" selection
+                if mutationId == "Any" then
+                    -- Clear all selections and set to "Any"
+                    currentMutations = {}
+                    itemConfigs[category][itemId].mutations = {}
+                else
+                    -- Remove "Any" if present
+                    for i = #currentMutations, 1, -1 do
+                        if currentMutations[i] == "Any" then
+                            table.remove(currentMutations, i)
+                        end
+                    end
+                    
+                    -- Toggle this mutation
+                    local found = false
+                    for i, selectedMutation in ipairs(currentMutations) do
+                        if selectedMutation == mutationId then
+                            table.remove(currentMutations, i)
+                            found = true
+                            break
+                        end
+                    end
+                    
+                    if not found then
+                        table.insert(currentMutations, mutationId)
+                    end
+                    
+                    itemConfigs[category][itemId].mutations = currentMutations
+                end
+                
+                -- Update all checkboxes in this dropdown
+                for _, child in pairs(mutationList:GetChildren()) do
+                    if child:IsA("TextButton") then
+                        local childCheckbox = child:FindFirstChild("Checkbox")
+                        local childCheckmark = childCheckbox and childCheckbox:FindFirstChild("Checkmark")
+                        if childCheckbox and childCheckmark then
+                            local childMutationId = child.Name:gsub("Option_", "")
+                            local isChildSelected = false
+                            
+                            for _, selectedMutation in ipairs(currentMutations) do
+                                if selectedMutation == childMutationId then
+                                    isChildSelected = true
+                                    break
+                                end
+                            end
+                            
+                            if isChildSelected then
+                                childCheckbox.BackgroundColor3 = colors.primary
+                                childCheckmark.Visible = true
+                            else
+                                childCheckbox.BackgroundColor3 = colors.hover
+                                childCheckmark.Visible = false
+                            end
+                        end
+                    end
+                end
                 
                 -- Update button text
-                mutationDropdown.Text = mutationId == "Any" and "Any" or (MutationData[mutationId] and MutationData[mutationId].Icon or "?")
-                
-                -- Hide dropdown
-                mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 120, 0, 0)
+                updateMutationButtonText()
                 
                 saveConfig()
             end)
@@ -2361,12 +2584,19 @@ function AutoTradeUI.CreateUI()
                 if not isMinimized then
                     originalSize = MainFrame.Size
                 end
+                
+                -- Update responsive layout
+                updateResponsiveLayout()
             end
         end
     end)
     
     -- Setup event handlers
     setupEventHandlers()
+    
+    -- Apply initial responsive layout
+    task.wait(0.1) -- Wait for UI to render
+    updateResponsiveLayout()
     
     return ScreenGui
 end
