@@ -82,14 +82,14 @@ local function updateResponsiveLayout()
     
     if isSmall then
         -- Compact layout for small screens
-        targetSection.Size = UDim2.new(1, -16, 0, 200) -- Full width, fixed height
+        targetSection.Size = UDim2.new(1, -16, 0, 180) -- Smaller height for small screens
         targetSection.Position = UDim2.new(0, 8, 0, 40)
         
-        filterBar.Size = UDim2.new(1, -16, 0, 40) -- Full width, smaller height
-        filterBar.Position = UDim2.new(0, 8, 0, 250)
+        filterBar.Size = UDim2.new(1, -16, 0, 35) -- Smaller height
+        filterBar.Position = UDim2.new(0, 8, 0, 230)
         
-        tabSection.Size = UDim2.new(1, -16, 1, -300) -- Full width, remaining height
-        tabSection.Position = UDim2.new(0, 8, 0, 300)
+        tabSection.Size = UDim2.new(1, -16, 1, -275) -- Remaining height
+        tabSection.Position = UDim2.new(0, 8, 0, 275)
         
         -- Hide some elements in target section for space
         local avatar = targetSection:FindFirstChild("Avatar")
@@ -99,14 +99,14 @@ local function updateResponsiveLayout()
         
     elseif isMedium then
         -- Medium layout
-        targetSection.Size = UDim2.new(0.4, -8, 1, -80)
+        targetSection.Size = UDim2.new(0.35, -8, 1, -80)
         targetSection.Position = UDim2.new(0, 8, 0, 40)
         
-        filterBar.Size = UDim2.new(0.6, -8, 0, 50)
-        filterBar.Position = UDim2.new(0.4, 8, 0, 40)
+        filterBar.Size = UDim2.new(0.65, -8, 0, 45)
+        filterBar.Position = UDim2.new(0.35, 8, 0, 40)
         
-        tabSection.Size = UDim2.new(0.6, -8, 1, -100)
-        tabSection.Position = UDim2.new(0.4, 8, 0, 100)
+        tabSection.Size = UDim2.new(0.65, -8, 1, -95)
+        tabSection.Position = UDim2.new(0.35, 8, 0, 95)
         
         -- Show elements but smaller
         local avatar = targetSection:FindFirstChild("Avatar")
@@ -1510,7 +1510,7 @@ local function createItemCard(itemId, itemData, category, parent)
     
     local card = Instance.new("Frame")
     card.Name = itemId
-    card.Size = UDim2.new(1, 0, 0, 100) -- Much taller cards to prevent overlapping
+    card.Size = UDim2.new(1, 0, 0, 120) -- Even taller cards to completely prevent overlapping
     card.BackgroundColor3 = ownedAmount > 0 and Color3.fromRGB(40, 40, 44) or Color3.fromRGB(30, 30, 32) -- Better card colors
     card.BorderSizePixel = 0
     card.ZIndex = 1 -- Base z-index for card
@@ -1531,8 +1531,8 @@ local function createItemCard(itemId, itemData, category, parent)
     if category ~= "pets" then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 60, 0, 60) -- Even larger icon for taller cards
-        icon.Position = UDim2.new(0, 20, 0, 20) -- Better centered in taller card
+        icon.Size = UDim2.new(0, 70, 0, 70) -- Larger icon for very tall cards
+        icon.Position = UDim2.new(0, 25, 0, 25) -- Better centered in very tall card
         icon.BackgroundTransparency = 1
         if category == "eggs" then
             icon.Image = itemData.Icon or ""
@@ -1560,7 +1560,7 @@ local function createItemCard(itemId, itemData, category, parent)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
     nameLabel.Size = UDim2.new(0, 250, 0, 25) -- Larger text area
-    nameLabel.Position = UDim2.new(0, category == "pets" and 20 or 90, 0, 15) -- Better spacing for taller cards
+    nameLabel.Position = UDim2.new(0, category == "pets" and 25 or 105, 0, 20) -- Better spacing for very tall cards
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = itemData.Name or itemId
     nameLabel.TextSize = 16 -- Larger text
@@ -1574,8 +1574,8 @@ local function createItemCard(itemId, itemData, category, parent)
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
     ownedLabel.Size = UDim2.new(0, 100, 0, 20) -- Larger area
-    local ownedLabelX = category == "pets" and 20 or 90 -- Match name position
-    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 45) -- Lower position for taller cards
+    local ownedLabelX = category == "pets" and 25 or 105 -- Match name position
+    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 50) -- Lower position for very tall cards
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
     ownedLabel.TextSize = 13 -- Slightly larger
@@ -1589,7 +1589,7 @@ local function createItemCard(itemId, itemData, category, parent)
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
     warningIcon.Size = UDim2.new(0, 80, 0, 20) -- Larger area
-    warningIcon.Position = UDim2.new(0, ownedLabelX + 110, 0, 45) -- Same line as owned label, positioned after it
+    warningIcon.Position = UDim2.new(0, ownedLabelX + 110, 0, 50) -- Same line as owned label, positioned after it
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
     warningIcon.TextSize = 12 -- Larger warning icon
@@ -1611,9 +1611,9 @@ local function createItemCard(itemId, itemData, category, parent)
         inputLabel.Name = "InputLabel"
         inputLabel.Size = UDim2.new(0, 70, 0, 15)
         if hasMutations then
-            inputLabel.Position = UDim2.new(1, -150, 0, 10)
+            inputLabel.Position = UDim2.new(1, -150, 0, 20)
         else
-            inputLabel.Position = UDim2.new(1, -100, 0, 10)
+            inputLabel.Position = UDim2.new(1, -100, 0, 20)
         end
         inputLabel.BackgroundTransparency = 1
         inputLabel.Text = "Keep Amount"
@@ -1629,10 +1629,10 @@ local function createItemCard(itemId, itemData, category, parent)
         -- Adjust size and position to make room for mutation dropdown
         if hasMutations then
             sendInput.Size = UDim2.new(0, 70, 0, 30) -- Larger height, better width
-            sendInput.Position = UDim2.new(1, -150, 0, 30) -- More space from top
+            sendInput.Position = UDim2.new(1, -150, 0, 40) -- Even more space from top
         else
             sendInput.Size = UDim2.new(0, 90, 0, 30) -- Larger for better usability
-            sendInput.Position = UDim2.new(1, -100, 0, 30) -- More space from top
+            sendInput.Position = UDim2.new(1, -100, 0, 40) -- Even more space from top
         end
         sendInput.BackgroundColor3 = colors.surface
         sendInput.BorderSizePixel = 0
@@ -1745,7 +1745,7 @@ local function createItemCard(itemId, itemData, category, parent)
         local mutationLabel = Instance.new("TextLabel")
         mutationLabel.Name = "MutationLabel"
         mutationLabel.Size = UDim2.new(0, 60, 0, 15)
-        mutationLabel.Position = UDim2.new(1, -70, 0, 10)
+        mutationLabel.Position = UDim2.new(1, -70, 0, 20)
         mutationLabel.BackgroundTransparency = 1
         mutationLabel.Text = "Mutation"
         mutationLabel.TextSize = 10
@@ -1758,7 +1758,7 @@ local function createItemCard(itemId, itemData, category, parent)
         mutationDropdown = Instance.new("TextButton")
         mutationDropdown.Name = "MutationDropdown"
         mutationDropdown.Size = UDim2.new(0, 70, 0, 30) -- Larger for better usability
-        mutationDropdown.Position = UDim2.new(1, -70, 0, 30) -- More space from top
+        mutationDropdown.Position = UDim2.new(1, -70, 0, 40) -- Even more space from top
         mutationDropdown.BackgroundColor3 = colors.surface
         mutationDropdown.BorderSizePixel = 0
         mutationDropdown.Text = "Any ▼"
@@ -1773,15 +1773,18 @@ local function createItemCard(itemId, itemData, category, parent)
         mutationCorner.Parent = mutationDropdown
         
         -- Create dropdown list (initially hidden)
-        local mutationList = Instance.new("Frame")
+        local mutationList = Instance.new("ScrollingFrame")
         mutationList.Name = "MutationList"
-        mutationList.Size = UDim2.new(0, 140, 0, 0) -- Start with 0 height, wider for better text
-        mutationList.Position = UDim2.new(1, -140, 1, 2) -- Position to the left of the dropdown to stay within bounds
+        mutationList.Size = UDim2.new(0, 120, 0, 0) -- Start with 0 height
+        mutationList.Position = UDim2.new(0, -50, 1, 2) -- Position relative to dropdown button
         mutationList.BackgroundColor3 = colors.surface
         mutationList.BorderSizePixel = 0
         mutationList.Visible = false
-        mutationList.ZIndex = 100 -- High z-index to appear above other elements
-        mutationList.Parent = card -- Parent to card instead of dropdown for better positioning
+        mutationList.ZIndex = 200 -- Very high z-index to appear above everything
+        mutationList.ScrollBarThickness = 0
+        mutationList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        mutationList.ScrollingDirection = Enum.ScrollingDirection.Y
+        mutationList.Parent = mutationDropdown -- Parent to dropdown for better positioning
         
         local mutationListCorner = Instance.new("UICorner")
         mutationListCorner.CornerRadius = UDim.new(0, 4)
@@ -1894,7 +1897,7 @@ local function createItemCard(itemId, itemData, category, parent)
                 
                 -- Hide dropdown
                 mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 140, 0, 0)
+                mutationList.Size = UDim2.new(0, 120, 0, 0)
                 
                 saveConfig()
             end)
@@ -1905,12 +1908,12 @@ local function createItemCard(itemId, itemData, category, parent)
             if mutationList.Visible then
                 -- Hide dropdown
                 mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 140, 0, 0)
+                mutationList.Size = UDim2.new(0, 120, 0, 0)
             else
                 -- Show dropdown
                 local optionCount = #mutationOptions
                 local listHeight = optionCount * 25
-                mutationList.Size = UDim2.new(0, 140, 0, listHeight)
+                mutationList.Size = UDim2.new(0, 120, 0, listHeight)
                 mutationList.Visible = true
             end
         end)
@@ -1919,7 +1922,7 @@ local function createItemCard(itemId, itemData, category, parent)
         local function closeDropdown()
             if mutationList.Visible then
                 mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 140, 0, 0)
+                mutationList.Size = UDim2.new(0, 120, 0, 0)
             end
         end
         
