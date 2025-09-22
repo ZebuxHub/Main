@@ -1418,6 +1418,72 @@ local function createTargetSection(parent)
         end
     end)
     
+    -- Ocean Filter Checkbox (inline with mutation filter)
+    local oceanFilterFrame = Instance.new("Frame")
+    oceanFilterFrame.Name = "OceanFilterFrame"
+    oceanFilterFrame.Size = UDim2.new(1, -20, 0, 25)
+    oceanFilterFrame.BackgroundTransparency = 1
+    oceanFilterFrame.LayoutOrder = 11
+    oceanFilterFrame.Parent = targetSection
+    
+    local oceanCheckbox = Instance.new("TextButton")
+    oceanCheckbox.Name = "OceanCheckbox"
+    oceanCheckbox.Size = UDim2.new(0, 20, 0, 20)
+    oceanCheckbox.Position = UDim2.new(0, 0, 0, 2.5)
+    oceanCheckbox.BackgroundColor3 = colors.surface
+    oceanCheckbox.BorderSizePixel = 0
+    oceanCheckbox.Text = ""
+    oceanCheckbox.Parent = oceanFilterFrame
+    
+    local oceanCheckboxCorner = Instance.new("UICorner")
+    oceanCheckboxCorner.CornerRadius = UDim.new(0, 3)
+    oceanCheckboxCorner.Parent = oceanCheckbox
+    
+    local oceanCheckboxStroke = Instance.new("UIStroke")
+    oceanCheckboxStroke.Color = colors.border
+    oceanCheckboxStroke.Thickness = 1
+    oceanCheckboxStroke.Parent = oceanCheckbox
+    
+    local oceanCheckmark = Instance.new("TextLabel")
+    oceanCheckmark.Name = "Checkmark"
+    oceanCheckmark.Size = UDim2.new(1, 0, 1, 0)
+    oceanCheckmark.BackgroundTransparency = 1
+    oceanCheckmark.Text = "✓"
+    oceanCheckmark.TextSize = 14
+    oceanCheckmark.Font = Enum.Font.GothamBold
+    oceanCheckmark.TextColor3 = colors.success
+    oceanCheckmark.TextXAlignment = Enum.TextXAlignment.Center
+    oceanCheckmark.TextYAlignment = Enum.TextYAlignment.Center
+    oceanCheckmark.Visible = oceanOnlyFilter
+    oceanCheckmark.Parent = oceanCheckbox
+    
+    local oceanLabel = Instance.new("TextLabel")
+    oceanLabel.Name = "OceanLabel"
+    oceanLabel.Size = UDim2.new(1, -25, 0, 20)
+    oceanLabel.Position = UDim2.new(0, 25, 0, 2.5)
+    oceanLabel.BackgroundTransparency = 1
+    oceanLabel.Text = "Exclude Ocean Pets/Eggs"
+    oceanLabel.TextSize = 10
+    oceanLabel.Font = Enum.Font.Gotham
+    oceanLabel.TextColor3 = colors.text
+    oceanLabel.TextXAlignment = Enum.TextXAlignment.Left
+    oceanLabel.Parent = oceanFilterFrame
+    
+    -- Ocean filter checkbox functionality
+    oceanCheckbox.MouseButton1Click:Connect(function()
+        oceanOnlyFilter = not oceanOnlyFilter
+        
+        if oceanOnlyFilter then
+            oceanCheckbox.BackgroundColor3 = colors.primary
+            oceanCheckmark.Visible = true
+        else
+            oceanCheckbox.BackgroundColor3 = colors.surface
+            oceanCheckmark.Visible = false
+        end
+        
+        -- No need to refresh content since this only affects sending, not display
+    end)
+    
     -- Auto Trade Toggle
     local autoTradeToggle = Instance.new("TextButton")
     autoTradeToggle.Name = "AutoTradeToggle"
@@ -1428,7 +1494,7 @@ local function createTargetSection(parent)
     autoTradeToggle.TextSize = 14
     autoTradeToggle.Font = Enum.Font.GothamSemibold
     autoTradeToggle.TextColor3 = colors.text
-    autoTradeToggle.LayoutOrder = 11
+    autoTradeToggle.LayoutOrder = 12
     autoTradeToggle.Parent = targetSection
     
     local toggleCorner = Instance.new("UICorner")
@@ -1445,7 +1511,7 @@ local function createTargetSection(parent)
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
     giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
-    giftCountLabel.LayoutOrder = 12
+    giftCountLabel.LayoutOrder = 13
     giftCountLabel.Parent = targetSection
     
     return targetSection
@@ -1593,12 +1659,12 @@ local function createFilterBar(parent)
     -- Configured Only Toggle
     local configToggle = Instance.new("TextButton")
     configToggle.Name = "ConfigToggle"
-    configToggle.Size = UDim2.new(0.15, -5, 0, 30)
-    configToggle.Position = UDim2.new(0.57, 5, 0, 10)
+    configToggle.Size = UDim2.new(0.2, -5, 0, 30)
+    configToggle.Position = UDim2.new(0.6, 5, 0, 10)
     configToggle.BackgroundColor3 = configuredOnly and colors.primary or colors.hover
     configToggle.BorderSizePixel = 0
     configToggle.Text = "Configured"
-    configToggle.TextSize = 11
+    configToggle.TextSize = 12
     configToggle.Font = Enum.Font.Gotham
     configToggle.TextColor3 = colors.text
     configToggle.Parent = filterBar
@@ -1642,47 +1708,6 @@ local function createFilterBar(parent)
         hideTooltip()
     end)
     
-    -- Ocean Filter Toggle (moved from left panel to filter bar)
-    local oceanToggle = Instance.new("TextButton")
-    oceanToggle.Name = "OceanToggle"
-    oceanToggle.Size = UDim2.new(0.16, -5, 0, 30)
-    oceanToggle.Position = UDim2.new(0.72, 5, 0, 10)
-    oceanToggle.BackgroundColor3 = oceanOnlyFilter and colors.warning or colors.hover
-    oceanToggle.BorderSizePixel = 0
-    oceanToggle.Text = oceanOnlyFilter and "Exclude 🌊" or "Include 🌊"
-    oceanToggle.TextSize = 10
-    oceanToggle.Font = Enum.Font.Gotham
-    oceanToggle.TextColor3 = colors.text
-    oceanToggle.Parent = filterBar
-    
-    local oceanCorner = Instance.new("UICorner")
-    oceanCorner.CornerRadius = UDim.new(0, 4)
-    oceanCorner.Parent = oceanToggle
-    
-    -- Ocean toggle functionality
-    oceanToggle.MouseButton1Click:Connect(function()
-        oceanOnlyFilter = not oceanOnlyFilter
-        
-        if oceanOnlyFilter then
-            oceanToggle.BackgroundColor3 = colors.warning
-            oceanToggle.Text = "Exclude 🌊"
-        else
-            oceanToggle.BackgroundColor3 = colors.hover
-            oceanToggle.Text = "Include 🌊"
-        end
-        
-        -- No need to refresh content since this only affects sending, not display
-    end)
-    
-    -- Ocean toggle tooltip
-    oceanToggle.MouseEnter:Connect(function()
-        local tooltipText = oceanOnlyFilter and "Exclude ocean pets/eggs from trading" or "Include ocean pets/eggs in trading"
-        createTooltip(tooltipText, filterBar, oceanToggle)
-    end)
-    
-    oceanToggle.MouseLeave:Connect(function()
-        hideTooltip()
-    end)
     
     return filterBar
 end
