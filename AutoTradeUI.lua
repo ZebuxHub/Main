@@ -865,12 +865,17 @@ local function createWindowControls(parent)
 end
 
 local function createTargetSection(parent)
-    local targetSection = Instance.new("Frame")
+    local targetSection = Instance.new("ScrollingFrame")
     targetSection.Name = "TargetSection"
     targetSection.Size = UDim2.new(0.35, -8, 1, -80)
     targetSection.Position = UDim2.new(0, 16, 0, 80)
     targetSection.BackgroundColor3 = colors.surface
     targetSection.BorderSizePixel = 0
+    targetSection.ScrollBarThickness = 4
+    targetSection.ScrollBarImageColor3 = colors.primary
+    targetSection.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    targetSection.ScrollingDirection = Enum.ScrollingDirection.Y
+    targetSection.CanvasSize = UDim2.new(0, 0, 0, 0)
     targetSection.Parent = parent
     
     local corner = Instance.new("UICorner")
@@ -882,14 +887,30 @@ local function createTargetSection(parent)
     stroke.Thickness = 1
     stroke.Parent = targetSection
     
+    -- Add UIListLayout for automatic stacking (like WindUI)
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 10)
+    listLayout.FillDirection = Enum.FillDirection.Vertical
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.Parent = targetSection
+    
+    -- Add padding
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 10)
+    padding.PaddingBottom = UDim.new(0, 10)
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.PaddingRight = UDim.new(0, 10)
+    padding.Parent = targetSection
+    
     -- Target Player Avatar (placeholder)
     local avatar = Instance.new("ImageLabel")
     avatar.Name = "Avatar"
     avatar.Size = UDim2.new(0, 80, 0, 80)
-    avatar.Position = UDim2.new(0.5, -40, 0, 20)
     avatar.BackgroundColor3 = colors.hover
     avatar.BorderSizePixel = 0
     avatar.Image = "" -- Will be set dynamically
+    avatar.LayoutOrder = 1
     avatar.Parent = targetSection
     
     local avatarCorner = Instance.new("UICorner")
@@ -900,7 +921,6 @@ local function createTargetSection(parent)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
     nameLabel.Size = UDim2.new(1, -20, 0, 30)
-    nameLabel.Position = UDim2.new(0, 10, 0, 110)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = selectedTarget
     nameLabel.TextSize = 16
@@ -908,19 +928,20 @@ local function createTargetSection(parent)
     nameLabel.TextColor3 = colors.text
     nameLabel.TextXAlignment = Enum.TextXAlignment.Center
     nameLabel.TextWrapped = true
+    nameLabel.LayoutOrder = 2
     nameLabel.Parent = targetSection
     
     -- Target Selection Dropdown
     local targetDropdown = Instance.new("TextButton")
     targetDropdown.Name = "TargetDropdown"
     targetDropdown.Size = UDim2.new(1, -20, 0, 35)
-    targetDropdown.Position = UDim2.new(0, 10, 0, 120)
     targetDropdown.BackgroundColor3 = colors.hover
     targetDropdown.BorderSizePixel = 0
     targetDropdown.Text = "Select Target ▼"
     targetDropdown.TextSize = 14
     targetDropdown.Font = Enum.Font.Gotham
     targetDropdown.TextColor3 = colors.text
+    targetDropdown.LayoutOrder = 3
     targetDropdown.Parent = targetSection
     
     local dropdownCorner = Instance.new("UICorner")
@@ -931,7 +952,6 @@ local function createTargetSection(parent)
     local dropdownList = Instance.new("ScrollingFrame")
     dropdownList.Name = "DropdownList"
     dropdownList.Size = UDim2.new(1, -20, 0, 120)
-    dropdownList.Position = UDim2.new(0, 10, 0, 160)
     dropdownList.BackgroundColor3 = colors.surface
     dropdownList.BorderSizePixel = 0
     dropdownList.Visible = false
@@ -940,6 +960,7 @@ local function createTargetSection(parent)
     dropdownList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     dropdownList.ScrollingDirection = Enum.ScrollingDirection.Y
     dropdownList.ZIndex = 100
+    dropdownList.LayoutOrder = 4
     dropdownList.Parent = targetSection
     
     local dropdownListCorner = Instance.new("UICorner")
@@ -960,13 +981,13 @@ local function createTargetSection(parent)
     local sendBtn = Instance.new("TextButton")
     sendBtn.Name = "SendBtn"
     sendBtn.Size = UDim2.new(1, -20, 0, 40)
-    sendBtn.Position = UDim2.new(0, 10, 0, 290)
     sendBtn.BackgroundColor3 = colors.primary
     sendBtn.BorderSizePixel = 0
     sendBtn.Text = "Send Now"
     sendBtn.TextSize = 16
     sendBtn.Font = Enum.Font.GothamBold
     sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sendBtn.LayoutOrder = 5
     sendBtn.Parent = targetSection
     
     local sendCorner = Instance.new("UICorner")
@@ -977,8 +998,8 @@ local function createTargetSection(parent)
     local speedFrame = Instance.new("Frame")
     speedFrame.Name = "SpeedFrame"
     speedFrame.Size = UDim2.new(1, -20, 0, 50)
-    speedFrame.Position = UDim2.new(0, 10, 0, 340)
     speedFrame.BackgroundTransparency = 1
+    speedFrame.LayoutOrder = 6
     speedFrame.Parent = targetSection
     
     local speedLabel = Instance.new("TextLabel")
@@ -1080,8 +1101,8 @@ local function createTargetSection(parent)
     local scaleFrame = Instance.new("Frame")
     scaleFrame.Name = "ScaleFrame"
     scaleFrame.Size = UDim2.new(1, -20, 0, 50)
-    scaleFrame.Position = UDim2.new(0, 10, 0, 490)
     scaleFrame.BackgroundTransparency = 1
+    scaleFrame.LayoutOrder = 7
     scaleFrame.Parent = targetSection
     
     local scaleLabel = Instance.new("TextLabel")
@@ -1193,25 +1214,25 @@ local function createTargetSection(parent)
     local globalMutationLabel = Instance.new("TextLabel")
     globalMutationLabel.Name = "GlobalMutationLabel"
     globalMutationLabel.Size = UDim2.new(1, -20, 0, 15)
-    globalMutationLabel.Position = UDim2.new(0, 10, 0, 550)
     globalMutationLabel.BackgroundTransparency = 1
     globalMutationLabel.Text = "Global Mutation Filter"
     globalMutationLabel.TextSize = 10
     globalMutationLabel.Font = Enum.Font.GothamSemibold
     globalMutationLabel.TextColor3 = colors.text
     globalMutationLabel.TextXAlignment = Enum.TextXAlignment.Center
+    globalMutationLabel.LayoutOrder = 8
     globalMutationLabel.Parent = targetSection
     
     local globalMutationDropdown = Instance.new("TextButton")
     globalMutationDropdown.Name = "GlobalMutationDropdown"
     globalMutationDropdown.Size = UDim2.new(1, -20, 0, 25)
-    globalMutationDropdown.Position = UDim2.new(0, 10, 0, 570)
     globalMutationDropdown.BackgroundColor3 = colors.surface
     globalMutationDropdown.BorderSizePixel = 0
     globalMutationDropdown.Text = "Any ▼"
     globalMutationDropdown.TextSize = 11
     globalMutationDropdown.Font = Enum.Font.Gotham
     globalMutationDropdown.TextColor3 = colors.text
+    globalMutationDropdown.LayoutOrder = 9
     globalMutationDropdown.Parent = targetSection
     
     local globalMutationCorner = Instance.new("UICorner")
@@ -1222,7 +1243,6 @@ local function createTargetSection(parent)
     local globalMutationList = Instance.new("ScrollingFrame")
     globalMutationList.Name = "GlobalMutationList"
     globalMutationList.Size = UDim2.new(1, -20, 0, 0)
-    globalMutationList.Position = UDim2.new(0, 10, 0, 600)
     globalMutationList.BackgroundColor3 = colors.surface
     globalMutationList.BorderSizePixel = 0
     globalMutationList.Visible = false
@@ -1231,6 +1251,7 @@ local function createTargetSection(parent)
     globalMutationList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     globalMutationList.ScrollingDirection = Enum.ScrollingDirection.Y
     globalMutationList.ZIndex = 100
+    globalMutationList.LayoutOrder = 10
     globalMutationList.Parent = targetSection
     
     local globalMutationListCorner = Instance.new("UICorner")
@@ -1336,13 +1357,13 @@ local function createTargetSection(parent)
     local autoTradeToggle = Instance.new("TextButton")
     autoTradeToggle.Name = "AutoTradeToggle"
     autoTradeToggle.Size = UDim2.new(1, -20, 0, 35)
-    autoTradeToggle.Position = UDim2.new(0, 10, 1, -70) -- Position from bottom: 70px from bottom
     autoTradeToggle.BackgroundColor3 = autoTradeEnabled and colors.success or colors.hover
     autoTradeToggle.BorderSizePixel = 0
     autoTradeToggle.Text = autoTradeEnabled and "Auto Trade: ON" or "Auto Trade: OFF"
     autoTradeToggle.TextSize = 14
     autoTradeToggle.Font = Enum.Font.GothamSemibold
     autoTradeToggle.TextColor3 = colors.text
+    autoTradeToggle.LayoutOrder = 11
     autoTradeToggle.Parent = targetSection
     
     local toggleCorner = Instance.new("UICorner")
@@ -1353,13 +1374,13 @@ local function createTargetSection(parent)
     local giftCountLabel = Instance.new("TextLabel")
     giftCountLabel.Name = "GiftCountLabel"
     giftCountLabel.Size = UDim2.new(1, -20, 0, 25)
-    giftCountLabel.Position = UDim2.new(0, 10, 1, -30) -- Position from bottom: 30px from bottom
     giftCountLabel.BackgroundTransparency = 1
     giftCountLabel.Text = "Today Gift: 0/500"
     giftCountLabel.TextSize = 12
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
     giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
+    giftCountLabel.LayoutOrder = 12
     giftCountLabel.Parent = targetSection
     
     return targetSection
