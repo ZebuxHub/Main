@@ -125,7 +125,9 @@ local function getFruitInventory()
         BloodstoneCycad = { Name = "Bloodstone Cycad" },
         ColossalPinecone = { Name = "Colossal Pinecone" },
         VoltGinkgo = { Name = "Volt Ginkgo" },
-        DeepseaPearlFruit = { Name = "DeepseaPearlFruit" }
+        DeepseaPearlFruit = { Name = "DeepseaPearlFruit" },
+        Durian = { Name = "Durian" },
+        DragonFruit = { Name = "Dragon Fruit" }
     }
     
     -- Name normalization helper
