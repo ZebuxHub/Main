@@ -62,37 +62,37 @@ local WindUI = nil
 
 -- Hardcoded Data (from existing systems)
 local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1 },
-    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2 },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2 },
+    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://129248801621928", Rarity = 1, Category = "" },
+    RareEgg = { Name = "Rare Egg", Price = "500", Icon = "rbxassetid://71012831091414", Rarity = 2, Category = "" },
+    SuperRareEgg = { Name = "Super Rare Egg", Price = "2,500", Icon = "rbxassetid://93845452154351", Rarity = 2, Category = "" },
     SeaweedEgg = { Name = "Seaweed Egg", Price = "200", Icon = "rbxassetid://87125339619211", Rarity = 2, Category = "Ocean" },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2 },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3 },
+    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://116395645531721", Rarity = 2, Category = "" },
+    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://90834918351014", Rarity = 3, Category = "" },
     ClownfishEgg = { Name = "Clownfish Egg", Price = "200", Icon = "rbxassetid://124419920608938", Rarity = 3, Category = "Ocean" },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4 },
+    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3, Category = "" },
+    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://79960683434582", Rarity = 4, Category = "" },
     LionfishEgg = { Name = "Lionfish Egg", Price = "200", Icon = "rbxassetid://100181295820053", Rarity = 4, Category = "Ocean" },
-    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4 },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5 },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5 },
+    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://104958288296273", Rarity = 4, Category = "" },
+    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4, Category = "" },
+    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://122396162708984", Rarity = 5, Category = "" },
+    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://71500536051510", Rarity = 5, Category = "" },
     SharkEgg = { Name = "Shark Egg", Price = "150,000,000", Icon = "rbxassetid://71032472532652", Rarity = 5, Category = "Ocean" },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5 },
-    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5 },
+    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://126412407639969", Rarity = 5, Category = "" },
+    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5, Category = "" },
+    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://94739512852461", Rarity = 5, Category = "" },
     AnglerfishEgg = { Name = "Anglerfish Egg", Price = "150,000,000", Icon = "rbxassetid://121296998588378", Rarity = 5, Category = "Ocean" },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5 },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6 },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6 },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6 },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6 },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6 },
+    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://83209913424562", Rarity = 5, Category = "" },
+    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://83909590718799", Rarity = 6, Category = "" },
+    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://80783528632315", Rarity = 6, Category = "" },
+    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://109240587278187", Rarity = 6, Category = "" },
+    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6, Category = "" },
+    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://123427249205445", Rarity = 6, Category = "" },
+    OctopusEgg = { Name = "Octopus Egg", Price = "10,000,000,000", Icon = "rbxassetid://84758700095552", Rarity = 6, Category = "Ocean" },
+    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://113910587565739", Rarity = 6, Category = "" },
     SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "999,999,999,999", Icon = "rbxassetid://130514093439717", Rarity = 6, Category = "Ocean" },
-    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6 },
-    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://136223941487914", Rarity = 3 },
-    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://95956060312947", Rarity = 4 },
-    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://131221831910623", Rarity = 5 },
-    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://111953502835346", Rarity = 6 },
-    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6 },
-    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6 },
-    OctopusEgg = { Name = "Octopus Egg", Price = "10,000,000,000", Icon = "rbxassetid://84758700095552", Rarity = 6, Category = "Ocean" }
+    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://140138063696377", Rarity = 6, Category = "" },
+    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://106836613554535", Rarity = 6, Category = "" },
+    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://83004379343725", Rarity = 6, Category = "" }
 }
 
 local FruitData = {
@@ -1228,36 +1228,102 @@ local function createTargetSection(parent)
         end
     end)
     
-    -- Global Mutation Selector
+    -- Filters Container (Horizontal Layout)
+    local filtersContainer = Instance.new("Frame")
+    filtersContainer.Name = "FiltersContainer"
+    filtersContainer.Size = UDim2.new(1, -20, 0, 60) -- Height for label + dropdown
+    filtersContainer.BackgroundTransparency = 1
+    filtersContainer.LayoutOrder = 8
+    filtersContainer.Parent = targetSection
+    
+    -- Left side: Mutation Filter
+    local mutationContainer = Instance.new("Frame")
+    mutationContainer.Name = "MutationContainer"
+    mutationContainer.Size = UDim2.new(0.6, -5, 1, 0) -- 60% width minus padding
+    mutationContainer.Position = UDim2.new(0, 0, 0, 0)
+    mutationContainer.BackgroundTransparency = 1
+    mutationContainer.Parent = filtersContainer
+    
     local globalMutationLabel = Instance.new("TextLabel")
     globalMutationLabel.Name = "GlobalMutationLabel"
-    globalMutationLabel.Size = UDim2.new(1, -20, 0, 15)
+    globalMutationLabel.Size = UDim2.new(1, 0, 0, 15)
+    globalMutationLabel.Position = UDim2.new(0, 0, 0, 0)
     globalMutationLabel.BackgroundTransparency = 1
-    globalMutationLabel.Text = "Global Mutation Filter"
+    globalMutationLabel.Text = "Mutation Filter"
     globalMutationLabel.TextSize = 10
     globalMutationLabel.Font = Enum.Font.GothamSemibold
     globalMutationLabel.TextColor3 = colors.text
-    globalMutationLabel.TextXAlignment = Enum.TextXAlignment.Center
-    globalMutationLabel.LayoutOrder = 8
-    globalMutationLabel.Parent = targetSection
+    globalMutationLabel.TextXAlignment = Enum.TextXAlignment.Left
+    globalMutationLabel.Parent = mutationContainer
     
     local globalMutationDropdown = Instance.new("TextButton")
     globalMutationDropdown.Name = "GlobalMutationDropdown"
-    globalMutationDropdown.Size = UDim2.new(1, -20, 0, 25)
+    globalMutationDropdown.Size = UDim2.new(1, 0, 0, 25)
+    globalMutationDropdown.Position = UDim2.new(0, 0, 0, 20)
     globalMutationDropdown.BackgroundColor3 = colors.surface
     globalMutationDropdown.BorderSizePixel = 0
     globalMutationDropdown.Text = "Any ▼"
     globalMutationDropdown.TextSize = 11
     globalMutationDropdown.Font = Enum.Font.Gotham
     globalMutationDropdown.TextColor3 = colors.text
-    globalMutationDropdown.LayoutOrder = 9
-    globalMutationDropdown.Parent = targetSection
+    globalMutationDropdown.Parent = mutationContainer
     
     local globalMutationCorner = Instance.new("UICorner")
     globalMutationCorner.CornerRadius = UDim.new(0, 4)
     globalMutationCorner.Parent = globalMutationDropdown
     
-    -- Global Mutation Dropdown Functionality
+    -- Right side: Ocean Filter
+    local oceanContainer = Instance.new("Frame")
+    oceanContainer.Name = "OceanContainer"
+    oceanContainer.Size = UDim2.new(0.4, -5, 1, 0) -- 40% width minus padding
+    oceanContainer.Position = UDim2.new(0.6, 5, 0, 0)
+    oceanContainer.BackgroundTransparency = 1
+    oceanContainer.Parent = filtersContainer
+    
+    local oceanLabel = Instance.new("TextLabel")
+    oceanLabel.Name = "OceanLabel"
+    oceanLabel.Size = UDim2.new(1, 0, 0, 15)
+    oceanLabel.Position = UDim2.new(0, 0, 0, 0)
+    oceanLabel.BackgroundTransparency = 1
+    oceanLabel.Text = "Exclude Ocean Pets/Egg"
+    oceanLabel.TextSize = 10
+    oceanLabel.Font = Enum.Font.GothamSemibold
+    oceanLabel.TextColor3 = colors.text
+    oceanLabel.TextXAlignment = Enum.TextXAlignment.Left
+    oceanLabel.Parent = oceanContainer
+    
+    local oceanToggle = Instance.new("TextButton")
+    oceanToggle.Name = "OceanToggle"
+    oceanToggle.Size = UDim2.new(1, 0, 0, 25)
+    oceanToggle.Position = UDim2.new(0, 0, 0, 20)
+    oceanToggle.BackgroundColor3 = oceanOnlyFilter and colors.warning or colors.surface
+    oceanToggle.BorderSizePixel = 0
+    oceanToggle.Text = oceanOnlyFilter and "Yes" or "No"
+    oceanToggle.TextSize = 11
+    oceanToggle.Font = Enum.Font.GothamSemibold
+    oceanToggle.TextColor3 = colors.text
+    oceanToggle.Parent = oceanContainer
+    
+    local oceanToggleCorner = Instance.new("UICorner")
+    oceanToggleCorner.CornerRadius = UDim.new(0, 4)
+    oceanToggleCorner.Parent = oceanToggle
+    
+    -- Ocean toggle functionality
+    oceanToggle.MouseButton1Click:Connect(function()
+        oceanOnlyFilter = not oceanOnlyFilter
+        
+        if oceanOnlyFilter then
+            oceanToggle.BackgroundColor3 = colors.warning
+            oceanToggle.Text = "Yes"
+        else
+            oceanToggle.BackgroundColor3 = colors.surface
+            oceanToggle.Text = "No"
+        end
+        
+        -- No need to refresh content since this only affects sending, not display
+    end)
+    
+    -- Global Mutation Dropdown List (positioned relative to filters container)
     local globalMutationList = Instance.new("ScrollingFrame")
     globalMutationList.Name = "GlobalMutationList"
     globalMutationList.Size = UDim2.new(1, -20, 0, 0)
@@ -1269,7 +1335,7 @@ local function createTargetSection(parent)
     globalMutationList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     globalMutationList.ScrollingDirection = Enum.ScrollingDirection.Y
     globalMutationList.ZIndex = 100
-    globalMutationList.LayoutOrder = 10
+    globalMutationList.LayoutOrder = 9
     globalMutationList.Parent = targetSection
     
     local globalMutationListCorner = Instance.new("UICorner")
@@ -1418,71 +1484,6 @@ local function createTargetSection(parent)
         end
     end)
     
-    -- Ocean Filter Checkbox (inline with mutation filter)
-    local oceanFilterFrame = Instance.new("Frame")
-    oceanFilterFrame.Name = "OceanFilterFrame"
-    oceanFilterFrame.Size = UDim2.new(1, -20, 0, 25)
-    oceanFilterFrame.BackgroundTransparency = 1
-    oceanFilterFrame.LayoutOrder = 11
-    oceanFilterFrame.Parent = targetSection
-    
-    local oceanCheckbox = Instance.new("TextButton")
-    oceanCheckbox.Name = "OceanCheckbox"
-    oceanCheckbox.Size = UDim2.new(0, 20, 0, 20)
-    oceanCheckbox.Position = UDim2.new(0, 0, 0, 2.5)
-    oceanCheckbox.BackgroundColor3 = colors.surface
-    oceanCheckbox.BorderSizePixel = 0
-    oceanCheckbox.Text = ""
-    oceanCheckbox.Parent = oceanFilterFrame
-    
-    local oceanCheckboxCorner = Instance.new("UICorner")
-    oceanCheckboxCorner.CornerRadius = UDim.new(0, 3)
-    oceanCheckboxCorner.Parent = oceanCheckbox
-    
-    local oceanCheckboxStroke = Instance.new("UIStroke")
-    oceanCheckboxStroke.Color = colors.border
-    oceanCheckboxStroke.Thickness = 1
-    oceanCheckboxStroke.Parent = oceanCheckbox
-    
-    local oceanCheckmark = Instance.new("TextLabel")
-    oceanCheckmark.Name = "Checkmark"
-    oceanCheckmark.Size = UDim2.new(1, 0, 1, 0)
-    oceanCheckmark.BackgroundTransparency = 1
-    oceanCheckmark.Text = "✓"
-    oceanCheckmark.TextSize = 14
-    oceanCheckmark.Font = Enum.Font.GothamBold
-    oceanCheckmark.TextColor3 = colors.success
-    oceanCheckmark.TextXAlignment = Enum.TextXAlignment.Center
-    oceanCheckmark.TextYAlignment = Enum.TextYAlignment.Center
-    oceanCheckmark.Visible = oceanOnlyFilter
-    oceanCheckmark.Parent = oceanCheckbox
-    
-    local oceanLabel = Instance.new("TextLabel")
-    oceanLabel.Name = "OceanLabel"
-    oceanLabel.Size = UDim2.new(1, -25, 0, 20)
-    oceanLabel.Position = UDim2.new(0, 25, 0, 2.5)
-    oceanLabel.BackgroundTransparency = 1
-    oceanLabel.Text = "Exclude Ocean Pets/Eggs"
-    oceanLabel.TextSize = 10
-    oceanLabel.Font = Enum.Font.Gotham
-    oceanLabel.TextColor3 = colors.text
-    oceanLabel.TextXAlignment = Enum.TextXAlignment.Left
-    oceanLabel.Parent = oceanFilterFrame
-    
-    -- Ocean filter checkbox functionality
-    oceanCheckbox.MouseButton1Click:Connect(function()
-        oceanOnlyFilter = not oceanOnlyFilter
-        
-        if oceanOnlyFilter then
-            oceanCheckbox.BackgroundColor3 = colors.primary
-            oceanCheckmark.Visible = true
-        else
-            oceanCheckbox.BackgroundColor3 = colors.surface
-            oceanCheckmark.Visible = false
-        end
-        
-        -- No need to refresh content since this only affects sending, not display
-    end)
     
     -- Auto Trade Toggle
     local autoTradeToggle = Instance.new("TextButton")
@@ -1494,7 +1495,7 @@ local function createTargetSection(parent)
     autoTradeToggle.TextSize = 14
     autoTradeToggle.Font = Enum.Font.GothamSemibold
     autoTradeToggle.TextColor3 = colors.text
-    autoTradeToggle.LayoutOrder = 12
+    autoTradeToggle.LayoutOrder = 10
     autoTradeToggle.Parent = targetSection
     
     local toggleCorner = Instance.new("UICorner")
@@ -1511,7 +1512,7 @@ local function createTargetSection(parent)
     giftCountLabel.Font = Enum.Font.Gotham
     giftCountLabel.TextColor3 = colors.textSecondary
     giftCountLabel.TextXAlignment = Enum.TextXAlignment.Center
-    giftCountLabel.LayoutOrder = 13
+    giftCountLabel.LayoutOrder = 11
     giftCountLabel.Parent = targetSection
     
     return targetSection
