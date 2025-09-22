@@ -1076,11 +1076,124 @@ local function createTargetSection(parent)
         end
     end)
     
+    -- UI Scale Control Slider
+    local scaleFrame = Instance.new("Frame")
+    scaleFrame.Name = "ScaleFrame"
+    scaleFrame.Size = UDim2.new(1, -20, 0, 50)
+    scaleFrame.Position = UDim2.new(0, 10, 0, 490)
+    scaleFrame.BackgroundTransparency = 1
+    scaleFrame.Parent = targetSection
+    
+    local scaleLabel = Instance.new("TextLabel")
+    scaleLabel.Name = "ScaleLabel"
+    scaleLabel.Size = UDim2.new(1, 0, 0, 20)
+    scaleLabel.Position = UDim2.new(0, 0, 0, 0)
+    scaleLabel.BackgroundTransparency = 1
+    scaleLabel.Text = "UI Scale: 100%"
+    scaleLabel.TextSize = 12
+    scaleLabel.Font = Enum.Font.GothamSemibold
+    scaleLabel.TextColor3 = colors.text
+    scaleLabel.TextXAlignment = Enum.TextXAlignment.Center
+    scaleLabel.Parent = scaleFrame
+    
+    -- Scale Slider Background
+    local scaleSliderBg = Instance.new("Frame")
+    scaleSliderBg.Name = "ScaleSliderBg"
+    scaleSliderBg.Size = UDim2.new(1, 0, 0, 6)
+    scaleSliderBg.Position = UDim2.new(0, 0, 0, 25)
+    scaleSliderBg.BackgroundColor3 = colors.hover
+    scaleSliderBg.BorderSizePixel = 0
+    scaleSliderBg.Parent = scaleFrame
+    
+    local scaleSliderBgCorner = Instance.new("UICorner")
+    scaleSliderBgCorner.CornerRadius = UDim.new(0, 3)
+    scaleSliderBgCorner.Parent = scaleSliderBg
+    
+    -- Scale Slider Fill
+    local scaleSliderFill = Instance.new("Frame")
+    scaleSliderFill.Name = "ScaleSliderFill"
+    scaleSliderFill.Size = UDim2.new(0.7, 0, 1, 0) -- Default 100% = 0.7 position (0.5-1.2 range)
+    scaleSliderFill.Position = UDim2.new(0, 0, 0, 0)
+    scaleSliderFill.BackgroundColor3 = colors.primary
+    scaleSliderFill.BorderSizePixel = 0
+    scaleSliderFill.Parent = scaleSliderBg
+    
+    local scaleSliderFillCorner = Instance.new("UICorner")
+    scaleSliderFillCorner.CornerRadius = UDim.new(0, 3)
+    scaleSliderFillCorner.Parent = scaleSliderFill
+    
+    -- Scale Slider Handle
+    local scaleSliderHandle = Instance.new("Frame")
+    scaleSliderHandle.Name = "ScaleSliderHandle"
+    scaleSliderHandle.Size = UDim2.new(0, 16, 0, 16)
+    scaleSliderHandle.Position = UDim2.new(0.7, -8, 0, 20) -- Default 100% position
+    scaleSliderHandle.BackgroundColor3 = colors.text
+    scaleSliderHandle.BorderSizePixel = 0
+    scaleSliderHandle.ZIndex = 2
+    scaleSliderHandle.Parent = scaleFrame
+    
+    local scaleSliderHandleCorner = Instance.new("UICorner")
+    scaleSliderHandleCorner.CornerRadius = UDim.new(0, 8)
+    scaleSliderHandleCorner.Parent = scaleSliderHandle
+    
+    -- Scale Slider Interaction
+    local isDraggingScaleSlider = false
+    
+    scaleSliderHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingScaleSlider = true
+        end
+    end)
+    
+    scaleSliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingScaleSlider = true
+            -- Update slider position immediately
+            local relativeX = (input.Position.X - scaleSliderBg.AbsolutePosition.X) / scaleSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            local uiScaleValue = 0.5 + (relativeX * 0.7) -- Map 0-1 to 0.5-1.2
+            
+            -- Update UI
+            scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
+            scaleLabel.Text = "UI Scale: " .. math.floor(uiScaleValue * 100) .. "%"
+            
+            -- Apply scale
+            if AutoTradeUI.SetUIScale then
+                AutoTradeUI.SetUIScale(uiScaleValue)
+            end
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingScaleSlider then
+            local relativeX = (input.Position.X - scaleSliderBg.AbsolutePosition.X) / scaleSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            local uiScaleValue = 0.5 + (relativeX * 0.7) -- Map 0-1 to 0.5-1.2
+            
+            -- Update UI
+            scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
+            scaleLabel.Text = "UI Scale: " .. math.floor(uiScaleValue * 100) .. "%"
+            
+            -- Apply scale
+            if AutoTradeUI.SetUIScale then
+                AutoTradeUI.SetUIScale(uiScaleValue)
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingScaleSlider = false
+        end
+    end)
+    
     -- Global Mutation Selector
     local globalMutationLabel = Instance.new("TextLabel")
     globalMutationLabel.Name = "GlobalMutationLabel"
     globalMutationLabel.Size = UDim2.new(1, -20, 0, 15)
-    globalMutationLabel.Position = UDim2.new(0, 10, 0, 400)
+    globalMutationLabel.Position = UDim2.new(0, 10, 0, 550)
     globalMutationLabel.BackgroundTransparency = 1
     globalMutationLabel.Text = "Global Mutation Filter"
     globalMutationLabel.TextSize = 10
@@ -1092,7 +1205,7 @@ local function createTargetSection(parent)
     local globalMutationDropdown = Instance.new("TextButton")
     globalMutationDropdown.Name = "GlobalMutationDropdown"
     globalMutationDropdown.Size = UDim2.new(1, -20, 0, 25)
-    globalMutationDropdown.Position = UDim2.new(0, 10, 0, 420)
+    globalMutationDropdown.Position = UDim2.new(0, 10, 0, 570)
     globalMutationDropdown.BackgroundColor3 = colors.surface
     globalMutationDropdown.BorderSizePixel = 0
     globalMutationDropdown.Text = "Any ▼"
@@ -1109,7 +1222,7 @@ local function createTargetSection(parent)
     local globalMutationList = Instance.new("ScrollingFrame")
     globalMutationList.Name = "GlobalMutationList"
     globalMutationList.Size = UDim2.new(1, -20, 0, 0)
-    globalMutationList.Position = UDim2.new(0, 10, 0, 450)
+    globalMutationList.Position = UDim2.new(0, 10, 0, 600)
     globalMutationList.BackgroundColor3 = colors.surface
     globalMutationList.BorderSizePixel = 0
     globalMutationList.Visible = false
@@ -2183,39 +2296,60 @@ function AutoTradeUI.CreateUI()
         ScreenGui:Destroy()
     end
     
-    -- Force UI to assume 1920x1080 resolution for consistent layout
-    local DESIGN_WIDTH, DESIGN_HEIGHT = 1920, 1080
-    local screenSize = workspace.CurrentCamera.ViewportSize
-    
-    -- Calculate scale to fit user's actual screen while maintaining aspect ratio
-    local scaleX = screenSize.X / DESIGN_WIDTH
-    local scaleY = screenSize.Y / DESIGN_HEIGHT
-    local scale = math.min(scaleX, scaleY) -- Maintain aspect ratio
-    
-    -- Set minimum scale for very small screens, but allow proper scaling
-    scale = math.max(scale, 0.4) -- Allow down to 40% for very small screens
-    
-    -- UI dimensions designed for 1920x1080 (larger, more spacious)
-    local baseWidth = 900   -- Larger base width for 1920x1080
-    local baseHeight = 650  -- Taller for better organization
-    
-    local finalWidth = baseWidth * scale
-    local finalHeight = baseHeight * scale
+    -- Fixed UI dimensions (like WindUI - no complex scaling)
+    local baseWidth = 900
+    local baseHeight = 650
     
     ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "AutoTradeUI"
     ScreenGui.Parent = PlayerGui
     
+    -- Add UIScale for responsive scaling (like WindUI)
+    local uiScale = Instance.new("UIScale")
+    uiScale.Scale = 1.0
+    uiScale.Parent = ScreenGui
+    
+    -- WindUI-style responsive scaling function
+    local function setUIScale(scale)
+        TweenService:Create(uiScale, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Scale = scale
+        }):Play()
+    end
+    
+    -- Auto-scale based on screen size (like WindUI)
+    local function checkAndAutoScale()
+        local screenSize = workspace.CurrentCamera.ViewportSize
+        local uiWidth = baseWidth * uiScale.Scale
+        local uiHeight = baseHeight * uiScale.Scale
+        
+        -- If UI doesn't fit on screen (with 40px margin), scale it down
+        if (screenSize.X - 40 < uiWidth) or (screenSize.Y - 40 < uiHeight) then
+            -- Calculate required scale to fit
+            local scaleX = (screenSize.X - 40) / baseWidth
+            local scaleY = (screenSize.Y - 40) / baseHeight
+            local requiredScale = math.min(scaleX, scaleY)
+            
+            -- Don't go below 0.3 scale (30%)
+            requiredScale = math.max(requiredScale, 0.3)
+            
+            setUIScale(requiredScale)
+        end
+    end
+    
+    -- Store reference for external access
+    AutoTradeUI.SetUIScale = setUIScale
+    AutoTradeUI.CheckAutoScale = checkAndAutoScale
+    
     MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, finalWidth, 0, finalHeight)
-    MainFrame.Position = UDim2.new(0.5, -finalWidth/2, 0.5, -finalHeight/2)
+    MainFrame.Size = UDim2.new(0, baseWidth, 0, baseHeight)
+    MainFrame.Position = UDim2.new(0.5, -baseWidth/2, 0.5, -baseHeight/2)
     MainFrame.BackgroundColor3 = colors.background
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
     
     originalSize = MainFrame.Size
-    minimizedSize = UDim2.new(0, finalWidth, 0, 60)
+    minimizedSize = UDim2.new(0, baseWidth, 0, 60)
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 12)
@@ -2306,6 +2440,13 @@ function AutoTradeUI.CreateUI()
     
     -- Setup event handlers
     setupEventHandlers()
+    
+    -- Apply auto-scaling after UI is created
+    task.wait(0.1) -- Wait for UI to render
+    checkAndAutoScale()
+    
+    -- Monitor screen size changes
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(checkAndAutoScale)
     
     return ScreenGui
 end
