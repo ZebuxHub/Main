@@ -23,13 +23,11 @@ local sessionStats = {
     sessionStart = os.time()
 }
 
--- Trade tracking
+-- Trade tracking (now based on today's gift count)
 local tradeTracking = {
     isMonitoring = false,
     currentTrade = nil,
-    tradeConnection = nil,
-    sessionTradeCount = 0,
-    maxSessionTrades = 10
+    tradeConnection = nil
 }
 
 -- Prevent duplicate session summaries
@@ -79,6 +77,21 @@ local function getPlayerTickets()
     if type(attrValue) == "number" then return attrValue end
     if type(attrValue) == "string" then return tonumber(attrValue) or 0 end
     return 0
+end
+
+-- Helper function to get today's gift count
+local function getTodayGiftCount()
+    if not LocalPlayer or not LocalPlayer.PlayerGui or not LocalPlayer.PlayerGui.Data then
+        return 0
+    end
+    
+    local userFlag = LocalPlayer.PlayerGui.Data:FindFirstChild("UserFlag")
+    if not userFlag then return 0 end
+    
+    local success, result = pcall(function()
+        return userFlag:GetAttribute("TodaySendGiftCount")
+    end)
+    return success and result or 0
 end
 
 -- Function to get fruit inventory (based on FeedFruitSelection.lua)
@@ -438,6 +451,7 @@ local function createInventoryEmbed()
     end
     
     -- Create embed
+    local todayGifts = getTodayGiftCount()
     local embed = {
         content = nil,
         embeds = {
@@ -447,7 +461,7 @@ local function createInventoryEmbed()
                 fields = {
                     {
                         name = "User: " .. username,
-                        value = "💰 Net Worth:  `" .. formatNumber(netWorth) .. "`\n<:Ticket:1414283452659798167> Ticket: `" .. formatNumber(tickets) .. "`"
+                        value = "💰 Net Worth:  `" .. formatNumber(netWorth) .. "`\n<:Ticket:1414283452659798167> Ticket: `" .. formatNumber(tickets) .. "`\n🎁 Today Gifts: `" .. todayGifts .. "/500`"
                     },
                     {
                         name = "🪣 Fruits",
@@ -716,29 +730,31 @@ local function createTradeSessionSummaryEmbed()
     local username = LocalPlayer and LocalPlayer.Name or "Unknown"
     local sessionTime = os.time() - sessionStats.sessionStart
     local sessionText = sessionTime < 60 and (sessionTime .. "s") or (math.floor(sessionTime/60) .. "m")
+    local todayGifts = getTodayGiftCount()
+    local maxGifts = 500
     
     local embed = {
         content = nil,
         embeds = {
             {
-                title = "🎯 Trade Session Completed",
+                title = "🎯 Daily Gift Summary",
                 color = 65280, -- Green color
                 fields = {
                     {
                         name = "User: " .. username,
-                        value = "✅ **Trade session finished successfully!**\n" ..
-                               "📊 **" .. tradeTracking.sessionTradeCount .. "/" .. tradeTracking.maxSessionTrades .. "** trades completed"
+                        value = "✅ **Daily gift summary**\n" ..
+                               "📊 **" .. todayGifts .. "/" .. maxGifts .. "** gifts sent today"
                     },
                     {
-                        name = "📈 Session Summary",
-                        value = "🔄 Total Trades: `" .. tradeTracking.sessionTradeCount .. "`\n" ..
+                        name = "📈 Daily Summary",
+                        value = "🔄 Today's Gifts: `" .. todayGifts .. "`\n" ..
                                "⏱️ Session Duration: `" .. sessionText .. "`\n" ..
-                               "🎯 Trade Limit: `" .. tradeTracking.maxSessionTrades .. "`\n" ..
-                               "✨ Status: `Session Complete`"
+                               "🎯 Daily Limit: `" .. maxGifts .. "`\n" ..
+                               "✨ Status: `" .. (todayGifts >= maxGifts and "Limit Reached" or "Active") .. "`"
                     }
                 },
                 footer = {
-                    text = "Trade Session Summary • Build A Zoo"
+                    text = "Daily Gift Summary • Build A Zoo"
                 },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
@@ -786,8 +802,8 @@ end
 
 -- Function to create trade completion embed
 local function createTradeEmbed(fromPlayer, toPlayer, fromItems, toItems)
-    local tradeCount = math.min(tradeTracking.sessionTradeCount, tradeTracking.maxSessionTrades)
-    local maxTrades = tradeTracking.maxSessionTrades
+    local todayGifts = getTodayGiftCount()
+    local maxGifts = 500
     
     -- Build items text for "From" player
     local fromValue = "```diff\n"
@@ -816,7 +832,7 @@ local function createTradeEmbed(fromPlayer, toPlayer, fromItems, toItems)
         content = nil,
         embeds = {
             {
-                title = "🤝 Trade Completed (" .. tradeCount .. "/" .. maxTrades .. ")",
+                title = "🤝 Trade Completed (" .. todayGifts .. "/" .. maxGifts .. ")",
                 color = 3447003,
                 fields = {
                     {
@@ -888,9 +904,18 @@ end
 
 -- Auto alert monitoring function
 local function runAutoAlert()
-    -- This would monitor for trades, desired items, etc.
-    -- Implementation would depend on the game's specific events and data structure
+    local lastInventorySent = 0
+    local inventoryInterval = 60 -- Send inventory every 60 seconds (1 minute)
+    
     while autoAlertEnabled do
+        local currentTime = os.time()
+        
+        -- Send inventory snapshot every minute
+        if currentTime - lastInventorySent >= inventoryInterval then
+            lastInventorySent = currentTime
+            sendInventory()
+        end
+        
         -- Monitor for trade completions
         -- Monitor for desired eggs/pets/fruits
         -- Send alerts when conditions are met
@@ -965,13 +990,13 @@ end
 function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
     if not autoAlertEnabled then return end
     
-    -- Guard: do not overshoot the session limit
-    if tradeTracking.sessionTradeCount >= tradeTracking.maxSessionTrades then
-        return
+    -- Check daily gift limit
+    local todayGifts = getTodayGiftCount()
+    if todayGifts >= 500 then
+        return -- Don't send webhook if daily limit reached
     end
     
-    -- Increment trade count
-    tradeTracking.sessionTradeCount = tradeTracking.sessionTradeCount + 1
+    -- Update session stats
     sessionStats.tradesCompleted = sessionStats.tradesCompleted + 1
     
     -- Send the individual trade webhook
@@ -1020,28 +1045,9 @@ function WebhookSystem.SendTradeSessionSummary(summaryLogs)
     sessionSummarySent = true
 end
 
--- Public method to reset trade session count
-function WebhookSystem.ResetTradeCount()
-    tradeTracking.sessionTradeCount = 0
+-- Public method to reset session summary flag
+function WebhookSystem.ResetSessionSummary()
     sessionSummarySent = false
-end
-
--- Public method to set max trades per session
-function WebhookSystem.SetMaxTrades(maxTrades)
-    tradeTracking.maxSessionTrades = maxTrades or 10
-end
-
--- Sync counters from external systems (e.g., SendTrashSystem)
-function WebhookSystem.SyncTradeCounters(currentCount, maxCount)
-    if type(currentCount) == "number" then
-        tradeTracking.sessionTradeCount = math.max(0, math.floor(currentCount))
-    end
-    if type(maxCount) == "number" then
-        tradeTracking.maxSessionTrades = math.max(1, math.floor(maxCount))
-    end
-    if tradeTracking.sessionTradeCount < tradeTracking.maxSessionTrades then
-        sessionSummarySent = false
-    end
 end
 
 function WebhookSystem.GetConfigElements()
