@@ -13,6 +13,8 @@ local Tab
 local webhookUrl = ""
 local autoAlertEnabled = false
 local autoAlertThread = nil
+local sendTradeWebhooks = true -- Control trade webhook sending
+local sendInventoryWebhooks = true -- Control inventory webhook sending
 
 -- Session tracking
 local sessionStats = {
@@ -332,7 +334,11 @@ local function createInventoryEmbed()
         ColossalPinecone = "<:ColossalPinecone:1414278437052616865>",
         ["Volt Ginkgo"] = "<:VoltGinkgo:1414278521681088543>",
         VoltGinkgo = "<:VoltGinkgo:1414278521681088543>",
-        DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>"
+        DeepseaPearlFruit = "<:DeepseaPearlFruit:1414278482913005598>",
+        Durian = "<:Durian:1419727911862407319>",
+        ["Dragon Fruit"] = "<:DragonFruit:1419727872444203220>",
+        DragonFruit = "<:DragonFruit:1419727872444203220>"
+        
     }
     
     -- Sort fruits for consistent display
@@ -913,7 +919,7 @@ local function runAutoAlert()
         local currentTime = os.time()
         
         -- Send inventory snapshot every minute
-        if currentTime - lastInventorySent >= inventoryInterval then
+        if currentTime - lastInventorySent >= inventoryInterval and sendInventoryWebhooks then
             lastInventorySent = currentTime
             sendInventory()
         end
@@ -967,7 +973,9 @@ function WebhookSystem.SetAutoAlert(enabled)
 end
 
 function WebhookSystem.SendInventory()
-    sendInventory()
+    if sendInventoryWebhooks then
+        sendInventory()
+    end
 end
 
 -- Public API functions
@@ -990,7 +998,7 @@ end
 
 -- Public method to manually trigger trade webhook (for external integration)
 function WebhookSystem.SendTradeWebhook(fromPlayer, toPlayer, fromItems, toItems)
-    if not autoAlertEnabled then return end
+    if not autoAlertEnabled or not sendTradeWebhooks then return end
     
     -- Check daily gift limit
     local todayGifts = getTodayGiftCount()
@@ -1055,7 +1063,9 @@ end
 function WebhookSystem.GetConfigElements()
     return {
         webhookUrl = webhookUrl,
-        autoAlertEnabled = autoAlertEnabled
+        autoAlertEnabled = autoAlertEnabled,
+        sendTradeWebhooks = sendTradeWebhooks,
+        sendInventoryWebhooks = sendInventoryWebhooks
     }
 end
 
@@ -1065,6 +1075,12 @@ function WebhookSystem.LoadConfig(config)
     end
     if config.autoAlertEnabled ~= nil then
         autoAlertEnabled = config.autoAlertEnabled
+    end
+    if config.sendTradeWebhooks ~= nil then
+        sendTradeWebhooks = config.sendTradeWebhooks
+    end
+    if config.sendInventoryWebhooks ~= nil then
+        sendInventoryWebhooks = config.sendInventoryWebhooks
     end
 end
 
