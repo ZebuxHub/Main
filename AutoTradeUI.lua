@@ -1243,7 +1243,7 @@ local function createTargetSection(parent)
     oceanLabel.Size = UDim2.new(1, -25, 0, 20)
     oceanLabel.Position = UDim2.new(0, 25, 0, 2.5)
     oceanLabel.BackgroundTransparency = 1
-    oceanLabel.Text = "Ocean Pets/Eggs Only"
+    oceanLabel.Text = "Exclude Ocean Pets/Eggs"
     oceanLabel.TextSize = 10
     oceanLabel.Font = Enum.Font.Gotham
     oceanLabel.TextColor3 = colors.text
@@ -1612,9 +1612,9 @@ local function createItemCard(itemId, itemData, category, parent)
     if not showZeroItems and ownedAmount == 0 then return nil end
     if configuredOnly and not (itemConfigs[category][itemId] and itemConfigs[category][itemId].enabled) then return nil end
     
-    -- Apply ocean filter
+    -- Apply ocean filter (exclude ocean pets/eggs when enabled)
     if oceanOnlyFilter and (category == "pets" or category == "eggs") then
-        if not (itemData.Category == "Ocean") then return nil end
+        if itemData.Category == "Ocean" then return nil end
     end
     
     local card = Instance.new("Frame")
