@@ -1510,7 +1510,8 @@ local function createItemCard(itemId, itemData, category, parent)
     
     local card = Instance.new("Frame")
     card.Name = itemId
-    card.Size = UDim2.new(1, 0, 0, 120) -- Even taller cards to completely prevent overlapping
+    card.Size = UDim2.new(1, 0, 0, 0) -- Auto-size based on content
+    card.AutomaticSize = Enum.AutomaticSize.Y -- Automatically adjust height
     card.BackgroundColor3 = ownedAmount > 0 and Color3.fromRGB(40, 40, 44) or Color3.fromRGB(30, 30, 32) -- Better card colors
     card.BorderSizePixel = 0
     card.ZIndex = 1 -- Base z-index for card
@@ -1527,12 +1528,45 @@ local function createItemCard(itemId, itemData, category, parent)
     stroke.Transparency = 0.3
     stroke.Parent = card
     
+    -- Add padding for proper spacing
+    local cardPadding = Instance.new("UIPadding")
+    cardPadding.PaddingTop = UDim.new(0, 15)
+    cardPadding.PaddingBottom = UDim.new(0, 15)
+    cardPadding.PaddingLeft = UDim.new(0, 15)
+    cardPadding.PaddingRight = UDim.new(0, 15)
+    cardPadding.Parent = card
+    
+    -- Create main content container with flexible layout
+    local contentContainer = Instance.new("Frame")
+    contentContainer.Name = "ContentContainer"
+    contentContainer.Size = UDim2.new(1, 0, 0, 0)
+    contentContainer.AutomaticSize = Enum.AutomaticSize.Y
+    contentContainer.BackgroundTransparency = 1
+    contentContainer.Parent = card
+    
+    -- Add layout for content container
+    local contentLayout = Instance.new("UIListLayout")
+    contentLayout.FillDirection = Enum.FillDirection.Horizontal
+    contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    contentLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    contentLayout.Padding = UDim.new(0, 10)
+    contentLayout.Parent = contentContainer
+    
+    -- Left side: Icon container
+    local iconContainer = Instance.new("Frame")
+    iconContainer.Name = "IconContainer"
+    iconContainer.Size = UDim2.new(0, 60, 0, 60)
+    iconContainer.BackgroundTransparency = 1
+    iconContainer.LayoutOrder = 1
+    iconContainer.Parent = contentContainer
+    
     -- Icon (for eggs and fruits)
     if category ~= "pets" then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 70, 0, 70) -- Larger icon for very tall cards
-        icon.Position = UDim2.new(0, 25, 0, 25) -- Better centered in very tall card
+        icon.Size = UDim2.new(1, 0, 1, 0)
+        icon.Position = UDim2.new(0, 0, 0, 0)
         icon.BackgroundTransparency = 1
         if category == "eggs" then
             icon.Image = itemData.Icon or ""
@@ -1541,64 +1575,109 @@ local function createItemCard(itemId, itemData, category, parent)
             icon:Destroy()
             icon = Instance.new("TextLabel")
             icon.Name = "Icon"
-            icon.Size = UDim2.new(0, 40, 0, 40)
-            icon.Position = UDim2.new(0, 10, 0, 10)
+            icon.Size = UDim2.new(1, 0, 1, 0)
+            icon.Position = UDim2.new(0, 0, 0, 0)
             icon.BackgroundTransparency = 1
             icon.Text = itemData.Icon or "🍎"
-            icon.TextSize = 24
+            icon.TextSize = 35
             icon.Font = Enum.Font.GothamBold
             icon.TextColor3 = getRarityColor(itemData.Rarity)
             icon.ZIndex = 2
-            icon.Parent = card
+            icon.Parent = iconContainer
         end
         if category == "eggs" then
-            icon.Parent = card
+            icon.Parent = iconContainer
         end
     end
+    
+    -- Middle section: Info container
+    local infoContainer = Instance.new("Frame")
+    infoContainer.Name = "InfoContainer"
+    infoContainer.Size = UDim2.new(1, -120, 0, 0) -- Fill remaining space minus controls
+    infoContainer.AutomaticSize = Enum.AutomaticSize.Y
+    infoContainer.BackgroundTransparency = 1
+    infoContainer.LayoutOrder = 2
+    infoContainer.Parent = contentContainer
+    
+    -- Add layout for info container
+    local infoLayout = Instance.new("UIListLayout")
+    infoLayout.FillDirection = Enum.FillDirection.Vertical
+    infoLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    infoLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    infoLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    infoLayout.Padding = UDim.new(0, 5)
+    infoLayout.Parent = infoContainer
     
     -- Name
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(0, 250, 0, 25) -- Larger text area
-    nameLabel.Position = UDim2.new(0, category == "pets" and 25 or 105, 0, 20) -- Better spacing for very tall cards
+    nameLabel.Size = UDim2.new(1, 0, 0, 25)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = itemData.Name or itemId
-    nameLabel.TextSize = 16 -- Larger text
+    nameLabel.TextSize = 16
     nameLabel.Font = Enum.Font.GothamSemibold
     nameLabel.TextColor3 = ownedAmount > 0 and colors.text or colors.disabled
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextYAlignment = Enum.TextYAlignment.Center
     nameLabel.ZIndex = 2
-    nameLabel.Parent = card
+    nameLabel.LayoutOrder = 1
+    nameLabel.Parent = infoContainer
     
-    -- Owned Amount
+    -- Owned Amount with warning in same container
+    local ownedContainer = Instance.new("Frame")
+    ownedContainer.Name = "OwnedContainer"
+    ownedContainer.Size = UDim2.new(1, 0, 0, 20)
+    ownedContainer.BackgroundTransparency = 1
+    ownedContainer.LayoutOrder = 2
+    ownedContainer.Parent = infoContainer
+    
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
-    ownedLabel.Size = UDim2.new(0, 100, 0, 20) -- Larger area
-    local ownedLabelX = category == "pets" and 25 or 105 -- Match name position
-    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 50) -- Lower position for very tall cards
+    ownedLabel.Size = UDim2.new(0, 100, 1, 0)
+    ownedLabel.Position = UDim2.new(0, 0, 0, 0)
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
-    ownedLabel.TextSize = 13 -- Slightly larger
+    ownedLabel.TextSize = 13
     ownedLabel.Font = Enum.Font.Gotham
     ownedLabel.TextColor3 = colors.textSecondary
     ownedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ownedLabel.TextYAlignment = Enum.TextYAlignment.Center
     ownedLabel.ZIndex = 2
-    ownedLabel.Parent = card
+    ownedLabel.Parent = ownedContainer
     
     -- Warning icon for insufficient items (same line as owned count)
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
-    warningIcon.Size = UDim2.new(0, 80, 0, 20) -- Larger area
-    warningIcon.Position = UDim2.new(0, ownedLabelX + 110, 0, 50) -- Same line as owned label, positioned after it
+    warningIcon.Size = UDim2.new(0, 80, 1, 0)
+    warningIcon.Position = UDim2.new(0, 110, 0, 0)
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
-    warningIcon.TextSize = 12 -- Larger warning icon
+    warningIcon.TextSize = 12
     warningIcon.Font = Enum.Font.GothamSemibold
     warningIcon.TextColor3 = colors.warning
     warningIcon.TextXAlignment = Enum.TextXAlignment.Left
-    warningIcon.Visible = false
-    warningIcon.ZIndex = 10 -- Ensure it appears above other elements
-    warningIcon.Parent = card
+    warningIcon.TextYAlignment = Enum.TextYAlignment.Center
+    warningIcon.ZIndex = 10
+    warningIcon.Visible = false -- Initially hidden
+    warningIcon.Parent = ownedContainer
+    
+    -- Right side: Controls container
+    local controlsContainer = Instance.new("Frame")
+    controlsContainer.Name = "ControlsContainer"
+    controlsContainer.Size = UDim2.new(0, 120, 0, 0)
+    controlsContainer.AutomaticSize = Enum.AutomaticSize.Y
+    controlsContainer.BackgroundTransparency = 1
+    controlsContainer.LayoutOrder = 3
+    controlsContainer.Parent = contentContainer
+    
+    -- Add layout for controls container
+    local controlsLayout = Instance.new("UIListLayout")
+    controlsLayout.FillDirection = Enum.FillDirection.Vertical
+    controlsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    controlsLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    controlsLayout.Padding = UDim.new(0, 5)
+    controlsLayout.Parent = controlsContainer
     
     -- Send Until Input (not for speed mode pets)
     local sendInput = nil
@@ -1609,12 +1688,7 @@ local function createItemCard(itemId, itemData, category, parent)
         -- Input Label
         local inputLabel = Instance.new("TextLabel")
         inputLabel.Name = "InputLabel"
-        inputLabel.Size = UDim2.new(0, 70, 0, 15)
-        if hasMutations then
-            inputLabel.Position = UDim2.new(1, -150, 0, 20)
-        else
-            inputLabel.Position = UDim2.new(1, -100, 0, 20)
-        end
+        inputLabel.Size = UDim2.new(1, 0, 0, 15)
         inputLabel.BackgroundTransparency = 1
         inputLabel.Text = "Keep Amount"
         inputLabel.TextSize = 10
@@ -1622,18 +1696,12 @@ local function createItemCard(itemId, itemData, category, parent)
         inputLabel.TextColor3 = colors.textSecondary
         inputLabel.TextXAlignment = Enum.TextXAlignment.Center
         inputLabel.ZIndex = 2
-        inputLabel.Parent = card
+        inputLabel.LayoutOrder = 1
+        inputLabel.Parent = controlsContainer
         
         sendInput = Instance.new("TextBox")
         sendInput.Name = "SendInput"
-        -- Adjust size and position to make room for mutation dropdown
-        if hasMutations then
-            sendInput.Size = UDim2.new(0, 70, 0, 30) -- Larger height, better width
-            sendInput.Position = UDim2.new(1, -150, 0, 40) -- Even more space from top
-        else
-            sendInput.Size = UDim2.new(0, 90, 0, 30) -- Larger for better usability
-            sendInput.Position = UDim2.new(1, -100, 0, 40) -- Even more space from top
-        end
+        sendInput.Size = UDim2.new(1, 0, 0, 30)
         sendInput.BackgroundColor3 = colors.surface
         sendInput.BorderSizePixel = 0
         -- Only show value if user has actually configured this item, otherwise leave empty
@@ -1650,7 +1718,8 @@ local function createItemCard(itemId, itemData, category, parent)
         sendInput.TextXAlignment = Enum.TextXAlignment.Center
         sendInput.ClearTextOnFocus = false
         sendInput.ZIndex = 2
-        sendInput.Parent = card
+        sendInput.LayoutOrder = 2
+        sendInput.Parent = controlsContainer
         
         -- Input validation to only allow numbers
         sendInput:GetPropertyChangedSignal("Text"):Connect(function()
@@ -1744,8 +1813,7 @@ local function createItemCard(itemId, itemData, category, parent)
         -- Mutation Label
         local mutationLabel = Instance.new("TextLabel")
         mutationLabel.Name = "MutationLabel"
-        mutationLabel.Size = UDim2.new(0, 60, 0, 15)
-        mutationLabel.Position = UDim2.new(1, -70, 0, 20)
+        mutationLabel.Size = UDim2.new(1, 0, 0, 15)
         mutationLabel.BackgroundTransparency = 1
         mutationLabel.Text = "Mutation"
         mutationLabel.TextSize = 10
@@ -1753,12 +1821,12 @@ local function createItemCard(itemId, itemData, category, parent)
         mutationLabel.TextColor3 = colors.textSecondary
         mutationLabel.TextXAlignment = Enum.TextXAlignment.Center
         mutationLabel.ZIndex = 2
-        mutationLabel.Parent = card
+        mutationLabel.LayoutOrder = 3
+        mutationLabel.Parent = controlsContainer
         
         mutationDropdown = Instance.new("TextButton")
         mutationDropdown.Name = "MutationDropdown"
-        mutationDropdown.Size = UDim2.new(0, 70, 0, 30) -- Larger for better usability
-        mutationDropdown.Position = UDim2.new(1, -70, 0, 40) -- Even more space from top
+        mutationDropdown.Size = UDim2.new(1, 0, 0, 30)
         mutationDropdown.BackgroundColor3 = colors.surface
         mutationDropdown.BorderSizePixel = 0
         mutationDropdown.Text = "Any ▼"
@@ -1766,7 +1834,8 @@ local function createItemCard(itemId, itemData, category, parent)
         mutationDropdown.Font = Enum.Font.Gotham
         mutationDropdown.TextColor3 = colors.text
         mutationDropdown.ZIndex = 2
-        mutationDropdown.Parent = card
+        mutationDropdown.LayoutOrder = 4
+        mutationDropdown.Parent = controlsContainer
         
         local mutationCorner = Instance.new("UICorner")
         mutationCorner.CornerRadius = UDim.new(0, 4)
@@ -1775,8 +1844,8 @@ local function createItemCard(itemId, itemData, category, parent)
         -- Create dropdown list (initially hidden)
         local mutationList = Instance.new("ScrollingFrame")
         mutationList.Name = "MutationList"
-        mutationList.Size = UDim2.new(0, 120, 0, 0) -- Start with 0 height
-        mutationList.Position = UDim2.new(0, -50, 1, 2) -- Position relative to dropdown button
+        mutationList.Size = UDim2.new(1, 0, 0, 0) -- Start with 0 height, full width
+        mutationList.Position = UDim2.new(0, 0, 1, 2) -- Position below dropdown button
         mutationList.BackgroundColor3 = colors.surface
         mutationList.BorderSizePixel = 0
         mutationList.Visible = false
@@ -1897,7 +1966,7 @@ local function createItemCard(itemId, itemData, category, parent)
                 
                 -- Hide dropdown
                 mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 120, 0, 0)
+                mutationList.Size = UDim2.new(1, 0, 0, 0)
                 
                 saveConfig()
             end)
@@ -1908,12 +1977,12 @@ local function createItemCard(itemId, itemData, category, parent)
             if mutationList.Visible then
                 -- Hide dropdown
                 mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 120, 0, 0)
+                mutationList.Size = UDim2.new(1, 0, 0, 0)
             else
                 -- Show dropdown
                 local optionCount = #mutationOptions
                 local listHeight = optionCount * 25
-                mutationList.Size = UDim2.new(0, 120, 0, listHeight)
+                mutationList.Size = UDim2.new(1, 0, 0, listHeight)
                 mutationList.Visible = true
             end
         end)
@@ -1922,7 +1991,7 @@ local function createItemCard(itemId, itemData, category, parent)
         local function closeDropdown()
             if mutationList.Visible then
                 mutationList.Visible = false
-                mutationList.Size = UDim2.new(0, 120, 0, 0)
+                mutationList.Size = UDim2.new(1, 0, 0, 0)
             end
         end
         
