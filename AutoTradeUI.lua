@@ -1114,7 +1114,7 @@ local function createTargetSection(parent)
     -- Speed Slider Fill
     local sliderFill = Instance.new("Frame")
     sliderFill.Name = "SliderFill"
-    sliderFill.Size = UDim2.new((sendingSpeed - 0.1) / 4.9, 0, 1, 0) -- Map 0.1-5.0 to 0-1
+    sliderFill.Size = UDim2.new((sendingSpeed - 1.0) / 4.0, 0, 1, 0) -- Map 1.0-5.0 to 0-1
     sliderFill.Position = UDim2.new(0, 0, 0, 0)
     sliderFill.BackgroundColor3 = colors.primary
     sliderFill.BorderSizePixel = 0
@@ -1128,7 +1128,7 @@ local function createTargetSection(parent)
     local sliderHandle = Instance.new("Frame")
     sliderHandle.Name = "SliderHandle"
     sliderHandle.Size = UDim2.new(0, 16, 0, 16)
-    sliderHandle.Position = UDim2.new((sendingSpeed - 0.1) / 4.9, -8, 0, 20) -- Position relative to speedFrame, map 0.1-5.0 to 0-1
+    sliderHandle.Position = UDim2.new((sendingSpeed - 1.0) / 4.0, -8, 0, 20) -- Position relative to speedFrame, map 1.0-5.0 to 0-1
     sliderHandle.BackgroundColor3 = colors.text
     sliderHandle.BorderSizePixel = 0
     sliderHandle.ZIndex = 2
@@ -1153,7 +1153,7 @@ local function createTargetSection(parent)
             -- Update slider position immediately
             local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
             relativeX = math.max(0, math.min(1, relativeX))
-            sendingSpeed = 0.1 + (relativeX * 4.9) -- Map 0-1 to 0.1-5.0
+            sendingSpeed = 1.0 + (relativeX * 4.0) -- Map 0-1 to 1.0-5.0
             
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
@@ -1166,7 +1166,7 @@ local function createTargetSection(parent)
         if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingSlider then
             local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
             relativeX = math.max(0, math.min(1, relativeX))
-            sendingSpeed = 0.1 + (relativeX * 4.9) -- Map 0-1 to 0.1-5.0
+            sendingSpeed = 1.0 + (relativeX * 4.0) -- Map 0-1 to 1.0-5.0
             
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
@@ -1510,7 +1510,7 @@ local function createItemCard(itemId, itemData, category, parent)
     
     local card = Instance.new("Frame")
     card.Name = itemId
-    card.Size = UDim2.new(1, 0, 0, 80) -- Increased height for better spacing
+    card.Size = UDim2.new(1, 0, 0, 100) -- Much taller cards to prevent overlapping
     card.BackgroundColor3 = ownedAmount > 0 and Color3.fromRGB(40, 40, 44) or Color3.fromRGB(30, 30, 32) -- Better card colors
     card.BorderSizePixel = 0
     card.ZIndex = 1 -- Base z-index for card
@@ -1531,8 +1531,8 @@ local function createItemCard(itemId, itemData, category, parent)
     if category ~= "pets" then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 50, 0, 50) -- Larger icon
-        icon.Position = UDim2.new(0, 15, 0, 15) -- Better centered
+        icon.Size = UDim2.new(0, 60, 0, 60) -- Even larger icon for taller cards
+        icon.Position = UDim2.new(0, 20, 0, 20) -- Better centered in taller card
         icon.BackgroundTransparency = 1
         if category == "eggs" then
             icon.Image = itemData.Icon or ""
@@ -1560,7 +1560,7 @@ local function createItemCard(itemId, itemData, category, parent)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
     nameLabel.Size = UDim2.new(0, 250, 0, 25) -- Larger text area
-    nameLabel.Position = UDim2.new(0, category == "pets" and 15 or 75, 0, 10) -- Better spacing and position
+    nameLabel.Position = UDim2.new(0, category == "pets" and 20 or 90, 0, 15) -- Better spacing for taller cards
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = itemData.Name or itemId
     nameLabel.TextSize = 16 -- Larger text
@@ -1574,8 +1574,8 @@ local function createItemCard(itemId, itemData, category, parent)
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
     ownedLabel.Size = UDim2.new(0, 100, 0, 20) -- Larger area
-    local ownedLabelX = category == "pets" and 15 or 75 -- Match name position
-    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 40) -- Lower position for better spacing
+    local ownedLabelX = category == "pets" and 20 or 90 -- Match name position
+    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 45) -- Lower position for taller cards
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
     ownedLabel.TextSize = 13 -- Slightly larger
@@ -1589,7 +1589,7 @@ local function createItemCard(itemId, itemData, category, parent)
     local warningIcon = Instance.new("TextLabel")
     warningIcon.Name = "WarningIcon"
     warningIcon.Size = UDim2.new(0, 80, 0, 20) -- Larger area
-    warningIcon.Position = UDim2.new(0, ownedLabelX + 110, 0, 40) -- Same line as owned label, positioned after it
+    warningIcon.Position = UDim2.new(0, ownedLabelX + 110, 0, 45) -- Same line as owned label, positioned after it
     warningIcon.BackgroundTransparency = 1
     warningIcon.Text = "⚠️"
     warningIcon.TextSize = 12 -- Larger warning icon
@@ -1606,15 +1606,33 @@ local function createItemCard(itemId, itemData, category, parent)
     local hasMutations = (category == "pets" or category == "eggs")
     
     if not (category == "pets" and petMode == "Speed") then
+        -- Input Label
+        local inputLabel = Instance.new("TextLabel")
+        inputLabel.Name = "InputLabel"
+        inputLabel.Size = UDim2.new(0, 70, 0, 15)
+        if hasMutations then
+            inputLabel.Position = UDim2.new(1, -150, 0, 10)
+        else
+            inputLabel.Position = UDim2.new(1, -100, 0, 10)
+        end
+        inputLabel.BackgroundTransparency = 1
+        inputLabel.Text = "Keep Amount"
+        inputLabel.TextSize = 10
+        inputLabel.Font = Enum.Font.GothamSemibold
+        inputLabel.TextColor3 = colors.textSecondary
+        inputLabel.TextXAlignment = Enum.TextXAlignment.Center
+        inputLabel.ZIndex = 2
+        inputLabel.Parent = card
+        
         sendInput = Instance.new("TextBox")
         sendInput.Name = "SendInput"
         -- Adjust size and position to make room for mutation dropdown
         if hasMutations then
             sendInput.Size = UDim2.new(0, 70, 0, 30) -- Larger height, better width
-            sendInput.Position = UDim2.new(1, -150, 0, 25) -- Better positioning
+            sendInput.Position = UDim2.new(1, -150, 0, 30) -- More space from top
         else
             sendInput.Size = UDim2.new(0, 90, 0, 30) -- Larger for better usability
-            sendInput.Position = UDim2.new(1, -100, 0, 25) -- Better positioning
+            sendInput.Position = UDim2.new(1, -100, 0, 30) -- More space from top
         end
         sendInput.BackgroundColor3 = colors.surface
         sendInput.BorderSizePixel = 0
@@ -1723,31 +1741,28 @@ local function createItemCard(itemId, itemData, category, parent)
     
     -- Mutation Dropdown (for pets and eggs only)
     if hasMutations and not (category == "pets" and petMode == "Speed") then
+        -- Mutation Label
+        local mutationLabel = Instance.new("TextLabel")
+        mutationLabel.Name = "MutationLabel"
+        mutationLabel.Size = UDim2.new(0, 60, 0, 15)
+        mutationLabel.Position = UDim2.new(1, -70, 0, 10)
+        mutationLabel.BackgroundTransparency = 1
+        mutationLabel.Text = "Mutation"
+        mutationLabel.TextSize = 10
+        mutationLabel.Font = Enum.Font.GothamSemibold
+        mutationLabel.TextColor3 = colors.textSecondary
+        mutationLabel.TextXAlignment = Enum.TextXAlignment.Center
+        mutationLabel.ZIndex = 2
+        mutationLabel.Parent = card
+        
         mutationDropdown = Instance.new("TextButton")
         mutationDropdown.Name = "MutationDropdown"
         mutationDropdown.Size = UDim2.new(0, 70, 0, 30) -- Larger for better usability
-        mutationDropdown.Position = UDim2.new(1, -70, 0, 25) -- Better positioning
+        mutationDropdown.Position = UDim2.new(1, -70, 0, 30) -- More space from top
         mutationDropdown.BackgroundColor3 = colors.surface
         mutationDropdown.BorderSizePixel = 0
-        
-        -- Get current mutation selections
-        local config = itemConfigs[category][itemId]
-        local currentMutations = (config and config.mutations) or {}
-        
-        -- Update button text based on selections
-        local function updateMutationButtonText()
-            if #currentMutations == 0 then
-                mutationDropdown.Text = "Any"
-            elseif #currentMutations == 1 then
-                local mutation = currentMutations[1]
-                mutationDropdown.Text = mutation == "Any" and "Any" or (MutationData[mutation] and MutationData[mutation].Icon or "?")
-            else
-                mutationDropdown.Text = "Multi"
-            end
-        end
-        
-        updateMutationButtonText()
-        mutationDropdown.TextSize = 12
+        mutationDropdown.Text = "Any ▼"
+        mutationDropdown.TextSize = 11
         mutationDropdown.Font = Enum.Font.Gotham
         mutationDropdown.TextColor3 = colors.text
         mutationDropdown.ZIndex = 2
@@ -1793,166 +1808,93 @@ local function createItemCard(itemId, itemData, category, parent)
             return (MutationData[a] and MutationData[a].Rarity or 0) < (MutationData[b] and MutationData[b].Rarity or 0)
         end)
         
+        -- Track selected mutation (single selection like target dropdown)
+        local selectedMutation = "Any"
+        local config = itemConfigs[category][itemId]
+        if config and config.mutations and #config.mutations > 0 then
+            selectedMutation = config.mutations[1] -- Take first mutation for single selection
+        end
+        
         for i, mutationId in ipairs(mutationOptions) do
             local option = Instance.new("TextButton")
             option.Name = "Option_" .. mutationId
             option.Size = UDim2.new(1, 0, 0, 25)
-            option.BackgroundColor3 = colors.surface
+            option.BackgroundColor3 = (mutationId == selectedMutation) and Color3.fromRGB(0, 132, 255) or colors.surface
             option.BorderSizePixel = 0
             option.ZIndex = 101
             option.Parent = mutationList
             
-            -- Checkbox
-            local checkbox = Instance.new("Frame")
-            checkbox.Name = "Checkbox"
-            checkbox.Size = UDim2.new(0, 16, 0, 16)
-            checkbox.Position = UDim2.new(0, 6, 0.5, -8)
-            checkbox.BackgroundColor3 = colors.hover
-            checkbox.BorderSizePixel = 0
-            checkbox.ZIndex = 102
-            checkbox.Parent = option
-            
-            local checkboxCorner = Instance.new("UICorner")
-            checkboxCorner.CornerRadius = UDim.new(0, 3)
-            checkboxCorner.Parent = checkbox
-            
-            local checkboxStroke = Instance.new("UIStroke")
-            checkboxStroke.Color = colors.border
-            checkboxStroke.Thickness = 1
-            checkboxStroke.Parent = checkbox
-            
-            -- Checkmark
-            local checkmark = Instance.new("TextLabel")
-            checkmark.Name = "Checkmark"
-            checkmark.Size = UDim2.new(1, 0, 1, 0)
-            checkmark.BackgroundTransparency = 1
-            checkmark.Text = "✓"
-            checkmark.TextSize = 12
-            checkmark.Font = Enum.Font.GothamBold
-            checkmark.TextColor3 = colors.success
-            checkmark.TextXAlignment = Enum.TextXAlignment.Center
-            checkmark.TextYAlignment = Enum.TextYAlignment.Center
-            checkmark.ZIndex = 103
-            checkmark.Visible = false
-            checkmark.Parent = checkbox
-            
             -- Option text
             if mutationId == "Any" then
-                option.Text = "   Any Mutation"
+                option.Text = "Any Mutation"
             else
                 local mutationData = MutationData[mutationId]
-                option.Text = "   " .. (mutationData.Icon or "?") .. " " .. mutationData.Name
+                option.Text = (mutationData.Icon or "?") .. " " .. mutationData.Name
             end
             option.TextSize = 11
             option.Font = Enum.Font.Gotham
-            option.TextColor3 = colors.text
-            option.TextXAlignment = Enum.TextXAlignment.Left
+            option.TextColor3 = (mutationId == selectedMutation) and Color3.fromRGB(255, 255, 255) or colors.text
+            option.TextXAlignment = Enum.TextXAlignment.Center
             
-            local optionPadding = Instance.new("UIPadding")
-            optionPadding.PaddingLeft = UDim.new(0, 28) -- Leave space for checkbox
-            optionPadding.Parent = option
-            
-            -- Update checkbox state
-            local function updateCheckboxState()
-                local isSelected = false
-                for _, selectedMutation in ipairs(currentMutations) do
-                    if selectedMutation == mutationId then
-                        isSelected = true
-                        break
-                    end
-                end
-                
-                if isSelected then
-                    checkbox.BackgroundColor3 = colors.primary
-                    checkmark.Visible = true
-                else
-                    checkbox.BackgroundColor3 = colors.hover
-                    checkmark.Visible = false
-                end
-            end
-            
-            updateCheckboxState()
+            local optionCorner = Instance.new("UICorner")
+            optionCorner.CornerRadius = UDim.new(0, 4)
+            optionCorner.Parent = option
             
             -- Hover effect
             option.MouseEnter:Connect(function()
-                if not checkmark.Visible then
+                if mutationId ~= selectedMutation then
                     option.BackgroundColor3 = colors.hover
                 end
             end)
             
             option.MouseLeave:Connect(function()
-                option.BackgroundColor3 = colors.surface
+                if mutationId ~= selectedMutation then
+                    option.BackgroundColor3 = colors.surface
+                end
             end)
             
-            -- Selection (toggle)
+            -- Selection (single selection)
             option.MouseButton1Click:Connect(function()
+                -- Update selected mutation
+                selectedMutation = mutationId
+                
                 -- Initialize config if needed
                 if not itemConfigs[category][itemId] then
                     itemConfigs[category][itemId] = {}
                 end
-                if not itemConfigs[category][itemId].mutations then
-                    itemConfigs[category][itemId].mutations = {}
-                end
                 
-                -- Handle "Any" selection
+                -- Set single mutation
                 if mutationId == "Any" then
-                    -- Clear all selections and set to "Any"
-                    currentMutations = {}
                     itemConfigs[category][itemId].mutations = {}
                 else
-                    -- Remove "Any" if present
-                    for i = #currentMutations, 1, -1 do
-                        if currentMutations[i] == "Any" then
-                            table.remove(currentMutations, i)
-                        end
-                    end
-                    
-                    -- Toggle this mutation
-                    local found = false
-                    for i, selectedMutation in ipairs(currentMutations) do
-                        if selectedMutation == mutationId then
-                            table.remove(currentMutations, i)
-                            found = true
-                            break
-                        end
-                    end
-                    
-                    if not found then
-                        table.insert(currentMutations, mutationId)
-                    end
-                    
-                    itemConfigs[category][itemId].mutations = currentMutations
+                    itemConfigs[category][itemId].mutations = {mutationId}
                 end
                 
-                -- Update all checkboxes in this dropdown
+                -- Update all option backgrounds
                 for _, child in pairs(mutationList:GetChildren()) do
                     if child:IsA("TextButton") then
-                        local childCheckbox = child:FindFirstChild("Checkbox")
-                        local childCheckmark = childCheckbox and childCheckbox:FindFirstChild("Checkmark")
-                        if childCheckbox and childCheckmark then
-                            local childMutationId = child.Name:gsub("Option_", "")
-                            local isChildSelected = false
-                            
-                            for _, selectedMutation in ipairs(currentMutations) do
-                                if selectedMutation == childMutationId then
-                                    isChildSelected = true
-                                    break
-                                end
-                            end
-                            
-                            if isChildSelected then
-                                childCheckbox.BackgroundColor3 = colors.primary
-                                childCheckmark.Visible = true
-                            else
-                                childCheckbox.BackgroundColor3 = colors.hover
-                                childCheckmark.Visible = false
-                            end
+                        local childMutationId = child.Name:gsub("Option_", "")
+                        if childMutationId == selectedMutation then
+                            child.BackgroundColor3 = Color3.fromRGB(0, 132, 255)
+                            child.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        else
+                            child.BackgroundColor3 = colors.surface
+                            child.TextColor3 = colors.text
                         end
                     end
                 end
                 
-                -- Update button text
-                updateMutationButtonText()
+                -- Update dropdown button text
+                if selectedMutation == "Any" then
+                    mutationDropdown.Text = "Any ▼"
+                else
+                    local mutationData = MutationData[selectedMutation]
+                    mutationDropdown.Text = (mutationData and mutationData.Icon or "?") .. " ▼"
+                end
+                
+                -- Hide dropdown
+                mutationList.Visible = false
+                mutationList.Size = UDim2.new(0, 140, 0, 0)
                 
                 saveConfig()
             end)
