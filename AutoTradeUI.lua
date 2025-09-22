@@ -738,7 +738,7 @@ local function getItemsToSend()
     
     -- Check Pets
     if petMode == "Speed" then
-        -- Speed mode: send all pets in speed range (exclude placed pets)
+        -- Speed mode: send all pets in speed range (exclude placed pets and apply ocean filter)
         local petsFolder = LocalPlayer.PlayerGui.Data:FindFirstChild("Pets")
         if petsFolder then
             for _, petData in pairs(petsFolder:GetChildren()) do
@@ -748,11 +748,14 @@ local function getItemsToSend()
                     if petType and petType ~= "" and not isPlaced then
                         local petSpeed = getPetSpeed(petData.Name)
                         if petSpeed >= petSpeedMin and petSpeed <= petSpeedMax then
-                            table.insert(itemsToSend, {
-                                uid = petData.Name,
-                                type = petType,
-                                category = "pets"
-                            })
+                            -- Apply ocean filter and mutation filter in speed mode
+                            if itemMatchesOceanFilter(petType, "pets") and itemMatchesMutations(petData) then
+                                table.insert(itemsToSend, {
+                                    uid = petData.Name,
+                                    type = petType,
+                                    category = "pets"
+                                })
+                            end
                         end
                     end
                 end
