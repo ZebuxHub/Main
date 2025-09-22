@@ -31,7 +31,7 @@ local selectedTarget = "Random Player"
 local currentTab = "Pets" -- "Pets", "Eggs", "Fruits"
   local petMode = "Individual" -- "Individual" or "Speed"
   local autoTradeEnabled = false
-  local sendingSpeed = 2.0 -- Speed multiplier for sending process (2.0s = normal speed, down to 1.0s)
+  local sendingSpeed = 2.0 -- Speed multiplier for sending process (2.0s = normal speed, down to 0.5s)
   local globalMutationFilters = {"Any"} -- Global mutation filters for all pets/eggs (can be multiple)
   local oceanOnlyFilter = false -- Exclude ocean pets/eggs filter
   local petSpeedMin = 0
@@ -576,8 +576,8 @@ local function performTrade(itemUID, itemType, targetPlayer, shouldReturnToPosit
         return false, "Teleport failed: " .. (tpErr or "Unknown error")
     end
     
-    -- Wait a moment for teleport to complete
-    task.wait(0.5)
+    -- Wait a moment for teleport to complete (speed-adjusted)
+    task.wait(math.max(0.1, sendingSpeed * 0.25))
     
     -- Focus item
     local focusSuccess, focusErr = focusItem(itemUID)
@@ -589,8 +589,8 @@ local function performTrade(itemUID, itemType, targetPlayer, shouldReturnToPosit
         return false, "Failed to focus item: " .. (focusErr or "Unknown error")
     end
     
-    -- Wait for focus
-    task.wait(0.2)
+    -- Wait for focus (speed-adjusted)
+    task.wait(math.max(0.05, sendingSpeed * 0.1))
     
     -- Gift to player
     local giftSuccess, giftErr = giftToPlayer(target)
@@ -602,8 +602,8 @@ local function performTrade(itemUID, itemType, targetPlayer, shouldReturnToPosit
         return false, "Failed to gift item: " .. (giftErr or "Unknown error")
     end
     
-    -- Wait for gift to process
-    task.wait(0.5)
+    -- Wait for gift to process (speed-adjusted)
+    task.wait(math.max(0.1, sendingSpeed * 0.25))
     
     -- Only return to saved position if requested (for manual trades or when auto-trade is done)
     if shouldReturnToPosition then
@@ -869,7 +869,12 @@ local function saveConfig()
         sortMode = sortMode,
         showZeroItems = showZeroItems,
         rarityFilter = rarityFilter,
-        configuredOnly = configuredOnly
+        configuredOnly = configuredOnly,
+        -- New settings to save
+        sendingSpeed = sendingSpeed,
+        uiScale = ScreenGui and ScreenGui.UIScale and ScreenGui.UIScale.Scale or 1.0,
+        globalMutationFilters = globalMutationFilters,
+        oceanOnlyFilter = oceanOnlyFilter
     }
     
     local success, err = pcall(function()
@@ -900,6 +905,10 @@ local function loadConfig()
         showZeroItems = configData.showZeroItems ~= nil and configData.showZeroItems or showZeroItems
         rarityFilter = configData.rarityFilter or rarityFilter
         configuredOnly = configData.configuredOnly ~= nil and configData.configuredOnly or configuredOnly
+        -- Load new settings
+        sendingSpeed = configData.sendingSpeed or sendingSpeed
+        globalMutationFilters = configData.globalMutationFilters or globalMutationFilters
+        oceanOnlyFilter = configData.oceanOnlyFilter ~= nil and configData.oceanOnlyFilter or oceanOnlyFilter
     end
 end
 
@@ -1109,7 +1118,7 @@ local function createTargetSection(parent)
     -- Speed Slider Fill
     local sliderFill = Instance.new("Frame")
     sliderFill.Name = "SliderFill"
-    sliderFill.Size = UDim2.new((3.0 - sendingSpeed) / 2.0, 0, 1, 0) -- Map 1.0-3.0 to 1-0 (inverted)
+    sliderFill.Size = UDim2.new((2.5 - sendingSpeed) / 2.0, 0, 1, 0) -- Map 0.5-2.5 to 1-0 (inverted)
     sliderFill.Position = UDim2.new(0, 0, 0, 0)
     sliderFill.BackgroundColor3 = colors.primary
     sliderFill.BorderSizePixel = 0
@@ -1123,7 +1132,7 @@ local function createTargetSection(parent)
     local sliderHandle = Instance.new("Frame")
     sliderHandle.Name = "SliderHandle"
     sliderHandle.Size = UDim2.new(0, 16, 0, 16)
-    sliderHandle.Position = UDim2.new((3.0 - sendingSpeed) / 2.0, -8, 0, 20) -- Map 1.0-3.0 to 1-0 (inverted)
+    sliderHandle.Position = UDim2.new((2.5 - sendingSpeed) / 2.0, -8, 0, 20) -- Map 0.5-2.5 to 1-0 (inverted)
     sliderHandle.BackgroundColor3 = colors.text
     sliderHandle.BorderSizePixel = 0
     sliderHandle.ZIndex = 2
@@ -1148,12 +1157,15 @@ local function createTargetSection(parent)
             -- Update slider position immediately
             local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
             relativeX = math.max(0, math.min(1, relativeX))
-            sendingSpeed = 3.0 - (relativeX * 2.0) -- Map 0-1 to 3.0-1.0 (inverted)
+            sendingSpeed = 2.5 - (relativeX * 2.0) -- Map 0-1 to 2.5-0.5 (inverted)
             
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
             speedLabel.Text = "Send Speed: " .. string.format("%.1fs", sendingSpeed)
+            
+            -- Save to config
+            saveConfig()
         end
     end)
     
@@ -1161,7 +1173,7 @@ local function createTargetSection(parent)
         if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingSlider then
             local relativeX = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
             relativeX = math.max(0, math.min(1, relativeX))
-            sendingSpeed = 3.0 - (relativeX * 2.0) -- Map 0-1 to 3.0-1.0 (inverted)
+            sendingSpeed = 2.5 - (relativeX * 2.0) -- Map 0-1 to 2.5-0.5 (inverted)
             
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
@@ -1172,6 +1184,10 @@ local function createTargetSection(parent)
     
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if isDraggingSlider then
+                -- Save config when user finishes dragging speed slider
+                saveConfig()
+            end
             isDraggingSlider = false
         end
     end)
@@ -1285,6 +1301,10 @@ local function createTargetSection(parent)
     
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if isDraggingScaleSlider then
+                -- Save config when user finishes dragging UI scale slider
+                saveConfig()
+            end
             isDraggingScaleSlider = false
         end
     end)
@@ -1382,6 +1402,8 @@ local function createTargetSection(parent)
         end
         
         -- No need to refresh content since this only affects sending, not display
+        -- Save to config
+        saveConfig()
     end)
     
     -- Global Mutation Dropdown List (positioned relative to filters container)
@@ -1528,6 +1550,9 @@ local function createTargetSection(parent)
             if refreshContent then
                 refreshContent()
             end
+            
+            -- Save to config
+            saveConfig()
         end)
     end
     
