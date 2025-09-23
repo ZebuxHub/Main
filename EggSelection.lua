@@ -9,284 +9,246 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Hardcoded data with actual Roblox asset IDs
-local EggData = {
-    BasicEgg = {
-        Name = "Basic Egg",
-        Price = "100",
-        Icon = "rbxassetid://129248801621928",
-        Rarity = 1
-    },
-    RareEgg = {
-        Name = "Rare Egg", 
-        Price = "500",
-        Icon = "rbxassetid://71012831091414",
-        Rarity = 2
-    },
-    SuperRareEgg = {
-        Name = "Super Rare Egg",
-        Price = "2,500", 
-        Icon = "rbxassetid://93845452154351",
-        Rarity = 2
-    },
-    EpicEgg = {
-        Name = "Epic Egg",
-        Price = "15,000",
-        Icon = "rbxassetid://116395645531721", 
-        Rarity = 2
-    },
-    LegendEgg = {
-        Name = "Legend Egg",
-        Price = "100,000",
-        Icon = "rbxassetid://90834918351014",
-        Rarity = 3
-    },
-    PrismaticEgg = {
-        Name = "Prismatic Egg", 
-        Price = "1,000,000",
-        Icon = "rbxassetid://79960683434582",
-        Rarity = 4
-    },
-    HyperEgg = {
-        Name = "Hyper Egg",
-        Price = "2,500,000",
-        Icon = "rbxassetid://104958288296273",
-        Rarity = 4
-    },
-    VoidEgg = {
-        Name = "Void Egg",
-        Price = "24,000,000", 
-        Icon = "rbxassetid://122396162708984",
-        Rarity = 5
-    },
-    BowserEgg = {
-        Name = "Bowser Egg",
-        Price = "130,000,000",
-        Icon = "rbxassetid://71500536051510",
-        Rarity = 5
-    },
-    DemonEgg = {
-        Name = "Demon Egg",
-        Price = "400,000,000",
-        Icon = "rbxassetid://126412407639969",
-        Rarity = 5
-    },
-    CornEgg = {
-        Name = "Corn Egg",
-        Price = "1,000,000,000",
-        Icon = "rbxassetid://94739512852461",
-        Rarity = 5
-    },
-    BoneDragonEgg = {
-        Name = "Bone Dragon Egg",
-        Price = "2,000,000,000",
-        Icon = "rbxassetid://83209913424562",
-        Rarity = 5
-    },
-    UltraEgg = {
-        Name = "Ultra Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://83909590718799",
-        Rarity = 6
-    },
-    DinoEgg = {
-        Name = "Dino Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://80783528632315",
-        Rarity = 6
-    },
-    FlyEgg = {
-        Name = "Fly Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://109240587278187",
-        Rarity = 6
-    },
-    UnicornEgg = {
-        Name = "Unicorn Egg",
-        Price = "40,000,000,000",
-        Icon = "rbxassetid://123427249205445",
-        Rarity = 6
-    },
-    AncientEgg = {
-        Name = "Ancient Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://113910587565739",
-        Rarity = 6
-    },
-    UnicornProEgg = {
-        Name = "Unicorn Pro Egg",
-        Price = "50,000,000,000",
-        Icon = "rbxassetid://140138063696377",
-        Rarity = 6
-    },
-    SnowbunnyEgg = {
-        Name = "Snowbunny Egg",
-        Price = "1,500,000",
-        Icon = "rbxassetid://136223941487914",
-        Rarity = 3,
-        IsNew = true
-    },
-    DarkGoatyEgg = {
-        Name = "Dark Goaty Egg",
-        Price = "100,000,000",
-        Icon = "rbxassetid://95956060312947",
-        Rarity = 4,
-        IsNew = true
-    },
-    RhinoRockEgg = {
-        Name = "Rhino Rock Egg",
-        Price = "3,000,000,000",
-        Icon = "rbxassetid://131221831910623",
-        Rarity = 5,
-        IsNew = true
-    },
-    SaberCubEgg = {
-        Name = "Saber Cub Egg",
-        Price = "40,000,000,000",
-        Icon = "rbxassetid://111953502835346",
-        Rarity = 6,
-        IsNew = true
-    },
-    GeneralKongEgg = {
-        Name = "General Kong Egg",
-        Price = "80,000,000,000",
-        Icon = "rbxassetid://106836613554535",
-        Rarity = 6,
-        IsNew = true
-    },
-    PegasusEgg = {
-        Name = "Pegasus Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://83004379343725",
-        Rarity = 6,
-        IsNew = true
-    }
-}
+-- Dynamic data loading from ModuleScript
+local EggData = {}
+local dataLoaded = false
+local dataStatus = "Loading..."
 
-local MutationData = {
-    Golden = {
-        ID = "Golden", 
-        Name = "Golden",
-        ProduceRate = 2, 
-        SellRate = 2, 
-        BuyRate = 3, 
-        BigRate = 2, 
-        TextColor = "ffc518", 
-        Color1 = "204, 180, 61", 
-        Color2 = "229, 229, 114", 
-        Color3 = "216, 209, 130", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 10, 
-        Rarity = 10,
-        HatchTimeScale = 2, 
-        MinHatchTime = 180, 
-        Icon = "rbxassetid://12924452910"
-    }, 
-    Diamond = {
-        ID = "Diamond", 
-        Name = "Diamond",
-        ProduceRate = 3, 
-        SellRate = 3, 
-        BuyRate = 10, 
-        BigRate = 3, 
-        TextColor = "07e6ff", 
-        Color1 = "76, 133, 153", 
-        Color2 = "151, 184, 216", 
-        Color3 = "153, 178, 191", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 20, 
-        Rarity = 20,
-        HatchTimeScale = 3, 
-        MinHatchTime = 240, 
-        Icon = "rbxassetid://11937098975"
-    }, 
-    Electirc = {
-        ID = "Electirc", 
-        Name = "Electirc",
-        ProduceRate = 5, 
-        SellRate = 5, 
-        BuyRate = 20, 
-        BigRate = 4, 
-        TextColor = "aa55ff", 
-        Color1 = "12, 29, 63", 
-        Color2 = "113, 57, 191", 
-        Color3 = "38, 63, 127", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 50, 
-        Rarity = 50,
-        HatchTimeScale = 4, 
-        MinHatchTime = 300, 
-        Icon = "rbxassetid://16749221391"
-    }, 
-    Fire = {
-        ID = "Fire", 
-        Name = "Fire",
-        ProduceRate = 10, 
-        SellRate = 10, 
-        BuyRate = 50, 
-        BigRate = 5, 
-        TextColor = "ff3d02", 
-        Color1 = "204, 35, 20", 
-        Color2 = "242, 86, 72", 
-        Color3 = "229, 124, 114", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 100, 
-        Rarity = 100,
-        HatchTimeScale = 4, 
-        MinHatchTime = 360, 
-        Icon = "rbxassetid://16633305205"
-    }, 
-    Jurassic = {
-        ID = "Jurassic", 
-        Name = "Jurassic",
-        ProduceRate = 12, 
-        SellRate = 10, 
-        BuyRate = 50, 
-        BigRate = 8, 
-        TextColor = "AE75E7", 
-        Color1 = "", 
-        Color2 = "96, 77, 199", 
-        Color3 = "", 
-        Neon1 = "", 
-        Neon2 = 1, 
-        Neon3 = "", 
-        RarityNum = 100, 
-        Rarity = 100,
-        HatchTimeScale = 4, 
-        MinHatchTime = 360, 
-        Icon = "rbxassetid://93073511262401"
-    },
-    Snow = {
-        ID = "Snow", 
-        Name = "Snow",
-        ProduceRate = 12, 
-        SellRate = 10, 
-        BuyRate = 60, 
-        BigRate = 8, 
-        TextColor = "0090ff", 
-        Color1 = "105, 211, 203", 
-        Color2 = "91, 134, 186", 
-        Color3 = "179, 222, 223", 
-        Neon1 = "", 
-        Neon2 = 1, 
-        Neon3 = "", 
-        RarityNum = 150, 
-        Rarity = 150,
-        HatchTimeScale = 4, 
-        MinHatchTime = 360, 
-        Icon = "rbxassetid://12924452910",
-        IsNew = true
-    }
-}
+-- Dynamic mutation data loading from ModuleScript
+local MutationData = {}
+local mutationDataLoaded = false
+local mutationDataStatus = "Loading..."
+
+-- Data loading functions
+local function formatPrice(price)
+    if type(price) == "string" then
+        return price
+    elseif type(price) == "number" then
+        return tostring(price):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    end
+    return "0"
+end
+
+local function convertEggData(rawData)
+    local convertedData = {}
+    local eggCount = 0
+    
+    for eggId, eggInfo in pairs(rawData) do
+        if eggId ~= "__index" and type(eggInfo) == "table" then
+            -- Convert raw ModuleScript data to UI-friendly format
+            local name = eggInfo.ID or eggId
+            -- Convert ID to display name (e.g., "BasicEgg" -> "Basic Egg")
+            name = name:gsub("Egg$", " Egg"):gsub("(%l)(%u)", "%1 %2")
+            
+            convertedData[eggId] = {
+                Name = name,
+                Price = formatPrice(eggInfo.Price),
+                Icon = eggInfo.Icon or "rbxassetid://0",
+                Rarity = eggInfo.Rarity or 1,
+                Category = eggInfo.Category or "",
+                Evolution = eggInfo.Evolution or false,
+                Source = eggInfo.Source or "",
+                -- Mark new eggs based on certain criteria (you can adjust this logic)
+                IsNew = eggInfo.Evolution == true or eggInfo.Source == "Shop" or false
+            }
+            eggCount = eggCount + 1
+        end
+    end
+    
+    print("🥚 Loaded " .. eggCount .. " eggs from ResEgg ModuleScript")
+    return convertedData
+end
+
+local function convertMutationData(rawData)
+    local convertedData = {}
+    local mutationCount = 0
+    
+    for mutationId, mutationInfo in pairs(rawData) do
+        if mutationId ~= "__index" and type(mutationInfo) == "table" then
+            -- Convert raw ModuleScript data to UI-friendly format
+            local name = mutationInfo.ID or mutationId
+            
+            -- Get emoji icon based on mutation type
+            local iconEmoji = "✨" -- Default
+            if mutationId == "Golden" then iconEmoji = "✨"
+            elseif mutationId == "Diamond" then iconEmoji = "💎"
+            elseif mutationId == "Electirc" then iconEmoji = "⚡"
+            elseif mutationId == "Fire" then iconEmoji = "🔥"
+            elseif mutationId == "Dino" then iconEmoji = "🦕"
+            elseif mutationId == "Snow" then iconEmoji = "❄️"
+            end
+            
+            convertedData[mutationId] = {
+                ID = mutationInfo.ID,
+                Name = name,
+                ProduceRate = mutationInfo.ProduceRate or 1,
+                SellRate = mutationInfo.SellRate or 1,
+                BuyRate = mutationInfo.BuyRate or 1,
+                BigRate = mutationInfo.BigRate or 1,
+                TextColor = mutationInfo.TextColor or "ffffff",
+                Color1 = mutationInfo.Color1 or "",
+                Color2 = mutationInfo.Color2 or "",
+                Color3 = mutationInfo.Color3 or "",
+                Neon1 = mutationInfo.Neon1 or "",
+                Neon2 = mutationInfo.Neon2 or "",
+                Neon3 = mutationInfo.Neon3 or "",
+                RarityNum = mutationInfo.RarityNum or 10,
+                Rarity = mutationInfo.RarityNum or 10, -- Use RarityNum as Rarity
+                HatchTimeScale = mutationInfo.HatchTimeScale or 1,
+                MinHatchTime = mutationInfo.MinHatchTime or 60,
+                Icon = mutationInfo.Icon or "rbxassetid://0",
+                EmojiIcon = iconEmoji,
+                -- Mark new mutations (you can adjust this logic)
+                IsNew = mutationId == "Snow" or false
+            }
+            mutationCount = mutationCount + 1
+        end
+    end
+    
+    print("✨ Loaded " .. mutationCount .. " mutations from ResMutate ModuleScript")
+    return convertedData
+end
+
+local function loadEggData()
+    local success, result = pcall(function()
+        local configFolder = ReplicatedStorage:WaitForChild("Config", 10)
+        if not configFolder then
+            error("Config folder not found")
+        end
+        
+        local resEggModule = configFolder:WaitForChild("ResEgg", 10)
+        if not resEggModule then
+            error("ResEgg ModuleScript not found")
+        end
+        
+        local rawData = require(resEggModule)
+        if not rawData or type(rawData) ~= "table" then
+            error("Invalid ResEgg data")
+        end
+        
+        EggData = convertEggData(rawData)
+        dataLoaded = true
+        dataStatus = "✅ Loaded " .. (function()
+            local count = 0
+            for _ in pairs(EggData) do count = count + 1 end
+            return count
+        end)() .. " eggs"
+        
+        print("✅ EggSelection: Successfully loaded egg data from ResEgg")
+        return true
+    end)
+    
+    if not success then
+        dataLoaded = false
+        dataStatus = "❌ Failed to load: " .. tostring(result)
+        print("❌ EggSelection: Failed to load egg data - " .. tostring(result))
+        
+        -- Fallback to empty data
+        EggData = {}
+        return false
+    end
+    
+    return true
+end
+
+local function loadMutationData()
+    local success, result = pcall(function()
+        local configFolder = ReplicatedStorage:WaitForChild("Config", 10)
+        if not configFolder then
+            error("Config folder not found")
+        end
+        
+        local resMutateModule = configFolder:WaitForChild("ResMutate", 10)
+        if not resMutateModule then
+            error("ResMutate ModuleScript not found")
+        end
+        
+        local rawData = require(resMutateModule)
+        if not rawData or type(rawData) ~= "table" then
+            error("Invalid ResMutate data")
+        end
+        
+        MutationData = convertMutationData(rawData)
+        mutationDataLoaded = true
+        mutationDataStatus = "✅ Loaded " .. (function()
+            local count = 0
+            for _ in pairs(MutationData) do count = count + 1 end
+            return count
+        end)() .. " mutations"
+        
+        print("✅ EggSelection: Successfully loaded mutation data from ResMutate")
+        return true
+    end)
+    
+    if not success then
+        mutationDataLoaded = false
+        mutationDataStatus = "❌ Failed to load: " .. tostring(result)
+        print("❌ EggSelection: Failed to load mutation data - " .. tostring(result))
+        
+        -- Fallback to empty data
+        MutationData = {}
+        return false
+    end
+    
+    return true
+end
+
+local function setupDataMonitoring()
+    local success, result = pcall(function()
+        local configFolder = ReplicatedStorage:WaitForChild("Config", 5)
+        if not configFolder then return end
+        
+        -- Monitor for ResEgg ModuleScript changes
+        configFolder.ChildAdded:Connect(function(child)
+            if child.Name == "ResEgg" then
+                task.wait(1) -- Wait for module to be fully loaded
+                loadEggData()
+                print("🔄 Reloaded egg data due to ResEgg change")
+                
+                -- Refresh UI if it's currently open
+                if ScreenGui and ScreenGui.Enabled then
+                    EggSelection.RefreshContent()
+                end
+            elseif child.Name == "ResMutate" then
+                task.wait(1) -- Wait for module to be fully loaded
+                loadMutationData()
+                print("🔄 Reloaded mutation data due to ResMutate change")
+                
+                -- Refresh UI if it's currently open
+                if ScreenGui and ScreenGui.Enabled then
+                    EggSelection.RefreshContent()
+                end
+            end
+        end)
+        
+        configFolder.ChildRemoved:Connect(function(child)
+            if child.Name == "ResEgg" then
+                dataLoaded = false
+                dataStatus = "⚠️ ResEgg ModuleScript removed"
+                EggData = {}
+                print("⚠️ ResEgg ModuleScript was removed")
+            elseif child.Name == "ResMutate" then
+                mutationDataLoaded = false
+                mutationDataStatus = "⚠️ ResMutate ModuleScript removed"
+                MutationData = {}
+                print("⚠️ ResMutate ModuleScript was removed")
+            end
+        end)
+    end)
+    
+    if not success then
+        print("⚠️ EggSelection: Failed to setup data monitoring - " .. tostring(result))
+    end
+end
+
+-- Initialize data loading
+task.spawn(function()
+    loadEggData()
+    loadMutationData()
+    setupDataMonitoring()
+end)
 
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
@@ -1258,6 +1220,56 @@ function EggSelection.UpdateSelections(eggs, mutations, order)
 end
 
 
+
+-- Public API functions
+function EggSelection.GetEggData()
+    return EggData
+end
+
+function EggSelection.GetMutationData()
+    return MutationData
+end
+
+function EggSelection.IsDataLoaded()
+    return dataLoaded and mutationDataLoaded
+end
+
+function EggSelection.IsEggDataLoaded()
+    return dataLoaded
+end
+
+function EggSelection.IsMutationDataLoaded()
+    return mutationDataLoaded
+end
+
+function EggSelection.ReloadData()
+    local eggSuccess = loadEggData()
+    local mutationSuccess = loadMutationData()
+    return eggSuccess and mutationSuccess
+end
+
+function EggSelection.ReloadEggData()
+    return loadEggData()
+end
+
+function EggSelection.ReloadMutationData()
+    return loadMutationData()
+end
+
+function EggSelection.GetDataStatus()
+    return dataStatus .. " | " .. mutationDataStatus
+end
+
+function EggSelection.GetEggDataStatus()
+    return dataStatus
+end
+
+function EggSelection.GetMutationDataStatus()
+    return mutationDataStatus
+end
+
+-- Global access for other systems
+_G.EggSelection = EggSelection
 
 return EggSelection
 
