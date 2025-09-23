@@ -231,12 +231,7 @@ function Performance.Init(deps)
 		end
 	})
 
-	-- Register with config system for saving/loading
-	if Config then
-		pcall(function()
-			Config:Register("performanceModeEnabled", performanceToggle)
-		end)
-	end
+	-- Note: Config registration is handled by the main file in registerUIElements()
 
 	-- Store references for external access
 	Performance.Toggle = performanceToggle
