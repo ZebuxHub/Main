@@ -1,344 +1,210 @@
--- Performance.lua - Simplified performance toggle for pet and block cleanup
+-- Performance.lua - Pet Model Removal Toggle
 
 local Performance = {}
 
--- Services
-local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
-
 -- Dependencies (injected)
 local WindUI, Tabs, Config
-local Lighting = game:GetService("Lighting")
 
--- State
+-- State to track if pets are removed
 local state = {
-	applied = false,
-	removedPetParts = {}, -- Store removed parts for restoration
-	removedBlockParts = {}, -- Store removed block parts for restoration
-	-- Performance state tracking
-	cameraFOV = nil,
-	streaming = {},
-	quality = nil,
-	lightingProps = {},
-	terrain = {},
-	postEffects = {},
-	effects = {},
-	lights = {},
-	decals = {},
-	textures = {},
-	meshTextures = {},
-	specialMeshTextures = {},
-	surfaceApps = {},
-	billboards = {},
-	surfaceGuis = {},
-	parts = {},
-	animators = {},
-	animateScripts = {}
+	petsRemoved = false
 }
 
--- Configuration
-local CONFIG_FILE = "performance_config.json"
-
--- Pet parts to keep (everything else gets removed)
-local PET_PARTS_TO_KEEP = {
-	"CollectHL",
-	"SA_PetStateMachine", 
-	"BF",
-	"BE",
-	"RootPart"
-}
-
--- Block parts to remove (specific names)
-local BLOCK_PARTS_TO_REMOVE = {
-	"color1", "color2", "E1D", "E1U", "E2D", "E2U", "E3",
-	"Left", "Right", "MutateFX_Inst"
-}
-
--- Helper functions
-local function safelySet(inst, prop, value)
-	pcall(function()
-		inst[prop] = value
-	end)
-end
-
-local function isInPlayerGui(inst)
-	local current = inst
-	while current do
-		if current:IsA("PlayerGui") then
-			return true
-		end
-		current = current.Parent
-	end
-	return false
-end
-
-local function stopAndBlockAnimator(animator)
-	pcall(function()
-		for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-			track:Stop()
-		end
-		-- Block future animations
-		local conn = animator.AnimationPlayed:Connect(function(track)
-			track:Stop()
-		end)
-		state.animators[animator] = conn
-	end)
-end
-
-local function applyAll()
-	if state.applied then
-		if WindUI then WindUI:Notify({ Title = "⚡ Performance", Content = "Already ON", Duration = 2 }) end
+-- Function for Performance Mode (clean models, remove effects, disable wind)
+local function activatePerformanceMode()
+	if state.petsRemoved then
+		if WindUI then WindUI:Notify({ Title = "⚡ Performance Mode", Content = "Performance Mode already active", Duration = 2 }) end
 		return
 	end
 
-	-- Save globals
-	local cam = workspace.CurrentCamera
-	state.cameraFOV = cam and cam.FieldOfView
-	state.streaming = {
-		enabled = workspace.StreamingEnabled,
-	}
-	pcall(function()
-		state.quality = settings().Rendering.QualityLevel
-	end)
+	local totalModelsProcessed = 0
+	local totalPartsRemoved = 0
+	local totalEffectsRemoved = 0
 
-	-- Save lighting props
-	state.lightingProps = {
-		GlobalShadows = Lighting.GlobalShadows,
-		EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
-		EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale,
-		Ambient = Lighting.Ambient,
-		OutdoorAmbient = Lighting.OutdoorAmbient,
-		Brightness = Lighting.Brightness,
-		FogStart = Lighting.FogStart,
-		FogEnd = Lighting.FogEnd,
-		Technology = Lighting.Technology,
-		ColorShift_Top = Lighting.ColorShift_Top,
-		ColorShift_Bottom = Lighting.ColorShift_Bottom,
-	}
+	-- === CLEAN PETS ===
+	local petsFolder = workspace:FindFirstChild("Pets")
+	if petsFolder then
+		-- List of parts to keep in each pet model
+		local keepParts = {
+			"CollectHL",
+			"SA_PetStateMachine", 
+			"BF",
+			"BE",
+			"RootPart"
+		}
+		
+		-- List of parts to keep inside RootPart
+		local keepInRootPart = {
+			"Base",
+			"CS_IdlePet",
+			"RE", 
+			"TrgIdle",
+			"GUI/IdleGUI",
+			"Motor6D"
+		}
 
-	local terrain = workspace:FindFirstChildOfClass("Terrain")
-	if terrain then
-		state.terrain = {}
-		pcall(function() state.terrain.WaterTransparency = terrain.WaterTransparency end)
-		pcall(function() state.terrain.WaterReflectance = terrain.WaterReflectance end)
-	end
-
-	-- Apply Lighting reductions
-	safelySet(Lighting, "GlobalShadows", false)
-	safelySet(Lighting, "EnvironmentDiffuseScale", 0)
-	safelySet(Lighting, "EnvironmentSpecularScale", 0)
-	safelySet(Lighting, "Technology", Enum.Technology.Compatibility)
-	safelySet(Lighting, "Ambient", Color3.fromRGB(128,128,128))
-	safelySet(Lighting, "OutdoorAmbient", Color3.fromRGB(128,128,128))
-	safelySet(Lighting, "Brightness", 1)
-	safelySet(Lighting, "ColorShift_Top", Color3.fromRGB(0,0,0))
-	safelySet(Lighting, "ColorShift_Bottom", Color3.fromRGB(0,0,0))
-	safelySet(Lighting, "FogStart", 0)
-	safelySet(Lighting, "FogEnd", 100)
-	for _, child in ipairs(Lighting:GetChildren()) do
-		if child:IsA("PostEffect") then
-			state.postEffects[child] = child.Enabled
-			safelySet(child, "Enabled", false)
-		elseif child:IsA("Atmosphere") then
-			state.postEffects[child] = child.Density
-			safelySet(child, "Density", 0)
+		-- Process each pet model
+		for _, petModel in pairs(petsFolder:GetChildren()) do
+			if petModel:IsA("Model") then
+				totalModelsProcessed = totalModelsProcessed + 1
+				
+				-- Remove unwanted parts from the main pet model
+				for _, child in pairs(petModel:GetChildren()) do
+					local shouldKeep = false
+					
+					-- Check if this part should be kept
+					for _, keepName in pairs(keepParts) do
+						if child.Name == keepName then
+							shouldKeep = true
+							break
+						end
+					end
+					
+					-- If it's not in the keep list, remove it
+					if not shouldKeep then
+						pcall(function()
+							child:Destroy()
+							totalPartsRemoved = totalPartsRemoved + 1
+						end)
 		end
 	end
 
-	-- Terrain reductions
-	if terrain then
-		pcall(function() terrain.WaterTransparency = 1 end)
-		pcall(function() terrain.WaterReflectance = 0 end)
-	end
-
-	-- Streaming/Quality/Camera
+				-- Clean up RootPart specifically
+				local rootPart = petModel:FindFirstChild("RootPart")
+				if rootPart then
+					for _, child in pairs(rootPart:GetChildren()) do
+						local shouldKeep = false
+						
+						-- Check if this part should be kept in RootPart
+						for _, keepName in pairs(keepInRootPart) do
+							if child.Name == keepName then
+								shouldKeep = true
+								break
+							end
+						end
+						
+						-- If it's not in the keep list, remove it
+						if not shouldKeep then
 	pcall(function()
-		workspace.StreamingEnabled = true
-	end)
-	pcall(function()
-		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-	end)
-	if cam then
-		safelySet(cam, "FieldOfView", math.clamp((state.cameraFOV or 70) - 10, 40, 120))
-	end
-
-	-- World reductions
-	for _, inst in ipairs(game:GetDescendants()) do
-		if not isInPlayerGui(inst) then
-			if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") or inst:IsA("Highlight") then
-				state.effects[inst] = inst.Enabled
-				safelySet(inst, "Enabled", false)
-			elseif inst:IsA("PointLight") or inst:IsA("SpotLight") or inst:IsA("SurfaceLight") then
-				state.lights[inst] = inst.Enabled
-				safelySet(inst, "Enabled", false)
-			elseif inst:IsA("Decal") then
-				table.insert(state.decals, {inst = inst, texture = inst.Texture, transparency = inst.Transparency})
-				pcall(function() inst.Texture = "" end)
-				safelySet(inst, "Transparency", 1)
-			elseif inst:IsA("Texture") then
-				table.insert(state.textures, {inst = inst, texture = inst.Texture, transparency = inst.Transparency})
-				pcall(function() inst.Texture = "" end)
-				safelySet(inst, "Transparency", 1)
-			elseif inst:IsA("MeshPart") then
-				local partData = { Material = inst.Material, CastShadow = inst.CastShadow, Reflectance = inst.Reflectance }
-				local prev
-				pcall(function()
-					prev = inst.RenderFidelity
-					inst.RenderFidelity = Enum.RenderFidelity.Performance
-				end)
-				if prev ~= nil then partData.RenderFidelity = prev end
-				pcall(function()
-					if inst.TextureID ~= nil then
-						table.insert(state.meshTextures, {inst = inst, textureId = inst.TextureID})
-						inst.TextureID = ""
+								child:Destroy()
+								totalPartsRemoved = totalPartsRemoved + 1
+							end)
+						end
 					end
-				end)
-				state.parts[inst] = partData
-				safelySet(inst, "Material", Enum.Material.Plastic)
-				safelySet(inst, "CastShadow", false)
-				safelySet(inst, "Reflectance", 0)
-			elseif inst:IsA("SpecialMesh") then
-				local prev
-				pcall(function() prev = inst.TextureId; inst.TextureId = "" end)
-				if prev ~= nil then table.insert(state.specialMeshTextures, {inst = inst, textureId = prev}) end
-			elseif inst:IsA("SurfaceAppearance") then
-				table.insert(state.surfaceApps, {inst = inst, parent = inst.Parent})
-				pcall(function() inst.Parent = nil end)
-			elseif inst:IsA("BillboardGui") then
-				state.billboards[inst] = inst.Enabled
-				safelySet(inst, "Enabled", false)
-			elseif inst:IsA("SurfaceGui") then
-				state.surfaceGuis[inst] = inst.Enabled
-				safelySet(inst, "Enabled", false)
-			elseif inst:IsA("BasePart") then
-				local partData = { Material = inst.Material, CastShadow = inst.CastShadow, Reflectance = inst.Reflectance }
-				state.parts[inst] = partData
-				safelySet(inst, "Material", Enum.Material.Plastic)
-				safelySet(inst, "CastShadow", false)
-				safelySet(inst, "Reflectance", 0)
+				end
 			end
 		end
-
-		-- Kill animations
-		if inst:IsA("Animator") then
-			stopAndBlockAnimator(inst)
-		elseif (inst:IsA("LocalScript") or inst:IsA("Script")) and inst.Name == "Animate" then
-			table.insert(state.animateScripts, {inst = inst, prev = inst.Disabled})
-			pcall(function() inst.Disabled = true end)
-		end
 	end
 
-	state.applied = true
-	-- Also run one-shot purge to free memory immediately
-	pcall(function()
-		if purgeMemory then purgeMemory() end
-	end)
-	if WindUI then WindUI:Notify({ Title = "⚡ Performance", Content = "Ultra Performance ON", Duration = 3 }) end
-end
+	-- === CLEAN PLAYER BUILT BLOCKS ===
+	local playerBlocksFolder = workspace:FindFirstChild("PlayerBuiltBlocks")
+	if playerBlocksFolder then
+		-- List of parts to remove from PlayerBuiltBlocks models
+		local removeFromBlocks = {
+			"color1",
+			"color2", 
+			"E1D",
+			"E1U",
+			"E2D",
+			"E2U",
+			"E3",
+			"Left",
+			"MutateFX_Inst",
+			"Right"
+		}
 
-local function restoreAll()
-	if not state.applied then
-		if WindUI then WindUI:Notify({ Title = "⚡ Performance", Content = "Already OFF", Duration = 2 }) end
-		return
-	end
-
-	-- Restore lighting/post effects
-	for k, v in pairs(state.lightingProps) do
-		pcall(function() Lighting[k] = v end)
-	end
-	for inst, prev in pairs(state.postEffects) do
-		if inst and inst.Parent then
+		-- Process each player built block model
+		for _, blockModel in pairs(playerBlocksFolder:GetChildren()) do
+			if blockModel:IsA("Model") then
+				totalModelsProcessed = totalModelsProcessed + 1
+				
+				-- Remove specific unwanted parts from block models
+				for _, child in pairs(blockModel:GetChildren()) do
+					local shouldRemove = false
+					
+					-- Check if this part should be removed
+					for _, removeName in pairs(removeFromBlocks) do
+						if child.Name == removeName then
+							shouldRemove = true
+							break
+						end
+					end
+					
+					-- If it's in the remove list, destroy it
+					if shouldRemove then
 			pcall(function()
-				if inst:IsA("Atmosphere") then inst.Density = tonumber(prev) or 0 else inst.Enabled = prev and true or false end
+							child:Destroy()
+							totalPartsRemoved = totalPartsRemoved + 1
 			end)
 		end
 	end
-	state.postEffects = {}
-
-	-- Restore terrain
-	local terrain = workspace:FindFirstChildOfClass("Terrain")
-	if terrain then
-		for k, v in pairs(state.terrain) do
-			pcall(function() terrain[k] = v end)
-		end
-	end
-
-	-- Restore streaming/quality/camera
-	pcall(function()
-		if state.streaming.enabled ~= nil then workspace.StreamingEnabled = state.streaming.enabled end
-	end)
-	pcall(function()
-		if state.quality ~= nil then settings().Rendering.QualityLevel = state.quality end
-	end)
-	local cam = workspace.CurrentCamera
-	if cam and state.cameraFOV ~= nil then safelySet(cam, "FieldOfView", state.cameraFOV) end
-
-	-- Restore instances
-	for inst, prev in pairs(state.effects) do if inst and inst.Parent then pcall(function() inst.Enabled = prev and true or false end) end end
-	state.effects = {}
-	for inst, prev in pairs(state.lights) do if inst and inst.Parent then pcall(function() inst.Enabled = prev and true or false end) end end
-	state.lights = {}
-	for _, rec in ipairs(state.decals) do if rec.inst and rec.inst.Parent then pcall(function() rec.inst.Texture = rec.texture or rec.inst.Texture; rec.inst.Transparency = rec.transparency or 0 end) end end
-	state.decals = {}
-	for _, rec in ipairs(state.textures) do if rec.inst and rec.inst.Parent then pcall(function() rec.inst.Texture = rec.texture or rec.inst.Texture; rec.inst.Transparency = rec.transparency or 0 end) end end
-	state.textures = {}
-	for _, rec in ipairs(state.meshTextures) do if rec.inst and rec.inst.Parent then pcall(function() rec.inst.TextureID = rec.textureId or "" end) end end
-	state.meshTextures = {}
-	for _, rec in ipairs(state.specialMeshTextures) do if rec.inst and rec.inst.Parent then pcall(function() rec.inst.TextureId = rec.textureId or "" end) end end
-	state.specialMeshTextures = {}
-	for _, rec in ipairs(state.surfaceApps) do if rec.inst and rec.parent and rec.parent.Parent then pcall(function() rec.inst.Parent = rec.parent end) end end
-	state.surfaceApps = {}
-	for inst, prev in pairs(state.billboards) do if inst and inst.Parent then pcall(function() inst.Enabled = prev and true or false end) end end
-	state.billboards = {}
-	for inst, prev in pairs(state.surfaceGuis) do if inst and inst.Parent then pcall(function() inst.Enabled = prev and true or false end) end end
-	state.surfaceGuis = {}
-	for inst, data in pairs(state.parts) do if inst and inst.Parent then pcall(function()
-		inst.Material = data.Material; inst.CastShadow = data.CastShadow; inst.Reflectance = data.Reflectance; if data.RenderFidelity ~= nil and inst:IsA("MeshPart") then inst.RenderFidelity = data.RenderFidelity end
-	end) end end
-	state.parts = {}
-
-	-- Restore animations
-	for animator, conn in pairs(state.animators) do if conn then pcall(function() conn:Disconnect() end) end end
-	state.animators = {}
-	for _, rec in ipairs(state.animateScripts) do if rec.inst and rec.inst.Parent then pcall(function() rec.inst.Disabled = rec.prev and true or false end) end end
-	state.animateScripts = {}
-
-	state.applied = false
-	if WindUI then WindUI:Notify({ Title = "⚡ Performance", Content = "Ultra Performance OFF", Duration = 3 }) end
-end
-
--- One-shot purge to reduce memory (irreversible)
-purgeMemory = function()
-	-- Remove heavy visual instances permanently
-	for _, inst in ipairs(Lighting:GetChildren()) do
-		if inst:IsA("PostEffect") or inst:IsA("Atmosphere") or inst:IsA("Sky") then
-			pcall(function() inst:Destroy() end)
-		end
-	end
-
-	for _, inst in ipairs(game:GetDescendants()) do
-		if not isInPlayerGui(inst) then
-			if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") or inst:IsA("Highlight") then
-				pcall(function() inst:Destroy() end)
-			elseif inst:IsA("Decal") or inst:IsA("Texture") or inst:IsA("SurfaceAppearance") then
-				pcall(function() inst:Destroy() end)
-			elseif inst:IsA("PointLight") or inst:IsA("SpotLight") or inst:IsA("SurfaceLight") then
-				pcall(function() inst:Destroy() end)
-			elseif inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then
-				pcall(function() inst:Destroy() end)
-			elseif inst:IsA("Sound") then
-				pcall(function() inst:Stop() end)
-				pcall(function() inst:Destroy() end)
 			end
 		end
 	end
 
-	-- Attempt to hint GC
+	-- === REMOVE ALL GAME EFFECTS ===
+	for _, obj in ipairs(game:GetDescendants()) do
+		if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+		   obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") or 
+		   obj:IsA("Explosion") or obj:IsA("PointLight") or obj:IsA("SpotLight") or 
+		   obj:IsA("SurfaceLight") or obj:IsA("Highlight") or obj:IsA("SelectionBox") or
+		   obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+			pcall(function()
+				if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+					-- For GUIs, just disable them
+					obj.Enabled = false
+				else
+					-- For effects and lights, destroy them
+					obj:Destroy()
+				end
+				totalEffectsRemoved = totalEffectsRemoved + 1
+			end)
+		end
+	end
+
+	-- === DISABLE WIND BEHAVIOR ===
 	pcall(function()
-		collectgarbage("collect")
+		local windScript = game:GetService("Players").LocalPlayer.PlayerScripts.Env.Wind
+		if windScript then
+			windScript.Enabled = false
+		end
 	end)
 
-	if WindUI then WindUI:Notify({ Title = "🧽 Memory", Content = "Purged visual assets to free memory", Duration = 3 }) end
+	state.petsRemoved = true
+	
+	if WindUI then 
+		WindUI:Notify({ 
+			Title = "⚡ Performance Mode", 
+			Content = "Cleaned " .. totalModelsProcessed .. " models, removed " .. totalPartsRemoved .. " parts + " .. totalEffectsRemoved .. " effects", 
+			Duration = 5 
+		}) 
+	end
+end
+
+-- Function to disable Performance Mode (note: removed parts can't be restored)
+local function deactivatePerformanceMode()
+	if not state.petsRemoved then
+		if WindUI then WindUI:Notify({ Title = "⚡ Performance Mode", Content = "Performance Mode not active", Duration = 2 }) end
+		return
+	end
+
+	-- Try to re-enable Wind behavior
+	pcall(function()
+		local windScript = game:GetService("Players").LocalPlayer.PlayerScripts.Env.Wind
+		if windScript then
+			windScript.Enabled = true
+		end
+	end)
+
+	state.petsRemoved = false
+	
+	if WindUI then 
+		WindUI:Notify({ 
+			Title = "⚡ Performance Mode", 
+			Content = "Performance Mode disabled (effects/models can't be restored)", 
+			Duration = 4 
+		}) 
+	end
 end
 
 function Performance.Init(deps)
@@ -351,92 +217,58 @@ function Performance.Init(deps)
 		Tabs.PerfTab = Tabs.MainSection:Tab({ Title = "🚀 | Performance" })
 	end
 
-	local masterToggle = Tabs.PerfTab:Toggle({
-		Title = "⚡ Ultra Performance Mode",
-		Desc = "One toggle: disable animations, effects, lighting, textures, materials, lights",
+	-- Create toggle for Performance Mode
+	local performanceToggle = Tabs.PerfTab:Toggle({
+		Title = "⚡ Performance Mode",
+		Desc = "Clean models, remove all effects, disable wind behavior for maximum performance",
 		Value = false,
 		Callback = function(stateOn)
-			if stateOn then applyAll() else restoreAll() end
+			if stateOn then 
+				activatePerformanceMode() 
+			else 
+				deactivatePerformanceMode() 
+			end
 		end
 	})
 
-	Tabs.PerfTab:Button({
-		Title = "🧽 Free Memory (Purge)",
-		Desc = "Destroy effects/lights/textures permanently to reduce memory",
-		Callback = function()
-			purgeMemory()
-		end
-	})
-
-	-- Register with config system
+	-- Register with config system for saving/loading
 	if Config then
 		pcall(function()
-			Config:Register("performanceToggle", masterToggle)
+			Config:Register("performanceModeEnabled", performanceToggle)
 		end)
 	end
 
-	Performance.Toggle = masterToggle
-	Performance.Apply = applyAll
-	Performance.Restore = restoreAll
+	-- Store references for external access
+	Performance.Toggle = performanceToggle
+	Performance.Activate = activatePerformanceMode
+	Performance.Deactivate = deactivatePerformanceMode
 
 	return Performance
 end
 
--- Config management functions for integration with main system
+-- Config management functions
 function Performance.GetConfigElements()
 	return {
-		performanceToggle = Performance.Toggle
+		performanceModeEnabled = Performance.Toggle
 	}
 end
 
-function Performance.SaveConfig()
-	if not Config then return false end
-	
-	local success, err = pcall(function()
-		Config:Save()
-	end)
-	
-	if success then
-		WindUI:Notify({
-			Title = "⚡ Performance Config",
-			Content = "Settings saved successfully!",
-			Duration = 2
-		})
-	else
-		WindUI:Notify({
-			Title = "⚡ Performance Config",
-			Content = "Failed to save: " .. tostring(err),
-			Duration = 3
-		})
-	end
-	
-	return success
+function Performance.IsEnabled()
+	return state.petsRemoved
 end
 
-function Performance.LoadConfig()
-	if not Config then return false end
-	
-	local success, err = pcall(function()
-		Config:Load()
-	end)
-	
-	if success then
-		WindUI:Notify({
-			Title = "⚡ Performance Config",
-			Content = "Settings loaded successfully!",
-			Duration = 2
-		})
-	else
-		WindUI:Notify({
-			Title = "⚡ Performance Config",
-			Content = "Failed to load: " .. tostring(err),
-			Duration = 3
-		})
+function Performance.SetEnabled(enabled)
+	if Performance.Toggle then
+		Performance.Toggle:SetValue(enabled)
 	end
-	
-	return success
+end
+
+-- Get current state for external access
+function Performance.GetState()
+	return {
+		petsRemoved = state.petsRemoved
+	}
 end
 
 return Performance
-
 
