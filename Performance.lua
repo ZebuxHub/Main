@@ -324,7 +324,7 @@ local function activateBlankScreen()
 	statusLabel.Size = UDim2.new(0, 300, 0, 50)
 	statusLabel.Position = UDim2.new(0.5, -150, 0.5, -25)
 	statusLabel.BackgroundTransparency = 1
-	statusLabel.Text = "⚫ Blank Screen Mode Active\nPress toggle to disable"
+	statusLabel.Text = "⚫ Blank Screen Mode Active"
 	statusLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
 	statusLabel.TextSize = 14
 	statusLabel.TextStrokeTransparency = 0.5
@@ -386,7 +386,6 @@ function Performance.Init(deps)
 	-- Create toggle for Performance Mode
 	local performanceToggle = Tabs.PerfTab:Toggle({
 		Title = "⚡ Performance Mode",
-		Desc = "Clean models, remove all effects, disable wind behavior for maximum performance",
 		Value = false,
 		Callback = function(stateOn)
 			if stateOn then 
@@ -400,7 +399,6 @@ function Performance.Init(deps)
 	-- Create toggle for Blank Screen Mode
 	local blankScreenToggle = Tabs.PerfTab:Toggle({
 		Title = "⚫ Blank Screen Mode",
-		Desc = "Cover screen with black overlay to minimize GPU usage (ultimate performance)",
 		Value = false,
 		Callback = function(stateOn)
 			if stateOn then 
