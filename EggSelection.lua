@@ -69,6 +69,12 @@ local function convertMutationData(rawData)
         if mutationId ~= "__index" and type(mutationInfo) == "table" then
             -- Convert raw ModuleScript data to UI-friendly format
             local name = mutationInfo.ID or mutationId
+            local displayName = name
+            
+            -- Handle special case: "Dino" should display as "Jurassic" for UI compatibility
+            if mutationId == "Dino" then
+                displayName = "Jurassic"
+            end
             
             -- Get emoji icon based on mutation type
             local iconEmoji = "✨" -- Default
@@ -82,7 +88,7 @@ local function convertMutationData(rawData)
             
             convertedData[mutationId] = {
                 ID = mutationInfo.ID,
-                Name = name,
+                Name = displayName, -- Use display name (Dino -> Jurassic)
                 ProduceRate = mutationInfo.ProduceRate or 1,
                 SellRate = mutationInfo.SellRate or 1,
                 BuyRate = mutationInfo.BuyRate or 1,
@@ -105,6 +111,33 @@ local function convertMutationData(rawData)
             }
             mutationCount = mutationCount + 1
         end
+    end
+    
+    -- Add compatibility mapping: Create "Jurassic" entry that points to "Dino" data
+    if convertedData["Dino"] then
+        convertedData["Jurassic"] = {
+            ID = "Jurassic",
+            Name = "Jurassic",
+            ProduceRate = convertedData["Dino"].ProduceRate,
+            SellRate = convertedData["Dino"].SellRate,
+            BuyRate = convertedData["Dino"].BuyRate,
+            BigRate = convertedData["Dino"].BigRate,
+            TextColor = convertedData["Dino"].TextColor,
+            Color1 = convertedData["Dino"].Color1,
+            Color2 = convertedData["Dino"].Color2,
+            Color3 = convertedData["Dino"].Color3,
+            Neon1 = convertedData["Dino"].Neon1,
+            Neon2 = convertedData["Dino"].Neon2,
+            Neon3 = convertedData["Dino"].Neon3,
+            RarityNum = convertedData["Dino"].RarityNum,
+            Rarity = convertedData["Dino"].Rarity,
+            HatchTimeScale = convertedData["Dino"].HatchTimeScale,
+            MinHatchTime = convertedData["Dino"].MinHatchTime,
+            Icon = convertedData["Dino"].Icon,
+            EmojiIcon = "🦕",
+            IsNew = false
+        }
+        print("🔄 Added Jurassic compatibility mapping for Dino mutation")
     end
     
     print("✨ Loaded " .. mutationCount .. " mutations from ResMutate ModuleScript")
