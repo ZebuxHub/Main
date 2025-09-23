@@ -809,17 +809,17 @@ local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed)
     
     -- Check if actual speed meets minimum requirement
     if actualSpeed < (minPetRateFilter or 0) then
-        -- Speed too low! Auto-delete this pet
+        -- Speed too low! Auto-pick up this pet
         WindUI:Notify({
-            Title = "🗑️ Auto Delete",
-            Content = "Pet speed " .. actualSpeed .. " < " .. (minPetRateFilter or 0) .. ". Deleting pet " .. petUID,
+            Title = "🔄 Auto Pick Up",
+            Content = "Pet speed " .. actualSpeed .. " < " .. (minPetRateFilter or 0) .. ". Picking up pet " .. petUID,
             Duration = 3
         })
         
         -- Add to blacklist first
         petBlacklist[petUID] = true
         
-        -- Try to delete the pet using the same method as auto-delete system
+        -- Try to delete the pet using the same method as auto-pick up system
         local success = pcall(function()
             if CharacterRE then
                 CharacterRE:FireServer("DeletePet", petUID)
@@ -832,15 +832,15 @@ local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed)
             tileCache.lastUpdate = 0
             
             WindUI:Notify({
-                Title = "🗑️ Auto Delete", 
-                Content = "✅ Deleted pet " .. petUID .. " (speed too low)", 
+                Title = "🔄 Auto Pick Up", 
+                Content = "✅ Picked up pet " .. petUID .. " (speed too low)", 
                 Duration = 2
             })
-            return false -- Pet was deleted
+            return false -- Pet was picked up
         else
             WindUI:Notify({
-                Title = "🗑️ Auto Delete", 
-                Content = "❌ Failed to delete pet " .. petUID, 
+                Title = "🔄 Auto Pick Up", 
+                Content = "❌ Failed to pick up pet " .. petUID, 
                 Duration = 2
             })
         end
@@ -1343,10 +1343,10 @@ end
 -- ============ Auto Unlock Helper Functions ============
 local autoUnlockEnabled = false
 local autoUnlockThread = nil
-local autoDeleteEnabled = false
-local autoDeleteTileFilter = "Both"
-local autoDeleteThread = nil
-local deleteSpeedThreshold = 100
+local autoPickUpEnabled = false
+local autoPickUpTileFilter = "Both"
+local autoPickUpThread = nil
+local pickUpSpeedThreshold = 100
 
 local function getLockedTilesForCurrentIsland()
     local lockedTiles = {}
@@ -1436,7 +1436,7 @@ local function runAutoUnlock()
     end
 end
 
--- ============ Auto Delete Helper Functions ============
+-- ============ Auto Pick Up Helper Functions ============
 local function parseNumberWithSuffix(text)
     if not text or type(text) ~= "string" then return nil end
     
@@ -1466,8 +1466,8 @@ local function parseNumberWithSuffix(text)
     return numValue
 end
 
-local function runAutoDelete()
-    while autoDeleteEnabled do
+local function runAutoPickUp()
+    while autoPickUpEnabled do
         local ok, err = pcall(function()
             local petsFolder = workspace:FindFirstChild("Pets")
             if not petsFolder then
@@ -1479,7 +1479,7 @@ local function runAutoDelete()
             local petsToDelete = {}
             
             for _, pet in ipairs(petsFolder:GetChildren()) do
-                if not autoDeleteEnabled then break end
+                if not autoPickUpEnabled then break end
                 
                 if pet:IsA("Model") then
                     local petUserId = pet:GetAttribute("UserId")
@@ -1501,11 +1501,11 @@ local function runAutoDelete()
                             if petTypeForFilter then
                                 isOcean = isOceanPet(petTypeForFilter)
                             end
-                            if autoDeleteTileFilter == "Regular" and isOcean then
+                            if autoPickUpTileFilter == "Regular" and isOcean then
                                 -- Skip ocean pets when filtering for Normal tiles
                                 -- (using type classification from ResPet)
                             else
-                                if autoDeleteTileFilter == "Ocean" and not isOcean then
+                                if autoPickUpTileFilter == "Ocean" and not isOcean then
                                     -- Skip normal pets when filtering for Ocean
                                 else
                                     local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
@@ -1513,7 +1513,7 @@ local function runAutoDelete()
                                         local speedText = idleGUI:FindFirstChild("Speed")
                                         if speedText and speedText:IsA("TextLabel") then
                                             local speedValue = parseNumberWithSuffix(speedText.Text)
-                                            if speedValue and speedValue < deleteSpeedThreshold then
+                                            if speedValue and speedValue < pickUpSpeedThreshold then
                                                 table.insert(petsToDelete, { name = pet.Name })
                                             end
                                         end
@@ -1526,7 +1526,7 @@ local function runAutoDelete()
             end
             
             for _, petInfo in ipairs(petsToDelete) do
-                if not autoDeleteEnabled then break end
+                if not autoPickUpEnabled then break end
                 
                 local success = pcall(function()
                     if CharacterRE then
@@ -1545,7 +1545,7 @@ local function runAutoDelete()
         end)
         
         if not ok then
-            warn("Auto Delete error: " .. tostring(err))
+            warn("Auto Pick Up error: " .. tostring(err))
             task.wait(1)
         end
     end
@@ -1555,12 +1555,27 @@ end
 function AutoPlaceSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Tabs = dependencies.Tabs
-    Config = dependencies.Config
+    
+    -- Handle both old and new config structure
+    if dependencies.Config then
+        if type(dependencies.Config) == "table" and dependencies.Config.mainConfig then
+            -- New structure with separate config objects
+            Config = {
+                mainConfig = dependencies.Config.mainConfig,
+                autoSystemsConfig = dependencies.Config.autoSystemsConfig,
+                customUIConfig = dependencies.Config.customUIConfig
+            }
+        else
+            -- Legacy structure - single config object
+            Config = dependencies.Config
+        end
+    end
     
     -- Set up UI elements
     math.randomseed(os.time())
     AutoPlaceSystem.CreateUI()
     
+    print("[AutoPlace] Initialized with config support:", Config and "enabled" or "disabled")
     return AutoPlaceSystem
 end
 
@@ -1602,11 +1617,6 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceEggTypes", placeEggDropdown)
-        end)
-    end
     
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
@@ -1621,11 +1631,6 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceMutations", placeMutationDropdown)
-        end)
-    end
 
     -- Pet Settings
     Tabs.PlaceTab:Section({
@@ -1633,7 +1638,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    Tabs.PlaceTab:Slider({
+    local minPetSpeedSlider = Tabs.PlaceTab:Slider({
         Title = "Min Speed",
         Desc = "Min pet value",
         Value = {
@@ -1648,7 +1653,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    Tabs.PlaceTab:Dropdown({
+    local petSortOrderDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
         Values = {"Low → High","High → Low"},
@@ -1683,11 +1688,6 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceSources", placeModeDropdown)
-        end)
-    end
 
     -- Stats update function (defined before usage)
     local function updateStats()
@@ -1747,12 +1747,6 @@ function AutoPlaceSystem.CreateUI()
 
     -- Store reference
     AutoPlaceSystem.Toggle = autoPlaceToggle
-    -- Register with Config manager so the value is saved/loaded
-    if Config then
-        pcall(function()
-            Config:Register("autoPlaceEnabled", autoPlaceToggle)
-        end)
-    end
     
     -- Tile Management section
     Tabs.PlaceTab:Section({
@@ -1778,79 +1772,59 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoUnlockEnabled", autoUnlockToggle)
-        end)
-    end
     
-    -- (Removed) Auto Delete tab controls are consolidated under PlaceTab
+    -- (Removed) Auto Pick Up tab controls are consolidated under PlaceTab
     
-    -- Auto Delete controls under the same section as Tile Management
+    -- Auto Pick Up controls under the same section as Tile Management
     
-    local autoDeleteTileDropdown = Tabs.PlaceTab:Dropdown({
+    local autoPickUpTileDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Tile Filter",
-        Desc = "Delete on: Normal or Ocean",
+        Desc = "Pick up on: Normal or Ocean",
         Values = {"Both", "Normal", "Ocean"},
         Value = "Both",
         Callback = function(value)
             if value == "Normal" then
-                autoDeleteTileFilter = "Regular"
+                autoPickUpTileFilter = "Regular"
             elseif value == "Ocean" then
-                autoDeleteTileFilter = "Ocean"
+                autoPickUpTileFilter = "Ocean"
             else
-                autoDeleteTileFilter = "Both"
+                autoPickUpTileFilter = "Both"
             end
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoDeleteTileFilter", autoDeleteTileDropdown)
-        end)
-    end
     
-    local autoDeleteSpeedSlider = Tabs.PlaceTab:Input({
+    local autoPickUpSpeedSlider = Tabs.PlaceTab:Input({
         Title = "Speed Threshold",
-        Desc = "Delete pets below this speed",
+        Desc = "Pick up pets below this speed",
         Value = "100",
         Callback = function(value)
             local parsedValue = parseNumberWithSuffix(value)
             if parsedValue and parsedValue > 0 then
-                deleteSpeedThreshold = parsedValue
+                pickUpSpeedThreshold = parsedValue
             else
-                deleteSpeedThreshold = tonumber(value) or 100
+                pickUpSpeedThreshold = tonumber(value) or 100
             end
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoDeleteSpeedThreshold", autoDeleteSpeedSlider)
-        end)
-    end
     
-    local autoDeleteToggle = Tabs.PlaceTab:Toggle({
-        Title = "Auto Delete",
-        Desc = "Automatically delete slow pets",
+    local autoPickUpToggle = Tabs.PlaceTab:Toggle({
+        Title = "Auto Pick Up",
+        Desc = "Automatically pick up slow pets",
         Value = false,
         Callback = function(state)
-            autoDeleteEnabled = state
+            autoPickUpEnabled = state
             
-            if state and not autoDeleteThread then
-                autoDeleteThread = task.spawn(function()
-                    runAutoDelete()
-                    autoDeleteThread = nil
+            if state and not autoPickUpThread then
+                autoPickUpThread = task.spawn(function()
+                    runAutoPickUp()
+                    autoPickUpThread = nil
                 end)
-                WindUI:Notify({ Title = "Auto Delete", Content = "Started deleting slow pets", Duration = 2 })
-            elseif not state and autoDeleteThread then
-                WindUI:Notify({ Title = "Auto Delete", Content = "Stopped", Duration = 2 })
+                WindUI:Notify({ Title = "Auto Pick Up", Content = "Started picking up slow pets", Duration = 2 })
+            elseif not state and autoPickUpThread then
+                WindUI:Notify({ Title = "Auto Pick Up", Content = "Stopped", Duration = 2 })
             end
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("autoDeleteEnabled", autoDeleteToggle)
-        end)
-    end
 
     -- Stats update function (moved earlier in CreateUI)
 
@@ -1889,6 +1863,13 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for external access
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
+    AutoPlaceSystem.SourcesDropdown = placeModeDropdown
+    AutoPlaceSystem.UnlockToggle = autoUnlockToggle
+    AutoPlaceSystem.PickUpToggle = autoPickUpToggle
+    AutoPlaceSystem.PickUpTileDropdown = autoPickUpTileDropdown
+    AutoPlaceSystem.PickUpSpeedSlider = autoPickUpSpeedSlider
+    AutoPlaceSystem.MinPetSpeedSlider = minPetSpeedSlider
+    AutoPlaceSystem.PetSortDropdown = petSortOrderDropdown
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
@@ -1910,6 +1891,26 @@ function AutoPlaceSystem.SetEnabled(enabled)
         -- Trigger the toggle to update UI and start/stop system
         AutoPlaceSystem.Toggle:SetValue(enabled)
     end
+end
+
+function AutoPlaceSystem.GetConfigElements()
+    return {
+        -- Main config elements (core functionality)
+        autoPlaceToggle = AutoPlaceSystem.Toggle,
+        autoUnlockToggle = AutoPlaceSystem.UnlockToggle,
+        autoPickUpToggle = AutoPlaceSystem.PickUpToggle,
+        
+        -- Custom UI config elements (dropdowns and selections)
+        autoPlaceEggDropdown = AutoPlaceSystem.EggDropdown,
+        autoPlaceMutationDropdown = AutoPlaceSystem.MutationDropdown,
+        autoPlaceSources = AutoPlaceSystem.SourcesDropdown,
+        
+        -- Auto systems config elements (advanced settings)
+        autoPickUpTileFilter = AutoPlaceSystem.PickUpTileDropdown,
+        autoPickUpSpeedThreshold = AutoPlaceSystem.PickUpSpeedSlider,
+        minPetSpeedSlider = AutoPlaceSystem.MinPetSpeedSlider,
+        petSortOrderDropdown = AutoPlaceSystem.PetSortDropdown
+    }
 end
 
 return AutoPlaceSystem
