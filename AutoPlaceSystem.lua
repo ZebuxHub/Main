@@ -1555,27 +1555,12 @@ end
 function AutoPlaceSystem.Init(dependencies)
     WindUI = dependencies.WindUI
     Tabs = dependencies.Tabs
-    
-    -- Handle both old and new config structure
-    if dependencies.Config then
-        if type(dependencies.Config) == "table" and dependencies.Config.mainConfig then
-            -- New structure with separate config objects
-            Config = {
-                mainConfig = dependencies.Config.mainConfig,
-                autoSystemsConfig = dependencies.Config.autoSystemsConfig,
-                customUIConfig = dependencies.Config.customUIConfig
-            }
-        else
-            -- Legacy structure - single config object
-            Config = dependencies.Config
-        end
-    end
+    Config = dependencies.Config
     
     -- Set up UI elements
     math.randomseed(os.time())
     AutoPlaceSystem.CreateUI()
     
-    print("[AutoPlace] Initialized with config support:", Config and "enabled" or "disabled")
     return AutoPlaceSystem
 end
 
@@ -1617,6 +1602,11 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceEggTypes", placeEggDropdown)
+        end)
+    end
     
     -- Mutation selection dropdown
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
@@ -1631,6 +1621,11 @@ function AutoPlaceSystem.CreateUI()
             eggCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceMutations", placeMutationDropdown)
+        end)
+    end
 
     -- Pet Settings
     Tabs.PlaceTab:Section({
@@ -1638,7 +1633,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    local minPetSpeedSlider = Tabs.PlaceTab:Slider({
+    Tabs.PlaceTab:Slider({
         Title = "Min Speed",
         Desc = "Min pet value",
         Value = {
@@ -1653,7 +1648,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    local petSortOrderDropdown = Tabs.PlaceTab:Dropdown({
+    Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
         Values = {"Low → High","High → Low"},
@@ -1688,6 +1683,11 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceSources", placeModeDropdown)
+        end)
+    end
 
     -- Stats update function (defined before usage)
     local function updateStats()
@@ -1747,6 +1747,12 @@ function AutoPlaceSystem.CreateUI()
 
     -- Store reference
     AutoPlaceSystem.Toggle = autoPlaceToggle
+    -- Register with Config manager so the value is saved/loaded
+    if Config then
+        pcall(function()
+            Config:Register("autoPlaceEnabled", autoPlaceToggle)
+        end)
+    end
     
     -- Tile Management section
     Tabs.PlaceTab:Section({
@@ -1772,6 +1778,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoUnlockEnabled", autoUnlockToggle)
+        end)
+    end
     
     -- (Removed) Auto Pick Up tab controls are consolidated under PlaceTab
     
@@ -1792,6 +1803,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPickUpTileFilter", autoPickUpTileDropdown)
+        end)
+    end
     
     local autoPickUpSpeedSlider = Tabs.PlaceTab:Input({
         Title = "Speed Threshold",
@@ -1806,6 +1822,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPickUpSpeedThreshold", autoPickUpSpeedSlider)
+        end)
+    end
     
     local autoPickUpToggle = Tabs.PlaceTab:Toggle({
         Title = "Auto Pick Up",
@@ -1825,6 +1846,11 @@ function AutoPlaceSystem.CreateUI()
             end
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("autoPickUpEnabled", autoPickUpToggle)
+        end)
+    end
 
     -- Stats update function (moved earlier in CreateUI)
 
@@ -1863,13 +1889,6 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for external access
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
-    AutoPlaceSystem.SourcesDropdown = placeModeDropdown
-    AutoPlaceSystem.UnlockToggle = autoUnlockToggle
-    AutoPlaceSystem.PickUpToggle = autoPickUpToggle
-    AutoPlaceSystem.PickUpTileDropdown = autoPickUpTileDropdown
-    AutoPlaceSystem.PickUpSpeedSlider = autoPickUpSpeedSlider
-    AutoPlaceSystem.MinPetSpeedSlider = minPetSpeedSlider
-    AutoPlaceSystem.PetSortDropdown = petSortOrderDropdown
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
@@ -1891,26 +1910,6 @@ function AutoPlaceSystem.SetEnabled(enabled)
         -- Trigger the toggle to update UI and start/stop system
         AutoPlaceSystem.Toggle:SetValue(enabled)
     end
-end
-
-function AutoPlaceSystem.GetConfigElements()
-    return {
-        -- Main config elements (core functionality)
-        autoPlaceToggle = AutoPlaceSystem.Toggle,
-        autoUnlockToggle = AutoPlaceSystem.UnlockToggle,
-        autoPickUpToggle = AutoPlaceSystem.PickUpToggle,
-        
-        -- Custom UI config elements (dropdowns and selections)
-        autoPlaceEggDropdown = AutoPlaceSystem.EggDropdown,
-        autoPlaceMutationDropdown = AutoPlaceSystem.MutationDropdown,
-        autoPlaceSources = AutoPlaceSystem.SourcesDropdown,
-        
-        -- Auto systems config elements (advanced settings)
-        autoPickUpTileFilter = AutoPlaceSystem.PickUpTileDropdown,
-        autoPickUpSpeedThreshold = AutoPlaceSystem.PickUpSpeedSlider,
-        minPetSpeedSlider = AutoPlaceSystem.MinPetSpeedSlider,
-        petSortOrderDropdown = AutoPlaceSystem.PetSortDropdown
-    }
 end
 
 return AutoPlaceSystem
