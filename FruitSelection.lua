@@ -9,131 +9,159 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Hardcoded Fruit Data with emojis
-local FruitData = {
-    Strawberry = {
-        Name = "Strawberry",
-        Price = "5,000",
-        Icon = "🍓",
-        Rarity = 1,
-        FeedValue = 600
-    },
-    Blueberry = {
-        Name = "Blueberry",
-        Price = "20,000",
-        Icon = "🫐",
-        Rarity = 1,
-        FeedValue = 1250
-    },
-    Watermelon = {
-        Name = "Watermelon",
-        Price = "80,000",
-        Icon = "🍉",
-        Rarity = 2,
-        FeedValue = 3200
-    },
-    Apple = {
-        Name = "Apple",
-        Price = "400,000",
-        Icon = "🍎",
-        Rarity = 2,
-        FeedValue = 8000
-    },
-    Orange = {
-        Name = "Orange",
-        Price = "1,200,000",
-        Icon = "🍊",
-        Rarity = 3,
-        FeedValue = 20000
-    },
-    Corn = {
-        Name = "Corn",
-        Price = "3,500,000",
-        Icon = "🌽",
-        Rarity = 3,
-        FeedValue = 50000
-    },
-    Banana = {
-        Name = "Banana",
-        Price = "12,000,000",
-        Icon = "🍌",
-        Rarity = 4,
-        FeedValue = 120000
-    },
-    Grape = {
-        Name = "Grape",
-        Price = "50,000,000",
-        Icon = "🍇",
-        Rarity = 4,
-        FeedValue = 300000
-    },
-    Pear = {
-        Name = "Pear",
-        Price = "200,000,000",
-        Icon = "🍐",
-        Rarity = 5,
-        FeedValue = 800000
-    },
-    Pineapple = {
-        Name = "Pineapple",
-        Price = "600,000,000",
-        Icon = "🍍",
-        Rarity = 5,
-        FeedValue = 1500000
-    },
-    GoldMango = {
-        Name = "Gold Mango",
-        Price = "2,000,000,000",
-        Icon = "🥭",
-        Rarity = 6,
-        FeedValue = 4000000
-    },
-    BloodstoneCycad = {
-        Name = "Bloodstone Cycad",
-        Price = "8,000,000,000",
-        Icon = "🌿",
-        Rarity = 6,
-        FeedValue = 5000000
-    },
-    ColossalPinecone = {
-        Name = "Colossal Pinecone",
-        Price = "40,000,000,000",
-        Icon = "🌲",
-        Rarity = 6,
-        FeedValue = 8000000
-    },
-    VoltGinkgo = {
-        Name = "Volt Ginkgo",
-        Price = "80,000,000,000",
-        Icon = "⚡",
-        Rarity = 6,
-        FeedValue = 20000000
-    },
-    DeepseaPearlFruit = {
-        Name = "DeepseaPearlFruit",
-        Price = "40,000,000,000",
-        Icon = "💠",
-        Rarity = 6,
-        FeedValue = 8000000
-    },
-    Durian = {
-        Name = "Durian",
-        Price = "80,000,000,000",
-        Icon = "🥥",
-        Rarity = 6,
-        FeedValue = 20000000,
-        IsNew = true
-    },
-    DragonFruit = {
-        Name = "Dragon Fruit",
-        Price = "1,500,000,000",
-        Icon = "🐲",
-        Rarity = 6,
-        FeedValue = 3000000,
-        IsNew = true
-    }
+-- Dynamic Fruit Data loaded from ModuleScript
+local FruitData = {}
+local isDataLoaded = false
+
+-- Default fruit icons for fallback
+local defaultFruitIcons = {
+    Strawberry = "🍓",
+    Blueberry = "🫐", 
+    Watermelon = "🍉",
+    Apple = "🍎",
+    Orange = "🍊",
+    Corn = "🌽",
+    Banana = "🍌",
+    Grape = "🍇",
+    Pear = "🍐",
+    Pineapple = "🍍",
+    GoldMango = "🥭",
+    BloodstoneCycad = "🌿",
+    ColossalPinecone = "🌲",
+    VoltGinkgo = "⚡",
+    DeepseaPearlFruit = "💠",
+    Durian = "🥥",
+    DragonFruit = "🐲"
 }
+
+-- Convert ModuleScript data to UI-friendly format
+local function convertFruitData(rawData)
+    local convertedData = {}
+    
+    for id, data in pairs(rawData) do
+        if type(data) == "table" and not string.match(tostring(id), "^_") then
+            -- Convert price to formatted string
+            local price = data.Price or 0
+            local priceStr = tostring(price)
+            if type(price) == "number" then
+                -- Format large numbers with commas
+                priceStr = tostring(price):reverse():gsub("(%d%d%d)", "%1,"):reverse()
+                if priceStr:sub(1, 1) == "," then
+                    priceStr = priceStr:sub(2)
+                end
+            end
+            
+            convertedData[id] = {
+                ID = data.ID or id,
+                Name = data.ID or id, -- Use ID as display name
+                Price = priceStr,
+                Icon = defaultFruitIcons[id] or defaultFruitIcons[data.ID] or "🍎",
+                Rarity = data.Rarity or 1,
+                FeedValue = data.FeedValue or 1,
+                Index = data.Index or 1,
+                MutateRate = data.MutateRate or 0,
+                MutateID = data.MutateID or "",
+                EatTime = data.EatTime or 60,
+                IsNew = false -- Will be determined by checking if recently added
+            }
+        end
+    end
+    
+    return convertedData
+end
+
+-- Load fruit data from ModuleScript
+local function loadFruitData()
+    local success, result = pcall(function()
+        local configFolder = ReplicatedStorage:WaitForChild("Config", 5)
+        if not configFolder then
+            warn("❌ Config folder not found in ReplicatedStorage")
+            return false
+        end
+        
+        local fruitModule = configFolder:FindFirstChild("ResPetFood")
+        if not fruitModule then
+            warn("❌ ResPetFood ModuleScript not found")
+            return false
+        end
+        
+        local rawFruitData = require(fruitModule)
+        if not rawFruitData or type(rawFruitData) ~= "table" then
+            warn("❌ Invalid fruit data from ModuleScript")
+            return false
+        end
+        
+        FruitData = convertFruitData(rawFruitData)
+        isDataLoaded = true
+        
+        -- Count fruits properly
+        local fruitCount = 0
+        for _ in pairs(FruitData) do
+            fruitCount = fruitCount + 1
+        end
+        
+        print("✅ Loaded " .. fruitCount .. " fruits from ResPetFood ModuleScript")
+        
+        -- Refresh UI if it exists
+        if FruitSelection.RefreshContent then
+            task.spawn(function()
+                task.wait(0.1)
+                FruitSelection.RefreshContent()
+            end)
+        end
+        
+        return true
+    end)
+    
+    if not success then
+        warn("❌ Failed to load fruit data: " .. tostring(result))
+        -- Use fallback data
+        FruitData = {
+            Strawberry = { Name = "Strawberry", Price = "5,000", Icon = "🍓", Rarity = 1, FeedValue = 600 },
+            Apple = { Name = "Apple", Price = "400,000", Icon = "🍎", Rarity = 2, FeedValue = 8000 }
+        }
+        isDataLoaded = true
+    end
+    
+    return success
+end
+
+-- Setup real-time data monitoring
+local function setupDataMonitoring()
+    local configFolder = ReplicatedStorage:FindFirstChild("Config")
+    if configFolder then
+        -- Monitor for changes to ResPetFood
+        local fruitModule = configFolder:FindFirstChild("ResPetFood")
+        if fruitModule then
+            -- Monitor for module changes (if it gets replaced)
+            configFolder.ChildAdded:Connect(function(child)
+                if child.Name == "ResPetFood" then
+                    task.wait(1) -- Wait for module to be fully loaded
+                    loadFruitData()
+                    print("🔄 Reloaded fruit data due to ResPetFood change")
+                end
+            end)
+        end
+        
+        -- Also monitor for the Config folder itself
+        configFolder.ChildRemoved:Connect(function(child)
+            if child.Name == "ResPetFood" then
+                warn("⚠️ ResPetFood ModuleScript was removed")
+            end
+        end)
+    end
+end
+
+-- Initialize data loading
+task.spawn(function()
+    loadFruitData()
+    setupDataMonitoring()
+end)
+
+-- Make FruitSelection globally available for other systems
+_G.FruitSelection = FruitSelection
 
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
@@ -761,6 +789,25 @@ function FruitSelection.Show(callback, toggleCallback, savedFruits)
         end
     end
     
+    -- Ensure data is loaded before showing UI
+    if not isDataLoaded then
+        -- Show loading notification
+        print("⏳ Loading fruit data...")
+        loadFruitData()
+        
+        -- Wait for data to load
+        local maxWait = 5
+        local waited = 0
+        while not isDataLoaded and waited < maxWait do
+            task.wait(0.1)
+            waited = waited + 0.1
+        end
+        
+        if not isDataLoaded then
+            warn("⚠️ Failed to load fruit data within timeout")
+        end
+    end
+    
     if not ScreenGui then
         FruitSelection.CreateUI()
     end
@@ -802,6 +849,36 @@ function FruitSelection.UpdateSelections(fruits)
     if ScreenGui then
         FruitSelection.RefreshContent()
     end
+end
+
+-- Get current fruit data (for external access)
+function FruitSelection.GetFruitData()
+    return FruitData
+end
+
+-- Check if data is loaded
+function FruitSelection.IsDataLoaded()
+    return isDataLoaded
+end
+
+-- Manually reload fruit data
+function FruitSelection.ReloadData()
+    isDataLoaded = false
+    return loadFruitData()
+end
+
+-- Get data loading status
+function FruitSelection.GetDataStatus()
+    local count = 0
+    for _ in pairs(FruitData) do
+        count = count + 1
+    end
+    
+    return {
+        isLoaded = isDataLoaded,
+        fruitCount = count,
+        source = "ResPetFood ModuleScript"
+    }
 end
 
 return FruitSelection
