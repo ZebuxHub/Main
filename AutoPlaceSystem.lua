@@ -20,6 +20,7 @@ local fallbackToRegularWhenNoWater = true
 local placeEggsEnabled = true
 local placePetsEnabled = false
 local minPetRateFilter = 0
+local petSortAscending = true
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -439,13 +440,20 @@ local function updateAvailablePets()
         end
     end
     
-    -- Sort pets for sequential placement (ascending by speed)
+    -- Sort pets for sequential placement
     table.sort(out, function(a, b)
-        -- Sort by speed first, then by UID for consistent ordering
-        if a.effectiveRate == b.effectiveRate then
-            return a.uid < b.uid -- Stable sort by UID
+        if petSortAscending then
+            -- Sort by speed first, then by UID for consistent ordering
+            if a.effectiveRate == b.effectiveRate then
+                return a.uid < b.uid -- Stable sort by UID
+            end
+            return a.effectiveRate < b.effectiveRate
+        else
+            if a.effectiveRate == b.effectiveRate then
+                return a.uid < b.uid -- Stable sort by UID
+            end
+            return a.effectiveRate > b.effectiveRate
         end
-        return a.effectiveRate < b.effectiveRate
     end)
     
     petCache.lastUpdate = currentTime
@@ -1625,7 +1633,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    local minPetRateSlider = Tabs.PlaceTab:Slider({
+    Tabs.PlaceTab:Slider({
         Title = "Min Speed",
         Desc = "Min pet value",
         Value = {
@@ -1639,12 +1647,19 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
-    if Config then
-        pcall(function()
-            Config:Register("minPetRateSlider", minPetRateSlider)
-        end)
-    end
 
+    Tabs.PlaceTab:Dropdown({
+        Title = "Sort Order",
+        Desc = "Sort by value",
+        Values = {"Low → High","High → Low"},
+        Value = "Low → High",
+        Multi = false,
+        AllowNone = false,
+        Callback = function(v)
+            petSortAscending = (v == "Low → High")
+            petCache.lastUpdate = 0
+        end
+    })
 
     -- Mode & behavior (Sources)
     Tabs.PlaceTab:Section({
@@ -1874,12 +1889,6 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for external access
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
-    AutoPlaceSystem.PlaceModeDropdown = placeModeDropdown
-    AutoPlaceSystem.MinPetRateSlider = minPetRateSlider
-    AutoPlaceSystem.UnlockToggle = autoUnlockToggle
-    AutoPlaceSystem.PickUpToggle = autoPickUpToggle
-    AutoPlaceSystem.PickUpTileDropdown = autoPickUpTileDropdown
-    AutoPlaceSystem.PickUpSpeedSlider = autoPickUpSpeedSlider
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
@@ -1901,107 +1910,6 @@ function AutoPlaceSystem.SetEnabled(enabled)
         -- Trigger the toggle to update UI and start/stop system
         AutoPlaceSystem.Toggle:SetValue(enabled)
     end
-end
-
--- Config management functions for integration with main system
-function AutoPlaceSystem.GetConfigElements()
-    return {
-        -- Main toggles
-        autoPlaceEnabled = AutoPlaceSystem.Toggle,
-        autoUnlockEnabled = AutoPlaceSystem.UnlockToggle,
-        autoPickUpEnabled = AutoPlaceSystem.PickUpToggle,
-        
-        -- Dropdowns and selections
-        autoPlaceEggTypes = AutoPlaceSystem.EggDropdown,
-        autoPlaceMutations = AutoPlaceSystem.MutationDropdown,
-        autoPlaceSources = AutoPlaceSystem.PlaceModeDropdown,
-        
-        -- Pet settings
-        minPetRateSlider = AutoPlaceSystem.MinPetRateSlider,
-        
-        -- Advanced settings
-        autoPickUpTileFilter = AutoPlaceSystem.PickUpTileDropdown,
-        autoPickUpSpeedThreshold = AutoPlaceSystem.PickUpSpeedSlider
-    }
-end
-
-function AutoPlaceSystem.RegisterWithConfig(config)
-    if not config then return false end
-    
-    local elements = AutoPlaceSystem.GetConfigElements()
-    
-    local success, err = pcall(function()
-        -- Register all UI elements with the config system using WindUI's method
-        for key, element in pairs(elements) do
-            if element then
-                config:Register(key, element)
-            end
-        end
-    end)
-    
-    if success then
-        WindUI:Notify({
-            Title = "🏠 Auto Place Config",
-            Content = "All elements registered with config system!",
-            Duration = 2
-        })
-    else
-        WindUI:Notify({
-            Title = "🏠 Auto Place Config",
-            Content = "Failed to register: " .. tostring(err),
-            Duration = 3
-        })
-    end
-    
-    return success
-end
-
-function AutoPlaceSystem.SaveConfig()
-    if not Config then return false end
-    
-    local success, err = pcall(function()
-        Config:Save()
-    end)
-    
-    if success then
-        WindUI:Notify({
-            Title = "🏠 Auto Place Config",
-            Content = "Settings saved successfully!",
-            Duration = 2
-        })
-    else
-        WindUI:Notify({
-            Title = "🏠 Auto Place Config",
-            Content = "Failed to save: " .. tostring(err),
-            Duration = 3
-        })
-    end
-    
-    return success
-end
-
-function AutoPlaceSystem.LoadConfig()
-    if not Config then return false end
-    
-    local success, err = pcall(function()
-        Config:Load()
-    end)
-    
-    if success then
-        WindUI:Notify({
-            Title = "🏠 Auto Place Config",
-            Content = "Settings loaded successfully!",
-            Duration = 2
-        })
-    else
-        WindUI:Notify({
-            Title = "🏠 Auto Place Config",
-            Content = "Failed to load: " .. tostring(err),
-            Duration = 3
-        })
-    end
-    
-    return success
 end
 
 return AutoPlaceSystem
