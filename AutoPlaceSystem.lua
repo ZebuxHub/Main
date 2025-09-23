@@ -1633,7 +1633,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    Tabs.PlaceTab:Slider({
+    local minPetRateSlider = Tabs.PlaceTab:Slider({
         Title = "Min Speed",
         Desc = "Min pet value",
         Value = {
@@ -1648,7 +1648,7 @@ function AutoPlaceSystem.CreateUI()
         end
     })
 
-    Tabs.PlaceTab:Dropdown({
+    local petSortDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
         Values = {"Low → High","High → Low"},
@@ -1889,6 +1889,9 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for external access
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
+    AutoPlaceSystem.PlaceModeDropdown = placeModeDropdown
+    AutoPlaceSystem.MinPetRateSlider = minPetRateSlider
+    AutoPlaceSystem.PetSortDropdown = petSortDropdown
     AutoPlaceSystem.UnlockToggle = autoUnlockToggle
     AutoPlaceSystem.PickUpToggle = autoPickUpToggle
     AutoPlaceSystem.PickUpTileDropdown = autoPickUpTileDropdown
@@ -1927,11 +1930,47 @@ function AutoPlaceSystem.GetConfigElements()
         -- Dropdowns and selections
         autoPlaceEggTypes = AutoPlaceSystem.EggDropdown,
         autoPlaceMutations = AutoPlaceSystem.MutationDropdown,
+        autoPlaceSources = AutoPlaceSystem.PlaceModeDropdown,
+        
+        -- Pet settings
+        minPetRateSlider = AutoPlaceSystem.MinPetRateSlider,
+        petSortDropdown = AutoPlaceSystem.PetSortDropdown,
         
         -- Advanced settings
         autoPickUpTileFilter = AutoPlaceSystem.PickUpTileDropdown,
         autoPickUpSpeedThreshold = AutoPlaceSystem.PickUpSpeedSlider
     }
+end
+
+function AutoPlaceSystem.RegisterWithConfig(config)
+    if not config then return false end
+    
+    local elements = AutoPlaceSystem.GetConfigElements()
+    
+    local success, err = pcall(function()
+        -- Register all UI elements with the config system using WindUI's method
+        for key, element in pairs(elements) do
+            if element then
+                config:Register(key, element)
+            end
+        end
+    end)
+    
+    if success then
+        WindUI:Notify({
+            Title = "🏠 Auto Place Config",
+            Content = "All elements registered with config system!",
+            Duration = 2
+        })
+    else
+        WindUI:Notify({
+            Title = "🏠 Auto Place Config",
+            Content = "Failed to register: " .. tostring(err),
+            Duration = 3
+        })
+    end
+    
+    return success
 end
 
 function AutoPlaceSystem.SaveConfig()
