@@ -1889,6 +1889,10 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for external access
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
+    AutoPlaceSystem.UnlockToggle = autoUnlockToggle
+    AutoPlaceSystem.PickUpToggle = autoPickUpToggle
+    AutoPlaceSystem.PickUpTileDropdown = autoPickUpTileDropdown
+    AutoPlaceSystem.PickUpSpeedSlider = autoPickUpSpeedSlider
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
@@ -1910,6 +1914,72 @@ function AutoPlaceSystem.SetEnabled(enabled)
         -- Trigger the toggle to update UI and start/stop system
         AutoPlaceSystem.Toggle:SetValue(enabled)
     end
+end
+
+-- Config management functions for integration with main system
+function AutoPlaceSystem.GetConfigElements()
+    return {
+        -- Main toggles
+        autoPlaceEnabled = AutoPlaceSystem.Toggle,
+        autoUnlockEnabled = AutoPlaceSystem.UnlockToggle,
+        autoPickUpEnabled = AutoPlaceSystem.PickUpToggle,
+        
+        -- Dropdowns and selections
+        autoPlaceEggTypes = AutoPlaceSystem.EggDropdown,
+        autoPlaceMutations = AutoPlaceSystem.MutationDropdown,
+        
+        -- Advanced settings
+        autoPickUpTileFilter = AutoPlaceSystem.PickUpTileDropdown,
+        autoPickUpSpeedThreshold = AutoPlaceSystem.PickUpSpeedSlider
+    }
+end
+
+function AutoPlaceSystem.SaveConfig()
+    if not Config then return false end
+    
+    local success, err = pcall(function()
+        Config:Save()
+    end)
+    
+    if success then
+        WindUI:Notify({
+            Title = "🏠 Auto Place Config",
+            Content = "Settings saved successfully!",
+            Duration = 2
+        })
+    else
+        WindUI:Notify({
+            Title = "🏠 Auto Place Config",
+            Content = "Failed to save: " .. tostring(err),
+            Duration = 3
+        })
+    end
+    
+    return success
+end
+
+function AutoPlaceSystem.LoadConfig()
+    if not Config then return false end
+    
+    local success, err = pcall(function()
+        Config:Load()
+    end)
+    
+    if success then
+        WindUI:Notify({
+            Title = "🏠 Auto Place Config",
+            Content = "Settings loaded successfully!",
+            Duration = 2
+        })
+    else
+        WindUI:Notify({
+            Title = "🏠 Auto Place Config",
+            Content = "Failed to load: " .. tostring(err),
+            Duration = 3
+        })
+    end
+    
+    return success
 end
 
 return AutoPlaceSystem
