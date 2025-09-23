@@ -20,7 +20,6 @@ local fallbackToRegularWhenNoWater = true
 local placeEggsEnabled = true
 local placePetsEnabled = false
 local minPetRateFilter = 0
-local petSortAscending = true
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -440,20 +439,13 @@ local function updateAvailablePets()
         end
     end
     
-    -- Sort pets for sequential placement
+    -- Sort pets for sequential placement (ascending by speed)
     table.sort(out, function(a, b)
-        if petSortAscending then
-            -- Sort by speed first, then by UID for consistent ordering
-            if a.effectiveRate == b.effectiveRate then
-                return a.uid < b.uid -- Stable sort by UID
-            end
-            return a.effectiveRate < b.effectiveRate
-        else
-            if a.effectiveRate == b.effectiveRate then
-                return a.uid < b.uid -- Stable sort by UID
-            end
-            return a.effectiveRate > b.effectiveRate
+        -- Sort by speed first, then by UID for consistent ordering
+        if a.effectiveRate == b.effectiveRate then
+            return a.uid < b.uid -- Stable sort by UID
         end
+        return a.effectiveRate < b.effectiveRate
     end)
     
     petCache.lastUpdate = currentTime
@@ -1647,19 +1639,12 @@ function AutoPlaceSystem.CreateUI()
             petCache.lastUpdate = 0
         end
     })
+    if Config then
+        pcall(function()
+            Config:Register("minPetRateSlider", minPetRateSlider)
+        end)
+    end
 
-    local petSortDropdown = Tabs.PlaceTab:Dropdown({
-        Title = "Sort Order",
-        Desc = "Sort by value",
-        Values = {"Low → High","High → Low"},
-        Value = "Low → High",
-        Multi = false,
-        AllowNone = false,
-        Callback = function(v)
-            petSortAscending = (v == "Low → High")
-            petCache.lastUpdate = 0
-        end
-    })
 
     -- Mode & behavior (Sources)
     Tabs.PlaceTab:Section({
@@ -1891,7 +1876,6 @@ function AutoPlaceSystem.CreateUI()
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
     AutoPlaceSystem.PlaceModeDropdown = placeModeDropdown
     AutoPlaceSystem.MinPetRateSlider = minPetRateSlider
-    AutoPlaceSystem.PetSortDropdown = petSortDropdown
     AutoPlaceSystem.UnlockToggle = autoUnlockToggle
     AutoPlaceSystem.PickUpToggle = autoPickUpToggle
     AutoPlaceSystem.PickUpTileDropdown = autoPickUpTileDropdown
@@ -1934,7 +1918,6 @@ function AutoPlaceSystem.GetConfigElements()
         
         -- Pet settings
         minPetRateSlider = AutoPlaceSystem.MinPetRateSlider,
-        petSortDropdown = AutoPlaceSystem.PetSortDropdown,
         
         -- Advanced settings
         autoPickUpTileFilter = AutoPlaceSystem.PickUpTileDropdown,
