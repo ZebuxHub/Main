@@ -20,7 +20,7 @@ pcall(function()
 end)
 
 -- Dependencies (injected via Init)
-local WindUI, Tabs, MainTab, Config
+local WindUI, Tabs, MainTab, Config, AutoSystemsConfig
 
 -- Remotes (cached)
 local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
@@ -699,18 +699,26 @@ function AutoSellSystem.CreateUI()
 	})
 
 	-- Register with shared config if available (for persistence)
-	if Config then
+	-- Use AutoSystemsConfig if available, otherwise fall back to Config
+	local configToUse = AutoSystemsConfig or Config
+	if configToUse then
 		pcall(function()
-			Config:Register("autoSellEnabled", autoSellToggle)
+			configToUse:Register("autoSellEnabled", autoSellToggle)
 		end)
 		pcall(function()
-			Config:Register("autoSellMutationsToKeep", mutationKeepDropdown)
+			configToUse:Register("autoSellMutationsToKeep", mutationKeepDropdown)
 		end)
 		pcall(function()
-			Config:Register("autoSellSessionLimit", sessionLimitInput)
+			configToUse:Register("autoSellSessionLimit", sessionLimitInput)
 		end)
 		pcall(function()
-			Config:Register("autoSellEggsToKeep", eggKeepDropdown)
+			configToUse:Register("autoSellEggsToKeep", eggKeepDropdown)
+		end)
+		pcall(function()
+			configToUse:Register("autoSellMode", sellModeDropdown)
+		end)
+		pcall(function()
+			configToUse:Register("autoSellSpeedThreshold", speedThresholdInput)
 		end)
 	end
 
@@ -723,9 +731,22 @@ function AutoSellSystem.Init(dependencies)
 	Tabs = dependencies.Tabs
 	MainTab = dependencies.MainTab
 	Config = dependencies.Config
+	AutoSystemsConfig = dependencies.AutoSystemsConfig or dependencies.Config
 
 	AutoSellSystem.CreateUI()
 	return AutoSellSystem
+end
+
+-- Get config elements for external registration
+function AutoSellSystem.GetConfigElements()
+	return {
+		autoSellToggle = autoSellToggle,
+		sellModeDropdown = sellModeDropdown,
+		mutationKeepDropdown = mutationKeepDropdown,
+		speedThresholdInput = speedThresholdInput,
+		sessionLimitInput = sessionLimitInput,
+		eggKeepDropdown = eggKeepDropdown
+	}
 end
 
 return AutoSellSystem
