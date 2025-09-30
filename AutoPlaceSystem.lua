@@ -1567,6 +1567,14 @@ function AutoPlaceSystem.Init(dependencies)
 end
 
 function AutoPlaceSystem.CreateUI()
+    -- Define config references at the start for use throughout the function
+    local configForDropdowns = CustomUIConfig or Config
+    local configForSettings = AutoSystemsConfig or Config
+    
+    -- Store references for GetConfigElements
+    local minSpeedSliderRef, sortOrderDropdownRef, placeModeDropdownRef
+    local autoUnlockToggleRef, autoPickUpToggleRef, autoPickUpTileDropdownRef, autoPickUpSpeedSliderRef
+    
     -- Statistics first
     Tabs.PlaceTab:Section({
         Title = "Statistics",
@@ -1605,7 +1613,6 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     -- Register with CustomUIConfig for dropdowns
-    local configForDropdowns = CustomUIConfig or Config
     if configForDropdowns then
         pcall(function()
             configForDropdowns:Register("autoPlaceEggTypes", placeEggDropdown)
@@ -1637,7 +1644,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    local minSpeedSlider = Tabs.PlaceTab:Slider({
+    minSpeedSliderRef = Tabs.PlaceTab:Slider({
         Title = "Min Speed",
         Desc = "Min pet value",
         Value = {
@@ -1653,11 +1660,11 @@ function AutoPlaceSystem.CreateUI()
     })
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoPlaceMinSpeed", minSpeedSlider)
+            configForSettings:Register("autoPlaceMinSpeed", minSpeedSliderRef)
         end)
     end
 
-    local sortOrderDropdown = Tabs.PlaceTab:Dropdown({
+    sortOrderDropdownRef = Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
         Values = {"Low → High","High → Low"},
@@ -1671,7 +1678,7 @@ function AutoPlaceSystem.CreateUI()
     })
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoPlaceSortOrder", sortOrderDropdown)
+            configForSettings:Register("autoPlaceSortOrder", sortOrderDropdownRef)
         end)
     end
 
@@ -1682,7 +1689,7 @@ function AutoPlaceSystem.CreateUI()
     })
 
     -- Replace toggle with multi-select dropdown for placement sources
-    local placeModeDropdown = Tabs.PlaceTab:Dropdown({
+    placeModeDropdownRef = Tabs.PlaceTab:Dropdown({
         Title = "Sources",
         Desc = "Pick sources",
         Values = {"Eggs","Pets"},
@@ -1698,10 +1705,9 @@ function AutoPlaceSystem.CreateUI()
         end
     })
     -- Register with AutoSystemsConfig for settings
-    local configForSettings = AutoSystemsConfig or Config
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoPlaceSources", placeModeDropdown)
+            configForSettings:Register("autoPlaceSources", placeModeDropdownRef)
         end)
     end
 
@@ -1776,7 +1782,7 @@ function AutoPlaceSystem.CreateUI()
         Icon = "land-plot"
     })
     
-    local autoUnlockToggle = Tabs.PlaceTab:Toggle({
+    autoUnlockToggleRef = Tabs.PlaceTab:Toggle({
         Title = "Auto Unlock Tiles",
         Desc = "Unlock tiles automatically",
         Value = false,
@@ -1796,7 +1802,7 @@ function AutoPlaceSystem.CreateUI()
     })
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoUnlockEnabled", autoUnlockToggle)
+            configForSettings:Register("autoUnlockEnabled", autoUnlockToggleRef)
         end)
     end
     
@@ -1804,7 +1810,7 @@ function AutoPlaceSystem.CreateUI()
     
     -- Auto Pick Up controls under the same section as Tile Management
     
-    local autoPickUpTileDropdown = Tabs.PlaceTab:Dropdown({
+    autoPickUpTileDropdownRef = Tabs.PlaceTab:Dropdown({
         Title = "Tile Filter",
         Desc = "Pick up on: Normal or Ocean",
         Values = {"Both", "Normal", "Ocean"},
@@ -1821,11 +1827,11 @@ function AutoPlaceSystem.CreateUI()
     })
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoPickUpTileFilter", autoPickUpTileDropdown)
+            configForSettings:Register("autoPickUpTileFilter", autoPickUpTileDropdownRef)
         end)
     end
     
-    local autoPickUpSpeedSlider = Tabs.PlaceTab:Input({
+    autoPickUpSpeedSliderRef = Tabs.PlaceTab:Input({
         Title = "Speed Threshold",
         Desc = "Pick up pets below this speed",
         Value = "100",
@@ -1840,11 +1846,11 @@ function AutoPlaceSystem.CreateUI()
     })
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoPickUpSpeedThreshold", autoPickUpSpeedSlider)
+            configForSettings:Register("autoPickUpSpeedThreshold", autoPickUpSpeedSliderRef)
         end)
     end
     
-    local autoPickUpToggle = Tabs.PlaceTab:Toggle({
+    autoPickUpToggleRef = Tabs.PlaceTab:Toggle({
         Title = "Auto Pick Up",
         Desc = "Automatically pick up slow pets",
         Value = false,
@@ -1864,7 +1870,7 @@ function AutoPlaceSystem.CreateUI()
     })
     if configForSettings then
         pcall(function()
-            configForSettings:Register("autoPickUpEnabled", autoPickUpToggle)
+            configForSettings:Register("autoPickUpEnabled", autoPickUpToggleRef)
         end)
     end
 
@@ -1905,6 +1911,13 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for external access
     AutoPlaceSystem.EggDropdown = placeEggDropdown
     AutoPlaceSystem.MutationDropdown = placeMutationDropdown
+    AutoPlaceSystem.MinSpeedSlider = minSpeedSliderRef
+    AutoPlaceSystem.SortOrderDropdown = sortOrderDropdownRef
+    AutoPlaceSystem.PlaceModeDropdown = placeModeDropdownRef
+    AutoPlaceSystem.AutoUnlockToggle = autoUnlockToggleRef
+    AutoPlaceSystem.AutoPickUpToggle = autoPickUpToggleRef
+    AutoPlaceSystem.AutoPickUpTileDropdown = autoPickUpTileDropdownRef
+    AutoPlaceSystem.AutoPickUpSpeedSlider = autoPickUpSpeedSliderRef
 end
 
 function AutoPlaceSystem.SetFilters(eggTypes, mutations)
@@ -1934,7 +1947,13 @@ function AutoPlaceSystem.GetConfigElements()
         autoPlaceToggle = AutoPlaceSystem.Toggle,
         eggDropdown = AutoPlaceSystem.EggDropdown,
         mutationDropdown = AutoPlaceSystem.MutationDropdown,
-        -- Additional elements can be accessed if needed
+        minSpeedSlider = AutoPlaceSystem.MinSpeedSlider,
+        sortOrderDropdown = AutoPlaceSystem.SortOrderDropdown,
+        placeModeDropdown = AutoPlaceSystem.PlaceModeDropdown,
+        autoUnlockToggle = AutoPlaceSystem.AutoUnlockToggle,
+        autoPickUpToggle = AutoPlaceSystem.AutoPickUpToggle,
+        autoPickUpTileDropdown = AutoPlaceSystem.AutoPickUpTileDropdown,
+        autoPickUpSpeedSlider = AutoPlaceSystem.AutoPickUpSpeedSlider,
     }
 end
 
