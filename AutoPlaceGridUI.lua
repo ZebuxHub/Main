@@ -869,7 +869,7 @@ local function populateSidebar(sidebar)
     styleDropdown.Position = UDim2.new(0, 0, 0, 25)
     styleDropdown.BackgroundColor3 = colors.hover
     styleDropdown.BorderSizePixel = 0
-    styleDropdown.Text = "Left to Right ▼"
+    styleDropdown.Text = "→ Left to Right ▼"
     styleDropdown.TextSize = 13
     styleDropdown.Font = Enum.Font.Gotham
     styleDropdown.TextColor3 = colors.text
@@ -878,6 +878,35 @@ local function populateSidebar(sidebar)
     local styleDropdownCorner = Instance.new("UICorner")
     styleDropdownCorner.CornerRadius = UDim.new(0, 6)
     styleDropdownCorner.Parent = styleDropdown
+    
+    -- Dropdown Menu List (initially hidden)
+    local styleDropdownList = Instance.new("ScrollingFrame")
+    styleDropdownList.Name = "StyleDropdownList"
+    styleDropdownList.Size = UDim2.new(1, -20, 0, 0)
+    styleDropdownList.BackgroundColor3 = colors.surface
+    styleDropdownList.BorderSizePixel = 0
+    styleDropdownList.Visible = false
+    styleDropdownList.ScrollBarThickness = 4
+    styleDropdownList.ScrollBarImageColor3 = colors.primary
+    styleDropdownList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    styleDropdownList.ScrollingDirection = Enum.ScrollingDirection.Y
+    styleDropdownList.ZIndex = 100
+    styleDropdownList.LayoutOrder = 7.7
+    styleDropdownList.Parent = sidebar
+    
+    local styleDropdownListCorner = Instance.new("UICorner")
+    styleDropdownListCorner.CornerRadius = UDim.new(0, 6)
+    styleDropdownListCorner.Parent = styleDropdownList
+    
+    local styleDropdownListStroke = Instance.new("UIStroke")
+    styleDropdownListStroke.Color = colors.border
+    styleDropdownListStroke.Thickness = 1
+    styleDropdownListStroke.Parent = styleDropdownList
+    
+    local styleDropdownListLayout = Instance.new("UIListLayout")
+    styleDropdownListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    styleDropdownListLayout.Padding = UDim.new(0, 2)
+    styleDropdownListLayout.Parent = styleDropdownList
     
     -- Inventory Section
     local inventoryLabel = Instance.new("TextLabel")
@@ -1062,7 +1091,8 @@ local function populateSidebar(sidebar)
         uiScaleSliderHandle = uiScaleSliderHandle,
         continueToggle = continueToggle,
         pickUpAllBtn = pickUpAllBtn,
-        styleDropdown = styleDropdown
+        styleDropdown = styleDropdown,
+        styleDropdownList = styleDropdownList
     }
 end
 
@@ -2145,7 +2175,7 @@ function AutoPlaceGridUI.CreateUI()
         end
     end)
     
-    -- Placement Style Dropdown
+    -- Placement Style Dropdown Options
     local styleOptions = {
         {id = "LeftToRight", name = "Left to Right", emoji = "→"},
         {id = "TopToBottom", name = "Top to Bottom", emoji = "↓"},
@@ -2156,28 +2186,63 @@ function AutoPlaceGridUI.CreateUI()
         {id = "Random", name = "Random", emoji = "🎲"}
     }
     
-    sidebarControls.styleDropdown.MouseButton1Click:Connect(function()
-        -- Cycle through styles
-        local currentIndex = 1
-        for i, style in ipairs(styleOptions) do
-            if style.id == placementStyle then
-                currentIndex = i
-                break
+    -- Create dropdown options
+    for i, styleOption in ipairs(styleOptions) do
+        local option = Instance.new("TextButton")
+        option.Name = "Option_" .. styleOption.id
+        option.Size = UDim2.new(1, 0, 0, 30)
+        option.BackgroundColor3 = colors.hover
+        option.BorderSizePixel = 0
+        option.Text = styleOption.emoji .. " " .. styleOption.name
+        option.TextSize = 12
+        option.Font = Enum.Font.Gotham
+        option.TextColor3 = colors.text
+        option.TextXAlignment = Enum.TextXAlignment.Left
+        option.ZIndex = 101
+        option.LayoutOrder = i
+        option.Parent = sidebarControls.styleDropdownList
+        
+        local optionPadding = Instance.new("UIPadding")
+        optionPadding.PaddingLeft = UDim.new(0, 10)
+        optionPadding.Parent = option
+        
+        -- Hover effect
+        option.MouseEnter:Connect(function()
+            option.BackgroundColor3 = colors.primary
+        end)
+        
+        option.MouseLeave:Connect(function()
+            option.BackgroundColor3 = colors.hover
+        end)
+        
+        -- Click to select
+        option.MouseButton1Click:Connect(function()
+            placementStyle = styleOption.id
+            sidebarControls.styleDropdown.Text = styleOption.emoji .. " " .. styleOption.name .. " ▼"
+            sidebarControls.styleDropdownList.Visible = false
+            sidebarControls.styleDropdownList.Size = UDim2.new(1, -20, 0, 0)
+            
+            if WindUI then
+                WindUI:Notify({
+                    Title = "Placement Style",
+                    Content = styleOption.emoji .. " " .. styleOption.name,
+                    Duration = 2
+                })
             end
-        end
-        
-        local nextIndex = (currentIndex % #styleOptions) + 1
-        local nextStyle = styleOptions[nextIndex]
-        
-        placementStyle = nextStyle.id
-        sidebarControls.styleDropdown.Text = nextStyle.emoji .. " " .. nextStyle.name .. " ▼"
-        
-        if WindUI then
-            WindUI:Notify({
-                Title = "Placement Style",
-                Content = nextStyle.emoji .. " " .. nextStyle.name,
-                Duration = 2
-            })
+        end)
+    end
+    
+    -- Toggle dropdown visibility
+    sidebarControls.styleDropdown.MouseButton1Click:Connect(function()
+        if sidebarControls.styleDropdownList.Visible then
+            -- Hide dropdown
+            sidebarControls.styleDropdownList.Visible = false
+            sidebarControls.styleDropdownList.Size = UDim2.new(1, -20, 0, 0)
+        else
+            -- Show dropdown
+            local listHeight = math.min(#styleOptions * 32, 200)
+            sidebarControls.styleDropdownList.Size = UDim2.new(1, -20, 0, listHeight)
+            sidebarControls.styleDropdownList.Visible = true
         end
     end)
     
