@@ -887,7 +887,8 @@ refreshGrid = function()
     for _, tile in ipairs(tiles) do
         local x = tile.gridX - minX
         local z = tile.gridZ - minZ
-        -- FLIP Z-AXIS: Invert Z to fix upside-down grid display
+        -- ROTATE 180°: Flip both X and Z axes
+        local flippedX = (maxX - tile.gridX)
         local flippedZ = (maxZ - tile.gridZ)
         
         local occupied, occupant = isTileOccupied(tile.part)
@@ -895,7 +896,7 @@ refreshGrid = function()
         local btn = Instance.new("TextButton")
         btn.Name = "Tile_" .. tile.gridX .. "_" .. tile.gridZ
         btn.Size = UDim2.new(0, tileSize, 0, tileSize)
-        btn.Position = UDim2.new(0, x * (tileSize + tileSpacing), 0, flippedZ * (tileSize + tileSpacing))
+        btn.Position = UDim2.new(0, flippedX * (tileSize + tileSpacing), 0, flippedZ * (tileSize + tileSpacing))
         btn.BorderSizePixel = 0
         btn.Text = ""
         btn.Parent = GridContainer
@@ -1473,7 +1474,6 @@ local function performAutoPlace()
     end
     
     if #items == 0 then 
-        print("[Grid UI] No items available to place")
         return 
     end
     
@@ -1483,12 +1483,10 @@ local function performAutoPlace()
     if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
         -- Use next tile from user-selected queue
         targetTile = selectedTilesForPlacement[currentPlacementIndex].data
-        print("[Grid UI] Using selected tile " .. currentPlacementIndex .. " of " .. #selectedTilesForPlacement)
         currentPlacementIndex = currentPlacementIndex + 1
     else
         -- No selection or queue exhausted - find next tile left-to-right, top-to-bottom
         if #selectedTilesForPlacement > 0 then
-            print("[Grid UI] Selection queue exhausted, auto place stopped")
             autoPlaceEnabled = false
             if WindUI then
                 WindUI:Notify({
@@ -1516,7 +1514,6 @@ local function performAutoPlace()
         end
         
         if #emptyTiles == 0 then 
-            print("[Grid UI] No empty tiles available")
             return 
         end
         
@@ -1535,15 +1532,11 @@ local function performAutoPlace()
     
     -- Place first item on target tile
     local item = items[1]
-    print("[Grid UI] Attempting to place " .. item.type .. " (" .. item.uid .. ")")
     
     if placeItemOnTile(item.uid, targetTile, item) then
-        print("[Grid UI] Placement successful")
         task.wait(1)
         refreshGrid()
         updateSidebar()
-    else
-        print("[Grid UI] Placement failed")
     end
 end
 
@@ -1808,22 +1801,23 @@ function AutoPlaceGridUI.Show()
     if not ScreenGui then
         AutoPlaceGridUI.CreateUI()
     end
-    ScreenGui.Enabled = true
+    if MainFrame then
+        MainFrame.Visible = true
+    end
     refreshGrid()
     updateSidebar()
 end
 
 function AutoPlaceGridUI.Hide()
-    if ScreenGui then
-        ScreenGui.Enabled = false
+    -- Just hide the frame, keep auto place running in background
+    if MainFrame then
+        MainFrame.Visible = false
     end
-    if gridUpdateConnection then
-        gridUpdateConnection:Disconnect()
-    end
+    -- DON'T disconnect gridUpdateConnection - let it keep working!
 end
 
 function AutoPlaceGridUI.Toggle()
-    if ScreenGui and ScreenGui.Enabled then
+    if MainFrame and MainFrame.Visible then
         AutoPlaceGridUI.Hide()
     else
         AutoPlaceGridUI.Show()
