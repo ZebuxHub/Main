@@ -1443,18 +1443,57 @@ local function setHologramEnabled(enabled)
     end
 end
 
--- ============ Auto Equip Best Pet System ============
+-- ============ Smart Auto Equip & Place System ============
 
--- Get the best pet (highest value) from ALL pets in inventory
-local function getBestPet()
-    local container = getPetContainer()
-    local allPets = {}
+-- Get all pets currently placed on tiles in workspace
+local function getPlacedPets()
+    local placedPets = {}
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if not workspacePets then return placedPets end
     
-    if not container then
-        return nil, "Pet container not found"
+    local playerUserId = LocalPlayer.UserId
+    
+    for _, pet in ipairs(workspacePets:GetChildren()) do
+        if pet:IsA("Model") then
+            local petUserId = pet:GetAttribute("UserId")
+            if petUserId and tonumber(petUserId) == playerUserId then
+                -- Get pet info from PlayerGui.Data.Pets
+                local container = getPetContainer()
+                local petNode = container and container:FindFirstChild(pet.Name)
+                
+                if petNode then
+                    local petType = petNode:GetAttribute("T")
+                    local mutation = petNode:GetAttribute("M")
+                    if mutation == "Dino" then
+                        mutation = "Jurassic"
+                    end
+                    
+                    if petType then
+                        local rate = computeEffectiveRate(petType, mutation, petNode)
+                        table.insert(placedPets, {
+                            uid = pet.Name,
+                            type = petType,
+                            mutation = mutation,
+                            effectiveRate = rate,
+                            isOcean = isOceanPet(petType),
+                            position = pet:GetPivot().Position
+                        })
+                    end
+                end
+            end
+        end
     end
     
-    -- Get ALL pets regardless of filters
+    return placedPets
+end
+
+-- Get all pets in inventory (not placed)
+local function getInventoryPets()
+    local container = getPetContainer()
+    local inventoryPets = {}
+    
+    if not container then return inventoryPets end
+    
     for _, child in ipairs(container:GetChildren()) do
         local petType = child:GetAttribute("T")
         local mutation = child:GetAttribute("M")
@@ -1462,9 +1501,11 @@ local function getBestPet()
             mutation = "Jurassic"
         end
         
-        if petType then
+        -- Only include pets that are NOT placed (no D attribute or empty D)
+        local isPlaced = child:GetAttribute("D")
+        if petType and (not isPlaced or tostring(isPlaced) == "") then
             local rate = computeEffectiveRate(petType, mutation, child)
-            table.insert(allPets, {
+            table.insert(inventoryPets, {
                 uid = child.Name,
                 type = petType,
                 mutation = mutation,
@@ -1474,19 +1515,249 @@ local function getBestPet()
         end
     end
     
-    if #allPets == 0 then
-        return nil, "No pets available"
-    end
-    
-    -- Sort by effectiveRate (highest first)
-    table.sort(allPets, function(a, b)
-        return a.effectiveRate > b.effectiveRate
-    end)
-    
-    return allPets[1], "Best pet found"
+    return inventoryPets
 end
 
--- Equip pet to Deploy S2 slot
+-- Find pets that should be replaced (placed pets with lower value than inventory pets)
+local function findPetsToReplace()
+    local placedPets = getPlacedPets()
+    local inventoryPets = getInventoryPets()
+    
+    -- Sort both lists by effective rate (highest first)
+    table.sort(placedPets, function(a, b) return a.effectiveRate > b.effectiveRate end)
+    table.sort(inventoryPets, function(a, b) return a.effectiveRate > b.effectiveRate end)
+    
+    local replacements = {}
+    
+    -- Find placed pets that have lower value than inventory pets
+    for _, inventoryPet in ipairs(inventoryPets) do
+        for _, placedPet in ipairs(placedPets) do
+            -- Only replace if inventory pet is significantly better (at least 10% better)
+            if inventoryPet.effectiveRate > (placedPet.effectiveRate * 1.1) then
+                -- Check if this replacement makes sense (same tile type compatibility)
+                if inventoryPet.isOcean == placedPet.isOcean then
+                    table.insert(replacements, {
+                        toRemove = placedPet,
+                        toPlace = inventoryPet,
+                        improvement = inventoryPet.effectiveRate - placedPet.effectiveRate
+                    })
+                    break -- Only replace one pet per inventory pet
+                end
+            end
+        end
+    end
+    
+    -- Sort replacements by improvement (biggest improvement first)
+    table.sort(replacements, function(a, b) return a.improvement > b.improvement end)
+    
+    return replacements
+end
+
+-- Remove a pet from the field
+local function removePet(petUID)
+    if not CharacterRE then return false end
+    
+    local success = pcall(function()
+        CharacterRE:FireServer("Del", petUID)
+    end)
+    
+    if success then
+        -- Update caches
+        petCache.lastUpdate = 0
+        tileCache.lastUpdate = 0
+        task.wait(0.5) -- Wait for removal to complete
+        return true
+    end
+    
+    return false
+end
+
+-- Smart auto equip and place system
+local function smartAutoEquipAndPlace()
+    WindUI:Notify({
+        Title = "🧠 Smart Auto Equip",
+        Content = "🔄 Analyzing pets and planning replacements...",
+        Duration = 3
+    })
+    
+    local replacements = findPetsToReplace()
+    
+    if #replacements == 0 then
+        WindUI:Notify({
+            Title = "🧠 Smart Auto Equip",
+            Content = "✅ All your best pets are already placed!",
+            Duration = 4
+        })
+        return
+    end
+    
+    WindUI:Notify({
+        Title = "🧠 Smart Auto Equip",
+        Content = "📋 Found " .. #replacements .. " pets to upgrade. Starting replacements...",
+        Duration = 3
+    })
+    
+    local replacedCount = 0
+    
+    for i, replacement in ipairs(replacements) do
+        -- Remove the lower value pet
+        WindUI:Notify({
+            Title = "🧠 Smart Auto Equip",
+            Content = "🗑️ Removing " .. replacement.toRemove.type .. " (Speed: " .. replacement.toRemove.effectiveRate .. ")",
+            Duration = 2
+        })
+        
+        if removePet(replacement.toRemove.uid) then
+            -- Find a tile to place the better pet
+            local regularAvailable, waterAvailable = updateTileCache()
+            local targetTile = nil
+            
+            if replacement.toPlace.isOcean and waterAvailable > 0 then
+                targetTile = getRandomFromList(tileCache.waterTiles)
+            elseif not replacement.toPlace.isOcean and regularAvailable > 0 then
+                targetTile = getRandomFromList(tileCache.regularTiles)
+            end
+            
+            if targetTile then
+                -- Focus and place the better pet
+                if focusEgg(replacement.toPlace.uid) then
+                    task.wait(0.2)
+                    if placePet(targetTile, replacement.toPlace.uid) then
+                        replacedCount = replacedCount + 1
+                        
+                        WindUI:Notify({
+                            Title = "🧠 Smart Auto Equip",
+                            Content = "✅ Placed " .. (replacement.toPlace.mutation and (replacement.toPlace.mutation .. " ") or "") .. 
+                                    replacement.toPlace.type .. " (Speed: " .. replacement.toPlace.effectiveRate .. 
+                                    ", +" .. math.floor(replacement.improvement) .. ")",
+                            Duration = 3
+                        })
+                        
+                        -- Update caches
+                        petCache.lastUpdate = 0
+                        tileCache.lastUpdate = 0
+                        
+                        task.wait(1.0) -- Wait between replacements
+                    end
+                end
+            end
+        end
+        
+        -- Show progress
+        if i % 3 == 0 or i == #replacements then
+            WindUI:Notify({
+                Title = "🧠 Smart Auto Equip",
+                Content = "📊 Progress: " .. replacedCount .. "/" .. i .. " replacements",
+                Duration = 2
+            })
+        end
+    end
+    
+    WindUI:Notify({
+        Title = "🧠 Smart Auto Equip",
+        Content = "🎉 Completed! Upgraded " .. replacedCount .. "/" .. #replacements .. " pets with better ones!",
+        Duration = 5
+    })
+end
+
+-- Auto place best pets (fill empty tiles with best available pets)
+local function autoPlaceBestPets()
+    WindUI:Notify({
+        Title = "🚀 Auto Place Best",
+        Content = "🔄 Finding empty tiles and best pets...",
+        Duration = 3
+    })
+    
+    local inventoryPets = getInventoryPets()
+    
+    if #inventoryPets == 0 then
+        WindUI:Notify({
+            Title = "🚀 Auto Place Best",
+            Content = "❌ No pets available in inventory to place",
+            Duration = 3
+        })
+        return
+    end
+    
+    -- Sort inventory pets by value (best first)
+    table.sort(inventoryPets, function(a, b) return a.effectiveRate > b.effectiveRate end)
+    
+    local regularAvailable, waterAvailable = updateTileCache()
+    local totalAvailable = regularAvailable + waterAvailable
+    
+    if totalAvailable == 0 then
+        WindUI:Notify({
+            Title = "🚀 Auto Place Best",
+            Content = "❌ No empty tiles available for placement",
+            Duration = 3
+        })
+        return
+    end
+    
+    WindUI:Notify({
+        Title = "🚀 Auto Place Best",
+        Content = "📋 Found " .. totalAvailable .. " empty tiles. Placing " .. math.min(#inventoryPets, totalAvailable) .. " best pets...",
+        Duration = 3
+    })
+    
+    local placedCount = 0
+    local maxPlacements = math.min(#inventoryPets, totalAvailable)
+    
+    for i = 1, maxPlacements do
+        local pet = inventoryPets[i]
+        if not pet then break end
+        
+        -- Update tile availability
+        regularAvailable, waterAvailable = updateTileCache()
+        local targetTile = nil
+        
+        -- Find appropriate tile for this pet
+        if pet.isOcean and waterAvailable > 0 then
+            targetTile = getRandomFromList(tileCache.waterTiles)
+        elseif not pet.isOcean and regularAvailable > 0 then
+            targetTile = getRandomFromList(tileCache.regularTiles)
+        end
+        
+        if targetTile then
+            -- Focus and place the pet
+            if focusEgg(pet.uid) then
+                task.wait(0.2)
+                if placePet(targetTile, pet.uid) then
+                    placedCount = placedCount + 1
+                    
+                    WindUI:Notify({
+                        Title = "🚀 Auto Place Best",
+                        Content = "✅ Placed " .. (pet.mutation and (pet.mutation .. " ") or "") .. pet.type .. " (Speed: " .. pet.effectiveRate .. ")",
+                        Duration = 2
+                    })
+                    
+                    -- Update caches
+                    petCache.lastUpdate = 0
+                    tileCache.lastUpdate = 0
+                    
+                    task.wait(0.8) -- Wait between placements
+                end
+            end
+        end
+        
+        -- Show progress
+        if i % 5 == 0 or i == maxPlacements then
+            WindUI:Notify({
+                Title = "🚀 Auto Place Best",
+                Content = "📊 Progress: " .. placedCount .. "/" .. i .. " pets placed",
+                Duration = 2
+            })
+        end
+    end
+    
+    WindUI:Notify({
+        Title = "🚀 Auto Place Best",
+        Content = "🎉 Completed! Placed " .. placedCount .. "/" .. maxPlacements .. " best pets on empty tiles!",
+        Duration = 5
+    })
+end
+
+-- Equip pet to Deploy S2 slot (simple version for manual use)
 local function equipPet(petUID)
     if not petUID then return false end
     
@@ -1499,9 +1770,22 @@ local function equipPet(petUID)
     return false
 end
 
--- Auto equip best pet function
+-- Simple function to get best pet for manual equip
+local function getBestPetSimple()
+    local inventoryPets = getInventoryPets()
+    
+    if #inventoryPets == 0 then
+        return nil, "No pets available in inventory"
+    end
+    
+    -- Sort by value and return the best
+    table.sort(inventoryPets, function(a, b) return a.effectiveRate > b.effectiveRate end)
+    return inventoryPets[1], "Best pet found"
+end
+
+-- Auto equip best pet function (simple version)
 local function autoEquipBestPet()
-    local bestPet, message = getBestPet()
+    local bestPet, message = getBestPetSimple()
     
     if not bestPet then
         WindUI:Notify({
@@ -2136,12 +2420,30 @@ function AutoPlaceSystem.CreateUI()
         Icon = "wrench"
     })
 
-    -- Auto equip best pet button
+    -- Simple auto equip best pet button
     Tabs.PlaceTab:Button({
         Title = "Equip Best Pet",
-        Desc = "Automatically equip your highest value pet",
+        Desc = "Equip your highest value pet from inventory",
         Callback = function()
             autoEquipBestPet()
+        end
+    })
+
+    -- Smart auto equip and place button
+    Tabs.PlaceTab:Button({
+        Title = "🧠 Smart Auto Equip",
+        Desc = "Compare placed pets vs inventory, replace weak pets with stronger ones",
+        Callback = function()
+            smartAutoEquipAndPlace()
+        end
+    })
+
+    -- Auto place best pets button
+    Tabs.PlaceTab:Button({
+        Title = "🚀 Auto Place Best Pets",
+        Desc = "Fill empty tiles with your best available pets",
+        Callback = function()
+            autoPlaceBestPets()
         end
     })
 
@@ -2157,11 +2459,11 @@ function AutoPlaceSystem.CreateUI()
         if deploy then
             local equippedUID = deploy:GetAttribute("S2")
             if equippedUID then
-                -- Try to get pet info
-                local candidates = updateAvailablePets()
+                -- Try to get pet info from inventory pets
+                local inventoryPets = getInventoryPets()
                 local equippedPet = nil
                 
-                for _, pet in ipairs(candidates) do
+                for _, pet in ipairs(inventoryPets) do
                     if pet.uid == equippedUID then
                         equippedPet = pet
                         break
