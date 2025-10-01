@@ -844,6 +844,12 @@ end
 refreshGrid = function()
     if not GridContainer then return end
     
+    -- Save current selection before clearing
+    local selectedTileKeys = {}
+    for _, selected in ipairs(selectedTilesForPlacement) do
+        selectedTileKeys[selected.key] = true
+    end
+    
     -- Clear existing tiles
     for _, tileData in pairs(tileButtons) do
         if tileData and tileData.button then 
@@ -901,7 +907,9 @@ refreshGrid = function()
         btn.Text = ""
         btn.Parent = GridContainer
         
-        -- Set color based on state
+        -- Set color based on state (check if was previously selected)
+        local wasSelected = selectedTileKeys[btn.Name]
+        
         if tile.locked then
             btn.BackgroundColor3 = colors.locked
             -- Add lock icon
@@ -914,6 +922,9 @@ refreshGrid = function()
             lockIcon.Parent = btn
         elseif occupied then
             btn.BackgroundColor3 = colors.occupied
+        elseif wasSelected then
+            -- Restore green highlight for previously selected tiles
+            btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
         else
             btn.BackgroundColor3 = isWater and colors.emptyWater or colors.emptyRegular
         end
@@ -1474,6 +1485,7 @@ local function performAutoPlace()
     end
     
     if #items == 0 then 
+        -- No items available, just wait (don't stop auto place)
         return 
     end
     
@@ -1485,8 +1497,9 @@ local function performAutoPlace()
         targetTile = selectedTilesForPlacement[currentPlacementIndex].data
         currentPlacementIndex = currentPlacementIndex + 1
     else
-        -- No selection or queue exhausted - find next tile left-to-right, top-to-bottom
-        if #selectedTilesForPlacement > 0 then
+        -- Check if we exhausted the queue
+        if #selectedTilesForPlacement > 0 and currentPlacementIndex > #selectedTilesForPlacement then
+            -- Queue complete - stop auto place and notify
             autoPlaceEnabled = false
             if WindUI then
                 WindUI:Notify({
@@ -1534,30 +1547,42 @@ local function performAutoPlace()
     local item = items[1]
     
     if placeItemOnTile(item.uid, targetTile, item) then
-        task.wait(1)
+        task.wait(2) -- Increased delay to avoid spam
         refreshGrid()
         updateSidebar()
     end
 end
 
--- Setup grid monitoring
-local function setupGridMonitoring()
-    if gridUpdateConnection then
-        gridUpdateConnection:Disconnect()
-    end
-    
-    -- Monitor workspace changes and auto place
-    gridUpdateConnection = RunService.Heartbeat:Connect(function()
-        if not autoPlaceEnabled then return end
-        
-        -- Try to place items
+-- Auto place loop (runs in separate thread)
+local autoPlaceThread = nil
+
+local function runAutoPlaceLoop()
+    while autoPlaceEnabled do
+        -- Try to place one item
         performAutoPlace()
         
-        -- Update grid every few seconds
+        -- Wait between placements to avoid spam
         task.wait(3)
-        refreshGrid()
-        updateSidebar()
-    end)
+        
+        -- Update UI periodically
+        if autoPlaceEnabled then
+            refreshGrid()
+            updateSidebar()
+        end
+    end
+end
+
+local function setupGridMonitoring()
+    -- Stop existing thread if any
+    if autoPlaceThread then
+        autoPlaceEnabled = false
+        task.wait(0.5)
+    end
+    
+    if autoPlaceEnabled then
+        -- Start new auto place loop in separate thread
+        autoPlaceThread = task.spawn(runAutoPlaceLoop)
+    end
 end
 
 -- Create Main UI
@@ -1670,6 +1695,8 @@ function AutoPlaceGridUI.CreateUI()
     -- Auto Place Toggle
     sidebarControls.autoPlaceToggle.MouseButton1Click:Connect(function()
         autoPlaceEnabled = not autoPlaceEnabled
+        
+        -- Update visual state
         sidebarControls.autoPlaceToggle.Text = autoPlaceEnabled and "ON" or "OFF"
         sidebarControls.autoPlaceToggle.BackgroundColor3 = autoPlaceEnabled and colors.success or colors.surface
         statusIndicator.BackgroundColor3 = autoPlaceEnabled and colors.success or colors.surface
@@ -1682,13 +1709,8 @@ function AutoPlaceGridUI.CreateUI()
             })
         end
         
-        if autoPlaceEnabled then
-            setupGridMonitoring()
-        else
-            if gridUpdateConnection then
-                gridUpdateConnection:Disconnect()
-            end
-        end
+        -- Start or stop the auto place loop
+        setupGridMonitoring()
     end)
     
     -- Eggs Toggle
