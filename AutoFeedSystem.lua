@@ -144,14 +144,14 @@ function AutoFeedSystem.getBigPets()
                         -- Find which station this pet is at
                         local stationId = findBigPetStationForPet(rootPart.Position)
                         
-                        -- This is a Big Pet, add it to the list
-                        table.insert(pets, {
-                            model = petModel,
-                            name = petModel.Name,
+                            -- This is a Big Pet, add it to the list
+                            table.insert(pets, {
+                                model = petModel,
+                                name = petModel.Name,
                             stationId = stationId, -- The BigPet Part name like "1", "2", "3"
-                            rootPart = rootPart,
-                            bigPetGUI = bigPetGUI
-                        })
+                                rootPart = rootPart,
+                                bigPetGUI = bigPetGUI
+                            })
                     end
                 end
             end
@@ -351,7 +351,7 @@ function AutoFeedSystem.feedPet(petName)
     return true
 end
 
-function AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, updateFeedStatusParagraph, getSelectedFruits)
+function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, updateFeedStatusParagraph, getSelectedFruits)
     -- Initialize feedFruitStatus if needed (for backward compatibility)
     local feedFruitStatus = {
         petsFound = 0,
@@ -361,7 +361,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, updateF
         lastAction = ""
     }
     
-    while autoFeedEnabled do
+    while getAutoFeedEnabled() do
         local shouldContinue = true
         local ok, err = pcall(function()
             local allBigPets = AutoFeedSystem.getBigPets()
@@ -418,7 +418,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, updateF
                 if selectedBigPets and next(selectedBigPets) then
                     feedFruitStatus.lastAction = "No selected Big Pets found"
                 else
-                    feedFruitStatus.lastAction = "No Big Pets found"
+                feedFruitStatus.lastAction = "No Big Pets found"
                 end
                 if updateFeedStatusParagraph then
                     updateFeedStatusParagraph()
@@ -429,7 +429,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, updateF
             
             -- Check each pet for feeding opportunity
             for _, petData in ipairs(bigPets) do
-                if not autoFeedEnabled then break end
+                if not getAutoFeedEnabled() then break end
                 
                 local isEating = AutoFeedSystem.isPetEating(petData)
                 
@@ -474,7 +474,7 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, updateF
                         
                         -- Try to feed with selected fruits
                         for fruitName, _ in pairs(selectedFeedFruits) do
-                            if not autoFeedEnabled then break end
+                            if not getAutoFeedEnabled() then break end
                             
                             -- Check if player has this fruit
                             local fruitAmount = fruitInventory[fruitName] or 0
@@ -819,25 +819,12 @@ function AutoFeedSystem.CreateUI()
             -- Save selection
             updateCustomUISelection("bigPetSelections", selectedBigPets)
             
-            -- Show notification
-            if WindUI then
-                local count = #selection
-                if count == 0 then
-                    WindUI:Notify({
-                        Title = "Big Pet Selection",
-                        Content = "Feeding ALL Big Pets",
-                        Duration = 2
-                    })
-                else
-                    WindUI:Notify({
-                        Title = "Big Pet Selection",
-                        Content = "Feeding " .. count .. " selected Big Pet(s)",
-                        Duration = 2
-                    })
-                end
+            -- Log selection change (removed notification to reduce spam)
+            if #selection == 0 then
+                print("[AutoFeed] Big Pet selection updated: Feeding ALL Big Pets")
+            else
+                print("[AutoFeed] Big Pet selection updated:", table.concat(selection, ", "))
             end
-            
-            print("[AutoFeed] Big Pet selection updated:", table.concat(selection, ", "))
         end
     })
     
@@ -870,6 +857,11 @@ function AutoFeedSystem.CreateUI()
             
             if state and not autoFeedThread then
                 autoFeedThread = task.spawn(function()
+                    -- Get auto feed enabled status (dynamically checks current state)
+                    local function getAutoFeedEnabled()
+                        return autoFeedEnabled
+                    end
+                    
                     -- Get selected Big Pets function (dynamically reads current selection)
                     local function getSelectedBigPets()
                         return selectedBigPets
@@ -882,13 +874,13 @@ function AutoFeedSystem.CreateUI()
                     
                     -- Wrap in error handling
                     local ok, err = pcall(function()
-                        AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, function() end, getSelectedFruits)
+                        AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, function() end, getSelectedFruits)
                     end)
                     
                     if not ok then
                         warn("Auto Feed thread error: " .. tostring(err))
-                        if WindUI then
-                            WindUI:Notify({ 
+            if WindUI then
+                WindUI:Notify({
                                 Title = "Auto Feed Error", 
                                 Content = "Auto Feed stopped due to error: " .. tostring(err), 
                                 Duration = 5 
