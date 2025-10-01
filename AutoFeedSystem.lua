@@ -8,12 +8,6 @@ local AutoFeedSystem = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
--- External Dependencies (set during Init)
-local WindUI, Tabs, Config, AutoSystemsConfig
-
--- Selected Big Pets to feed (empty = feed all)
-local selectedBigPets = {}
-
 -- Normalization helpers to robustly match fruit names from PlayerGui.Data.Asset
 local function normalizeFruitName(name)
     if type(name) ~= "string" then return "" end
@@ -91,27 +85,13 @@ function AutoFeedSystem.getBigPets()
                     -- Check if this pet has BigPetGUI
                     local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
                     if bigPetGUI then
-                        -- Filter by selected pets (if any selected)
-                        local shouldInclude = true
-                        if selectedBigPets and #selectedBigPets > 0 then
-                            shouldInclude = false
-                            for _, selectedName in ipairs(selectedBigPets) do
-                                if petModel.Name == selectedName then
-                                    shouldInclude = true
-                                    break
-                                end
-                            end
-                        end
-                        
-                        if shouldInclude then
-                            -- This is a Big Pet, add it to the list
-                            table.insert(pets, {
-                                model = petModel,
-                                name = petModel.Name,
-                                rootPart = rootPart,
-                                bigPetGUI = bigPetGUI
-                            })
-                        end
+                        -- This is a Big Pet, add it to the list
+                        table.insert(pets, {
+                            model = petModel,
+                            name = petModel.Name,
+                            rootPart = rootPart,
+                            bigPetGUI = bigPetGUI
+                        })
                     end
                 end
             end
@@ -119,49 +99,6 @@ function AutoFeedSystem.getBigPets()
     end
     
     return pets
-end
-
--- Get all available Big Pet names for dropdown
-function AutoFeedSystem.getAllBigPetNames()
-    local petNames = {}
-    local localPlayer = game:GetService("Players").LocalPlayer
-    
-    if not localPlayer then
-        return petNames
-    end
-    
-    local petsFolder = workspace:FindFirstChild("Pets")
-    if not petsFolder then
-        return petNames
-    end
-    
-    for _, petModel in ipairs(petsFolder:GetChildren()) do
-        if petModel:IsA("Model") then
-            local rootPart = petModel:FindFirstChild("RootPart")
-            if rootPart then
-                local petUserId = rootPart:GetAttribute("UserId")
-                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                    if bigPetGUI then
-                        -- Add unique pet names only
-                        local alreadyAdded = false
-                        for _, name in ipairs(petNames) do
-                            if name == petModel.Name then
-                                alreadyAdded = true
-                                break
-                            end
-                        end
-                        if not alreadyAdded then
-                            table.insert(petNames, petModel.Name)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    table.sort(petNames)
-    return petNames
 end
 
 -- Function to get player's fruit inventory
@@ -595,101 +532,6 @@ function AutoFeedSystem.debugAutoFeed()
         end
     end
 
-end
-
--- ============ Public API ============
-function AutoFeedSystem.Init(dependencies)
-    WindUI = dependencies.WindUI
-    Tabs = dependencies.Tabs
-    Config = dependencies.Config
-    AutoSystemsConfig = dependencies.AutoSystemsConfig or dependencies.Config
-    
-    -- Create UI if FeedTab exists
-    if Tabs and Tabs.FeedTab then
-        AutoFeedSystem.CreateUI()
-    end
-    
-    return AutoFeedSystem
-end
-
-function AutoFeedSystem.CreateUI()
-    if not Tabs or not Tabs.FeedTab then
-        warn("AutoFeedSystem: FeedTab not found, cannot create UI")
-        return
-    end
-    
-    local configForSettings = AutoSystemsConfig or Config
-    
-    -- Big Pet Selection Section
-    Tabs.FeedTab:Section({
-        Title = "Big Pet Selection",
-        Icon = "filter"
-    })
-    
-    -- Get available Big Pets and create dropdown
-    local availablePets = AutoFeedSystem.getAllBigPetNames()
-    
-    local bigPetDropdown = Tabs.FeedTab:Dropdown({
-        Title = "Select Big Pets",
-        Desc = "Choose which Big Pets to feed (empty = feed all)",
-        Values = #availablePets > 0 and availablePets or {"No Big Pets Found"},
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            selectedBigPets = selection or {}
-        end
-    })
-    
-    -- Refresh button to update pet list
-    Tabs.FeedTab:Button({
-        Title = "🔄 Refresh Pet List",
-        Desc = "Update available Big Pets",
-        Callback = function()
-            local updatedPets = AutoFeedSystem.getAllBigPetNames()
-            if #updatedPets == 0 then
-                updatedPets = {"No Big Pets Found"}
-            end
-            bigPetDropdown:Refresh(updatedPets)
-            
-            if WindUI then
-                WindUI:Notify({
-                    Title = "🔄 Pet List Refreshed",
-                    Content = "Found " .. #updatedPets .. " Big Pet(s)",
-                    Duration = 2
-                })
-            end
-        end
-    })
-    
-    -- Store reference for config
-    AutoFeedSystem.BigPetDropdown = bigPetDropdown
-    
-    -- Register with config manager
-    if configForSettings then
-        pcall(function()
-            configForSettings:Register("autoFeedSelectedPets", bigPetDropdown)
-        end)
-    end
-end
-
-function AutoFeedSystem.GetConfigElements()
-    return {
-        bigPetDropdown = AutoFeedSystem.BigPetDropdown,
-    }
-end
-
-function AutoFeedSystem.SyncLoadedValues()
-    -- Sync Big Pet selection
-    if AutoFeedSystem.BigPetDropdown and AutoFeedSystem.BigPetDropdown.Value then
-        local petSelection = AutoFeedSystem.BigPetDropdown.Value
-        if type(petSelection) == "table" then
-            selectedBigPets = petSelection
-        else
-            selectedBigPets = {}
-        end
-        print("[AutoFeed] Synced Big Pet Selection:", #selectedBigPets, "pet(s)")
-    end
 end
 
 return AutoFeedSystem
