@@ -1131,29 +1131,42 @@ updateSidebar = function()
         
         clickBtn.MouseButton1Click:Connect(function()
             -- Manual placement from inventory
-            pcall(function()
-                local targetTile = nil
-                
-                -- Check if we have selected tiles in queue
-                if selectedTilesForPlacement and type(selectedTilesForPlacement) == "table" then
-                    if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
-                        -- Use next tile from queue
-                        local selectedEntry = selectedTilesForPlacement[currentPlacementIndex]
-                        if selectedEntry and selectedEntry.data then
-                            targetTile = selectedEntry.data
-                            currentPlacementIndex = currentPlacementIndex + 1
+            task.spawn(function()
+                local success, err = pcall(function()
+                    local targetTile = nil
+                    
+                    -- Check if we have selected tiles in queue
+                    if selectedTilesForPlacement and type(selectedTilesForPlacement) == "table" then
+                        if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
+                            -- Use next tile from queue
+                            local selectedEntry = selectedTilesForPlacement[currentPlacementIndex]
+                            if selectedEntry and selectedEntry.data then
+                                targetTile = selectedEntry.data
+                                currentPlacementIndex = currentPlacementIndex + 1
+                            end
                         end
                     end
-                end
-                
-                -- If no tile from queue, try to find next available tile
-                if not targetTile and highlightNextTile then
-                    targetTile = highlightNextTile()
-                end
-                
-                if targetTile then
-                    -- Place on target tile
-                    if placeItemOnTile(item.uid, targetTile, item) then
+                    
+                    -- If no tile from queue, try to find next available tile
+                    if not targetTile and highlightNextTile then
+                        targetTile = highlightNextTile()
+                    end
+                    
+                    if not targetTile then
+                        if WindUI then
+                            WindUI:Notify({
+                                Title = "⚠️ No Tiles",
+                                Content = "No empty tiles available",
+                                Duration = 3
+                            })
+                        end
+                        return
+                    end
+                    
+                    -- Try to place on target tile
+                    local placementSuccess = placeItemOnTile(item.uid, targetTile, item)
+                    
+                    if placementSuccess then
                         if WindUI then
                             local remaining = selectedTilesForPlacement and #selectedTilesForPlacement - currentPlacementIndex + 1 or 0
                             local queueInfo = remaining > 0 and (" | " .. remaining .. " tiles left") or ""
@@ -1163,23 +1176,26 @@ updateSidebar = function()
                                 Duration = 2
                             })
                         end
-                        task.wait(0.5)
-                        refreshGrid()
-                        updateSidebar()
+                        task.wait(1) -- Wait longer for placement to register
+                        pcall(refreshGrid)
+                        pcall(updateSidebar)
                     else
                         if WindUI then
                             WindUI:Notify({
-                                Title = "❌ Failed",
-                                Content = "Could not place " .. tostring(item.type),
+                                Title = "❌ Placement Failed",
+                                Content = "Could not place " .. tostring(item.type) .. " - check tile type match",
                                 Duration = 3
                             })
                         end
                     end
-                else
+                end)
+                
+                if not success then
+                    warn("[Grid UI] Inventory click error: " .. tostring(err))
                     if WindUI then
                         WindUI:Notify({
-                            Title = "⚠️ No Tiles",
-                            Content = "No tiles available",
+                            Title = "❌ Error",
+                            Content = "Click error: " .. tostring(err),
                             Duration = 3
                         })
                     end
@@ -1556,36 +1572,60 @@ local function performAutoPlace()
     end
 end
 
--- Auto place loop (runs in separate thread)
+-- Auto place loop (runs in separate thread with error protection)
 local autoPlaceThread = nil
+local isAutoPlaceRunning = false
 
 local function runAutoPlaceLoop()
+    isAutoPlaceRunning = true
+    
     while autoPlaceEnabled do
-        -- Try to place one item
-        performAutoPlace()
+        local success = pcall(function()
+            -- Try to place one item
+            performAutoPlace()
+            
+            -- Wait between placements to avoid spam
+            task.wait(3)
+            
+            -- Update UI periodically
+            if autoPlaceEnabled then
+                pcall(refreshGrid)
+                pcall(updateSidebar)
+            end
+        end)
         
-        -- Wait between placements to avoid spam
-        task.wait(3)
-        
-        -- Update UI periodically
-        if autoPlaceEnabled then
-            refreshGrid()
-            updateSidebar()
+        if not success then
+            -- Error occurred, wait a bit and continue
+            task.wait(1)
         end
     end
+    
+    isAutoPlaceRunning = false
 end
 
 local function setupGridMonitoring()
-    -- Stop existing thread if any
-    if autoPlaceThread then
+    -- If turning off, just set flag and wait for thread to stop
+    if not autoPlaceEnabled then
         autoPlaceEnabled = false
         task.wait(0.5)
+        autoPlaceThread = nil
+        return
     end
     
-    if autoPlaceEnabled then
-        -- Start new auto place loop in separate thread
-        autoPlaceThread = task.spawn(runAutoPlaceLoop)
+    -- If already running, don't start another thread
+    if isAutoPlaceRunning then
+        return
     end
+    
+    -- Start new auto place loop in separate thread
+    autoPlaceThread = task.spawn(function()
+        local success, err = pcall(runAutoPlaceLoop)
+        if not success then
+            warn("[Grid UI] Auto place loop error: " .. tostring(err))
+            autoPlaceEnabled = false
+            isAutoPlaceRunning = false
+        end
+    end)
 end
 
 -- Create Main UI
