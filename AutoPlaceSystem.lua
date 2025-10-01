@@ -1568,15 +1568,16 @@ end
 
 -- Function to sync loaded values to internal variables
 function AutoPlaceSystem.SyncLoadedValues()
-    -- Sync Min Speed value
+    -- Sync Min Speed value (now an Input field)
     if AutoPlaceSystem.MinSpeedSlider and AutoPlaceSystem.MinSpeedSlider.Value then
-        local sliderValue = AutoPlaceSystem.MinSpeedSlider.Value
-        if type(sliderValue) == "table" and sliderValue.Default then
-            minPetRateFilter = tonumber(sliderValue.Default) or 0
+        local inputValue = AutoPlaceSystem.MinSpeedSlider.Value
+        local parsedValue = parseNumberWithSuffix(inputValue)
+        if parsedValue and parsedValue >= 0 then
+            minPetRateFilter = parsedValue
         else
-            minPetRateFilter = tonumber(sliderValue) or 0
+            minPetRateFilter = tonumber(inputValue) or 0
         end
-        print("[AutoPlace] Synced Min Speed:", minPetRateFilter)
+        print("[AutoPlace] Synced Min Speed:", minPetRateFilter, "from input:", inputValue)
     end
     
     -- Sync Sort Order value
@@ -1681,16 +1682,17 @@ function AutoPlaceSystem.CreateUI()
         Icon = "heart"
     })
 
-    minSpeedSliderRef = Tabs.PlaceTab:Slider({
+    minSpeedSliderRef = Tabs.PlaceTab:Input({
         Title = "Min Speed",
-        Desc = "Min pet value",
-        Value = {
-            Min = 0,
-            Max = 50000,
-            Default = 0,
-        },
-        Callback = function(val)
-            minPetRateFilter = tonumber(val) or 0
+        Desc = "Min pet value (supports 1K, 1M, 1B, 1T)",
+        Value = "0",
+        Callback = function(value)
+            local parsedValue = parseNumberWithSuffix(value)
+            if parsedValue and parsedValue >= 0 then
+                minPetRateFilter = parsedValue
+            else
+                minPetRateFilter = tonumber(value) or 0
+            end
             petCache.lastUpdate = 0
         end
     })
