@@ -34,6 +34,7 @@ local isMinimized = false
 -- State Variables
 local currentTileType = "Regular" -- "Regular" or "Water"
 local selectedTileForInfo = nil
+local selectedTileForManualPlacement = nil -- Store selected tile when user clicks on empty tile
 local autoPlaceEnabled = false
 local gridUpdateConnection = nil
 
@@ -408,7 +409,10 @@ local function createWindowControls(parent)
     closeBtn.Position = UDim2.new(0, 0, 0, 0)
     closeBtn.BackgroundColor3 = colors.close
     closeBtn.BorderSizePixel = 0
-    closeBtn.Text = ""
+    closeBtn.Text = "×"
+    closeBtn.TextSize = 12
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextColor3 = Color3.fromRGB(50, 50, 50)
     closeBtn.Parent = controlsContainer
     
     local closeCorner = Instance.new("UICorner")
@@ -883,6 +887,56 @@ refreshGrid = function()
             tile = tile,
             occupant = occupant
         }
+        
+        -- Add click handlers for tiles
+        btn.MouseButton1Click:Connect(function()
+            if occupied then
+                -- Show info for occupied tile
+                showTileInfo(tileButtons[btn.Name])
+            else
+                -- Select empty tile for manual placement (highlight it green)
+                if not tile.locked then
+                    -- Clear all other highlights
+                    for _, td in pairs(tileButtons) do
+                        if td and td.button then
+                            local b = td.button
+                            local isW = b:GetAttribute("IsWater")
+                            local occ = b:GetAttribute("Occupied")
+                            local lock = b:GetAttribute("Locked")
+                            
+                            if lock then
+                                b.BackgroundColor3 = colors.locked
+                            elseif occ then
+                                b.BackgroundColor3 = colors.occupied
+                            else
+                                b.BackgroundColor3 = isW and colors.emptyWater or colors.emptyRegular
+                            end
+                        end
+                    end
+                    
+                    -- Highlight selected tile green
+                    btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+                    
+                    -- Store as selected tile for next item placement
+                    selectedTileForManualPlacement = tileButtons[btn.Name]
+                end
+            end
+        end)
+        
+        -- Right-click to pick up
+        btn.MouseButton2Click:Connect(function()
+            if occupied then
+                local tileData = tileButtons[btn.Name]
+                local info = getTileOccupantInfo(tileData.occupant)
+                if info and info.uid and CharacterRE then
+                    pcall(function()
+                        CharacterRE:FireServer("Del", info.uid)
+                    end)
+                    task.wait(0.5)
+                    refreshGrid()
+                end
+            end
+        end)
     end
 end
 
@@ -992,27 +1046,25 @@ updateSidebar = function()
         clickBtn.MouseButton1Click:Connect(function()
             -- Wrap in pcall for error handling
             local success, err = pcall(function()
-                print("[Grid UI] Inventory item clicked: " .. tostring(item.type) .. " (" .. tostring(item.uid) .. ")")
-                
-                -- Highlight next target tile
-                local targetTile = highlightNextTile()
+                -- Try to use manually selected tile first, otherwise auto-find next tile
+                local targetTile = selectedTileForManualPlacement or highlightNextTile()
                 
                 if targetTile then
-                    print("[Grid UI] Target tile found, attempting placement...")
-                    -- Place on highlighted tile
+                    -- Place on selected/highlighted tile
                     if placeItemOnTile(item.uid, targetTile) then
                         if WindUI then
                             WindUI:Notify({
                                 Title = "✅ Placed!",
-                                Content = "Placed " .. tostring(item.type) .. " on highlighted tile",
+                                Content = "Placed " .. tostring(item.type) .. " on tile",
                                 Duration = 2
                             })
                         end
+                        -- Clear manual selection after placement
+                        selectedTileForManualPlacement = nil
                         task.wait(0.5)
                         refreshGrid()
                         updateSidebar()
                     else
-                        print("[Grid UI] Placement failed")
                         if WindUI then
                             WindUI:Notify({
                                 Title = "❌ Failed",
@@ -1022,7 +1074,6 @@ updateSidebar = function()
                         end
                     end
                 else
-                    print("[Grid UI] No empty tiles available")
                     if WindUI then
                         WindUI:Notify({
                             Title = "⚠️ No Empty Tiles",
@@ -1034,11 +1085,11 @@ updateSidebar = function()
             end)
             
             if not success then
-                warn("[Grid UI] Error in click handler: " .. tostring(err))
+                warn("[Grid UI] Click error: " .. tostring(err))
                 if WindUI then
                     WindUI:Notify({
                         Title = "❌ Error",
-                        Content = "Click handler error: " .. tostring(err),
+                        Content = tostring(err),
                         Duration = 5
                     })
                 end
@@ -1163,20 +1214,6 @@ showTileInfo = function(tileData)
         mutationLabel.Parent = content
     end
     
-    -- Level
-    if info.level then
-        local levelLabel = Instance.new("TextLabel")
-        levelLabel.Size = UDim2.new(1, 0, 0, 20)
-        levelLabel.BackgroundTransparency = 1
-        levelLabel.Text = "Level: " .. info.level
-        levelLabel.TextSize = 14
-        levelLabel.Font = Enum.Font.Gotham
-        levelLabel.TextColor3 = colors.textSecondary
-        levelLabel.TextXAlignment = Enum.TextXAlignment.Left
-        levelLabel.ZIndex = 201
-        levelLabel.LayoutOrder = 5
-        levelLabel.Parent = content
-    end
     
     -- Pick Up button
     local pickUpBtn = Instance.new("TextButton")
@@ -1208,28 +1245,49 @@ showTileInfo = function(tileData)
     end)
 end
 
--- Place an item on a tile
+-- Place an item on a tile (EXACT COPY FROM AUTOPLACESYSTEM)
 local function placeItemOnTile(itemUID, tileData)
     if not CharacterRE or not itemUID or not tileData then 
-        print("[Grid UI] Missing parameters: CharacterRE=" .. tostring(CharacterRE~=nil) .. ", itemUID=" .. tostring(itemUID) .. ", tileData=" .. tostring(tileData~=nil))
         return false 
     end
     
     local tile = tileData.tile
     if not tile or not tile.part then 
-        print("[Grid UI] Invalid tile data")
         return false 
     end
     
-    -- Calculate placement position (on top of tile) - SAME AS AUTOPLACESYSTEM
     local farmPart = tile.part
+    
+    -- Step 1: Focus the item first (CRITICAL - from AutoPlaceSystem line 690)
+    local focusSuccess = pcall(function()
+        CharacterRE:FireServer("Focus", itemUID)
+    end)
+    if not focusSuccess then
+        return false
+    end
+    task.wait(0.2)
+    
+    -- Step 2: Calculate placement position with grid snapping (from AutoPlaceSystem line 704-708)
+    local tileCenter = farmPart.Position
     local surfacePosition = Vector3.new(
-        farmPart.Position.X,
-        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
-        farmPart.Position.Z
+        math.floor(tileCenter.X / 8) * 8 + 4, -- Snap to 8x8 grid center (X)
+        tileCenter.Y + (farmPart.Size.Y / 2), -- Surface height
+        math.floor(tileCenter.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
     )
     
-    -- Use correct argument format from AutoPlaceSystem
+    -- Step 3: Set Deploy S2 attribute (from AutoPlaceSystem line 711-714)
+    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+    if deploy then
+        deploy:SetAttribute("S2", itemUID)
+    end
+    
+    -- Step 4: Hold egg/pet (key 2) (from AutoPlaceSystem line 717-720)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    task.wait(0.1)
+    
+    -- Step 5: Fire placement command
     local args = {
         "Place",
         {
@@ -1238,17 +1296,14 @@ local function placeItemOnTile(itemUID, tileData)
         }
     }
     
-    -- Fire placement event
     local success, err = pcall(function()
         CharacterRE:FireServer(unpack(args))
     end)
     
     if success then
-        print("[Grid UI] Placement command sent successfully for " .. itemUID)
         task.wait(0.5) -- Wait for placement to register
         return true
     else
-        warn("[Grid UI] Failed to place item: " .. tostring(err))
         return false
     end
 end
