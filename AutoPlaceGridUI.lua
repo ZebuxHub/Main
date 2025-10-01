@@ -1488,14 +1488,17 @@ local function performAutoPlace()
     -- Determine target tile
     local targetTile = nil
     
-    if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
-        -- Use next tile from user-selected queue
-        targetTile = selectedTilesForPlacement[currentPlacementIndex].data
-        currentPlacementIndex = currentPlacementIndex + 1
-    else
-        -- Check if we exhausted the queue
-        if #selectedTilesForPlacement > 0 and currentPlacementIndex > #selectedTilesForPlacement then
-            -- Queue complete - stop auto place and notify
+    -- Safely check for selected tiles queue
+    if selectedTilesForPlacement and type(selectedTilesForPlacement) == "table" and #selectedTilesForPlacement > 0 then
+        if currentPlacementIndex <= #selectedTilesForPlacement then
+            -- Use next tile from user-selected queue
+            local selectedEntry = selectedTilesForPlacement[currentPlacementIndex]
+            if selectedEntry and selectedEntry.data then
+                targetTile = selectedEntry.data
+                currentPlacementIndex = currentPlacementIndex + 1
+            end
+        else
+            -- Queue exhausted - stop auto place and notify
             autoPlaceEnabled = false
             if WindUI then
                 WindUI:Notify({
@@ -1506,6 +1509,10 @@ local function performAutoPlace()
             end
             return
         end
+    end
+    
+    -- If no tile from queue, find next available tile
+    if not targetTile then
         
         -- Find all empty tiles and sort them
         local emptyTiles = {}
