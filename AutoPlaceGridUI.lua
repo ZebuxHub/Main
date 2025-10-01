@@ -941,10 +941,9 @@ refreshGrid = function()
                 -- Show info for occupied tile
                 showTileInfo(tileButtons[btn.Name])
             else
-                -- Select empty tile(s) for placement queue
+                -- Select empty tile(s) for placement queue (multi-select by default)
                 if not tile.locked then
                     local tileKey = btn.Name
-                    local isCtrlHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
                     
                     -- Check if this tile is already selected
                     local isSelected = false
@@ -957,52 +956,20 @@ refreshGrid = function()
                         end
                     end
                     
-                    if isCtrlHeld then
-                        -- Multi-select mode: Toggle this tile
-                        if isSelected then
-                            -- Deselect: remove from list
-                            table.remove(selectedTilesForPlacement, selectedIndex)
-                            -- Reset color
-                            btn.BackgroundColor3 = tile.isWater and colors.emptyWater or colors.emptyRegular
-                        else
-                            -- Add to selection
-                            table.insert(selectedTilesForPlacement, {
-                                key = tileKey,
-                                data = tileButtons[tileKey],
-                                gridX = tile.gridX,
-                                gridZ = tile.gridZ
-                            })
-                            -- Highlight selected tile green
-                            btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-                        end
+                    -- Toggle this tile (free multi-select - no Ctrl needed)
+                    if isSelected then
+                        -- Deselect: remove from list
+                        table.remove(selectedTilesForPlacement, selectedIndex)
+                        -- Reset color
+                        btn.BackgroundColor3 = tile.isWater and colors.emptyWater or colors.emptyRegular
                     else
-                        -- Single-select mode: Clear others and select this one
-                        -- Clear all other highlights
-                        for _, td in pairs(tileButtons) do
-                            if td and td.button then
-                                local b = td.button
-                                local isW = b:GetAttribute("IsWater")
-                                local occ = b:GetAttribute("Occupied")
-                                local lock = b:GetAttribute("Locked")
-                                
-                                if lock then
-                                    b.BackgroundColor3 = colors.locked
-                                elseif occ then
-                                    b.BackgroundColor3 = colors.occupied
-                                else
-                                    b.BackgroundColor3 = isW and colors.emptyWater or colors.emptyRegular
-                                end
-                            end
-                        end
-                        
-                        -- Clear selection list and add only this tile
-                        selectedTilesForPlacement = {{
+                        -- Add to selection
+                        table.insert(selectedTilesForPlacement, {
                             key = tileKey,
                             data = tileButtons[tileKey],
                             gridX = tile.gridX,
                             gridZ = tile.gridZ
-                        }}
-                        
+                        })
                         -- Highlight selected tile green
                         btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
                     end
@@ -1022,7 +989,7 @@ refreshGrid = function()
                     if WindUI then
                         WindUI:Notify({
                             Title = "🎯 Tile Selection",
-                            Content = #selectedTilesForPlacement .. " tile(s) selected (Hold Ctrl for multi-select)",
+                            Content = #selectedTilesForPlacement .. " tile(s) selected (Click again to deselect)",
                             Duration = 2
                         })
                     end
@@ -1453,7 +1420,7 @@ local function placeItemOnTile(itemUID, tileData, itemData)
 end
 
 -- Highlight next target tile
-local function highlightNextTile()
+highlightNextTile = function()
     -- Clear all highlights first
     for _, tileData in pairs(tileButtons) do
         if tileData and tileData.button then
