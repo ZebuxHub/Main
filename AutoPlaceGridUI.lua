@@ -47,6 +47,7 @@ local selectedMutations = {}
 local minPetSpeed = 0
 local petSortAscending = true
 local placementSpeed = 1.0 -- Delay between placements (in seconds, adjustable 0.1-10s)
+local continueAfterQueue = true -- Continue placing after selected tiles are filled
 
 -- Grid State
 local gridTiles = {} -- {position: {tile: Part, occupied: bool, type: "regular"/"water", data: {}}}
@@ -792,6 +793,40 @@ local function populateSidebar(sidebar)
     sortCorner.CornerRadius = UDim.new(0, 6)
     sortCorner.Parent = sortToggle
     
+    -- Continue After Queue Toggle
+    local continueFrame = Instance.new("Frame")
+    continueFrame.Name = "ContinueFrame"
+    continueFrame.Size = UDim2.new(1, -20, 0, 60)
+    continueFrame.BackgroundTransparency = 1
+    continueFrame.LayoutOrder = 7.5
+    continueFrame.Parent = sidebar
+    
+    local continueLabel = Instance.new("TextLabel")
+    continueLabel.Size = UDim2.new(1, 0, 0, 20)
+    continueLabel.BackgroundTransparency = 1
+    continueLabel.Text = "After Selected Tiles"
+    continueLabel.TextSize = 12
+    continueLabel.Font = Enum.Font.GothamSemibold
+    continueLabel.TextColor3 = colors.text
+    continueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    continueLabel.Parent = continueFrame
+    
+    local continueToggle = Instance.new("TextButton")
+    continueToggle.Name = "ContinueToggle"
+    continueToggle.Size = UDim2.new(1, 0, 0, 30)
+    continueToggle.Position = UDim2.new(0, 0, 0, 25)
+    continueToggle.BackgroundColor3 = continueAfterQueue and colors.success or colors.hover
+    continueToggle.BorderSizePixel = 0
+    continueToggle.Text = continueAfterQueue and "Continue All" or "Stop"
+    continueToggle.TextSize = 13
+    continueToggle.Font = Enum.Font.GothamSemibold
+    continueToggle.TextColor3 = colors.text
+    continueToggle.Parent = continueFrame
+    
+    local continueCorner = Instance.new("UICorner")
+    continueCorner.CornerRadius = UDim.new(0, 6)
+    continueCorner.Parent = continueToggle
+    
     -- Inventory Section
     local inventoryLabel = Instance.new("TextLabel")
     inventoryLabel.Name = "InventoryLabel"
@@ -972,7 +1007,8 @@ local function populateSidebar(sidebar)
         uiScaleLabel = uiScaleLabel,
         uiScaleSliderBg = uiScaleSliderBg,
         uiScaleSliderFill = uiScaleSliderFill,
-        uiScaleSliderHandle = uiScaleSliderHandle
+        uiScaleSliderHandle = uiScaleSliderHandle,
+        continueToggle = continueToggle
     }
 end
 
@@ -1659,16 +1695,20 @@ local function performAutoPlace()
                 currentPlacementIndex = currentPlacementIndex + 1
             end
         else
-            -- Queue exhausted - stop auto place and notify
-            autoPlaceEnabled = false
-            if WindUI then
-                WindUI:Notify({
-                    Title = "✅ Queue Complete",
-                    Content = "All selected tiles filled!",
-                    Duration = 3
-                })
+            -- Queue exhausted
+            if not continueAfterQueue then
+                -- Stop mode: notify and stop
+                autoPlaceEnabled = false
+                if WindUI then
+                    WindUI:Notify({
+                        Title = "✅ Queue Complete",
+                        Content = "All selected tiles filled!",
+                        Duration = 3
+                    })
+                end
+                return
             end
-            return
+            -- Continue mode: fall through to fill remaining tiles
         end
     end
     
@@ -1934,6 +1974,21 @@ function AutoPlaceGridUI.CreateUI()
         petSortAscending = not petSortAscending
         sidebarControls.sortToggle.Text = petSortAscending and "Low → High" or "High → Low"
         updateSidebar()
+    end)
+    
+    -- Continue After Queue Toggle
+    sidebarControls.continueToggle.MouseButton1Click:Connect(function()
+        continueAfterQueue = not continueAfterQueue
+        sidebarControls.continueToggle.Text = continueAfterQueue and "Continue All" or "Stop"
+        sidebarControls.continueToggle.BackgroundColor3 = continueAfterQueue and colors.success or colors.hover
+        
+        if WindUI then
+            WindUI:Notify({
+                Title = "Mode Changed",
+                Content = continueAfterQueue and "Will continue filling all tiles after queue" or "Will stop after selected tiles",
+                Duration = 3
+            })
+        end
     end)
     
     -- Grid tile click handlers
