@@ -359,13 +359,16 @@ local function getAvailableEggs()
             if #eggNode:GetChildren() == 0 then -- Available egg
                 local eggType = eggNode:GetAttribute("T")
                 local mutation = eggNode:GetAttribute("M")
-                if eggType then
+                
+                -- Skip Ocean eggs
+                local isOcean = isOceanEgg(eggType)
+                if eggType and not isOcean then
                     table.insert(eggs, {
                         uid = eggNode.Name,
                         type = eggType,
                         mutation = mutation,
                         category = "Egg",
-                        isOcean = isOceanEgg(eggType)
+                        isOcean = false -- Already filtered out ocean eggs
                     })
                 end
             end
@@ -384,37 +387,45 @@ local function getAvailablePets()
     if petsContainer then
         for _, petNode in ipairs(petsContainer:GetChildren()) do
             local isPlaced = petNode:GetAttribute("D") ~= nil
-            if not isPlaced then
+            local isBigPet = petNode:GetAttribute("IsBigpet") == true
+            
+            if not isPlaced and not isBigPet then
                 local petType = petNode:GetAttribute("T")
                 local mutation = petNode:GetAttribute("M")
                 local level = petNode:GetAttribute("V") or 0
                 
-                -- Get speed
-                local speed = 0
-                local uid = petNode.Name
-                local ss = pg and pg:FindFirstChild("ScreenStorage")
-                local frame = ss and ss:FindFirstChild("Frame")
-                local content = frame and frame:FindFirstChild("ContentPet")
-                local scroll = content and content:FindFirstChild("ScrollingFrame")
-                local item = scroll and scroll:FindFirstChild(uid)
-                local btn = item and item:FindFirstChild("BTN")
-                local stat = btn and btn:FindFirstChild("Stat")
-                local price = stat and stat:FindFirstChild("Price")
-                local valueLabel = price and price:FindFirstChild("Value")
-                if valueLabel and valueLabel:IsA("TextLabel") then
-                    speed = tonumber((valueLabel.Text:gsub("[^%d]", ""))) or 0
-                end
-                
-                if petType and speed >= minPetSpeed then
-                    table.insert(pets, {
-                        uid = uid,
-                        type = petType,
-                        mutation = mutation,
-                        level = level,
-                        speed = speed,
-                        category = "Pet",
-                        isOcean = isOceanPet(petType)
-                    })
+                -- Skip Ocean pets
+                local isOcean = isOceanPet(petType)
+                if isOcean then
+                    -- Skip this pet, don't add to inventory
+                else
+                    -- Get speed
+                    local speed = 0
+                    local uid = petNode.Name
+                    local ss = pg and pg:FindFirstChild("ScreenStorage")
+                    local frame = ss and ss:FindFirstChild("Frame")
+                    local content = frame and frame:FindFirstChild("ContentPet")
+                    local scroll = content and content:FindFirstChild("ScrollingFrame")
+                    local item = scroll and scroll:FindFirstChild(uid)
+                    local btn = item and item:FindFirstChild("BTN")
+                    local stat = btn and btn:FindFirstChild("Stat")
+                    local price = stat and stat:FindFirstChild("Price")
+                    local valueLabel = price and price:FindFirstChild("Value")
+                    if valueLabel and valueLabel:IsA("TextLabel") then
+                        speed = tonumber((valueLabel.Text:gsub("[^%d]", ""))) or 0
+                    end
+                    
+                    if petType and speed >= minPetSpeed then
+                        table.insert(pets, {
+                            uid = uid,
+                            type = petType,
+                            mutation = mutation,
+                            level = level,
+                            speed = speed,
+                            category = "Pet",
+                            isOcean = false -- Already filtered out ocean pets
+                        })
+                    end
                 end
             end
         end
