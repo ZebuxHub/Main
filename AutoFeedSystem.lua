@@ -351,7 +351,7 @@ function AutoFeedSystem.feedPet(petName)
     return true
 end
 
-function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedBigPets, updateFeedStatusParagraph, getSelectedFruits)
+function AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, updateFeedStatusParagraph, getSelectedFruits)
     -- Initialize feedFruitStatus if needed (for backward compatibility)
     local feedFruitStatus = {
         petsFound = 0,
@@ -365,6 +365,9 @@ function AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedBigPets, updateFeed
         local shouldContinue = true
         local ok, err = pcall(function()
             local allBigPets = AutoFeedSystem.getBigPets()
+            
+            -- Get current selection dynamically
+            local selectedBigPets = getSelectedBigPets and getSelectedBigPets() or {}
             
             -- Filter pets based on selection
             local bigPets = {}
@@ -815,6 +818,26 @@ function AutoFeedSystem.CreateUI()
             
             -- Save selection
             updateCustomUISelection("bigPetSelections", selectedBigPets)
+            
+            -- Show notification
+            if WindUI then
+                local count = #selection
+                if count == 0 then
+                    WindUI:Notify({
+                        Title = "Big Pet Selection",
+                        Content = "Feeding ALL Big Pets",
+                        Duration = 2
+                    })
+                else
+                    WindUI:Notify({
+                        Title = "Big Pet Selection",
+                        Content = "Feeding " .. count .. " selected Big Pet(s)",
+                        Duration = 2
+                    })
+                end
+            end
+            
+            print("[AutoFeed] Big Pet selection updated:", table.concat(selection, ", "))
         end
     })
     
@@ -847,14 +870,19 @@ function AutoFeedSystem.CreateUI()
             
             if state and not autoFeedThread then
                 autoFeedThread = task.spawn(function()
+                    -- Get selected Big Pets function (dynamically reads current selection)
+                    local function getSelectedBigPets()
+                        return selectedBigPets
+                    end
+                    
                     -- Get selected fruits function
-                    local function getSelected()
+                    local function getSelectedFruits()
                         return selectedFeedFruits
                     end
                     
                     -- Wrap in error handling
                     local ok, err = pcall(function()
-                        AutoFeedSystem.runAutoFeed(autoFeedEnabled, selectedBigPets, function() end, getSelected)
+                        AutoFeedSystem.runAutoFeed(autoFeedEnabled, getSelectedBigPets, function() end, getSelectedFruits)
                     end)
                     
                     if not ok then
