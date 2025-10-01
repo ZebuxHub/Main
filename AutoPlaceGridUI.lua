@@ -1130,17 +1130,24 @@ updateSidebar = function()
         clickBtn.Parent = card
         
         clickBtn.MouseButton1Click:Connect(function()
-            -- Wrap in pcall for error handling
-            local success, err = pcall(function()
-                -- Try to use next tile from selection queue, otherwise auto-find
+            -- Manual placement from inventory
+            pcall(function()
                 local targetTile = nil
                 
-                if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
-                    -- Use next tile from queue
-                    targetTile = selectedTilesForPlacement[currentPlacementIndex].data
-                    currentPlacementIndex = currentPlacementIndex + 1
-                else
-                    -- No selection or queue exhausted, auto-find next tile
+                -- Check if we have selected tiles in queue
+                if selectedTilesForPlacement and type(selectedTilesForPlacement) == "table" then
+                    if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
+                        -- Use next tile from queue
+                        local selectedEntry = selectedTilesForPlacement[currentPlacementIndex]
+                        if selectedEntry and selectedEntry.data then
+                            targetTile = selectedEntry.data
+                            currentPlacementIndex = currentPlacementIndex + 1
+                        end
+                    end
+                end
+                
+                -- If no tile from queue, try to find next available tile
+                if not targetTile and highlightNextTile then
                     targetTile = highlightNextTile()
                 end
                 
@@ -1148,7 +1155,7 @@ updateSidebar = function()
                     -- Place on target tile
                     if placeItemOnTile(item.uid, targetTile, item) then
                         if WindUI then
-                            local remaining = math.max(0, #selectedTilesForPlacement - currentPlacementIndex + 1)
+                            local remaining = selectedTilesForPlacement and #selectedTilesForPlacement - currentPlacementIndex + 1 or 0
                             local queueInfo = remaining > 0 and (" | " .. remaining .. " tiles left") or ""
                             WindUI:Notify({
                                 Title = "✅ Placed!",
@@ -1172,23 +1179,12 @@ updateSidebar = function()
                     if WindUI then
                         WindUI:Notify({
                             Title = "⚠️ No Tiles",
-                            Content = #selectedTilesForPlacement > 0 and "Queue exhausted" or "No tiles available",
+                            Content = "No tiles available",
                             Duration = 3
                         })
                     end
                 end
             end)
-            
-            if not success then
-                warn("[Grid UI] Click error: " .. tostring(err))
-                if WindUI then
-                    WindUI:Notify({
-                        Title = "❌ Error",
-                        Content = tostring(err),
-                        Duration = 5
-                    })
-                end
-            end
         end)
     end
 end
