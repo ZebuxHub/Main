@@ -661,6 +661,23 @@ local function populateSidebar(sidebar)
     toggleCorner.CornerRadius = UDim.new(0, 6)
     toggleCorner.Parent = autoPlaceToggle
     
+    -- Pick Up All Button
+    local pickUpAllBtn = Instance.new("TextButton")
+    pickUpAllBtn.Name = "PickUpAllBtn"
+    pickUpAllBtn.Size = UDim2.new(1, -20, 0, 40)
+    pickUpAllBtn.BackgroundColor3 = colors.error
+    pickUpAllBtn.BorderSizePixel = 0
+    pickUpAllBtn.Text = "🗑️ Pick Up All"
+    pickUpAllBtn.TextSize = 14
+    pickUpAllBtn.Font = Enum.Font.GothamBold
+    pickUpAllBtn.TextColor3 = colors.text
+    pickUpAllBtn.LayoutOrder = 1.5
+    pickUpAllBtn.Parent = sidebar
+    
+    local pickUpAllCorner = Instance.new("UICorner")
+    pickUpAllCorner.CornerRadius = UDim.new(0, 6)
+    pickUpAllCorner.Parent = pickUpAllBtn
+    
     -- Section headers and controls will be added here
     -- Sources Section
     local sourcesLabel = Instance.new("TextLabel")
@@ -1008,7 +1025,8 @@ local function populateSidebar(sidebar)
         uiScaleSliderBg = uiScaleSliderBg,
         uiScaleSliderFill = uiScaleSliderFill,
         uiScaleSliderHandle = uiScaleSliderHandle,
-        continueToggle = continueToggle
+        continueToggle = continueToggle,
+        pickUpAllBtn = pickUpAllBtn
     }
 end
 
@@ -1734,12 +1752,9 @@ local function performAutoPlace()
             return 
         end
         
-        -- Sort left-to-right, top-to-bottom
+        -- Sort left-to-right only (ignore Z/top-to-bottom)
         table.sort(emptyTiles, function(a, b)
-            if a.gridZ == b.gridZ then
-                return a.gridX < b.gridX
-            end
-            return a.gridZ < b.gridZ
+            return a.gridX < b.gridX
         end)
         
         targetTile = emptyTiles[1].data
@@ -1944,6 +1959,54 @@ function AutoPlaceGridUI.CreateUI()
         
         -- Start or stop the auto place loop
         setupGridMonitoring()
+    end)
+    
+    -- Pick Up All Button
+    sidebarControls.pickUpAllBtn.MouseButton1Click:Connect(function()
+        if not CharacterRE then return end
+        
+        -- Confirm with user
+        if WindUI then
+            WindUI:Notify({
+                Title = "🗑️ Picking Up All",
+                Content = "Removing all placed items...",
+                Duration = 3
+            })
+        end
+        
+        task.spawn(function()
+            local pickedUpCount = 0
+            
+            -- Get all occupied tiles
+            for _, tileData in pairs(tileButtons) do
+                if tileData.occupant then
+                    local info = getTileOccupantInfo(tileData.occupant)
+                    if info and info.uid then
+                        local success = pcall(function()
+                            CharacterRE:FireServer("Del", info.uid)
+                        end)
+                        
+                        if success then
+                            pickedUpCount = pickedUpCount + 1
+                            task.wait(0.1) -- Small delay between pickups
+                        end
+                    end
+                end
+            end
+            
+            -- Wait for server to update
+            task.wait(1)
+            refreshGrid()
+            updateSidebar()
+            
+            if WindUI then
+                WindUI:Notify({
+                    Title = "✅ Pick Up Complete",
+                    Content = "Picked up " .. pickedUpCount .. " items",
+                    Duration = 3
+                })
+            end
+        end)
     end)
     
     -- Eggs Toggle
