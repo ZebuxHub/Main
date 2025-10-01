@@ -34,9 +34,10 @@ local isMinimized = false
 -- State Variables
 local currentTileType = "Regular" -- "Regular" or "Water"
 local selectedTileForInfo = nil
-local selectedTileForManualPlacement = nil -- Store selected tile when user clicks on empty tile
+local selectedTilesForPlacement = {} -- Store MULTIPLE selected tiles for placement queue
 local autoPlaceEnabled = false
 local gridUpdateConnection = nil
+local currentPlacementIndex = 1 -- Track which tile in the queue to place next
 
 -- Auto Place Settings
 local placeEggsEnabled = true
@@ -79,6 +80,48 @@ local colors = {
     occupied = Color3.fromRGB(255, 69, 58),
     locked = Color3.fromRGB(40, 40, 42)
 }
+
+-- Ocean Detection
+local OCEAN_EGGS = {
+    ["SeaweedEgg"] = true,
+    ["ClownfishEgg"] = true,
+    ["LionfishEgg"] = true,
+    ["SharkEgg"] = true,
+    ["AnglerfishEgg"] = true,
+    ["OctopusEgg"] = true,
+    ["SeaDragonEgg"] = true
+}
+
+local function isOceanEgg(eggType)
+    return OCEAN_EGGS[eggType] == true
+end
+
+local function isOceanPet(petType)
+    -- Check ReplicatedStorage config for pet category
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local cfg = ReplicatedStorage:FindFirstChild("Config")
+    if cfg then
+        local resPet = cfg:FindFirstChild("ResPet")
+        if resPet then
+            local ok, petData = pcall(function() return require(resPet) end)
+            if ok and type(petData) == "table" and petData[petType] then
+                local base = petData[petType]
+                local category = base.Category
+                if typeof(category) == "string" then
+                    local c = string.lower(category)
+                    if c == "ocean" or string.find(c, "ocean") then
+                        return true
+                    end
+                end
+                local limitedTag = base.LimitedTag
+                if typeof(limitedTag) == "string" and string.lower(limitedTag) == "ocean" then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
 
 -- Utility Functions
 local function formatNumber(num)
@@ -320,7 +363,8 @@ local function getAvailableEggs()
                         uid = eggNode.Name,
                         type = eggType,
                         mutation = mutation,
-                        category = "Egg"
+                        category = "Egg",
+                        isOcean = isOceanEgg(eggType)
                     })
                 end
             end
@@ -367,7 +411,8 @@ local function getAvailablePets()
                         mutation = mutation,
                         level = level,
                         speed = speed,
-                        category = "Pet"
+                        category = "Pet",
+                        isOcean = isOceanPet(petType)
                     })
                 end
             end
@@ -842,13 +887,15 @@ refreshGrid = function()
     for _, tile in ipairs(tiles) do
         local x = tile.gridX - minX
         local z = tile.gridZ - minZ
+        -- FLIP Z-AXIS: Invert Z to fix upside-down grid display
+        local flippedZ = (maxZ - tile.gridZ)
         
         local occupied, occupant = isTileOccupied(tile.part)
         
         local btn = Instance.new("TextButton")
         btn.Name = "Tile_" .. tile.gridX .. "_" .. tile.gridZ
         btn.Size = UDim2.new(0, tileSize, 0, tileSize)
-        btn.Position = UDim2.new(0, x * (tileSize + tileSpacing), 0, z * (tileSize + tileSpacing))
+        btn.Position = UDim2.new(0, x * (tileSize + tileSpacing), 0, flippedZ * (tileSize + tileSpacing))
         btn.BorderSizePixel = 0
         btn.Text = ""
         btn.Parent = GridContainer
@@ -894,31 +941,91 @@ refreshGrid = function()
                 -- Show info for occupied tile
                 showTileInfo(tileButtons[btn.Name])
             else
-                -- Select empty tile for manual placement (highlight it green)
+                -- Select empty tile(s) for placement queue
                 if not tile.locked then
-                    -- Clear all other highlights
-                    for _, td in pairs(tileButtons) do
-                        if td and td.button then
-                            local b = td.button
-                            local isW = b:GetAttribute("IsWater")
-                            local occ = b:GetAttribute("Occupied")
-                            local lock = b:GetAttribute("Locked")
-                            
-                            if lock then
-                                b.BackgroundColor3 = colors.locked
-                            elseif occ then
-                                b.BackgroundColor3 = colors.occupied
-                            else
-                                b.BackgroundColor3 = isW and colors.emptyWater or colors.emptyRegular
-                            end
+                    local tileKey = btn.Name
+                    local isCtrlHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                    
+                    -- Check if this tile is already selected
+                    local isSelected = false
+                    local selectedIndex = nil
+                    for i, selectedTile in ipairs(selectedTilesForPlacement) do
+                        if selectedTile.key == tileKey then
+                            isSelected = true
+                            selectedIndex = i
+                            break
                         end
                     end
                     
-                    -- Highlight selected tile green
-                    btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+                    if isCtrlHeld then
+                        -- Multi-select mode: Toggle this tile
+                        if isSelected then
+                            -- Deselect: remove from list
+                            table.remove(selectedTilesForPlacement, selectedIndex)
+                            -- Reset color
+                            btn.BackgroundColor3 = tile.isWater and colors.emptyWater or colors.emptyRegular
+                        else
+                            -- Add to selection
+                            table.insert(selectedTilesForPlacement, {
+                                key = tileKey,
+                                data = tileButtons[tileKey],
+                                gridX = tile.gridX,
+                                gridZ = tile.gridZ
+                            })
+                            -- Highlight selected tile green
+                            btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+                        end
+                    else
+                        -- Single-select mode: Clear others and select this one
+                        -- Clear all other highlights
+                        for _, td in pairs(tileButtons) do
+                            if td and td.button then
+                                local b = td.button
+                                local isW = b:GetAttribute("IsWater")
+                                local occ = b:GetAttribute("Occupied")
+                                local lock = b:GetAttribute("Locked")
+                                
+                                if lock then
+                                    b.BackgroundColor3 = colors.locked
+                                elseif occ then
+                                    b.BackgroundColor3 = colors.occupied
+                                else
+                                    b.BackgroundColor3 = isW and colors.emptyWater or colors.emptyRegular
+                                end
+                            end
+                        end
+                        
+                        -- Clear selection list and add only this tile
+                        selectedTilesForPlacement = {{
+                            key = tileKey,
+                            data = tileButtons[tileKey],
+                            gridX = tile.gridX,
+                            gridZ = tile.gridZ
+                        }}
+                        
+                        -- Highlight selected tile green
+                        btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+                    end
                     
-                    -- Store as selected tile for next item placement
-                    selectedTileForManualPlacement = tileButtons[btn.Name]
+                    -- Sort selected tiles left-to-right, top-to-bottom
+                    table.sort(selectedTilesForPlacement, function(a, b)
+                        if a.gridZ == b.gridZ then
+                            return a.gridX < b.gridX
+                        end
+                        return a.gridZ < b.gridZ
+                    end)
+                    
+                    -- Reset placement index
+                    currentPlacementIndex = 1
+                    
+                    -- Show feedback
+                    if WindUI then
+                        WindUI:Notify({
+                            Title = "🎯 Tile Selection",
+                            Content = #selectedTilesForPlacement .. " tile(s) selected (Hold Ctrl for multi-select)",
+                            Duration = 2
+                        })
+                    end
                 end
             end
         end)
@@ -1046,21 +1153,30 @@ updateSidebar = function()
         clickBtn.MouseButton1Click:Connect(function()
             -- Wrap in pcall for error handling
             local success, err = pcall(function()
-                -- Try to use manually selected tile first, otherwise auto-find next tile
-                local targetTile = selectedTileForManualPlacement or highlightNextTile()
+                -- Try to use next tile from selection queue, otherwise auto-find
+                local targetTile = nil
+                
+                if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
+                    -- Use next tile from queue
+                    targetTile = selectedTilesForPlacement[currentPlacementIndex].data
+                    currentPlacementIndex = currentPlacementIndex + 1
+                else
+                    -- No selection or queue exhausted, auto-find next tile
+                    targetTile = highlightNextTile()
+                end
                 
                 if targetTile then
-                    -- Place on selected/highlighted tile
-                    if placeItemOnTile(item.uid, targetTile) then
+                    -- Place on target tile
+                    if placeItemOnTile(item.uid, targetTile, item) then
                         if WindUI then
+                            local remaining = math.max(0, #selectedTilesForPlacement - currentPlacementIndex + 1)
+                            local queueInfo = remaining > 0 and (" | " .. remaining .. " tiles left") or ""
                             WindUI:Notify({
                                 Title = "✅ Placed!",
-                                Content = "Placed " .. tostring(item.type) .. " on tile",
+                                Content = "Placed " .. tostring(item.type) .. queueInfo,
                                 Duration = 2
                             })
                         end
-                        -- Clear manual selection after placement
-                        selectedTileForManualPlacement = nil
                         task.wait(0.5)
                         refreshGrid()
                         updateSidebar()
@@ -1076,8 +1192,8 @@ updateSidebar = function()
                 else
                     if WindUI then
                         WindUI:Notify({
-                            Title = "⚠️ No Empty Tiles",
-                            Content = "All tiles are occupied or locked",
+                            Title = "⚠️ No Tiles",
+                            Content = #selectedTilesForPlacement > 0 and "Queue exhausted" or "No tiles available",
                             Duration = 3
                         })
                     end
@@ -1130,7 +1246,7 @@ showTileInfo = function(tileData)
     closeBtn.Position = UDim2.new(1, -35, 0, 5)
     closeBtn.BackgroundColor3 = colors.close
     closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "✕"
+    closeBtn.Text = "X"
     closeBtn.TextSize = 16
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.TextColor3 = colors.text
@@ -1246,7 +1362,7 @@ showTileInfo = function(tileData)
 end
 
 -- Place an item on a tile (EXACT COPY FROM AUTOPLACESYSTEM)
-local function placeItemOnTile(itemUID, tileData)
+local function placeItemOnTile(itemUID, tileData, itemData)
     if not CharacterRE or not itemUID or not tileData then 
         return false 
     end
@@ -1254,6 +1370,34 @@ local function placeItemOnTile(itemUID, tileData)
     local tile = tileData.tile
     if not tile or not tile.part then 
         return false 
+    end
+    
+    -- Validate tile type matches item type (ocean items need water tiles, regular items need regular tiles)
+    if itemData then
+        local isItemOcean = itemData.isOcean or false
+        local isTileWater = tile.isWater or false
+        
+        if isItemOcean and not isTileWater then
+            -- Ocean item can't be placed on regular tile
+            if WindUI then
+                WindUI:Notify({
+                    Title = "❌ Wrong Tile Type",
+                    Content = "Ocean " .. (itemData.category or "item") .. " needs water tile!",
+                    Duration = 3
+                })
+            end
+            return false
+        elseif not isItemOcean and isTileWater then
+            -- Regular item can't be placed on water tile
+            if WindUI then
+                WindUI:Notify({
+                    Title = "❌ Wrong Tile Type",
+                    Content = "Regular " .. (itemData.category or "item") .. " needs regular tile!",
+                    Duration = 3
+                })
+            end
+            return false
+        end
     end
     
     local farmPart = tile.part
@@ -1344,7 +1488,7 @@ local function highlightNextTile()
     return nil
 end
 
--- Auto place logic - find empty tiles and place items
+-- Auto place logic - use selected tiles queue or find tiles left-to-right, top-to-bottom
 local function performAutoPlace()
     if not autoPlaceEnabled then return end
     
@@ -1366,28 +1510,67 @@ local function performAutoPlace()
         return 
     end
     
-    -- Find empty tiles
-    local emptyTiles = {}
-    for _, tileData in pairs(tileButtons) do
-        if tileData and tileData.button and not tileData.button:GetAttribute("Occupied") and not tileData.button:GetAttribute("Locked") then
-            table.insert(emptyTiles, tileData)
+    -- Determine target tile
+    local targetTile = nil
+    
+    if #selectedTilesForPlacement > 0 and currentPlacementIndex <= #selectedTilesForPlacement then
+        -- Use next tile from user-selected queue
+        targetTile = selectedTilesForPlacement[currentPlacementIndex].data
+        print("[Grid UI] Using selected tile " .. currentPlacementIndex .. " of " .. #selectedTilesForPlacement)
+        currentPlacementIndex = currentPlacementIndex + 1
+    else
+        -- No selection or queue exhausted - find next tile left-to-right, top-to-bottom
+        if #selectedTilesForPlacement > 0 then
+            print("[Grid UI] Selection queue exhausted, auto place stopped")
+            autoPlaceEnabled = false
+            if WindUI then
+                WindUI:Notify({
+                    Title = "✅ Queue Complete",
+                    Content = "All selected tiles filled!",
+                    Duration = 3
+                })
+            end
+            return
         end
+        
+        -- Find all empty tiles and sort them
+        local emptyTiles = {}
+        for _, tileData in pairs(tileButtons) do
+            if tileData and tileData.button then
+                local btn = tileData.button
+                if not btn:GetAttribute("Occupied") and not btn:GetAttribute("Locked") then
+                    table.insert(emptyTiles, {
+                        data = tileData,
+                        gridX = btn:GetAttribute("GridX") or 0,
+                        gridZ = btn:GetAttribute("GridZ") or 0
+                    })
+                end
+            end
+        end
+        
+        if #emptyTiles == 0 then 
+            print("[Grid UI] No empty tiles available")
+            return 
+        end
+        
+        -- Sort left-to-right, top-to-bottom
+        table.sort(emptyTiles, function(a, b)
+            if a.gridZ == b.gridZ then
+                return a.gridX < b.gridX
+            end
+            return a.gridZ < b.gridZ
+        end)
+        
+        targetTile = emptyTiles[1].data
     end
     
-    if #emptyTiles == 0 then 
-        print("[Grid UI] No empty tiles available")
-        return 
-    end
-    
-    -- Highlight next tile
-    local targetTile = highlightNextTile()
     if not targetTile then return end
     
-    -- Place first item on first empty tile
+    -- Place first item on target tile
     local item = items[1]
     print("[Grid UI] Attempting to place " .. item.type .. " (" .. item.uid .. ")")
     
-    if placeItemOnTile(item.uid, targetTile) then
+    if placeItemOnTile(item.uid, targetTile, item) then
         print("[Grid UI] Placement successful")
         task.wait(1)
         refreshGrid()
