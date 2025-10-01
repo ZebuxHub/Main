@@ -28,13 +28,14 @@ local KNOWN_FRUITS = {
     "Grape",
     "Pear",
     "Peach",
-    -- Newly supported fruits (ensure inventory recognition + equip)
     "Pineapple",
     "GoldMango",
     "BloodstoneCycad",
     "ColossalPinecone",
     "VoltGinkgo",
     "DeepseaPearlFruit",
+    "Durian",
+    "DragonFruit"
 }
 
 local CANONICAL_FRUIT_BY_NORMALIZED = {}
