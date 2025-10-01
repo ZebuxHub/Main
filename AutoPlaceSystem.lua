@@ -724,27 +724,64 @@ local function placePet(farmPart, eggUID)
     return isTileOccupied(farmPart)
 end
 
--- ============ Smart Egg Selection & Placement ============
+-- Enhanced getNextBestEgg to use hologram tiles if available
 local function getNextBestEgg()
     local allEggs, oceanEggs, regularEggs = updateAvailableEggs()
     local regularAvailable, waterAvailable = updateTileCache()
     
-    -- Smart prioritization: choose egg type based on available space
+    -- If hologram tiles are selected, use those first
+    if #selectedTiles > 0 then
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        
+        if islandNumber then
+            local allParts = getFarmParts(islandNumber, false) -- Regular tiles
+            local waterParts = getFarmParts(islandNumber, true) -- Water tiles
+            
+            -- Combine all parts
+            for _, part in ipairs(waterParts) do
+                table.insert(allParts, part)
+            end
+            
+            -- Find first available hologram tile
+            for _, tilePos in ipairs(selectedTiles) do
+                for _, part in ipairs(allParts) do
+                    local distance = (part.Position - tilePos).Magnitude
+                    if distance < 4 and not isTileOccupied(part) then
+                        -- Determine if this is a water tile
+                        local isWaterTile = false
+                        for _, waterPart in ipairs(waterParts) do
+                            if waterPart == part then
+                                isWaterTile = true
+                                break
+                            end
+                        end
+                        
+                        -- Return appropriate egg type for this tile
+                        if isWaterTile and #oceanEggs > 0 then
+                            return oceanEggs[1], part, "hologram_water"
+                        elseif not isWaterTile and #regularEggs > 0 then
+                            return regularEggs[1], part, "hologram_regular"
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Fallback to normal logic if no hologram tiles available
     if regularAvailable > 0 and #regularEggs > 0 then
-        -- Regular farms available, use regular eggs
         return regularEggs[1], getRandomFromList(tileCache.regularTiles), "regular"
     elseif waterAvailable > 0 and #oceanEggs > 0 then
-        -- Water farms available, use ocean eggs
         return oceanEggs[1], getRandomFromList(tileCache.waterTiles), "water"
     elseif regularAvailable > 0 and #oceanEggs > 0 then
-        -- Do NOT fallback ocean eggs to regular tiles
         return nil, nil, "skip_ocean"
     end
     
     return nil, nil, "no_space"
 end
 
--- Select next pet candidate in sequential order and appropriate tile
+-- Enhanced getNextBestPet to use hologram tiles if available
 local function getNextBestPet()
     local candidates = updateAvailablePets()
     local regularAvailable, waterAvailable = updateTileCache()
@@ -753,7 +790,49 @@ local function getNextBestPet()
         return nil, nil, "no_pets"
     end
     
-    -- Early exit if no tiles available at all
+    -- If hologram tiles are selected, use those first
+    if #selectedTiles > 0 then
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        
+        if islandNumber then
+            local allParts = getFarmParts(islandNumber, false) -- Regular tiles
+            local waterParts = getFarmParts(islandNumber, true) -- Water tiles
+            
+            -- Combine all parts
+            for _, part in ipairs(waterParts) do
+                table.insert(allParts, part)
+            end
+            
+            -- Find first available hologram tile and matching pet
+            for _, tilePos in ipairs(selectedTiles) do
+                for _, part in ipairs(allParts) do
+                    local distance = (part.Position - tilePos).Magnitude
+                    if distance < 4 and not isTileOccupied(part) then
+                        -- Determine if this is a water tile
+                        local isWaterTile = false
+                        for _, waterPart in ipairs(waterParts) do
+                            if waterPart == part then
+                                isWaterTile = true
+                                break
+                            end
+                        end
+                        
+                        -- Find appropriate pet for this tile
+                        for _, candidate in ipairs(candidates) do
+                            if not isPetAlreadyPlacedByUid(candidate.uid) then
+                                if (isWaterTile and candidate.isOcean) or (not isWaterTile and not candidate.isOcean) then
+                                    return candidate, part, "hologram_match"
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Fallback to normal sequential logic
     if regularAvailable == 0 and waterAvailable == 0 then
         return nil, nil, "no_tiles_available"
     end
@@ -764,23 +843,18 @@ local function getNextBestPet()
     local selectedCandidate = nil
     local searchAttempts = 0
     
-    -- Search through candidates starting from current index
     while searchAttempts < #candidates do
         local currentCandidate = candidates[petCache.currentIndex]
         
         if currentCandidate then
-            -- Double-check pet is still not placed
             if not isPetAlreadyPlacedByUid(currentCandidate.uid) then
-                -- Pick only if there are tiles AVAILABLE for this type
                 if currentCandidate.isOcean then
-                    -- Ocean pets: water tiles only
                     if waterAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
                         break
                     end
                 else
-                    -- Regular pets: regular tiles only
                     if regularAvailable > 0 then
                         selectedCandidate = currentCandidate
                         found = true
@@ -790,84 +864,34 @@ local function getNextBestPet()
             end
         end
         
-        -- Move to next pet in sequence
         petCache.currentIndex = petCache.currentIndex + 1
         if petCache.currentIndex > #candidates then
-            petCache.currentIndex = 1 -- Wrap around
+            petCache.currentIndex = 1
         end
         
         searchAttempts = searchAttempts + 1
         
-        -- Prevent infinite loop
         if petCache.currentIndex == startIndex and searchAttempts > 1 then
             break
         end
     end
     
     if not found then
-        -- New behavior: if top candidates are ocean but no water, try best regular instead (and vice versa)
-        if waterAvailable == 0 and regularAvailable > 0 then
-            -- Scan for highest-priority regular candidate
-            local best = nil
-            for _, cand in ipairs(candidates) do
-                if not cand.isOcean and not isPetAlreadyPlacedByUid(cand.uid) then
-                    best = cand
-                    break
-                end
-            end
-            if best then
-                return best, getRandomFromList(tileCache.regularTiles), "regular"
-            end
-        elseif regularAvailable == 0 and waterAvailable > 0 then
-            -- Scan for highest-priority ocean candidate
-            local best = nil
-            for _, cand in ipairs(candidates) do
-                if cand.isOcean and not isPetAlreadyPlacedByUid(cand.uid) then
-                    best = cand
-                    break
-                end
-            end
-            if best then
-                return best, getRandomFromList(tileCache.waterTiles), "water"
-            end
-        end
-
-        -- If still none, return detailed reason
-        local hasOcean = false
-        local hasRegular = false
-        for _, cand in ipairs(candidates) do
-            if not isPetAlreadyPlacedByUid(cand.uid) then
-                if cand.isOcean then hasOcean = true end
-                if not cand.isOcean then hasRegular = true end
-            end
-        end
-        if hasOcean and not hasRegular and waterAvailable == 0 then
-            return nil, nil, "ocean_pets_no_tiles"
-        elseif hasRegular and not hasOcean and regularAvailable == 0 then
-            return nil, nil, "regular_pets_no_regular_tiles"
-        elseif (hasOcean and waterAvailable == 0) and (hasRegular and regularAvailable == 0) then
-            return nil, nil, "no_tiles_available"
-        else
-            return nil, nil, "no_suitable_pets"
-        end
+        return nil, nil, "no_suitable_pets"
     end
     
-    -- Advance index for next placement
     petCache.currentIndex = petCache.currentIndex + 1
     if petCache.currentIndex > #candidates then
-        petCache.currentIndex = 1 -- Wrap around
+        petCache.currentIndex = 1
     end
     
-    -- Return selected pet and appropriate tile with smart tile selection
     if selectedCandidate.isOcean then
-        -- Ocean pets: place on water only; if water full, DO NOT place
         if waterAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.waterTiles), "water"
         else
             return nil, nil, "ocean_pet_no_tiles"
         end
     else
-        -- Regular pets: place on regular only; if full, DO NOT place
         if regularAvailable > 0 then
             return selectedCandidate, getRandomFromList(tileCache.regularTiles), "regular"
         else
@@ -1391,6 +1415,16 @@ local function setHologramEnabled(enabled)
         UserInputService.InputChanged:Connect(onInputChanged)
         UserInputService.InputEnded:Connect(onInputEnded)
         
+        -- Start periodic hologram updates
+        task.spawn(function()
+            while hologramEnabled do
+                if #selectedTiles > 0 then
+                    updateHolograms()
+                end
+                task.wait(2) -- Update every 2 seconds
+            end
+        end)
+        
         WindUI:Notify({
             Title = "🎯 Hologram Mode",
             Content = "Click tiles to select placement locations!",
@@ -1411,20 +1445,45 @@ end
 
 -- ============ Auto Equip Best Pet System ============
 
--- Get the best pet (highest value) from inventory
+-- Get the best pet (highest value) from ALL pets in inventory
 local function getBestPet()
-    local candidates = updateAvailablePets()
+    local container = getPetContainer()
+    local allPets = {}
     
-    if #candidates == 0 then
+    if not container then
+        return nil, "Pet container not found"
+    end
+    
+    -- Get ALL pets regardless of filters
+    for _, child in ipairs(container:GetChildren()) do
+        local petType = child:GetAttribute("T")
+        local mutation = child:GetAttribute("M")
+        if mutation == "Dino" then
+            mutation = "Jurassic"
+        end
+        
+        if petType then
+            local rate = computeEffectiveRate(petType, mutation, child)
+            table.insert(allPets, {
+                uid = child.Name,
+                type = petType,
+                mutation = mutation,
+                effectiveRate = rate,
+                isOcean = isOceanPet(petType)
+            })
+        end
+    end
+    
+    if #allPets == 0 then
         return nil, "No pets available"
     end
     
     -- Sort by effectiveRate (highest first)
-    table.sort(candidates, function(a, b)
+    table.sort(allPets, function(a, b)
         return a.effectiveRate > b.effectiveRate
     end)
     
-    return candidates[1], "Best pet found"
+    return allPets[1], "Best pet found"
 end
 
 -- Equip pet to Deploy S2 slot
@@ -1517,24 +1576,60 @@ local function placeOnSelectedTiles()
             end
             
             if targetPart then
-                -- Try to place something on this tile
-                local success, message = attemptPlacement()
-                if success then
-                    placedCount = placedCount + 1
-                    task.wait(0.3) -- Small delay between placements
+                -- Get best egg or pet to place
+                local eggInfo, tileInfo, reason = getNextBestEgg()
+                local petInfo, petTileInfo, petReason = getNextBestPet()
+                
+                local itemToPlace = nil
+                local isEgg = false
+                
+                -- Choose what to place based on availability and settings
+                if placeEggsEnabled and eggInfo then
+                    itemToPlace = eggInfo
+                    isEgg = true
+                elseif placePetsEnabled and petInfo then
+                    itemToPlace = petInfo
+                    isEgg = false
                 end
+                
+                if itemToPlace then
+                    -- Focus the item first
+                    if focusEgg(itemToPlace.uid) then
+                        task.wait(0.1)
+                        -- Place the item on the target tile
+                        local success = placePet(targetPart, itemToPlace.uid)
+                        if success then
+                            placedCount = placedCount + 1
+                            -- Update caches
+                            if isEgg then
+                                eggCache.lastUpdate = 0
+                            else
+                                petCache.lastUpdate = 0
+                            end
+                            tileCache.lastUpdate = 0
+                            
+                            -- Update holograms to show new occupied state
+                            updateHolograms()
+                        end
+                    end
+                end
+                
+                task.wait(0.3) -- Small delay between placements
             end
         end
         
         -- Update progress
-        if i % 5 == 0 or i == totalTiles then
+        if i % 3 == 0 or i == totalTiles then
             WindUI:Notify({
                 Title = "🎯 Hologram Place",
                 Content = "Progress: " .. placedCount .. "/" .. i .. " tiles",
-                Duration = 2
+                Duration = 1
             })
         end
     end
+    
+    -- Final update of holograms
+    updateHolograms()
     
     WindUI:Notify({
         Title = "🎯 Hologram Place",
@@ -2001,6 +2096,28 @@ function AutoPlaceSystem.CreateUI()
                 Content = "✅ Cleared all selected tiles",
                 Duration = 2
             })
+        end
+    })
+
+    -- Refresh holograms button
+    Tabs.PlaceTab:Button({
+        Title = "Refresh Holograms",
+        Desc = "Update hologram colors to show current tile status",
+        Callback = function()
+            if #selectedTiles > 0 then
+                updateHolograms()
+                WindUI:Notify({
+                    Title = "🎯 Hologram",
+                    Content = "✅ Refreshed hologram colors",
+                    Duration = 2
+                })
+            else
+                WindUI:Notify({
+                    Title = "🎯 Hologram",
+                    Content = "❌ No tiles selected to refresh",
+                    Duration = 2
+                })
+            end
         end
     })
 
