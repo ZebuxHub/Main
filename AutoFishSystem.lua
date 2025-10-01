@@ -260,10 +260,10 @@ function AutoFishSystem.Init(dependencies)
 	
 	speedSlider = FishTab:Slider({
 		Title = "Cast Speed",
-		Desc = "Delay between casts (0 = Maximum speed)",
+		Desc = "Delay between casts (0 = Maximum speed, 10 = Slowest)",
 		Value = {
 			Min = 0,
-			Max = 2,
+			Max = 10,
 			Default = FishingConfig.CastDelay,
 		},
 		Callback = function(val)
