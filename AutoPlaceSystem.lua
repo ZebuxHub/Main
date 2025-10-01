@@ -1566,6 +1566,43 @@ function AutoPlaceSystem.Init(dependencies)
     return AutoPlaceSystem
 end
 
+-- Function to sync loaded values to internal variables
+function AutoPlaceSystem.SyncLoadedValues()
+    -- Sync Min Speed value
+    if AutoPlaceSystem.MinSpeedSlider and AutoPlaceSystem.MinSpeedSlider.Value then
+        local sliderValue = AutoPlaceSystem.MinSpeedSlider.Value
+        if type(sliderValue) == "table" and sliderValue.Default then
+            minPetRateFilter = tonumber(sliderValue.Default) or 0
+        else
+            minPetRateFilter = tonumber(sliderValue) or 0
+        end
+        print("[AutoPlace] Synced Min Speed:", minPetRateFilter)
+    end
+    
+    -- Sync Sort Order value
+    if AutoPlaceSystem.SortOrderDropdown and AutoPlaceSystem.SortOrderDropdown.Value then
+        local sortValue = AutoPlaceSystem.SortOrderDropdown.Value
+        petSortAscending = (sortValue == "Low to High")
+        print("[AutoPlace] Synced Sort Order:", sortValue, "Ascending:", petSortAscending)
+    end
+    
+    -- Sync Sources value
+    if AutoPlaceSystem.PlaceModeDropdown and AutoPlaceSystem.PlaceModeDropdown.Value then
+        local sources = AutoPlaceSystem.PlaceModeDropdown.Value
+        local set = {}
+        if type(sources) == "table" then
+            for _, v in ipairs(sources) do set[v] = true end
+        end
+        placeEggsEnabled = set["Eggs"] == true
+        placePetsEnabled = set["Pets"] == true
+        print("[AutoPlace] Synced Sources - Eggs:", placeEggsEnabled, "Pets:", placePetsEnabled)
+    end
+    
+    -- Force cache invalidation to apply new settings
+    petCache.lastUpdate = 0
+    eggCache.lastUpdate = 0
+end
+
 function AutoPlaceSystem.CreateUI()
     -- Define config references at the start for use throughout the function
     local configForDropdowns = CustomUIConfig or Config
@@ -1652,7 +1689,6 @@ function AutoPlaceSystem.CreateUI()
             Max = 50000,
             Default = 0,
         },
-        Step = 1,
         Callback = function(val)
             minPetRateFilter = tonumber(val) or 0
             petCache.lastUpdate = 0
@@ -1667,12 +1703,12 @@ function AutoPlaceSystem.CreateUI()
     sortOrderDropdownRef = Tabs.PlaceTab:Dropdown({
         Title = "Sort Order",
         Desc = "Sort by value",
-        Values = {"Low → High","High → Low"},
-        Value = "Low → High",
+        Values = {"Low to High","High to Low"},
+        Value = "Low to High",
         Multi = false,
         AllowNone = false,
         Callback = function(v)
-            petSortAscending = (v == "Low → High")
+            petSortAscending = (v == "Low to High")
             petCache.lastUpdate = 0
         end
     })
