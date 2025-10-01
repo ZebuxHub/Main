@@ -774,8 +774,10 @@ refreshGrid = function()
     if not GridContainer then return end
     
     -- Clear existing tiles
-    for _, btn in pairs(tileButtons) do
-        if btn then btn:Destroy() end
+    for _, tileData in pairs(tileButtons) do
+        if tileData and tileData.button then 
+            tileData.button:Destroy() 
+        end
     end
     tileButtons = {}
     
@@ -951,8 +953,47 @@ updateSidebar = function()
         card:SetAttribute("ItemUID", item.uid)
         card:SetAttribute("ItemCategory", item.category)
         
-        -- Make draggable (simplified - full implementation would use InputBegan/Changed/Ended)
+        -- Add click to place functionality
         card.Active = true
+        local clickBtn = Instance.new("TextButton")
+        clickBtn.Size = UDim2.new(1, 0, 1, 0)
+        clickBtn.BackgroundTransparency = 1
+        clickBtn.Text = ""
+        clickBtn.ZIndex = 10
+        clickBtn.Parent = card
+        
+        clickBtn.MouseButton1Click:Connect(function()
+            -- Manual placement - find first empty tile and place
+            local emptyTiles = {}
+            for _, tileData in pairs(tileButtons) do
+                if tileData.button and not tileData.button:GetAttribute("Occupied") and not tileData.button:GetAttribute("Locked") then
+                    table.insert(emptyTiles, tileData)
+                end
+            end
+            
+            if #emptyTiles > 0 then
+                if placeItemOnTile(item.uid, emptyTiles[1]) then
+                    if WindUI then
+                        WindUI:Notify({
+                            Title = "Placed!",
+                            Content = "Placed " .. item.type .. " on tile",
+                            Duration = 2
+                        })
+                    end
+                    task.wait(0.5)
+                    refreshGrid()
+                    updateSidebar()
+                end
+            else
+                if WindUI then
+                    WindUI:Notify({
+                        Title = "No Empty Tiles",
+                        Content = "All tiles are occupied or locked",
+                        Duration = 3
+                    })
+                end
+            end
+        end)
     end
 end
 
@@ -1117,17 +1158,85 @@ showTileInfo = function(tileData)
     end)
 end
 
+-- Place an item on a tile
+local function placeItemOnTile(itemUID, tileData)
+    if not CharacterRE or not itemUID or not tileData then return false end
+    
+    local tile = tileData.tile
+    if not tile or not tile.part then return false end
+    
+    -- Calculate placement position (on top of tile)
+    local tilePos = tile.part.Position
+    local placePos = Vector3.new(tilePos.X, tilePos.Y + 4, tilePos.Z)
+    
+    -- Fire placement event
+    local success, err = pcall(function()
+        CharacterRE:FireServer("Place", itemUID, placePos)
+    end)
+    
+    if success then
+        task.wait(0.5) -- Wait for placement to register
+        return true
+    else
+        warn("Failed to place item: " .. tostring(err))
+        return false
+    end
+end
+
+-- Auto place logic - find empty tiles and place items
+local function performAutoPlace()
+    if not autoPlaceEnabled then return end
+    
+    -- Get available items
+    local items = {}
+    if placeEggsEnabled then
+        for _, egg in ipairs(getAvailableEggs()) do
+            table.insert(items, egg)
+        end
+    end
+    if placePetsEnabled then
+        for _, pet in ipairs(getAvailablePets()) do
+            table.insert(items, pet)
+        end
+    end
+    
+    if #items == 0 then return end
+    
+    -- Find empty tiles
+    local emptyTiles = {}
+    for _, tileData in pairs(tileButtons) do
+        if tileData.button and not tileData.button:GetAttribute("Occupied") and not tileData.button:GetAttribute("Locked") then
+            table.insert(emptyTiles, tileData)
+        end
+    end
+    
+    if #emptyTiles == 0 then return end
+    
+    -- Place first item on first empty tile
+    local item = items[1]
+    local tile = emptyTiles[1]
+    
+    if placeItemOnTile(item.uid, tile) then
+        task.wait(1)
+        refreshGrid()
+        updateSidebar()
+    end
+end
+
 -- Setup grid monitoring
 local function setupGridMonitoring()
     if gridUpdateConnection then
         gridUpdateConnection:Disconnect()
     end
     
-    -- Monitor workspace changes
+    -- Monitor workspace changes and auto place
     gridUpdateConnection = RunService.Heartbeat:Connect(function()
         if not autoPlaceEnabled then return end
         
-        -- Update grid every few seconds or when changes detected
+        -- Try to place items
+        performAutoPlace()
+        
+        -- Update grid every few seconds
         task.wait(3)
         refreshGrid()
         updateSidebar()
