@@ -384,6 +384,7 @@ local refreshGrid
 local updateSidebar
 local showTileInfo
 local placeItemOnTile
+local highlightNextTile
 
 -- Create UI Components
 local function createWindowControls(parent)
@@ -878,9 +879,9 @@ updateSidebar = function()
     local scroll = inventoryContainer:FindFirstChild("Scroll")
     if not scroll then return end
     
-    -- Clear existing items
+    -- Clear existing items (skip UIListLayout)
     for _, child in ipairs(scroll:GetChildren()) do
-        if child:IsA("Frame") then
+        if child:IsA("Frame") and child.Name:find("Item_") then
             child:Destroy()
         end
     end
@@ -964,31 +965,35 @@ updateSidebar = function()
         clickBtn.Parent = card
         
         clickBtn.MouseButton1Click:Connect(function()
-            -- Manual placement - find first empty tile and place
-            local emptyTiles = {}
-            for _, tileData in pairs(tileButtons) do
-                if tileData.button and not tileData.button:GetAttribute("Occupied") and not tileData.button:GetAttribute("Locked") then
-                    table.insert(emptyTiles, tileData)
-                end
-            end
+            -- Highlight next target tile
+            local targetTile = highlightNextTile()
             
-            if #emptyTiles > 0 then
-                if placeItemOnTile(item.uid, emptyTiles[1]) then
+            if targetTile then
+                -- Place on highlighted tile
+                if placeItemOnTile(item.uid, targetTile) then
                     if WindUI then
                         WindUI:Notify({
-                            Title = "Placed!",
-                            Content = "Placed " .. item.type .. " on tile",
+                            Title = "✅ Placed!",
+                            Content = "Placed " .. item.type .. " on highlighted tile",
                             Duration = 2
                         })
                     end
                     task.wait(0.5)
                     refreshGrid()
                     updateSidebar()
+                else
+                    if WindUI then
+                        WindUI:Notify({
+                            Title = "❌ Failed",
+                            Content = "Could not place " .. item.type,
+                            Duration = 3
+                        })
+                    end
                 end
             else
                 if WindUI then
                     WindUI:Notify({
-                        Title = "No Empty Tiles",
+                        Title = "⚠️ No Empty Tiles",
                         Content = "All tiles are occupied or locked",
                         Duration = 3
                     })
@@ -1184,6 +1189,42 @@ local function placeItemOnTile(itemUID, tileData)
     end
 end
 
+-- Highlight next target tile
+local function highlightNextTile()
+    -- Clear all highlights first
+    for _, tileData in pairs(tileButtons) do
+        if tileData and tileData.button then
+            local btn = tileData.button
+            local isWater = btn:GetAttribute("IsWater")
+            local occupied = btn:GetAttribute("Occupied")
+            local locked = btn:GetAttribute("Locked")
+            
+            -- Reset to normal colors
+            if locked then
+                btn.BackgroundColor3 = colors.locked
+            elseif occupied then
+                btn.BackgroundColor3 = colors.occupied
+            else
+                btn.BackgroundColor3 = isWater and colors.emptyWater or colors.emptyRegular
+            end
+        end
+    end
+    
+    -- Find and highlight first empty tile
+    for _, tileData in pairs(tileButtons) do
+        if tileData and tileData.button then
+            local btn = tileData.button
+            if not btn:GetAttribute("Occupied") and not btn:GetAttribute("Locked") then
+                -- Highlight with bright green
+                btn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+                return tileData
+            end
+        end
+    end
+    
+    return nil
+end
+
 -- Auto place logic - find empty tiles and place items
 local function performAutoPlace()
     if not autoPlaceEnabled then return end
@@ -1201,26 +1242,39 @@ local function performAutoPlace()
         end
     end
     
-    if #items == 0 then return end
+    if #items == 0 then 
+        print("[Grid UI] No items available to place")
+        return 
+    end
     
     -- Find empty tiles
     local emptyTiles = {}
     for _, tileData in pairs(tileButtons) do
-        if tileData.button and not tileData.button:GetAttribute("Occupied") and not tileData.button:GetAttribute("Locked") then
+        if tileData and tileData.button and not tileData.button:GetAttribute("Occupied") and not tileData.button:GetAttribute("Locked") then
             table.insert(emptyTiles, tileData)
         end
     end
     
-    if #emptyTiles == 0 then return end
+    if #emptyTiles == 0 then 
+        print("[Grid UI] No empty tiles available")
+        return 
+    end
+    
+    -- Highlight next tile
+    local targetTile = highlightNextTile()
+    if not targetTile then return end
     
     -- Place first item on first empty tile
     local item = items[1]
-    local tile = emptyTiles[1]
+    print("[Grid UI] Attempting to place " .. item.type .. " (" .. item.uid .. ")")
     
-    if placeItemOnTile(item.uid, tile) then
+    if placeItemOnTile(item.uid, targetTile) then
+        print("[Grid UI] Placement successful")
         task.wait(1)
         refreshGrid()
         updateSidebar()
+    else
+        print("[Grid UI] Placement failed")
     end
 end
 
