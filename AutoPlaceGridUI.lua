@@ -48,6 +48,7 @@ local minPetSpeed = 0
 local petSortAscending = true
 local placementSpeed = 1.0 -- Delay between placements (in seconds, adjustable 0.1-10s)
 local continueAfterQueue = true -- Continue placing after selected tiles are filled
+local placementStyle = "LeftToRight" -- Placement pattern: "LeftToRight", "TopToBottom", "Diagonal", "Spiral", "Checkerboard", "Random"
 
 -- Grid State
 local gridTiles = {} -- {position: {tile: Part, occupied: bool, type: "regular"/"water", data: {}}}
@@ -844,6 +845,40 @@ local function populateSidebar(sidebar)
     continueCorner.CornerRadius = UDim.new(0, 6)
     continueCorner.Parent = continueToggle
     
+    -- Placement Style Dropdown
+    local styleFrame = Instance.new("Frame")
+    styleFrame.Name = "StyleFrame"
+    styleFrame.Size = UDim2.new(1, -20, 0, 60)
+    styleFrame.BackgroundTransparency = 1
+    styleFrame.LayoutOrder = 7.6
+    styleFrame.Parent = sidebar
+    
+    local styleLabel = Instance.new("TextLabel")
+    styleLabel.Size = UDim2.new(1, 0, 0, 20)
+    styleLabel.BackgroundTransparency = 1
+    styleLabel.Text = "Placement Style"
+    styleLabel.TextSize = 12
+    styleLabel.Font = Enum.Font.GothamSemibold
+    styleLabel.TextColor3 = colors.text
+    styleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    styleLabel.Parent = styleFrame
+    
+    local styleDropdown = Instance.new("TextButton")
+    styleDropdown.Name = "StyleDropdown"
+    styleDropdown.Size = UDim2.new(1, 0, 0, 30)
+    styleDropdown.Position = UDim2.new(0, 0, 0, 25)
+    styleDropdown.BackgroundColor3 = colors.hover
+    styleDropdown.BorderSizePixel = 0
+    styleDropdown.Text = "Left to Right ▼"
+    styleDropdown.TextSize = 13
+    styleDropdown.Font = Enum.Font.Gotham
+    styleDropdown.TextColor3 = colors.text
+    styleDropdown.Parent = styleFrame
+    
+    local styleDropdownCorner = Instance.new("UICorner")
+    styleDropdownCorner.CornerRadius = UDim.new(0, 6)
+    styleDropdownCorner.Parent = styleDropdown
+    
     -- Inventory Section
     local inventoryLabel = Instance.new("TextLabel")
     inventoryLabel.Name = "InventoryLabel"
@@ -948,13 +983,13 @@ local function populateSidebar(sidebar)
     speedSliderHandleCorner.CornerRadius = UDim.new(0, 8)
     speedSliderHandleCorner.Parent = speedSliderHandle
     
-    -- UI Scale Slider
+    -- UI Scale Slider (moved after inventory)
     local uiScaleFrame = Instance.new("Frame")
     uiScaleFrame.Name = "UIScaleFrame"
     uiScaleFrame.Size = UDim2.new(1, -20, 0, 65)
     uiScaleFrame.BackgroundColor3 = colors.hover
     uiScaleFrame.BorderSizePixel = 0
-    uiScaleFrame.LayoutOrder = 8
+    uiScaleFrame.LayoutOrder = 10
     uiScaleFrame.Parent = sidebar
     
     local uiScaleFrameCorner = Instance.new("UICorner")
@@ -1026,7 +1061,8 @@ local function populateSidebar(sidebar)
         uiScaleSliderFill = uiScaleSliderFill,
         uiScaleSliderHandle = uiScaleSliderHandle,
         continueToggle = continueToggle,
-        pickUpAllBtn = pickUpAllBtn
+        pickUpAllBtn = pickUpAllBtn,
+        styleDropdown = styleDropdown
     }
 end
 
@@ -1752,10 +1788,65 @@ local function performAutoPlace()
             return 
         end
         
-        -- Sort left-to-right only (ignore Z/top-to-bottom)
-        table.sort(emptyTiles, function(a, b)
-            return a.gridX < b.gridX
-        end)
+        -- Sort based on selected placement style
+        if placementStyle == "LeftToRight" then
+            -- Left to Right (X only)
+            table.sort(emptyTiles, function(a, b)
+                return a.gridX < b.gridX
+            end)
+        elseif placementStyle == "TopToBottom" then
+            -- Top to Bottom (Z only)
+            table.sort(emptyTiles, function(a, b)
+                return a.gridZ < b.gridZ
+            end)
+        elseif placementStyle == "RowByRow" then
+            -- Row by Row (Z first, then X)
+            table.sort(emptyTiles, function(a, b)
+                if a.gridZ == b.gridZ then
+                    return a.gridX < b.gridX
+                end
+                return a.gridZ < b.gridZ
+            end)
+        elseif placementStyle == "Diagonal" then
+            -- Diagonal (X + Z)
+            table.sort(emptyTiles, function(a, b)
+                local sumA = a.gridX + a.gridZ
+                local sumB = b.gridX + b.gridZ
+                if sumA == sumB then
+                    return a.gridX < b.gridX
+                end
+                return sumA < sumB
+            end)
+        elseif placementStyle == "Spiral" then
+            -- Spiral from center outward
+            local function getDistance(tile)
+                local centerX = 10
+                local centerZ = 10
+                return math.sqrt((tile.gridX - centerX)^2 + (tile.gridZ - centerZ)^2)
+            end
+            table.sort(emptyTiles, function(a, b)
+                return getDistance(a) < getDistance(b)
+            end)
+        elseif placementStyle == "Checkerboard" then
+            -- Checkerboard (alternating pattern)
+            table.sort(emptyTiles, function(a, b)
+                local parityA = (a.gridX + a.gridZ) % 2
+                local parityB = (b.gridX + b.gridZ) % 2
+                if parityA == parityB then
+                    if a.gridZ == b.gridZ then
+                        return a.gridX < b.gridX
+                    end
+                    return a.gridZ < b.gridZ
+                end
+                return parityA < parityB
+            end)
+        elseif placementStyle == "Random" then
+            -- Random shuffle
+            for i = #emptyTiles, 2, -1 do
+                local j = math.random(1, i)
+                emptyTiles[i], emptyTiles[j] = emptyTiles[j], emptyTiles[i]
+            end
+        end
         
         targetTile = emptyTiles[1].data
     end
@@ -2050,6 +2141,42 @@ function AutoPlaceGridUI.CreateUI()
                 Title = "Mode Changed",
                 Content = continueAfterQueue and "Will continue filling all tiles after queue" or "Will stop after selected tiles",
                 Duration = 3
+            })
+        end
+    end)
+    
+    -- Placement Style Dropdown
+    local styleOptions = {
+        {id = "LeftToRight", name = "Left to Right", emoji = "→"},
+        {id = "TopToBottom", name = "Top to Bottom", emoji = "↓"},
+        {id = "RowByRow", name = "Row by Row", emoji = "📏"},
+        {id = "Diagonal", name = "Diagonal", emoji = "⬂"},
+        {id = "Spiral", name = "Spiral", emoji = "🌀"},
+        {id = "Checkerboard", name = "Checkerboard", emoji = "♟️"},
+        {id = "Random", name = "Random", emoji = "🎲"}
+    }
+    
+    sidebarControls.styleDropdown.MouseButton1Click:Connect(function()
+        -- Cycle through styles
+        local currentIndex = 1
+        for i, style in ipairs(styleOptions) do
+            if style.id == placementStyle then
+                currentIndex = i
+                break
+            end
+        end
+        
+        local nextIndex = (currentIndex % #styleOptions) + 1
+        local nextStyle = styleOptions[nextIndex]
+        
+        placementStyle = nextStyle.id
+        sidebarControls.styleDropdown.Text = nextStyle.emoji .. " " .. nextStyle.name .. " ▼"
+        
+        if WindUI then
+            WindUI:Notify({
+                Title = "Placement Style",
+                Content = nextStyle.emoji .. " " .. nextStyle.name,
+                Duration = 2
             })
         end
     end)
