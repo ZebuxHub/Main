@@ -383,6 +383,7 @@ end
 local refreshGrid
 local updateSidebar
 local showTileInfo
+local placeItemOnTile
 
 -- Create UI Components
 local function createWindowControls(parent)
