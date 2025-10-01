@@ -38,6 +38,9 @@ local currentFilter = "Low → High"
 local currentSpeed = 0
 local detectedTiles = {} -- All detected farm tiles
 local gridSize = {rows = 0, cols = 0} -- Dynamic grid size
+local uiScaleValue = 1.0 -- Default 100% scale
+local baseUIWidth = 1200
+local baseUIHeight = 700
 
 -- Auto Place State
 local autoPlaceRunning = false
@@ -1417,11 +1420,17 @@ local function createMacAutoPlaceUI()
     autoPlaceUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     autoPlaceUI.Parent = LocalPlayer.PlayerGui
     
+    -- Add UIScale for responsive scaling
+    local uiScale = Instance.new("UIScale")
+    uiScale.Name = "UIScale"
+    uiScale.Scale = uiScaleValue
+    uiScale.Parent = autoPlaceUI
+    
     -- Main Frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 1200, 0, 700)
-    mainFrame.Position = UDim2.new(0.5, -600, 0.5, -350)
+    mainFrame.Size = UDim2.new(0, baseUIWidth, 0, baseUIHeight)
+    mainFrame.Position = UDim2.new(0.5, -baseUIWidth/2, 0.5, -baseUIHeight/2)
     mainFrame.BackgroundColor3 = Color3.fromRGB(240, 240, 245) -- Light Mac background
     mainFrame.BorderSizePixel = 0
     mainFrame.Parent = autoPlaceUI
@@ -1749,6 +1758,133 @@ local function createMacAutoPlaceUI()
             minPetRateFilter = value
         else
             speedInput.Text = tostring(currentSpeed)
+        end
+    end)
+    
+    -- UI Scale Label
+    local scaleLabel = Instance.new("TextLabel")
+    scaleLabel.Name = "ScaleLabel"
+    scaleLabel.Size = UDim2.new(1, 0, 0, 30)
+    scaleLabel.Position = UDim2.new(0, 0, 0, 400)
+    scaleLabel.BackgroundTransparency = 1
+    scaleLabel.Font = Enum.Font.Gotham
+    scaleLabel.Text = "UI Scale"
+    scaleLabel.TextColor3 = Color3.fromRGB(100, 100, 105)
+    scaleLabel.TextSize = 14
+    scaleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    scaleLabel.Parent = rightPanel
+    
+    -- UI Scale Display
+    local scaleValueLabel = Instance.new("TextLabel")
+    scaleValueLabel.Name = "ScaleValueLabel"
+    scaleValueLabel.Size = UDim2.new(1, 0, 0, 30)
+    scaleValueLabel.Position = UDim2.new(0, 0, 0, 430)
+    scaleValueLabel.BackgroundColor3 = Color3.fromRGB(255, 204, 0)
+    scaleValueLabel.BorderSizePixel = 0
+    scaleValueLabel.Font = Enum.Font.GothamBold
+    scaleValueLabel.Text = math.floor(uiScaleValue * 100) .. "%"
+    scaleValueLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    scaleValueLabel.TextSize = 16
+    scaleValueLabel.Parent = rightPanel
+    addCorner(scaleValueLabel, 8)
+    
+    -- Scale Slider Background
+    local scaleSliderBg = Instance.new("Frame")
+    scaleSliderBg.Name = "ScaleSliderBg"
+    scaleSliderBg.Size = UDim2.new(1, 0, 0, 6)
+    scaleSliderBg.Position = UDim2.new(0, 0, 0, 475)
+    scaleSliderBg.BackgroundColor3 = Color3.fromRGB(200, 200, 205)
+    scaleSliderBg.BorderSizePixel = 0
+    scaleSliderBg.Parent = rightPanel
+    
+    local scaleSliderBgCorner = Instance.new("UICorner")
+    scaleSliderBgCorner.CornerRadius = UDim.new(0, 3)
+    scaleSliderBgCorner.Parent = scaleSliderBg
+    
+    -- Scale Slider Fill
+    local scaleSliderFill = Instance.new("Frame")
+    scaleSliderFill.Name = "ScaleSliderFill"
+    local fillPercentage = (uiScaleValue - 0.5) / 0.7 -- Map 0.5-1.2 to 0-1
+    scaleSliderFill.Size = UDim2.new(fillPercentage, 0, 1, 0)
+    scaleSliderFill.Position = UDim2.new(0, 0, 0, 0)
+    scaleSliderFill.BackgroundColor3 = Color3.fromRGB(255, 204, 0)
+    scaleSliderFill.BorderSizePixel = 0
+    scaleSliderFill.Parent = scaleSliderBg
+    
+    local scaleSliderFillCorner = Instance.new("UICorner")
+    scaleSliderFillCorner.CornerRadius = UDim.new(0, 3)
+    scaleSliderFillCorner.Parent = scaleSliderFill
+    
+    -- Scale Slider Handle
+    local scaleSliderHandle = Instance.new("Frame")
+    scaleSliderHandle.Name = "ScaleSliderHandle"
+    scaleSliderHandle.Size = UDim2.new(0, 16, 0, 16)
+    scaleSliderHandle.Position = UDim2.new(fillPercentage, -8, 0, 470)
+    scaleSliderHandle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    scaleSliderHandle.BorderSizePixel = 0
+    scaleSliderHandle.ZIndex = 2
+    scaleSliderHandle.Parent = rightPanel
+    
+    local scaleSliderHandleCorner = Instance.new("UICorner")
+    scaleSliderHandleCorner.CornerRadius = UDim.new(0, 8)
+    scaleSliderHandleCorner.Parent = scaleSliderHandle
+    
+    -- Scale Slider Interaction
+    local isDraggingScaleSlider = false
+    
+    scaleSliderHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingScaleSlider = true
+        end
+    end)
+    
+    scaleSliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingScaleSlider = true
+            -- Update slider position immediately
+            local relativeX = (input.Position.X - scaleSliderBg.AbsolutePosition.X) / scaleSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            local newScale = 0.5 + (relativeX * 0.7) -- Map 0-1 to 0.5-1.2
+            
+            -- Update UI scale
+            uiScaleValue = newScale
+            if uiScale then
+                TweenService:Create(uiScale, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Scale = newScale
+                }):Play()
+            end
+            
+            -- Update UI elements
+            scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 470)
+            scaleValueLabel.Text = math.floor(newScale * 100) .. "%"
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingScaleSlider then
+            local relativeX = (input.Position.X - scaleSliderBg.AbsolutePosition.X) / scaleSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            local newScale = 0.5 + (relativeX * 0.7) -- Map 0-1 to 0.5-1.2
+            
+            -- Update UI scale
+            uiScaleValue = newScale
+            if uiScale then
+                TweenService:Create(uiScale, TweenInfo.new(0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Scale = newScale
+                }):Play()
+            end
+            
+            -- Update UI elements
+            scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 470)
+            scaleValueLabel.Text = math.floor(newScale * 100) .. "%"
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingScaleSlider = false
         end
     end)
     
