@@ -22,6 +22,7 @@ local castThread = nil
 local active = false
 local baitDropdown = nil
 local autoFishToggle = nil
+local speedSlider = nil
 local lastCastPos = nil
 local lastCastPosAt = 0
 local controlsRef = nil
@@ -29,9 +30,10 @@ local safeCF = nil
 
 -- Config
 local FishingConfig = {
-    SelectedBait = "FishingBait1",
+    SelectedBait = nil,  -- No default bait - must be selected by user
     AutoFishEnabled = false,
 	VerticalOffset = 10,
+	CastDelay = 0.1,  -- Delay between casts in seconds (adjustable via slider)
 }
 
 -- Focus helper
@@ -140,26 +142,43 @@ local function getCachedCastPos()
 end
 
 local function castOnce()
-	if not ensureFishRobFocus() then return end
+	-- Check if bait is selected
+	if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
+		warn("[AutoFish] No bait selected! Please select a bait first.")
+		return false
+	end
+	
+	if not ensureFishRobFocus() then return false end
+	
 	-- Start fishing state after focus
     pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Start")
     end)
 	local pos = getCachedCastPos()
-	local bait = FishingConfig.SelectedBait or "FishingBait1"
+	local bait = FishingConfig.SelectedBait
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
 	end)
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
 	end)
+	return true
 end
 
 local function loopCast()
 	while active do
-		castOnce()
-		-- no delays for maximum throughput
-		RunService.Heartbeat:Wait()
+		local success = castOnce()
+		if not success then
+			-- If cast failed (e.g., no bait), stop auto fishing
+			task.wait(1)
+		else
+			-- Wait based on configured speed
+			if FishingConfig.CastDelay > 0 then
+				task.wait(FishingConfig.CastDelay)
+			else
+				RunService.Heartbeat:Wait()
+			end
+		end
     end
 end
 
@@ -196,13 +215,24 @@ function AutoFishSystem.SetBait(baitId)
     end
 end
 
+function AutoFishSystem.SetSpeed(delaySeconds)
+	if delaySeconds and type(delaySeconds) == "number" and delaySeconds >= 0 then
+		FishingConfig.CastDelay = delaySeconds
+		print("[AutoFish] Cast delay set to:", delaySeconds, "seconds")
+    end
+end
+
 -- Get current state (for config saving)
 function AutoFishSystem.GetEnabled()
 	return FishingConfig.AutoFishEnabled or false
 end
 
 function AutoFishSystem.GetBait()
-	return FishingConfig.SelectedBait or "FishingBait1"
+	return FishingConfig.SelectedBait  -- No fallback - returns nil if not set
+end
+
+function AutoFishSystem.GetSpeed()
+	return FishingConfig.CastDelay or 0.1
 end
 
 -- UI integration
@@ -219,7 +249,7 @@ function AutoFishSystem.Init(dependencies)
 	
     baitDropdown = FishTab:Dropdown({
 		Title = "Select Bait",
-		Desc = "Choose bait; loop is continuous.",
+		Desc = "⚠️ Required! Choose bait before starting.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
         Default = FishingConfig.SelectedBait,
 		Callback = function(sel)
@@ -227,6 +257,20 @@ function AutoFishSystem.Init(dependencies)
 			AutoFishSystem.SetBait(sel)
         end
     })
+	
+	speedSlider = FishTab:Slider({
+		Title = "Cast Speed",
+		Desc = "Delay between casts (0 = Maximum speed)",
+		Value = {
+			Min = 0,
+			Max = 2,
+			Default = FishingConfig.CastDelay,
+		},
+		Callback = function(val)
+			print("AutoFish speed callback triggered:", val)
+			AutoFishSystem.SetSpeed(val)
+		end
+	})
 	
     autoFishToggle = FishTab:Toggle({
 		Title = "Auto Fish",
@@ -244,13 +288,14 @@ end
 function AutoFishSystem.GetUIElements()
 	return {
 		toggle = autoFishToggle,
-		dropdown = baitDropdown
+		dropdown = baitDropdown,
+		slider = speedSlider
 	}
 end
 
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
-	if not (autoFishToggle and baitDropdown) then 
+	if not (autoFishToggle and baitDropdown and speedSlider) then 
 		print("AutoFish UI elements not ready for config")
 		return {} 
 	end
@@ -259,7 +304,8 @@ function AutoFishSystem.GetConfigElements()
 	return {
 		-- Register the actual UI elements directly
 		autoFishToggleElement = autoFishToggle,
-		autoFishBaitElement = baitDropdown
+		autoFishBaitElement = baitDropdown,
+		autoFishSpeedElement = speedSlider
 	}
 end
 
