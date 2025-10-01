@@ -22,6 +22,22 @@ local placePetsEnabled = false
 local minPetRateFilter = 0
 local petSortAscending = true
 
+-- ============ Hologram Placement System ============
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local hologramEnabled = false
+local hologramMode = "single" -- "single" or "area"
+local selectedTiles = {} -- Array of selected tile positions
+local hologramParts = {} -- Visual hologram parts
+local hologramConnection = nil
+local dragStartPosition = nil
+local isDragging = false
+
+-- ============ Auto Equip Best Pet System ============
+local autoEquipEnabled = false
+
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
 local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
@@ -34,9 +50,6 @@ local placementStats = {
     lastPlacement = nil,
     lastReason = nil
 }
-
--- ============ Pet Blacklist System ============
-local petBlacklist = {} -- UIDs that failed speed verification and should never be placed again
 
 -- ============ Config Cache (ResPet / ResMutate) ============
 local resPetById = nil
@@ -423,43 +436,34 @@ local function updateAvailablePets()
             if mutation == "Dino" then
                 mutation = "Jurassic"
             end
-            if petType and not isPetAlreadyPlacedByUid(child.Name) and not petBlacklist[child.Name] then
-                if (not isBigPet(petType)) then
-                    local rate = computeEffectiveRate(petType, mutation, child)
-                    if rate >= (minPetRateFilter or 0) then
-                        table.insert(out, {
-                            uid = child.Name,
-                            type = petType,
-                            mutation = mutation,
-                            effectiveRate = rate,
-                            isOcean = isOceanPet(petType)
-                        })
-                    end
+            -- Simplified: Only check if pet exists, has type, not placed, and not big pet
+            if petType and not isPetAlreadyPlacedByUid(child.Name) and not isBigPet(petType) then
+                local rate = computeEffectiveRate(petType, mutation, child)
+                if rate >= (minPetRateFilter or 0) then
+                    table.insert(out, {
+                        uid = child.Name,
+                        type = petType,
+                        mutation = mutation,
+                        effectiveRate = rate,
+                        isOcean = isOceanPet(petType)
+                    })
                 end
             end
         end
     end
     
-    -- Sort pets for sequential placement
+    -- Sort pets for sequential placement (optimized)
     table.sort(out, function(a, b)
         if petSortAscending then
-            -- Sort by speed first, then by UID for consistent ordering
-            if a.effectiveRate == b.effectiveRate then
-                return a.uid < b.uid -- Stable sort by UID
-            end
             return a.effectiveRate < b.effectiveRate
         else
-            if a.effectiveRate == b.effectiveRate then
-                return a.uid < b.uid -- Stable sort by UID
-            end
             return a.effectiveRate > b.effectiveRate
         end
     end)
     
     petCache.lastUpdate = currentTime
     petCache.candidates = out
-    -- Reset index when pet list changes
-    petCache.currentIndex = 1
+    petCache.currentIndex = 1 -- Reset index
     return out
 end
 
@@ -560,42 +564,35 @@ local function getFarmParts(islandNumber, isWater)
     return unlockedFarmParts
 end
 
--- Optimized tile availability checking with 8x8 grid alignment
+-- ============ Optimized Tile Management ============
+-- Simplified and faster tile occupation checking
 local function isTileOccupied(farmPart)
     local center = farmPart.Position
-    -- Use grid-snapped position for consistent detection
-    local surfacePosition = Vector3.new(
-        math.floor(center.X / 8) * 8 + 4, -- Snap to 8x8 grid center (X)
-        center.Y + 12, -- Standard height for pets/eggs
-        math.floor(center.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
-    )
+    -- Optimized position calculation - no grid snapping needed for checking
+    local checkPosition = Vector3.new(center.X, center.Y + 8, center.Z)
     
-    -- Check PlayerBuiltBlocks
-    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
-    if playerBuiltBlocks then
-        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
-            if model:IsA("Model") then
-                local modelPos = model:GetPivot().Position
-                local xzDistance = math.sqrt((modelPos.X - surfacePosition.X)^2 + (modelPos.Z - surfacePosition.Z)^2)
-                local yDistance = math.abs(modelPos.Y - surfacePosition.Y)
-                
-                if xzDistance < 4.0 and yDistance < 12.0 then
+    -- Quick check for pets in workspace
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if workspacePets then
+        for _, pet in ipairs(workspacePets:GetChildren()) do
+            if pet:IsA("Model") then
+                local petPos = pet:GetPivot().Position
+                local distance = (petPos - checkPosition).Magnitude
+                if distance < 6.0 then -- Slightly larger radius for safety
                     return true
                 end
             end
         end
     end
     
-    -- Check workspace.Pets
-    local workspacePets = workspace:FindFirstChild("Pets")
-    if workspacePets then
-        for _, pet in ipairs(workspacePets:GetChildren()) do
-            if pet:IsA("Model") then
-                local petPos = pet:GetPivot().Position
-                local xzDistance = math.sqrt((petPos.X - surfacePosition.X)^2 + (petPos.Z - surfacePosition.Z)^2)
-                local yDistance = math.abs(petPos.Y - surfacePosition.Y)
-                
-                if xzDistance < 4.0 and yDistance < 12.0 then
+    -- Quick check for built blocks
+    local playerBuiltBlocks = workspace:FindFirstChild("PlayerBuiltBlocks")
+    if playerBuiltBlocks then
+        for _, model in ipairs(playerBuiltBlocks:GetChildren()) do
+            if model:IsA("Model") then
+                local modelPos = model:GetPivot().Position
+                local distance = (modelPos - checkPosition).Magnitude
+                if distance < 6.0 then
                     return true
                 end
             end
@@ -605,7 +602,7 @@ local function isTileOccupied(farmPart)
     return false
 end
 
--- Enhanced tile cache system
+-- Optimized tile cache system with reduced processing
 local function updateTileCache()
     local currentTime = time()
     if currentTime - tileCache.lastUpdate < CACHE_DURATION then
@@ -621,42 +618,29 @@ local function updateTileCache()
         return 0, 0
     end
     
-    -- Get farm parts
+    -- Get farm parts (cached for performance)
     local regularParts = getFarmParts(islandNumber, false)
     local waterParts = getFarmParts(islandNumber, true)
     
-    -- Count available tiles
+    -- Fast counting with minimal processing
     local regularAvailable = 0
     local waterAvailable = 0
     local availableRegularTiles = {}
     local availableWaterTiles = {}
     
-    -- Process tiles in smaller batches with yields to prevent lag
-    local batchSize = 15
-    local processed = 0
-    
+    -- Process regular tiles
     for _, part in ipairs(regularParts) do
         if not isTileOccupied(part) then
             regularAvailable = regularAvailable + 1
             table.insert(availableRegularTiles, part)
         end
-        processed = processed + 1
-        if processed >= batchSize then
-            processed = 0
-            task.wait() -- Yield to prevent lag
-        end
     end
     
-    processed = 0
+    -- Process water tiles
     for _, part in ipairs(waterParts) do
         if not isTileOccupied(part) then
             waterAvailable = waterAvailable + 1
             table.insert(availableWaterTiles, part)
-        end
-        processed = processed + 1
-        if processed >= batchSize then
-            processed = 0
-            task.wait() -- Yield to prevent lag
         end
     end
     
@@ -695,168 +679,49 @@ local function focusEgg(eggUID)
     return success
 end
 
+-- Optimized and reliable placement function
 local function placePet(farmPart, eggUID)
     if not farmPart or not eggUID then return false end
     
-    -- Enhanced surface position calculation for 8x8 tiles
-    -- Ensure perfect centering on both water and regular farm tiles
-    local tileCenter = farmPart.Position
+    -- Simple and fast surface position calculation
     local surfacePosition = Vector3.new(
-        math.floor(tileCenter.X / 8) * 8 + 4, -- Snap to 8x8 grid center (X)
-        tileCenter.Y + (farmPart.Size.Y / 2), -- Surface height
-        math.floor(tileCenter.Z / 8) * 8 + 4  -- Snap to 8x8 grid center (Z)
+        farmPart.Position.X,
+        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Surface height
+        farmPart.Position.Z
     )
     
-    -- Equip egg to Deploy S2 using the exact UID we've collected
+    -- Equip egg to Deploy S2
     local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
     if deploy then
         deploy:SetAttribute("S2", eggUID)
     end
     
-    -- Hold egg (key 2)
+    -- Hold egg (key 2) - simplified timing
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
-    waitJitter(0.1)
+    task.wait(0.05)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
-    task.wait(0.1)
+    task.wait(0.05)
     
-    -- Place pet (using proper vector.create format)
-    local vector = { create = function(x, y, z) return Vector3.new(x, y, z) end }
+    -- Place pet with simplified vector format
     local args = {
         "Place",
         {
-            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
+            DST = Vector3.new(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
             ID = eggUID
         }
     }
 
-    if not CharacterRE then
-        -- CharacterRE remote missing; cannot place egg
-        return false
-    end
+    if not CharacterRE then return false end
 
-    local success, err = pcall(function()
+    local success = pcall(function()
         CharacterRE:FireServer(unpack(args))
     end)
     
-    if not success then
-        -- Failed to place egg
-        return false
-    end
+    if not success then return false end
     
-    -- Verify placement robustly:
-    -- Success if egg UID disappears from Data.Egg OR tile becomes occupied.
-    local dataRoot = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Data")
-    local eggFolder = dataRoot and dataRoot:FindFirstChild("Egg")
-    local deadline = os.clock() + 2.0
-    repeat
-        -- Egg removed from inventory → placed
-        if eggFolder and not eggFolder:FindFirstChild(eggUID) then
-            return true
-        end
-        -- Tile occupied
-        if isTileOccupied(farmPart) then
-            return true
-        end
-        task.wait(0.05)
-    until os.clock() > deadline
-    return false
-end
-
--- ============ Pet Speed Verification & Auto-Delete ============
-local function getActualPetSpeedFromWorkspace(petUID)
-    -- Look for the placed pet in workspace.Pets
-    local workspacePets = workspace:FindFirstChild("Pets")
-    if not workspacePets then return nil end
-    
-    for _, pet in ipairs(workspacePets:GetChildren()) do
-        if pet:IsA("Model") and pet.Name == petUID then
-            -- Look for speed display in the pet model
-            local function findSpeedInModel(model)
-                for _, child in ipairs(model:GetDescendants()) do
-                    if child:IsA("TextLabel") or child:IsA("SurfaceGui") then
-                        local text = child.Text or ""
-                        -- Look for speed patterns like "Speed: 123" or "🏃 123"
-                        local speedMatch = text:match("Speed:%s*(%d+)") or 
-                                         text:match("🏃%s*(%d+)") or
-                                         text:match("(%d+)%s*/s") or
-                                         text:match("Production:%s*(%d+)")
-                        if speedMatch then
-                            return tonumber(speedMatch)
-                        end
-                    end
-                end
-                return nil
-            end
-            
-            local actualSpeed = findSpeedInModel(pet)
-            if actualSpeed then
-                return actualSpeed
-            end
-        end
-    end
-    return nil
-end
-
-local function verifyAndDeletePetIfNeeded(petUID, expectedSpeed)
-    -- Wait a moment for pet to fully appear in workspace
-    task.wait(1.0)
-    
-    local actualSpeed = getActualPetSpeedFromWorkspace(petUID)
-    if not actualSpeed then
-        -- Could not find speed text, assume it's correct for now
-        return true
-    end
-    
-    -- Check if actual speed meets minimum requirement
-    if actualSpeed < (minPetRateFilter or 0) then
-        -- Speed too low! Auto-pick up this pet
-        WindUI:Notify({
-            Title = "🔄 Auto Pick Up",
-            Content = "Pet speed " .. actualSpeed .. " < " .. (minPetRateFilter or 0) .. ". Picking up pet " .. petUID,
-            Duration = 3
-        })
-        
-        -- Add to blacklist first
-        petBlacklist[petUID] = true
-        
-        -- Try to delete the pet using the same method as auto-pick up system
-        local success = pcall(function()
-            if CharacterRE then
-                CharacterRE:FireServer("DeletePet", petUID)
-            end
-        end)
-        
-        if success then
-            -- Clear caches to update lists
-            petCache.lastUpdate = 0
-            tileCache.lastUpdate = 0
-            
-            WindUI:Notify({
-                Title = "🔄 Auto Pick Up", 
-                Content = "✅ Picked up pet " .. petUID .. " (speed too low)", 
-                Duration = 2
-            })
-            return false -- Pet was picked up
-        else
-            WindUI:Notify({
-                Title = "🔄 Auto Pick Up", 
-                Content = "❌ Failed to pick up pet " .. petUID, 
-                Duration = 2
-            })
-        end
-    end
-    
-    return true -- Pet is valid and kept
-end
-
-local function clearPetBlacklist()
-    petBlacklist = {}
-    petCache.lastUpdate = 0 -- Force refresh
-    WindUI:Notify({
-        Title = "🔄 Blacklist Cleared",
-        Content = "All blacklisted pets can now be placed again",
-        Duration = 2
-    })
+    -- Quick verification - just check if tile becomes occupied
+    task.wait(0.2)
+    return isTileOccupied(farmPart)
 end
 
 -- ============ Smart Egg Selection & Placement ============
@@ -1258,9 +1123,10 @@ local function setupEventMonitoring()
     end
 end
 
+-- Optimized main auto place loop
 local function runAutoPlace()
     local consecutiveFailures = 0
-    local maxFailures = 3
+    local maxFailures = 5
     
     -- Setup event monitoring
     setupEventMonitoring()
@@ -1276,58 +1142,37 @@ local function runAutoPlace()
                 placementStats.lastPlacement = os.time()
                 consecutiveFailures = 0
                 
-                -- Longer wait after success to reduce lag
-                waitJitter(2.0)
+                -- Shorter wait for faster placement
+                task.wait(1.0)
             else
                 consecutiveFailures = consecutiveFailures + 1
                 
-                -- Determine if we should enter dormant mode
+                -- Simplified dormant mode logic
                 local shouldGoDormant = false
                 local dormantReason = ""
                 
-                if message:find("no_tiles_available") or message:find("No tiles available") then
+                if message:find("No tiles available") or message:find("no_tiles_available") then
                     shouldGoDormant = true
                     dormantReason = "No tiles available"
-                elseif message:find("ocean_pets_no_tiles") or message:find("Ocean pets need") then
+                elseif message:find("No pets") or message:find("no_pets") then
                     shouldGoDormant = true
-                    dormantReason = "Ocean pets need water/regular tiles"
-                elseif message:find("regular_pets_no_regular_tiles") or message:find("Regular pets need") then
-                    shouldGoDormant = true
-                    dormantReason = "Regular pets need regular tiles"
-                elseif message:find("mixed_pets_insufficient_tiles") or message:find("Not enough tiles") then
-                    shouldGoDormant = true
-                    dormantReason = "Insufficient tiles for pet mix"
-                elseif message:find("ocean_pet_no_tiles") or message:find("Ocean pet: no") then
-                    shouldGoDormant = true
-                    dormantReason = "No tiles for ocean pets"
-                elseif message:find("regular_pet_no_regular_tiles") or message:find("Regular pet: no") then
-                    shouldGoDormant = true
-                    dormantReason = "No regular tiles for regular pets"
-                elseif message:find("no_pets") or message:find("No pets pass filters") then
-                    shouldGoDormant = true
-                    dormantReason = "No pets pass filters"
+                    dormantReason = "No pets available"
                 elseif consecutiveFailures >= maxFailures then
                     shouldGoDormant = true
-                    dormantReason = "Too many consecutive failures"
+                    dormantReason = "Too many failures"
                     consecutiveFailures = 0
                 end
                 
                 if shouldGoDormant then
                     enterDormantMode(dormantReason)
                 else
-                    -- Normal retry delays for temporary issues
-                    if message:find("already placed") then
-                        waitJitter(0.3)
-                    elseif message:find("disabled") then
-                        waitJitter(5)
-                    else
-                        waitJitter(2)
-                    end
+                    -- Shorter retry delay
+                    task.wait(1.0)
                 end
             end
         else
-            -- Dormant mode - just wait and check periodically
-            waitJitter(5)
+            -- Dormant mode - check less frequently
+            task.wait(3.0)
         end
     end
     
@@ -1347,6 +1192,358 @@ local autoPickUpEnabled = false
 local autoPickUpTileFilter = "Both"
 local autoPickUpThread = nil
 local pickUpSpeedThreshold = 100
+
+-- ============ Hologram Placement System Functions ============
+
+-- Create a hologram part for tile visualization
+local function createHologramPart(position, tileType)
+    local hologram = Instance.new("Part")
+    hologram.Name = "PlacementHologram"
+    hologram.Size = Vector3.new(8, 0.5, 8) -- 8x8 tile size, thin height
+    hologram.Position = Vector3.new(position.X, position.Y + 4.5, position.Z) -- Slightly above tile
+    hologram.Anchored = true
+    hologram.CanCollide = false
+    hologram.Material = Enum.Material.ForceField
+    hologram.Transparency = 0.5
+    
+    -- Color based on tile type
+    if tileType == "water" then
+        hologram.Color = Color3.fromRGB(0, 162, 255) -- Blue for water
+    elseif tileType == "occupied" then
+        hologram.Color = Color3.fromRGB(255, 0, 0) -- Red for occupied
+    else
+        hologram.Color = Color3.fromRGB(0, 255, 0) -- Green for available
+    end
+    
+    -- Add glowing effect
+    local pointLight = Instance.new("PointLight")
+    pointLight.Color = hologram.Color
+    pointLight.Brightness = 2
+    pointLight.Range = 10
+    pointLight.Parent = hologram
+    
+    -- Add pulsing animation
+    local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+    local tween = TweenService:Create(hologram, tweenInfo, {Transparency = 0.2})
+    tween:Play()
+    
+    hologram.Parent = workspace
+    return hologram
+end
+
+-- Clear all hologram parts
+local function clearHolograms()
+    for _, hologram in ipairs(hologramParts) do
+        if hologram and hologram.Parent then
+            hologram:Destroy()
+        end
+    end
+    hologramParts = {}
+end
+
+-- Get tile type at position (water, regular, occupied)
+local function getTileTypeAtPosition(position)
+    local islandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(islandName)
+    
+    if not islandNumber then return "invalid" end
+    
+    -- Check if position matches a water tile
+    local waterParts = getFarmParts(islandNumber, true)
+    for _, waterPart in ipairs(waterParts) do
+        local distance = (waterPart.Position - position).Magnitude
+        if distance < 4 then -- Within tile bounds
+            return isTileOccupied(waterPart) and "occupied" or "water"
+        end
+    end
+    
+    -- Check if position matches a regular tile
+    local regularParts = getFarmParts(islandNumber, false)
+    for _, regularPart in ipairs(regularParts) do
+        local distance = (regularPart.Position - position).Magnitude
+        if distance < 4 then -- Within tile bounds
+            return isTileOccupied(regularPart) and "occupied" or "regular"
+        end
+    end
+    
+    return "invalid"
+end
+
+-- Snap position to 8x8 grid
+local function snapToGrid(position)
+    return Vector3.new(
+        math.floor(position.X / 8) * 8 + 4,
+        position.Y,
+        math.floor(position.Z / 8) * 8 + 4
+    )
+end
+
+-- Update holograms based on selected tiles
+local function updateHolograms()
+    clearHolograms()
+    
+    for _, tilePos in ipairs(selectedTiles) do
+        local tileType = getTileTypeAtPosition(tilePos)
+        local hologram = createHologramPart(tilePos, tileType)
+        table.insert(hologramParts, hologram)
+    end
+end
+
+-- Handle mouse/touch input for tile selection
+local function onInputBegan(input)
+    if not hologramEnabled then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local camera = workspace.CurrentCamera
+        local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
+        
+        -- Raycast to find tiles
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstances = {workspace.Pets, workspace.PlayerBuiltBlocks}
+        
+        local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
+        
+        if raycastResult and raycastResult.Instance then
+            local hitPart = raycastResult.Instance
+            local hitPosition = raycastResult.Position
+            
+            -- Check if we hit a farm tile
+            if hitPart.Name:match("Farm_split") or hitPart.Name == "WaterFarm_split_0_0_0" then
+                local snappedPos = snapToGrid(hitPosition)
+                
+                if hologramMode == "single" then
+                    -- Single tile selection
+                    selectedTiles = {snappedPos}
+                    updateHolograms()
+                elseif hologramMode == "area" then
+                    -- Area selection - start drag
+                    isDragging = true
+                    dragStartPosition = snappedPos
+                    selectedTiles = {snappedPos}
+                    updateHolograms()
+                end
+            end
+        end
+    end
+end
+
+local function onInputChanged(input)
+    if not hologramEnabled or not isDragging then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        local camera = workspace.CurrentCamera
+        local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
+        
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstances = {workspace.Pets, workspace.PlayerBuiltBlocks}
+        
+        local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
+        
+        if raycastResult and raycastResult.Instance then
+            local hitPart = raycastResult.Instance
+            local hitPosition = raycastResult.Position
+            
+            if hitPart.Name:match("Farm_split") or hitPart.Name == "WaterFarm_split_0_0_0" then
+                local snappedPos = snapToGrid(hitPosition)
+                
+                -- Create area selection from drag start to current position
+                if dragStartPosition then
+                    selectedTiles = {}
+                    
+                    local minX = math.min(dragStartPosition.X, snappedPos.X)
+                    local maxX = math.max(dragStartPosition.X, snappedPos.X)
+                    local minZ = math.min(dragStartPosition.Z, snappedPos.Z)
+                    local maxZ = math.max(dragStartPosition.Z, snappedPos.Z)
+                    
+                    -- Add all tiles in the rectangular area
+                    for x = minX, maxX, 8 do
+                        for z = minZ, maxZ, 8 do
+                            local tilePos = Vector3.new(x, dragStartPosition.Y, z)
+                            table.insert(selectedTiles, tilePos)
+                        end
+                    end
+                    
+                    updateHolograms()
+                end
+            end
+        end
+    end
+end
+
+local function onInputEnded(input)
+    if not hologramEnabled then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isDragging = false
+        dragStartPosition = nil
+    end
+end
+
+-- Enable/disable hologram system
+local function setHologramEnabled(enabled)
+    hologramEnabled = enabled
+    
+    if enabled then
+        -- Connect input handlers
+        UserInputService.InputBegan:Connect(onInputBegan)
+        UserInputService.InputChanged:Connect(onInputChanged)
+        UserInputService.InputEnded:Connect(onInputEnded)
+        
+        WindUI:Notify({
+            Title = "🎯 Hologram Mode",
+            Content = "Click tiles to select placement locations!",
+            Duration = 3
+        })
+    else
+        -- Clear holograms and disconnect handlers
+        clearHolograms()
+        selectedTiles = {}
+        
+        WindUI:Notify({
+            Title = "🎯 Hologram Mode",
+            Content = "Hologram placement disabled",
+            Duration = 2
+        })
+    end
+end
+
+-- ============ Auto Equip Best Pet System ============
+
+-- Get the best pet (highest value) from inventory
+local function getBestPet()
+    local candidates = updateAvailablePets()
+    
+    if #candidates == 0 then
+        return nil, "No pets available"
+    end
+    
+    -- Sort by effectiveRate (highest first)
+    table.sort(candidates, function(a, b)
+        return a.effectiveRate > b.effectiveRate
+    end)
+    
+    return candidates[1], "Best pet found"
+end
+
+-- Equip pet to Deploy S2 slot
+local function equipPet(petUID)
+    if not petUID then return false end
+    
+    local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+    if deploy then
+        deploy:SetAttribute("S2", petUID)
+        return true
+    end
+    
+    return false
+end
+
+-- Auto equip best pet function
+local function autoEquipBestPet()
+    local bestPet, message = getBestPet()
+    
+    if not bestPet then
+        WindUI:Notify({
+            Title = "🔧 Auto Equip",
+            Content = "❌ " .. message,
+            Duration = 3
+        })
+        return false
+    end
+    
+    local success = equipPet(bestPet.uid)
+    
+    if success then
+        WindUI:Notify({
+            Title = "🔧 Auto Equip",
+            Content = "✅ Equipped " .. (bestPet.mutation and (bestPet.mutation .. " ") or "") .. bestPet.type .. " (Speed: " .. bestPet.effectiveRate .. ")",
+            Duration = 4
+        })
+        return true
+    else
+        WindUI:Notify({
+            Title = "🔧 Auto Equip",
+            Content = "❌ Failed to equip pet",
+            Duration = 3
+        })
+        return false
+    end
+end
+
+-- Enhanced placement function using selected tiles
+local function placeOnSelectedTiles()
+    if #selectedTiles == 0 then
+        WindUI:Notify({
+            Title = "🎯 Hologram Place",
+            Content = "❌ No tiles selected! Enable hologram mode and select tiles first.",
+            Duration = 4
+        })
+        return false
+    end
+    
+    local placedCount = 0
+    local totalTiles = #selectedTiles
+    
+    WindUI:Notify({
+        Title = "🎯 Hologram Place",
+        Content = "🚀 Placing on " .. totalTiles .. " selected tiles...",
+        Duration = 3
+    })
+    
+    for i, tilePos in ipairs(selectedTiles) do
+        -- Find the actual farm part at this position
+        local islandName = getAssignedIslandName()
+        local islandNumber = getIslandNumberFromName(islandName)
+        
+        if islandNumber then
+            local allParts = getFarmParts(islandNumber, false) -- Regular tiles
+            local waterParts = getFarmParts(islandNumber, true) -- Water tiles
+            
+            -- Combine all parts
+            for _, part in ipairs(waterParts) do
+                table.insert(allParts, part)
+            end
+            
+            -- Find matching farm part
+            local targetPart = nil
+            for _, part in ipairs(allParts) do
+                local distance = (part.Position - tilePos).Magnitude
+                if distance < 4 and not isTileOccupied(part) then
+                    targetPart = part
+                    break
+                end
+            end
+            
+            if targetPart then
+                -- Try to place something on this tile
+                local success, message = attemptPlacement()
+                if success then
+                    placedCount = placedCount + 1
+                    task.wait(0.3) -- Small delay between placements
+                end
+            end
+        end
+        
+        -- Update progress
+        if i % 5 == 0 or i == totalTiles then
+            WindUI:Notify({
+                Title = "🎯 Hologram Place",
+                Content = "Progress: " .. placedCount .. "/" .. i .. " tiles",
+                Duration = 2
+            })
+        end
+    end
+    
+    WindUI:Notify({
+        Title = "🎯 Hologram Place",
+        Content = "✅ Completed! Placed on " .. placedCount .. "/" .. totalTiles .. " tiles",
+        Duration = 4
+    })
+    
+    return placedCount > 0
+end
 
 local function getLockedTilesForCurrentIsland()
     local lockedTiles = {}
@@ -1748,6 +1945,134 @@ function AutoPlaceSystem.CreateUI()
             configForSettings:Register("autoPlaceSources", placeModeDropdownRef)
         end)
     end
+
+    -- ============ NEW: Hologram Placement System UI ============
+    Tabs.PlaceTab:Section({
+        Title = "🎯 Hologram Placement",
+        Icon = "target"
+    })
+
+    -- Hologram mode dropdown
+    local hologramModeDropdown = Tabs.PlaceTab:Dropdown({
+        Title = "Selection Mode",
+        Desc = "Choose how to select tiles",
+        Values = {"Single Tile", "Area Drag"},
+        Value = "Single Tile",
+        Multi = false,
+        AllowNone = false,
+        Callback = function(value)
+            if value == "Single Tile" then
+                hologramMode = "single"
+            elseif value == "Area Drag" then
+                hologramMode = "area"
+            end
+        end
+    })
+    if configForSettings then
+        pcall(function()
+            configForSettings:Register("hologramMode", hologramModeDropdown)
+        end)
+    end
+
+    -- Hologram toggle
+    local hologramToggle = Tabs.PlaceTab:Toggle({
+        Title = "Enable Hologram Mode",
+        Desc = "Click/drag tiles to select placement locations",
+        Value = false,
+        Callback = function(state)
+            setHologramEnabled(state)
+        end
+    })
+    if configForSettings then
+        pcall(function()
+            configForSettings:Register("hologramEnabled", hologramToggle)
+        end)
+    end
+
+    -- Clear selected tiles button
+    Tabs.PlaceTab:Button({
+        Title = "Clear Selected Tiles",
+        Desc = "Remove all selected hologram tiles",
+        Callback = function()
+            selectedTiles = {}
+            clearHolograms()
+            WindUI:Notify({
+                Title = "🎯 Hologram",
+                Content = "✅ Cleared all selected tiles",
+                Duration = 2
+            })
+        end
+    })
+
+    -- Place on selected tiles button
+    Tabs.PlaceTab:Button({
+        Title = "Place on Selected Tiles",
+        Desc = "Place pets/eggs on all selected hologram tiles",
+        Callback = function()
+            placeOnSelectedTiles()
+        end
+    })
+
+    -- ============ NEW: Auto Equip Best Pet System UI ============
+    Tabs.PlaceTab:Section({
+        Title = "🔧 Auto Equip",
+        Icon = "wrench"
+    })
+
+    -- Auto equip best pet button
+    Tabs.PlaceTab:Button({
+        Title = "Equip Best Pet",
+        Desc = "Automatically equip your highest value pet",
+        Callback = function()
+            autoEquipBestPet()
+        end
+    })
+
+    -- Show current equipped pet info
+    local equippedPetLabel = Tabs.PlaceTab:Paragraph({
+        Title = "Currently Equipped",
+        Desc = "No pet equipped"
+    })
+
+    -- Function to update equipped pet display
+    local function updateEquippedPetDisplay()
+        local deploy = LocalPlayer.PlayerGui.Data:FindFirstChild("Deploy")
+        if deploy then
+            local equippedUID = deploy:GetAttribute("S2")
+            if equippedUID then
+                -- Try to get pet info
+                local candidates = updateAvailablePets()
+                local equippedPet = nil
+                
+                for _, pet in ipairs(candidates) do
+                    if pet.uid == equippedUID then
+                        equippedPet = pet
+                        break
+                    end
+                end
+                
+                if equippedPet then
+                    local displayText = (equippedPet.mutation and (equippedPet.mutation .. " ") or "") .. 
+                                      equippedPet.type .. " (Speed: " .. equippedPet.effectiveRate .. ")"
+                    equippedPetLabel:SetDesc(displayText)
+                else
+                    equippedPetLabel:SetDesc("Unknown pet: " .. tostring(equippedUID))
+                end
+            else
+                equippedPetLabel:SetDesc("No pet equipped")
+            end
+        else
+            equippedPetLabel:SetDesc("Deploy system not found")
+        end
+    end
+
+    -- Update equipped pet display periodically
+    task.spawn(function()
+        while true do
+            updateEquippedPetDisplay()
+            task.wait(3)
+        end
+    end)
 
     -- Stats update function (defined before usage)
     local function updateStats()
