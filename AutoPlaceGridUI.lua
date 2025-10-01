@@ -46,6 +46,7 @@ local selectedEggTypes = {}
 local selectedMutations = {}
 local minPetSpeed = 0
 local petSortAscending = true
+local placementSpeed = 3.0 -- Delay between placements (in seconds, adjustable 1-10s)
 
 -- Grid State
 local gridTiles = {} -- {position: {tile: Part, occupied: bool, type: "regular"/"water", data: {}}}
@@ -830,13 +831,145 @@ local function populateSidebar(sidebar)
     inventoryLayout.Padding = UDim.new(0, 5)
     inventoryLayout.Parent = inventoryScroll
     
+    -- Placement Speed Slider (before inventory)
+    local placementSpeedFrame = Instance.new("Frame")
+    placementSpeedFrame.Name = "PlacementSpeedFrame"
+    placementSpeedFrame.Size = UDim2.new(1, -20, 0, 65)
+    placementSpeedFrame.BackgroundColor3 = colors.hover
+    placementSpeedFrame.BorderSizePixel = 0
+    placementSpeedFrame.LayoutOrder = 7
+    placementSpeedFrame.Parent = sidebar
+    
+    local speedFrameCorner = Instance.new("UICorner")
+    speedFrameCorner.CornerRadius = UDim.new(0, 6)
+    speedFrameCorner.Parent = placementSpeedFrame
+    
+    local placementSpeedLabel = Instance.new("TextLabel")
+    placementSpeedLabel.Name = "SpeedLabel"
+    placementSpeedLabel.Size = UDim2.new(1, -20, 0, 20)
+    placementSpeedLabel.Position = UDim2.new(0, 10, 0, 5)
+    placementSpeedLabel.BackgroundTransparency = 1
+    placementSpeedLabel.Text = "Place Speed: " .. string.format("%.1fs", placementSpeed)
+    placementSpeedLabel.TextSize = 12
+    placementSpeedLabel.Font = Enum.Font.GothamSemibold
+    placementSpeedLabel.TextColor3 = colors.text
+    placementSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    placementSpeedLabel.Parent = placementSpeedFrame
+    
+    local speedSliderBg = Instance.new("Frame")
+    speedSliderBg.Name = "SpeedSliderBg"
+    speedSliderBg.Size = UDim2.new(1, -20, 0, 6)
+    speedSliderBg.Position = UDim2.new(0, 10, 0, 30)
+    speedSliderBg.BackgroundColor3 = colors.surface
+    speedSliderBg.BorderSizePixel = 0
+    speedSliderBg.Parent = placementSpeedFrame
+    
+    local speedSliderBgCorner = Instance.new("UICorner")
+    speedSliderBgCorner.CornerRadius = UDim.new(0, 3)
+    speedSliderBgCorner.Parent = speedSliderBg
+    
+    local speedSliderFill = Instance.new("Frame")
+    speedSliderFill.Name = "SpeedSliderFill"
+    speedSliderFill.Size = UDim2.new((placementSpeed - 1) / 9, 0, 1, 0) -- Map 1-10 to 0-1
+    speedSliderFill.Position = UDim2.new(0, 0, 0, 0)
+    speedSliderFill.BackgroundColor3 = colors.primary
+    speedSliderFill.BorderSizePixel = 0
+    speedSliderFill.Parent = speedSliderBg
+    
+    local speedSliderFillCorner = Instance.new("UICorner")
+    speedSliderFillCorner.CornerRadius = UDim.new(0, 3)
+    speedSliderFillCorner.Parent = speedSliderFill
+    
+    local speedSliderHandle = Instance.new("Frame")
+    speedSliderHandle.Name = "SpeedSliderHandle"
+    speedSliderHandle.Size = UDim2.new(0, 16, 0, 16)
+    speedSliderHandle.Position = UDim2.new((placementSpeed - 1) / 9, -8, 0, 25) -- Map 1-10 to 0-1
+    speedSliderHandle.BackgroundColor3 = colors.text
+    speedSliderHandle.BorderSizePixel = 0
+    speedSliderHandle.ZIndex = 2
+    speedSliderHandle.Parent = placementSpeedFrame
+    
+    local speedSliderHandleCorner = Instance.new("UICorner")
+    speedSliderHandleCorner.CornerRadius = UDim.new(0, 8)
+    speedSliderHandleCorner.Parent = speedSliderHandle
+    
+    -- UI Scale Slider
+    local uiScaleFrame = Instance.new("Frame")
+    uiScaleFrame.Name = "UIScaleFrame"
+    uiScaleFrame.Size = UDim2.new(1, -20, 0, 65)
+    uiScaleFrame.BackgroundColor3 = colors.hover
+    uiScaleFrame.BorderSizePixel = 0
+    uiScaleFrame.LayoutOrder = 8
+    uiScaleFrame.Parent = sidebar
+    
+    local uiScaleFrameCorner = Instance.new("UICorner")
+    uiScaleFrameCorner.CornerRadius = UDim.new(0, 6)
+    uiScaleFrameCorner.Parent = uiScaleFrame
+    
+    local uiScaleLabel = Instance.new("TextLabel")
+    uiScaleLabel.Name = "UIScaleLabel"
+    uiScaleLabel.Size = UDim2.new(1, -20, 0, 20)
+    uiScaleLabel.Position = UDim2.new(0, 10, 0, 5)
+    uiScaleLabel.BackgroundTransparency = 1
+    uiScaleLabel.Text = "UI Scale: 100%"
+    uiScaleLabel.TextSize = 12
+    uiScaleLabel.Font = Enum.Font.GothamSemibold
+    uiScaleLabel.TextColor3 = colors.text
+    uiScaleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    uiScaleLabel.Parent = uiScaleFrame
+    
+    local uiScaleSliderBg = Instance.new("Frame")
+    uiScaleSliderBg.Name = "UIScaleSliderBg"
+    uiScaleSliderBg.Size = UDim2.new(1, -20, 0, 6)
+    uiScaleSliderBg.Position = UDim2.new(0, 10, 0, 30)
+    uiScaleSliderBg.BackgroundColor3 = colors.surface
+    uiScaleSliderBg.BorderSizePixel = 0
+    uiScaleSliderBg.Parent = uiScaleFrame
+    
+    local uiScaleSliderBgCorner = Instance.new("UICorner")
+    uiScaleSliderBgCorner.CornerRadius = UDim.new(0, 3)
+    uiScaleSliderBgCorner.Parent = uiScaleSliderBg
+    
+    local uiScaleSliderFill = Instance.new("Frame")
+    uiScaleSliderFill.Name = "UIScaleSliderFill"
+    uiScaleSliderFill.Size = UDim2.new(0.7, 0, 1, 0) -- Default 100% = 0.7 position (0.5-1.2 range)
+    uiScaleSliderFill.Position = UDim2.new(0, 0, 0, 0)
+    uiScaleSliderFill.BackgroundColor3 = colors.primary
+    uiScaleSliderFill.BorderSizePixel = 0
+    uiScaleSliderFill.Parent = uiScaleSliderBg
+    
+    local uiScaleSliderFillCorner = Instance.new("UICorner")
+    uiScaleSliderFillCorner.CornerRadius = UDim.new(0, 3)
+    uiScaleSliderFillCorner.Parent = uiScaleSliderFill
+    
+    local uiScaleSliderHandle = Instance.new("Frame")
+    uiScaleSliderHandle.Name = "UIScaleSliderHandle"
+    uiScaleSliderHandle.Size = UDim2.new(0, 16, 0, 16)
+    uiScaleSliderHandle.Position = UDim2.new(0.7, -8, 0, 25) -- Default 100% position
+    uiScaleSliderHandle.BackgroundColor3 = colors.text
+    uiScaleSliderHandle.BorderSizePixel = 0
+    uiScaleSliderHandle.ZIndex = 2
+    uiScaleSliderHandle.Parent = uiScaleFrame
+    
+    local uiScaleSliderHandleCorner = Instance.new("UICorner")
+    uiScaleSliderHandleCorner.CornerRadius = UDim.new(0, 8)
+    uiScaleSliderHandleCorner.Parent = uiScaleSliderHandle
+    
     return {
         autoPlaceToggle = autoPlaceToggle,
         eggsToggle = eggsToggle,
         petsToggle = petsToggle,
         minSpeedInput = minSpeedInput,
         sortToggle = sortToggle,
-        inventoryScroll = inventoryScroll
+        inventoryScroll = inventoryScroll,
+        placementSpeedLabel = placementSpeedLabel,
+        speedSliderBg = speedSliderBg,
+        speedSliderFill = speedSliderFill,
+        speedSliderHandle = speedSliderHandle,
+        uiScaleLabel = uiScaleLabel,
+        uiScaleSliderBg = uiScaleSliderBg,
+        uiScaleSliderFill = uiScaleSliderFill,
+        uiScaleSliderHandle = uiScaleSliderHandle
     }
 end
 
@@ -1584,8 +1717,8 @@ local function runAutoPlaceLoop()
             -- Try to place one item
             performAutoPlace()
             
-            -- Wait between placements to avoid spam
-            task.wait(3)
+            -- Wait between placements using adjustable speed
+            task.wait(placementSpeed)
             
             -- Update UI periodically
             if autoPlaceEnabled then
@@ -1645,6 +1778,11 @@ function AutoPlaceGridUI.CreateUI()
     ScreenGui.Name = "AutoPlaceGridUI"
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ScreenGui.Parent = PlayerGui
+    
+    -- Add UIScale for responsive scaling
+    local uiScale = Instance.new("UIScale")
+    uiScale.Scale = 1.0
+    uiScale.Parent = ScreenGui
     
     MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
@@ -1845,6 +1983,88 @@ function AutoPlaceGridUI.CreateUI()
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             isDragging = false
+        end
+    end)
+    
+    -- Placement Speed Slider Interaction
+    local isDraggingSpeedSlider = false
+    
+    sidebarControls.speedSliderHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingSpeedSlider = true
+        end
+    end)
+    
+    sidebarControls.speedSliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingSpeedSlider = true
+            local relativeX = (input.Position.X - sidebarControls.speedSliderBg.AbsolutePosition.X) / sidebarControls.speedSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            placementSpeed = 1 + (relativeX * 9) -- Map 0-1 to 1-10
+            
+            sidebarControls.speedSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sidebarControls.speedSliderHandle.Position = UDim2.new(relativeX, -8, 0, 25)
+            sidebarControls.placementSpeedLabel.Text = "Place Speed: " .. string.format("%.1fs", placementSpeed)
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingSpeedSlider then
+            local relativeX = (input.Position.X - sidebarControls.speedSliderBg.AbsolutePosition.X) / sidebarControls.speedSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            placementSpeed = 1 + (relativeX * 9) -- Map 0-1 to 1-10
+            
+            sidebarControls.speedSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sidebarControls.speedSliderHandle.Position = UDim2.new(relativeX, -8, 0, 25)
+            sidebarControls.placementSpeedLabel.Text = "Place Speed: " .. string.format("%.1fs", placementSpeed)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingSpeedSlider = false
+        end
+    end)
+    
+    -- UI Scale Slider Interaction
+    local isDraggingUIScaleSlider = false
+    
+    sidebarControls.uiScaleSliderHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingUIScaleSlider = true
+        end
+    end)
+    
+    sidebarControls.uiScaleSliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingUIScaleSlider = true
+            local relativeX = (input.Position.X - sidebarControls.uiScaleSliderBg.AbsolutePosition.X) / sidebarControls.uiScaleSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            local uiScaleValue = 0.5 + (relativeX * 0.7) -- Map 0-1 to 0.5-1.2
+            
+            uiScale.Scale = uiScaleValue
+            sidebarControls.uiScaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sidebarControls.uiScaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 25)
+            sidebarControls.uiScaleLabel.Text = "UI Scale: " .. math.floor(uiScaleValue * 100) .. "%"
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingUIScaleSlider then
+            local relativeX = (input.Position.X - sidebarControls.uiScaleSliderBg.AbsolutePosition.X) / sidebarControls.uiScaleSliderBg.AbsoluteSize.X
+            relativeX = math.max(0, math.min(1, relativeX))
+            local uiScaleValue = 0.5 + (relativeX * 0.7) -- Map 0-1 to 0.5-1.2
+            
+            uiScale.Scale = uiScaleValue
+            sidebarControls.uiScaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sidebarControls.uiScaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 25)
+            sidebarControls.uiScaleLabel.Text = "UI Scale: " .. math.floor(uiScaleValue * 100) .. "%"
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingUIScaleSlider = false
         end
     end)
     
