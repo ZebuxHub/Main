@@ -749,6 +749,45 @@ function AutoSellSystem.GetConfigElements()
 	}
 end
 
+-- Function to sync loaded values to internal variables
+function AutoSellSystem.SyncLoadedValues()
+	-- Sync Speed Threshold value
+	if speedThresholdInput and speedThresholdInput.Value then
+		local thresholdValue = speedThresholdInput.Value
+		if type(thresholdValue) == "string" then
+			local parsedValue = parseSpeedThreshold(thresholdValue)
+			speedThreshold = parsedValue
+			print("[AutoSell] Synced Speed Threshold:", speedThreshold)
+		end
+	end
+	
+	-- Sync Sell Mode value
+	if sellModeDropdown and sellModeDropdown.Value then
+		local modeValue = sellModeDropdown.Value
+		if type(modeValue) == "table" then
+			sellMode = modeValue[1] or "Pets Only"
+		else
+			sellMode = modeValue or "Pets Only"
+		end
+		print("[AutoSell] Synced Sell Mode:", sellMode)
+	end
+	
+	-- Sync Session Limit value
+	if sessionLimitInput and sessionLimitInput.Value then
+		local limitValue = sessionLimitInput.Value
+		local n = tonumber(limitValue)
+		if not n then
+			local cleaned = tostring(limitValue):gsub("[^%d%.]", "")
+			n = tonumber(cleaned) or 0
+		end
+		sessionLimit = math.max(0, math.floor(n))
+		print("[AutoSell] Synced Session Limit:", sessionLimit)
+	end
+	
+	-- Update status display
+	updateStatus()
+end
+
 return AutoSellSystem
 
 
