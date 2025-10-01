@@ -12,6 +12,12 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
+-- Vector library (required for placement)
+local vector = {}
+vector.create = function(x, y, z)
+    return Vector3.new(x, y, z)
+end
+
 -- Local Player
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -529,18 +535,32 @@ local function createGridView(parent)
     gridScroll.BorderSizePixel = 0
     gridScroll.ScrollBarThickness = 6
     gridScroll.ScrollBarImageColor3 = colors.primary
+    gridScroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
     gridScroll.Parent = gridFrame
     
     local gridScrollCorner = Instance.new("UICorner")
     gridScrollCorner.CornerRadius = UDim.new(0, 6)
     gridScrollCorner.Parent = gridScroll
     
+    -- Center container to hold the grid
+    local centerContainer = Instance.new("Frame")
+    centerContainer.Name = "CenterContainer"
+    centerContainer.Size = UDim2.new(1, 0, 1, 0)
+    centerContainer.BackgroundTransparency = 1
+    centerContainer.Parent = gridScroll
+    
+    local centerLayout = Instance.new("UIListLayout")
+    centerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    centerLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    centerLayout.Padding = UDim.new(0, 20)
+    centerLayout.Parent = centerContainer
+    
     -- Grid container (will hold tile buttons)
     local gridContainer = Instance.new("Frame")
     gridContainer.Name = "GridContainer"
     gridContainer.Size = UDim2.new(1, 0, 1, 0)
     gridContainer.BackgroundTransparency = 1
-    gridContainer.Parent = gridScroll
+    gridContainer.Parent = centerContainer
     
     return gridFrame, regularTab, waterTab, gridContainer
 end
@@ -1166,25 +1186,45 @@ end
 
 -- Place an item on a tile
 local function placeItemOnTile(itemUID, tileData)
-    if not CharacterRE or not itemUID or not tileData then return false end
+    if not CharacterRE or not itemUID or not tileData then 
+        print("[Grid UI] Missing parameters: CharacterRE=" .. tostring(CharacterRE~=nil) .. ", itemUID=" .. tostring(itemUID) .. ", tileData=" .. tostring(tileData~=nil))
+        return false 
+    end
     
     local tile = tileData.tile
-    if not tile or not tile.part then return false end
+    if not tile or not tile.part then 
+        print("[Grid UI] Invalid tile data")
+        return false 
+    end
     
-    -- Calculate placement position (on top of tile)
-    local tilePos = tile.part.Position
-    local placePos = Vector3.new(tilePos.X, tilePos.Y + 4, tilePos.Z)
+    -- Calculate placement position (on top of tile) - SAME AS AUTOPLACESYSTEM
+    local farmPart = tile.part
+    local surfacePosition = Vector3.new(
+        farmPart.Position.X,
+        farmPart.Position.Y + (farmPart.Size.Y / 2), -- Top surface
+        farmPart.Position.Z
+    )
+    
+    -- Use correct argument format from AutoPlaceSystem
+    local args = {
+        "Place",
+        {
+            DST = vector.create(surfacePosition.X, surfacePosition.Y, surfacePosition.Z),
+            ID = itemUID
+        }
+    }
     
     -- Fire placement event
     local success, err = pcall(function()
-        CharacterRE:FireServer("Place", itemUID, placePos)
+        CharacterRE:FireServer(unpack(args))
     end)
     
     if success then
+        print("[Grid UI] Placement command sent successfully for " .. itemUID)
         task.wait(0.5) -- Wait for placement to register
         return true
     else
-        warn("Failed to place item: " .. tostring(err))
+        warn("[Grid UI] Failed to place item: " .. tostring(err))
         return false
     end
 end
