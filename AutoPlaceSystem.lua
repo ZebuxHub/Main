@@ -22,21 +22,58 @@ local placePetsEnabled = false
 local minPetRateFilter = 0
 local petSortAscending = true
 
--- ============ Hologram Placement System ============
+-- ============ Mac-Style Auto Place UI System ============
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+-- UI State
+local autoPlaceUI = nil
+local gridFrame = nil
+local selectedGridCells = {} -- {[cellIndex] = {farmPart = part, isSelected = bool, isWater = bool}}
+local gridCellButtons = {} -- {[cellIndex] = button} for updating colors
+local currentPlacementMode = "Pet" -- "Pet" or "Egg"
+local currentMutation = "Snow"
+local currentFilter = "Low → High"
+local currentSpeed = 0
+local detectedTiles = {} -- All detected farm tiles
+local gridSize = {rows = 0, cols = 0} -- Dynamic grid size
+
+-- Auto Place State
+local autoPlaceRunning = false
+local autoPlaceConnection = nil
+
+-- Old hologram system (deprecated, keeping for compatibility)
 local hologramEnabled = false
-local hologramMode = "single" -- "single" or "area"
-local selectedTiles = {} -- Array of selected tile positions
-local hologramParts = {} -- Visual hologram parts
-local hologramConnection = nil
-local dragStartPosition = nil
+local hologramParts = {}
+local selectedTiles = {}
 local isDragging = false
 
--- ============ Auto Equip Best Pet System ============
-local autoEquipEnabled = false
+-- ============ Utility Functions ============
+
+-- Parse numbers with K/M/B/T suffixes
+local function parseNumberWithSuffix(text)
+    if not text or type(text) ~= "string" then return 0 end
+    
+    local cleanText = text:gsub(",", ""):gsub(" ", "")
+    local number, suffix = cleanText:match("([%d%.]+)([KMBT]?)")
+    
+    if not number then return 0 end
+    
+    local value = tonumber(number) or 0
+    
+    if suffix == "K" then
+        value = value * 1000
+    elseif suffix == "M" then
+        value = value * 1000000
+    elseif suffix == "B" then
+        value = value * 1000000000
+    elseif suffix == "T" then
+        value = value * 1000000000000
+    end
+    
+    return value
+end
 
 -- ============ Remote Cache ============
 -- Cache remotes once with timeouts to avoid infinite waits
@@ -1246,6 +1283,574 @@ local autoPickUpTileFilter = "Both"
 local autoPickUpThread = nil
 local pickUpSpeedThreshold = 100
 
+-- ============ Mac-Style Auto Place UI Functions ============
+
+-- Scan and detect all farm tiles in the game
+local function detectAllFarmTiles()
+    local tiles = {}
+    local art = workspace:FindFirstChild("Art")
+    if not art then return tiles end
+    
+    -- Get player's assigned island
+    local assignedIslandName = getAssignedIslandName()
+    local islandNumber = getIslandNumberFromName(assignedIslandName)
+    
+    if not islandNumber then return tiles end
+    
+    -- Get all regular farm parts
+    local regularParts = getFarmParts(islandNumber, false)
+    for _, part in ipairs(regularParts) do
+        table.insert(tiles, {
+            farmPart = part,
+            isWater = false,
+            position = part.Position,
+            isOccupied = false
+        })
+    end
+    
+    -- Get all water farm parts
+    local waterParts = getFarmParts(islandNumber, true)
+    for _, part in ipairs(waterParts) do
+        table.insert(tiles, {
+            farmPart = part,
+            isWater = true,
+            position = part.Position,
+            isOccupied = false
+        })
+    end
+    
+    print("[Auto Place UI] Detected " .. #tiles .. " total tiles (" .. #regularParts .. " regular + " .. #waterParts .. " ocean)")
+    
+    return tiles
+end
+
+-- Calculate optimal grid size based on tile count
+local function calculateGridSize(tileCount)
+    if tileCount == 0 then
+        return {rows = 10, cols = 10} -- Fallback
+    end
+    
+    -- Try to make a roughly square grid
+    local cols = math.ceil(math.sqrt(tileCount))
+    local rows = math.ceil(tileCount / cols)
+    
+    -- Adjust for better aspect ratio (prefer wider than taller)
+    if rows > cols then
+        cols, rows = rows, cols
+    end
+    
+    return {rows = rows, cols = cols}
+end
+
+-- Helper: Create rounded corner
+local function addCorner(parent, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 12)
+    corner.Parent = parent
+    return corner
+end
+
+-- Helper: Create padding
+local function addPadding(parent, all)
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, all)
+    padding.PaddingBottom = UDim.new(0, all)
+    padding.PaddingLeft = UDim.new(0, all)
+    padding.PaddingRight = UDim.new(0, all)
+    padding.Parent = parent
+    return padding
+end
+
+-- Helper: Create dropdown button
+local function createDropdownButton(parent, title, value, position, size, options, callback)
+    local button = Instance.new("TextButton")
+    button.Name = title .. "Button"
+    button.Size = size
+    button.Position = position
+    button.BackgroundColor3 = Color3.fromRGB(255, 204, 0) -- Yellow
+    button.BorderSizePixel = 0
+    button.Font = Enum.Font.GothamBold
+    button.Text = value
+    button.TextColor3 = Color3.fromRGB(0, 0, 0)
+    button.TextSize = 16
+    button.Parent = parent
+    addCorner(button, 8)
+    
+    local currentIndex = 1
+    button.MouseButton1Click:Connect(function()
+        currentIndex = currentIndex + 1
+        if currentIndex > #options then
+            currentIndex = 1
+        end
+        button.Text = options[currentIndex]
+        if callback then
+            callback(options[currentIndex])
+        end
+    end)
+    
+    return button
+end
+
+-- Create the main Mac-style Auto Place UI
+local function createMacAutoPlaceUI()
+    if autoPlaceUI then
+        autoPlaceUI:Destroy()
+    end
+    
+    -- Detect all farm tiles first
+    detectedTiles = detectAllFarmTiles()
+    local tileCount = #detectedTiles
+    
+    -- Calculate optimal grid size
+    gridSize = calculateGridSize(tileCount)
+    
+    print("[Auto Place UI] Creating grid: " .. gridSize.rows .. " rows x " .. gridSize.cols .. " cols for " .. tileCount .. " tiles")
+    
+    -- Reset selected cells
+    selectedGridCells = {}
+    gridCellButtons = {}
+    
+    -- Main ScreenGui
+    autoPlaceUI = Instance.new("ScreenGui")
+    autoPlaceUI.Name = "MacAutoPlaceUI"
+    autoPlaceUI.ResetOnSpawn = false
+    autoPlaceUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    autoPlaceUI.Parent = LocalPlayer.PlayerGui
+    
+    -- Main Frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 1200, 0, 700)
+    mainFrame.Position = UDim2.new(0.5, -600, 0.5, -350)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(240, 240, 245) -- Light Mac background
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = autoPlaceUI
+    addCorner(mainFrame, 16)
+    
+    -- Add shadow effect
+    local shadow = Instance.new("ImageLabel")
+    shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1, 40, 1, 40)
+    shadow.Position = UDim2.new(0, -20, 0, -20)
+    shadow.BackgroundTransparency = 1
+    shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.ImageTransparency = 0.7
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(10, 10, 10, 10)
+    shadow.ZIndex = 0
+    shadow.Parent = mainFrame
+    
+    -- Title Bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 50)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    -- Title Bar Corner (top only)
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 16)
+    titleCorner.Parent = titleBar
+    
+    -- Title Text
+    local titleText = Instance.new("TextLabel")
+    titleText.Name = "TitleText"
+    titleText.Size = UDim2.new(1, -120, 1, 0)
+    titleText.Position = UDim2.new(0, 60, 0, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Font = Enum.Font.GothamBold
+    titleText.Text = "Auto Place"
+    titleText.TextColor3 = Color3.fromRGB(0, 0, 0)
+    titleText.TextSize = 24
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Parent = titleBar
+    
+    -- Close Button (Mac-style red button)
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 14, 0, 14)
+    closeButton.Position = UDim2.new(0, 15, 0, 18)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+    closeButton.BorderSizePixel = 0
+    closeButton.Text = ""
+    closeButton.Parent = titleBar
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(1, 0)
+    closeCorner.Parent = closeButton
+    
+    closeButton.MouseButton1Click:Connect(function()
+        autoPlaceUI.Enabled = false
+    end)
+    
+    -- Minimize Button (Mac-style yellow button)
+    local minimizeButton = Instance.new("TextButton")
+    minimizeButton.Name = "MinimizeButton"
+    minimizeButton.Size = UDim2.new(0, 14, 0, 14)
+    minimizeButton.Position = UDim2.new(0, 35, 0, 18)
+    minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+    minimizeButton.BorderSizePixel = 0
+    minimizeButton.Text = ""
+    minimizeButton.Parent = titleBar
+    
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(1, 0)
+    minimizeCorner.Parent = minimizeButton
+    
+    -- Content Frame
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
+    contentFrame.Size = UDim2.new(1, -40, 1, -70)
+    contentFrame.Position = UDim2.new(0, 20, 0, 60)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Parent = mainFrame
+    
+    -- Left Panel (Grid)
+    local leftPanel = Instance.new("Frame")
+    leftPanel.Name = "LeftPanel"
+    leftPanel.Size = UDim2.new(0, 700, 1, 0)
+    leftPanel.Position = UDim2.new(0, 0, 0, 0)
+    leftPanel.BackgroundTransparency = 1
+    leftPanel.Parent = contentFrame
+    
+    -- Grid Container
+    local gridContainer = Instance.new("Frame")
+    gridContainer.Name = "GridContainer"
+    gridContainer.Size = UDim2.new(1, 0, 1, 0)
+    gridContainer.Position = UDim2.new(0, 0, 0, 0)
+    gridContainer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    gridContainer.BorderSizePixel = 0
+    gridContainer.Parent = leftPanel
+    addCorner(gridContainer, 12)
+    
+    -- Grid Title
+    local gridTitle = Instance.new("TextLabel")
+    gridTitle.Name = "GridTitle"
+    gridTitle.Size = UDim2.new(1, 0, 0, 40)
+    gridTitle.Position = UDim2.new(0, 0, 0, 0)
+    gridTitle.BackgroundTransparency = 1
+    gridTitle.Font = Enum.Font.GothamBold
+    gridTitle.Text = "Farm Tiles: " .. tileCount .. " tiles (" .. gridSize.rows .. "x" .. gridSize.cols .. ")"
+    gridTitle.TextColor3 = Color3.fromRGB(0, 0, 0)
+    gridTitle.TextSize = 16
+    gridTitle.TextXAlignment = Enum.TextXAlignment.Center
+    gridTitle.Parent = gridContainer
+    
+    -- Grid Frame (dynamic size)
+    gridFrame = Instance.new("Frame")
+    gridFrame.Name = "GridFrame"
+    gridFrame.Size = UDim2.new(1, -40, 1, -60)
+    gridFrame.Position = UDim2.new(0, 20, 0, 50)
+    gridFrame.BackgroundTransparency = 1
+    gridFrame.Parent = gridContainer
+    
+    -- Calculate cell size dynamically
+    local availableWidth = 660 -- 700 - 40 padding
+    local availableHeight = 570 -- 630 - 60 for title
+    local cellWidth = math.floor((availableWidth - (gridSize.cols * 2)) / gridSize.cols)
+    local cellHeight = math.floor((availableHeight - (gridSize.rows * 2)) / gridSize.rows)
+    local cellSize = math.min(cellWidth, cellHeight, 60) -- Max 60px
+    
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0, cellSize, 0, cellSize)
+    gridLayout.CellPadding = UDim2.new(0, 2, 0, 2)
+    gridLayout.FillDirectionMaxCells = gridSize.cols
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    gridLayout.Parent = gridFrame
+    
+    -- Create grid cells mapped to actual farm tiles
+    for i = 1, tileCount do
+        local tileData = detectedTiles[i]
+        local cell = Instance.new("TextButton")
+        cell.Name = "Cell_" .. i
+        cell.BorderSizePixel = 0
+        cell.Text = ""
+        cell.Parent = gridFrame
+        addCorner(cell, 4)
+        
+        -- Color based on tile type
+        if tileData.isWater then
+            cell.BackgroundColor3 = Color3.fromRGB(100, 210, 255) -- Light blue for water
+        else
+            cell.BackgroundColor3 = Color3.fromRGB(220, 220, 225) -- Gray for regular
+        end
+        
+        -- Store reference
+        selectedGridCells[i] = {
+            farmPart = tileData.farmPart,
+            isSelected = false,
+            isWater = tileData.isWater
+        }
+        gridCellButtons[i] = cell
+        
+        -- Click handler
+        cell.MouseButton1Click:Connect(function()
+            selectedGridCells[i].isSelected = not selectedGridCells[i].isSelected
+            
+            if selectedGridCells[i].isSelected then
+                -- Selected state - Red
+                cell.BackgroundColor3 = Color3.fromRGB(255, 69, 58)
+            else
+                -- Unselected state - restore original color
+                if selectedGridCells[i].isWater then
+                    cell.BackgroundColor3 = Color3.fromRGB(100, 210, 255) -- Light blue
+                else
+                    cell.BackgroundColor3 = Color3.fromRGB(220, 220, 225) -- Gray
+                end
+            end
+        end)
+    end
+    
+    -- Fill remaining cells with empty spaces if grid is not perfectly filled
+    local totalCells = gridSize.rows * gridSize.cols
+    for i = tileCount + 1, totalCells do
+        local emptyCell = Instance.new("Frame")
+        emptyCell.Name = "EmptyCell_" .. i
+        emptyCell.BackgroundTransparency = 1
+        emptyCell.BorderSizePixel = 0
+        emptyCell.Parent = gridFrame
+    end
+    
+    -- Right Panel (Controls)
+    local rightPanel = Instance.new("Frame")
+    rightPanel.Name = "RightPanel"
+    rightPanel.Size = UDim2.new(0, 420, 1, 0)
+    rightPanel.Position = UDim2.new(0, 720, 0, 0)
+    rightPanel.BackgroundTransparency = 1
+    rightPanel.Parent = contentFrame
+    
+    -- What to Place Label
+    local whatLabel = Instance.new("TextLabel")
+    whatLabel.Name = "WhatLabel"
+    whatLabel.Size = UDim2.new(1, 0, 0, 30)
+    whatLabel.Position = UDim2.new(0, 0, 0, 0)
+    whatLabel.BackgroundTransparency = 1
+    whatLabel.Font = Enum.Font.Gotham
+    whatLabel.Text = "What to be place"
+    whatLabel.TextColor3 = Color3.fromRGB(100, 100, 105)
+    whatLabel.TextSize = 14
+    whatLabel.TextXAlignment = Enum.TextXAlignment.Left
+    whatLabel.Parent = rightPanel
+    
+    -- What to Place Button
+    local whatButton = createDropdownButton(
+        rightPanel,
+        "What",
+        "Pet",
+        UDim2.new(0, 0, 0, 35),
+        UDim2.new(1, 0, 0, 50),
+        {"Pet", "Egg"},
+        function(value)
+            currentPlacementMode = value
+            if value == "Pet" then
+                placePetsEnabled = true
+                placeEggsEnabled = false
+            else
+                placePetsEnabled = false
+                placeEggsEnabled = true
+            end
+        end
+    )
+    
+    -- Mutation Label
+    local mutationLabel = Instance.new("TextLabel")
+    mutationLabel.Name = "MutationLabel"
+    mutationLabel.Size = UDim2.new(1, 0, 0, 30)
+    mutationLabel.Position = UDim2.new(0, 0, 0, 100)
+    mutationLabel.BackgroundTransparency = 1
+    mutationLabel.Font = Enum.Font.Gotham
+    mutationLabel.Text = "Mutation"
+    mutationLabel.TextColor3 = Color3.fromRGB(100, 100, 105)
+    mutationLabel.TextSize = 14
+    mutationLabel.TextXAlignment = Enum.TextXAlignment.Left
+    mutationLabel.Parent = rightPanel
+    
+    -- Mutation Button
+    local mutationButton = createDropdownButton(
+        rightPanel,
+        "Mutation",
+        "Snow",
+        UDim2.new(0, 0, 0, 135),
+        UDim2.new(1, 0, 0, 50),
+        {"Snow", "Golden", "Diamond", "Electirc", "Fire", "Jurassic", "None"},
+        function(value)
+            currentMutation = value
+            if value == "None" then
+                selectedMutations = {}
+            else
+                selectedMutations = {value}
+            end
+        end
+    )
+    
+    -- Filter Label
+    local filterLabel = Instance.new("TextLabel")
+    filterLabel.Name = "FilterLabel"
+    filterLabel.Size = UDim2.new(1, 0, 0, 30)
+    filterLabel.Position = UDim2.new(0, 0, 0, 200)
+    filterLabel.BackgroundTransparency = 1
+    filterLabel.Font = Enum.Font.Gotham
+    filterLabel.Text = "Filter"
+    filterLabel.TextColor3 = Color3.fromRGB(100, 100, 105)
+    filterLabel.TextSize = 14
+    filterLabel.TextXAlignment = Enum.TextXAlignment.Left
+    filterLabel.Parent = rightPanel
+    
+    -- Filter Button
+    local filterButton = createDropdownButton(
+        rightPanel,
+        "Filter",
+        "Low → High",
+        UDim2.new(0, 0, 0, 235),
+        UDim2.new(1, 0, 0, 50),
+        {"Low → High", "High → Low"},
+        function(value)
+            currentFilter = value
+            petSortAscending = (value == "Low → High")
+        end
+    )
+    
+    -- Speed Label
+    local speedLabel = Instance.new("TextLabel")
+    speedLabel.Name = "SpeedLabel"
+    speedLabel.Size = UDim2.new(1, 0, 0, 30)
+    speedLabel.Position = UDim2.new(0, 0, 0, 300)
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Font = Enum.Font.Gotham
+    speedLabel.Text = "Speed"
+    speedLabel.TextColor3 = Color3.fromRGB(100, 100, 105)
+    speedLabel.TextSize = 14
+    speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    speedLabel.Parent = rightPanel
+    
+    -- Speed Input
+    local speedInput = Instance.new("TextBox")
+    speedInput.Name = "SpeedInput"
+    speedInput.Size = UDim2.new(1, 0, 0, 50)
+    speedInput.Position = UDim2.new(0, 0, 0, 335)
+    speedInput.BackgroundColor3 = Color3.fromRGB(255, 204, 0)
+    speedInput.BorderSizePixel = 0
+    speedInput.Font = Enum.Font.GothamBold
+    speedInput.Text = "0"
+    speedInput.TextColor3 = Color3.fromRGB(0, 0, 0)
+    speedInput.TextSize = 16
+    speedInput.PlaceholderText = "Enter min speed..."
+    speedInput.Parent = rightPanel
+    addCorner(speedInput, 8)
+    
+    speedInput.FocusLost:Connect(function()
+        local value = parseNumberWithSuffix(speedInput.Text)
+        if value and value >= 0 then
+            currentSpeed = value
+            minPetRateFilter = value
+        else
+            speedInput.Text = tostring(currentSpeed)
+        end
+    end)
+    
+    -- Auto Place Button
+    local autoPlaceButton = Instance.new("TextButton")
+    autoPlaceButton.Name = "AutoPlaceButton"
+    autoPlaceButton.Size = UDim2.new(1, 0, 0, 60)
+    autoPlaceButton.Position = UDim2.new(0, 0, 1, -70)
+    autoPlaceButton.BackgroundColor3 = Color3.fromRGB(255, 204, 0)
+    autoPlaceButton.BorderSizePixel = 0
+    autoPlaceButton.Font = Enum.Font.GothamBold
+    autoPlaceButton.Text = "Auto Place Best Pet"
+    autoPlaceButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    autoPlaceButton.TextSize = 18
+    autoPlaceButton.Parent = rightPanel
+    addCorner(autoPlaceButton, 8)
+    
+    -- Toggle circle indicator
+    local toggleCircle = Instance.new("Frame")
+    toggleCircle.Name = "ToggleCircle"
+    toggleCircle.Size = UDim2.new(0, 30, 0, 30)
+    toggleCircle.Position = UDim2.new(1, -45, 0.5, -15)
+    toggleCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    toggleCircle.BorderSizePixel = 0
+    toggleCircle.Parent = autoPlaceButton
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(1, 0)
+    toggleCorner.Parent = toggleCircle
+    
+    autoPlaceButton.MouseButton1Click:Connect(function()
+        autoPlaceRunning = not autoPlaceRunning
+        
+        if autoPlaceRunning then
+            autoPlaceButton.Text = "⏸ Stop Auto Place"
+            toggleCircle.BackgroundColor3 = Color3.fromRGB(52, 199, 89) -- Green
+            
+            -- Start auto place using existing logic
+            if not autoPlaceConnection then
+                autoPlaceConnection = task.spawn(function()
+                    autoPlaceActive = true
+                    runAutoPlace()
+                    autoPlaceConnection = nil
+                end)
+            end
+        else
+            autoPlaceButton.Text = "▶ Auto Place Best Pet"
+            toggleCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            autoPlaceActive = false
+            
+            if autoPlaceConnection then
+                task.cancel(autoPlaceConnection)
+                autoPlaceConnection = nil
+            end
+        end
+    end)
+    
+    -- Make draggable
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    titleBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    -- Initially hidden
+    autoPlaceUI.Enabled = false
+    
+    return autoPlaceUI
+end
+
+-- Toggle UI visibility
+local function toggleMacAutoPlaceUI()
+    if not autoPlaceUI then
+        createMacAutoPlaceUI()
+    end
+    autoPlaceUI.Enabled = not autoPlaceUI.Enabled
+end
+
 -- ============ Hologram Placement System Functions ============
 
 -- Create a hologram part for tile visualization
@@ -2365,6 +2970,20 @@ function AutoPlaceSystem.CreateUI()
     -- Store references for GetConfigElements
     local minSpeedSliderRef, sortOrderDropdownRef, placeModeDropdownRef
     local autoUnlockToggleRef, autoPickUpToggleRef, autoPickUpTileDropdownRef, autoPickUpSpeedSliderRef
+    
+    -- Mac-Style Auto Place UI Button
+    Tabs.PlaceTab:Section({
+        Title = "🎯 Auto Place UI",
+        Icon = "layout-grid"
+    })
+    
+    Tabs.PlaceTab:Button({
+        Title = "Open Auto Place",
+        Desc = "Open custom Mac-style auto place UI",
+        Callback = function()
+            toggleMacAutoPlaceUI()
+        end
+    })
     
     -- Statistics first
     Tabs.PlaceTab:Section({
