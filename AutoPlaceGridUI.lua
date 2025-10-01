@@ -46,7 +46,7 @@ local selectedEggTypes = {}
 local selectedMutations = {}
 local minPetSpeed = 0
 local petSortAscending = true
-local placementSpeed = 3.0 -- Delay between placements (in seconds, adjustable 1-10s)
+local placementSpeed = 1.0 -- Delay between placements (in seconds, adjustable 0.1-10s)
 
 -- Grid State
 local gridTiles = {} -- {position: {tile: Part, occupied: bool, type: "regular"/"water", data: {}}}
@@ -360,15 +360,13 @@ local function getAvailableEggs()
                 local eggType = eggNode:GetAttribute("T")
                 local mutation = eggNode:GetAttribute("M")
                 
-                -- Skip Ocean eggs
-                local isOcean = isOceanEgg(eggType)
-                if eggType and not isOcean then
+                if eggType then
                     table.insert(eggs, {
                         uid = eggNode.Name,
                         type = eggType,
                         mutation = mutation,
                         category = "Egg",
-                        isOcean = false -- Already filtered out ocean eggs
+                        isOcean = isOceanEgg(eggType)
                     })
                 end
             end
@@ -394,38 +392,32 @@ local function getAvailablePets()
                 local mutation = petNode:GetAttribute("M")
                 local level = petNode:GetAttribute("V") or 0
                 
-                -- Skip Ocean pets
-                local isOcean = isOceanPet(petType)
-                if isOcean then
-                    -- Skip this pet, don't add to inventory
-                else
-                    -- Get speed
-                    local speed = 0
-                    local uid = petNode.Name
-                    local ss = pg and pg:FindFirstChild("ScreenStorage")
-                    local frame = ss and ss:FindFirstChild("Frame")
-                    local content = frame and frame:FindFirstChild("ContentPet")
-                    local scroll = content and content:FindFirstChild("ScrollingFrame")
-                    local item = scroll and scroll:FindFirstChild(uid)
-                    local btn = item and item:FindFirstChild("BTN")
-                    local stat = btn and btn:FindFirstChild("Stat")
-                    local price = stat and stat:FindFirstChild("Price")
-                    local valueLabel = price and price:FindFirstChild("Value")
-                    if valueLabel and valueLabel:IsA("TextLabel") then
-                        speed = tonumber((valueLabel.Text:gsub("[^%d]", ""))) or 0
-                    end
-                    
-                    if petType and speed >= minPetSpeed then
-                        table.insert(pets, {
-                            uid = uid,
-                            type = petType,
-                            mutation = mutation,
-                            level = level,
-                            speed = speed,
-                            category = "Pet",
-                            isOcean = false -- Already filtered out ocean pets
-                        })
-                    end
+                -- Get speed
+                local speed = 0
+                local uid = petNode.Name
+                local ss = pg and pg:FindFirstChild("ScreenStorage")
+                local frame = ss and ss:FindFirstChild("Frame")
+                local content = frame and frame:FindFirstChild("ContentPet")
+                local scroll = content and content:FindFirstChild("ScrollingFrame")
+                local item = scroll and scroll:FindFirstChild(uid)
+                local btn = item and item:FindFirstChild("BTN")
+                local stat = btn and btn:FindFirstChild("Stat")
+                local price = stat and stat:FindFirstChild("Price")
+                local valueLabel = price and price:FindFirstChild("Value")
+                if valueLabel and valueLabel:IsA("TextLabel") then
+                    speed = tonumber((valueLabel.Text:gsub("[^%d]", ""))) or 0
+                end
+                
+                if petType and speed >= minPetSpeed then
+                    table.insert(pets, {
+                        uid = uid,
+                        type = petType,
+                        mutation = mutation,
+                        level = level,
+                        speed = speed,
+                        category = "Pet",
+                        isOcean = isOceanPet(petType)
+                    })
                 end
             end
         end
@@ -881,7 +873,7 @@ local function populateSidebar(sidebar)
     
     local speedSliderFill = Instance.new("Frame")
     speedSliderFill.Name = "SpeedSliderFill"
-    speedSliderFill.Size = UDim2.new((placementSpeed - 1) / 9, 0, 1, 0) -- Map 1-10 to 0-1
+    speedSliderFill.Size = UDim2.new((placementSpeed - 0.1) / 9.9, 0, 1, 0) -- Map 0.1-10 to 0-1
     speedSliderFill.Position = UDim2.new(0, 0, 0, 0)
     speedSliderFill.BackgroundColor3 = colors.primary
     speedSliderFill.BorderSizePixel = 0
@@ -894,7 +886,7 @@ local function populateSidebar(sidebar)
     local speedSliderHandle = Instance.new("Frame")
     speedSliderHandle.Name = "SpeedSliderHandle"
     speedSliderHandle.Size = UDim2.new(0, 16, 0, 16)
-    speedSliderHandle.Position = UDim2.new((placementSpeed - 1) / 9, -8, 0, 25) -- Map 1-10 to 0-1
+    speedSliderHandle.Position = UDim2.new((placementSpeed - 0.1) / 9.9, -8, 0, 25) -- Map 0.1-10 to 0-1
     speedSliderHandle.BackgroundColor3 = colors.text
     speedSliderHandle.BorderSizePixel = 0
     speedSliderHandle.ZIndex = 2
@@ -1192,15 +1184,24 @@ updateSidebar = function()
     
     local items = {}
     
+    -- Filter items based on current tile type
+    local showOnlyOcean = (currentTileType == "Water")
+    
     if placeEggsEnabled then
         for _, egg in ipairs(getAvailableEggs()) do
-            table.insert(items, egg)
+            -- Show ocean eggs only on water tab, regular eggs only on regular tab
+            if (showOnlyOcean and egg.isOcean) or (not showOnlyOcean and not egg.isOcean) then
+                table.insert(items, egg)
+            end
         end
     end
     
     if placePetsEnabled then
         for _, pet in ipairs(getAvailablePets()) do
-            table.insert(items, pet)
+            -- Show ocean pets only on water tab, regular pets only on regular tab
+            if (showOnlyOcean and pet.isOcean) or (not showOnlyOcean and not pet.isOcean) then
+                table.insert(items, pet)
+            end
         end
     end
     
@@ -2011,7 +2012,7 @@ function AutoPlaceGridUI.CreateUI()
             isDraggingSpeedSlider = true
             local relativeX = (input.Position.X - sidebarControls.speedSliderBg.AbsolutePosition.X) / sidebarControls.speedSliderBg.AbsoluteSize.X
             relativeX = math.max(0, math.min(1, relativeX))
-            placementSpeed = 1 + (relativeX * 9) -- Map 0-1 to 1-10
+            placementSpeed = 0.1 + (relativeX * 9.9) -- Map 0-1 to 0.1-10
             
             sidebarControls.speedSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             sidebarControls.speedSliderHandle.Position = UDim2.new(relativeX, -8, 0, 25)
@@ -2023,7 +2024,7 @@ function AutoPlaceGridUI.CreateUI()
         if input.UserInputType == Enum.UserInputType.MouseMovement and isDraggingSpeedSlider then
             local relativeX = (input.Position.X - sidebarControls.speedSliderBg.AbsolutePosition.X) / sidebarControls.speedSliderBg.AbsoluteSize.X
             relativeX = math.max(0, math.min(1, relativeX))
-            placementSpeed = 1 + (relativeX * 9) -- Map 0-1 to 1-10
+            placementSpeed = 0.1 + (relativeX * 9.9) -- Map 0-1 to 0.1-10
             
             sidebarControls.speedSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             sidebarControls.speedSliderHandle.Position = UDim2.new(relativeX, -8, 0, 25)
