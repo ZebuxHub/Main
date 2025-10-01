@@ -757,15 +757,32 @@ local function getNextBestEgg()
                             end
                         end
                         
-                        -- Return appropriate egg type for this tile
+                        -- Return appropriate egg type for this tile with priority notification
                         if isWaterTile and #oceanEggs > 0 then
+                            WindUI:Notify({
+                                Title = "🎯 Auto Place",
+                                Content = "🌊 Using hologram water tile",
+                                Duration = 1
+                            })
                             return oceanEggs[1], part, "hologram_water"
                         elseif not isWaterTile and #regularEggs > 0 then
+                            WindUI:Notify({
+                                Title = "🎯 Auto Place", 
+                                Content = "🟢 Using hologram regular tile",
+                                Duration = 1
+                            })
                             return regularEggs[1], part, "hologram_regular"
                         end
                     end
                 end
             end
+            
+            -- If we reach here, hologram tiles are occupied or no matching eggs
+            WindUI:Notify({
+                Title = "🎯 Auto Place",
+                Content = "⚠️ Hologram tiles occupied, using random tiles",
+                Duration = 2
+            })
         end
     end
     
@@ -822,6 +839,11 @@ local function getNextBestPet()
                         for _, candidate in ipairs(candidates) do
                             if not isPetAlreadyPlacedByUid(candidate.uid) then
                                 if (isWaterTile and candidate.isOcean) or (not isWaterTile and not candidate.isOcean) then
+                                    WindUI:Notify({
+                                        Title = "🎯 Auto Place",
+                                        Content = (isWaterTile and "🌊 Using hologram water tile" or "🟢 Using hologram regular tile"),
+                                        Duration = 1
+                                    })
                                     return candidate, part, "hologram_match"
                                 end
                             end
@@ -829,6 +851,13 @@ local function getNextBestPet()
                     end
                 end
             end
+            
+            -- If we reach here, hologram tiles are occupied or no matching pets
+            WindUI:Notify({
+                Title = "🎯 Auto Place",
+                Content = "⚠️ Hologram tiles occupied, using sequential placement",
+                Duration = 2
+            })
         end
     end
     
@@ -1337,14 +1366,45 @@ local function onInputBegan(input)
                 local snappedPos = snapToGrid(hitPosition)
                 
                 if hologramMode == "single" then
-                    -- Single tile selection
-                    selectedTiles = {snappedPos}
+                    -- Single tile selection - allow multiple individual tiles
+                    -- Check if this tile is already selected
+                    local alreadySelected = false
+                    local selectedIndex = nil
+                    
+                    for i, tilePos in ipairs(selectedTiles) do
+                        local distance = (tilePos - snappedPos).Magnitude
+                        if distance < 1 then -- Same tile
+                            alreadySelected = true
+                            selectedIndex = i
+                            break
+                        end
+                    end
+                    
+                    if alreadySelected then
+                        -- Remove tile if already selected (toggle behavior)
+                        table.remove(selectedTiles, selectedIndex)
+                        WindUI:Notify({
+                            Title = "🎯 Hologram",
+                            Content = "🗑️ Removed tile from selection",
+                            Duration = 1
+                        })
+                    else
+                        -- Add tile to selection
+                        table.insert(selectedTiles, snappedPos)
+                        WindUI:Notify({
+                            Title = "🎯 Hologram",
+                            Content = "✅ Added tile to selection (" .. #selectedTiles .. " total)",
+                            Duration = 1
+                        })
+                    end
+                    
                     updateHolograms()
+                    
                 elseif hologramMode == "area" then
-                    -- Area selection - start drag
+                    -- Area selection - start drag (allow multiple areas)
                     isDragging = true
                     dragStartPosition = snappedPos
-                    selectedTiles = {snappedPos}
+                    -- Don't clear existing tiles - add to them
                     updateHolograms()
                 end
             end
@@ -1374,14 +1434,34 @@ local function onInputChanged(input)
                 
                 -- Create area selection from drag start to current position
                 if dragStartPosition then
-                    selectedTiles = {}
+                    -- Store existing tiles (from previous areas)
+                    local existingTiles = {}
+                    for _, tile in ipairs(selectedTiles) do
+                        -- Only keep tiles that are not in the current drag area
+                        local inCurrentDrag = false
+                        local minX = math.min(dragStartPosition.X, snappedPos.X)
+                        local maxX = math.max(dragStartPosition.X, snappedPos.X)
+                        local minZ = math.min(dragStartPosition.Z, snappedPos.Z)
+                        local maxZ = math.max(dragStartPosition.Z, snappedPos.Z)
+                        
+                        if tile.X >= minX and tile.X <= maxX and tile.Z >= minZ and tile.Z <= maxZ then
+                            inCurrentDrag = true
+                        end
+                        
+                        if not inCurrentDrag then
+                            table.insert(existingTiles, tile)
+                        end
+                    end
+                    
+                    -- Start with existing tiles from other areas
+                    selectedTiles = existingTiles
                     
                     local minX = math.min(dragStartPosition.X, snappedPos.X)
                     local maxX = math.max(dragStartPosition.X, snappedPos.X)
                     local minZ = math.min(dragStartPosition.Z, snappedPos.Z)
                     local maxZ = math.max(dragStartPosition.Z, snappedPos.Z)
                     
-                    -- Add all tiles in the rectangular area
+                    -- Add tiles in the current rectangular area
                     for x = minX, maxX, 8 do
                         for z = minZ, maxZ, 8 do
                             local tilePos = Vector3.new(x, dragStartPosition.Y, z)
@@ -1401,6 +1481,15 @@ local function onInputEnded(input)
     if not hologramEnabled then return end
     
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if isDragging then
+            -- Area drag ended - show notification
+            WindUI:Notify({
+                Title = "🎯 Hologram",
+                Content = "📐 Area added to selection (" .. #selectedTiles .. " total tiles)",
+                Duration = 2
+            })
+        end
+        
         isDragging = false
         dragStartPosition = nil
         
@@ -1452,6 +1541,71 @@ end
 
 -- ============ Smart Auto Equip & Place System ============
 
+-- Parse numbers with K/M/B/T suffixes (like auto pickup does)
+local function parseNumberWithSuffix(text)
+    if not text or type(text) ~= "string" then return 0 end
+    
+    local cleanText = text:gsub(",", ""):gsub(" ", "")
+    local number, suffix = cleanText:match("([%d%.]+)([KMBT]?)")
+    
+    if not number then return 0 end
+    
+    local value = tonumber(number) or 0
+    
+    if suffix == "K" then
+        value = value * 1000
+    elseif suffix == "M" then
+        value = value * 1000000
+    elseif suffix == "B" then
+        value = value * 1000000000
+    elseif suffix == "T" then
+        value = value * 1000000000000
+    end
+    
+    return value
+end
+
+-- Get pet speed from workspace GUI (like auto pickup does)
+local function getPetSpeedFromWorkspace(petUID)
+    local workspacePets = workspace:FindFirstChild("Pets")
+    if not workspacePets then return 0 end
+    
+    for _, pet in ipairs(workspacePets:GetChildren()) do
+        if pet:IsA("Model") and pet.Name == petUID then
+            local rootPart = pet:FindFirstChild("RootPart")
+            if rootPart then
+                local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
+                if idleGUI then
+                    local speedText = idleGUI:FindFirstChild("Speed")
+                    if speedText and speedText:IsA("TextLabel") then
+                        local speedValue = parseNumberWithSuffix(speedText.Text)
+                        if speedValue then
+                            return speedValue
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return 0
+end
+
+-- Enhanced function to get pet speed (prioritizes workspace GUI like auto pickup)
+local function getEnhancedPetSpeed(petUID, petNode)
+    -- First try to get speed from workspace GUI (like auto pickup does)
+    local workspaceSpeed = getPetSpeedFromWorkspace(petUID)
+    if workspaceSpeed > 0 then
+        return workspaceSpeed
+    end
+    
+    -- Fallback to UI method if pet not in workspace
+    if petNode then
+        return computeEffectiveRate(petNode:GetAttribute("T"), petNode:GetAttribute("M"), petNode)
+    end
+    
+    return 0
+end
+
 -- Get all pets currently placed on tiles in workspace
 local function getPlacedPets()
     local placedPets = {}
@@ -1476,7 +1630,8 @@ local function getPlacedPets()
                     end
                     
                     if petType then
-                        local rate = computeEffectiveRate(petType, mutation, petNode)
+                        -- Use enhanced speed detection (prioritizes workspace GUI like auto pickup)
+                        local rate = getEnhancedPetSpeed(pet.Name, petNode)
                         table.insert(placedPets, {
                             uid = pet.Name,
                             type = petType,
@@ -1511,7 +1666,8 @@ local function getInventoryPets()
         -- Only include pets that are NOT placed (no D attribute or empty D)
         local isPlaced = child:GetAttribute("D")
         if petType and (not isPlaced or tostring(isPlaced) == "") then
-            local rate = computeEffectiveRate(petType, mutation, child)
+            -- Use enhanced speed detection (prioritizes workspace GUI like auto pickup)
+            local rate = getEnhancedPetSpeed(child.Name, child)
             table.insert(inventoryPets, {
                 uid = child.Name,
                 type = petType,
