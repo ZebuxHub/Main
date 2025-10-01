@@ -1389,6 +1389,7 @@ local function onInputChanged(input)
                         end
                     end
                     
+                    -- Force immediate hologram update for area drag
                     updateHolograms()
                 end
             end
@@ -1402,6 +1403,11 @@ local function onInputEnded(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         isDragging = false
         dragStartPosition = nil
+        
+        -- Final update after drag ends to ensure colors are correct
+        if #selectedTiles > 0 then
+            updateHolograms()
+        end
     end
 end
 
@@ -1415,13 +1421,14 @@ local function setHologramEnabled(enabled)
         UserInputService.InputChanged:Connect(onInputChanged)
         UserInputService.InputEnded:Connect(onInputEnded)
         
-        -- Start periodic hologram updates
+        -- Start more frequent hologram updates for better responsiveness
         task.spawn(function()
             while hologramEnabled do
                 if #selectedTiles > 0 then
                     updateHolograms()
                 end
-                task.wait(2) -- Update every 2 seconds
+                -- Update more frequently (every 1 second instead of 2)
+                task.wait(1) 
             end
         end)
         
@@ -1637,6 +1644,11 @@ local function smartAutoEquipAndPlace()
                         petCache.lastUpdate = 0
                         tileCache.lastUpdate = 0
                         
+                        -- Update holograms if enabled
+                        if hologramEnabled and #selectedTiles > 0 then
+                            updateHolograms()
+                        end
+                        
                         task.wait(1.0) -- Wait between replacements
                     end
                 end
@@ -1734,6 +1746,11 @@ local function autoPlaceBestPets()
                     -- Update caches
                     petCache.lastUpdate = 0
                     tileCache.lastUpdate = 0
+                    
+                    -- Update holograms if enabled
+                    if hologramEnabled and #selectedTiles > 0 then
+                        updateHolograms()
+                    end
                     
                     task.wait(0.8) -- Wait between placements
                 end
@@ -1893,7 +1910,9 @@ local function placeOnSelectedTiles()
                             tileCache.lastUpdate = 0
                             
                             -- Update holograms to show new occupied state
-                            updateHolograms()
+                            if hologramEnabled and #selectedTiles > 0 then
+                                updateHolograms()
+                            end
                         end
                     end
                 end
@@ -1912,8 +1931,10 @@ local function placeOnSelectedTiles()
         end
     end
     
-    -- Final update of holograms
-    updateHolograms()
+    -- Final update of holograms to ensure all colors are correct
+    if hologramEnabled and #selectedTiles > 0 then
+        updateHolograms()
+    end
     
     WindUI:Notify({
         Title = "🎯 Hologram Place",
