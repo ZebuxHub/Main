@@ -961,9 +961,14 @@ updateSidebar = function()
         infoLabel.Position = UDim2.new(0, 45, 0, 23)
         infoLabel.BackgroundTransparency = 1
         if item.category == "Pet" then
-            infoLabel.Text = "Speed: " .. formatNumber(item.speed)
+            infoLabel.Text = "Speed: " .. formatNumber(item.speed or 0)
         else
-            infoLabel.Text = item.mutation and ("⚡ " .. item.mutation) or "No Mutation"
+            -- Safe mutation display
+            local mutationText = "No Mutation"
+            if item.mutation and type(item.mutation) == "string" and item.mutation ~= "" then
+                mutationText = "⚡ " .. item.mutation
+            end
+            infoLabel.Text = mutationText
         end
         infoLabel.TextSize = 10
         infoLabel.Font = Enum.Font.Gotham
@@ -985,37 +990,56 @@ updateSidebar = function()
         clickBtn.Parent = card
         
         clickBtn.MouseButton1Click:Connect(function()
-            -- Highlight next target tile
-            local targetTile = highlightNextTile()
-            
-            if targetTile then
-                -- Place on highlighted tile
-                if placeItemOnTile(item.uid, targetTile) then
-                    if WindUI then
-                        WindUI:Notify({
-                            Title = "✅ Placed!",
-                            Content = "Placed " .. item.type .. " on highlighted tile",
-                            Duration = 2
-                        })
+            -- Wrap in pcall for error handling
+            local success, err = pcall(function()
+                print("[Grid UI] Inventory item clicked: " .. tostring(item.type) .. " (" .. tostring(item.uid) .. ")")
+                
+                -- Highlight next target tile
+                local targetTile = highlightNextTile()
+                
+                if targetTile then
+                    print("[Grid UI] Target tile found, attempting placement...")
+                    -- Place on highlighted tile
+                    if placeItemOnTile(item.uid, targetTile) then
+                        if WindUI then
+                            WindUI:Notify({
+                                Title = "✅ Placed!",
+                                Content = "Placed " .. tostring(item.type) .. " on highlighted tile",
+                                Duration = 2
+                            })
+                        end
+                        task.wait(0.5)
+                        refreshGrid()
+                        updateSidebar()
+                    else
+                        print("[Grid UI] Placement failed")
+                        if WindUI then
+                            WindUI:Notify({
+                                Title = "❌ Failed",
+                                Content = "Could not place " .. tostring(item.type),
+                                Duration = 3
+                            })
+                        end
                     end
-                    task.wait(0.5)
-                    refreshGrid()
-                    updateSidebar()
                 else
+                    print("[Grid UI] No empty tiles available")
                     if WindUI then
                         WindUI:Notify({
-                            Title = "❌ Failed",
-                            Content = "Could not place " .. item.type,
+                            Title = "⚠️ No Empty Tiles",
+                            Content = "All tiles are occupied or locked",
                             Duration = 3
                         })
                     end
                 end
-            else
+            end)
+            
+            if not success then
+                warn("[Grid UI] Error in click handler: " .. tostring(err))
                 if WindUI then
                     WindUI:Notify({
-                        Title = "⚠️ No Empty Tiles",
-                        Content = "All tiles are occupied or locked",
-                        Duration = 3
+                        Title = "❌ Error",
+                        Content = "Click handler error: " .. tostring(err),
+                        Duration = 5
                     })
                 end
             end
