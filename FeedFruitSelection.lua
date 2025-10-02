@@ -1,208 +1,195 @@
--- FeedFruitSelection.lua - macOS Style Dark Theme UI for Fruit Selection (Auto Feed)
+-- AutoFeedSystem.lua - Auto Feed functionality for Build A Zoo
 -- Author: Zebux
 -- Version: 1.0
 
-local FeedFruitSelection = {}
+local AutoFeedSystem = {}
 
 -- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
--- Name normalization helpers for inventory mapping
+-- Dependencies (will be set during Init)
+local WindUI = nil
+local Tabs = nil
+local AutoSystemsConfig = nil
+local CustomUIConfig = nil
+local FeedFruitSelection = nil
+
+-- UI Elements
+local autoFeedToggle = nil
+local bigPetDropdown = nil
+
+-- State variables
+local autoFeedEnabled = false
+local autoFeedThread = nil
+local selectedBigPets = {}
+local selectedFeedFruits = {}
+local feedFruitSelectionVisible = false
+
+-- Export fruitPetAssignments for external access
+AutoFeedSystem.fruitPetAssignments = {}
+
+-- Normalization helpers to robustly match fruit names from PlayerGui.Data.Asset
 local function normalizeFruitName(name)
-	if type(name) ~= "string" then return "" end
-	local lowered = string.lower(name)
-	lowered = lowered:gsub("[%s_%-%./]", "")
-	return lowered
+    if type(name) ~= "string" then return "" end
+    local lowered = string.lower(name)
+    lowered = lowered:gsub("[%s_%-%./]", "")
+    return lowered
 end
 
--- Will be filled after FruitData is defined
-local FRUIT_CANONICAL = nil
-
--- Hardcoded fruit data for feeding
-local FruitData = {
-	Strawberry = {
-		Name = "Strawberry",
-		Price = "5,000",
-		Icon = "🍓",
-		Rarity = 1
-	},
-	Blueberry = {
-		Name = "Blueberry",
-		Price = "20,000",
-		Icon = "🔵",
-		Rarity = 1
-	},
-	Watermelon = {
-		Name = "Watermelon",
-		Price = "80,000",
-		Icon = "🍉",
-		Rarity = 2
-	},
-	Apple = {
-		Name = "Apple",
-		Price = "400,000",
-		Icon = "🍎",
-		Rarity = 2
-	},
-	Orange = {
-		Name = "Orange",
-		Price = "1,200,000",
-		Icon = "🍊",
-		Rarity = 3
-	},
-	Corn = {
-		Name = "Corn",
-		Price = "3,500,000",
-		Icon = "🌽",
-		Rarity = 3
-	},
-	Banana = {
-		Name = "Banana",
-		Price = "12,000,000",
-		Icon = "🍌",
-		Rarity = 4
-	},
-	Grape = {
-		Name = "Grape",
-		Price = "50,000,000",
-		Icon = "🍇",
-		Rarity = 4
-	},
-	Pear = {
-		Name = "Pear",
-		Price = "200,000,000",
-		Icon = "🍐",
-		Rarity = 5
-	},
-	Pineapple = {
-		Name = "Pineapple",
-		Price = "600,000,000",
-		Icon = "🍍",
-		Rarity = 5
-	},
-	GoldMango = {
-		Name = "Gold Mango",
-		Price = "2,000,000,000",
-		Icon = "🥭",
-		Rarity = 6
-	},
-	BloodstoneCycad = {
-		Name = "Bloodstone Cycad",
-		Price = "8,000,000,000",
-		Icon = "🌿",
-		Rarity = 6
-	},
-	ColossalPinecone = {
-		Name = "Colossal Pinecone",
-		Price = "40,000,000,000",
-		Icon = "🌲",
-		Rarity = 6
-	},
-	VoltGinkgo = {
-		Name = "Volt Ginkgo",
-		Price = "80,000,000,000",
-		Icon = "⚡",
-		Rarity = 6
-	},
-	DeepseaPearlFruit = {
-		Name = "DeepseaPearlFruit",
-		Price = "40,000,000,000",
-		Icon = "💠",
-		Rarity = 6
-	},
-	Durian = {
-		Name = "Durian",
-		Price = "80,000,000,000",
-		Icon = "🥥",
-		Rarity = 6,
-		IsNew = true
-	},
-	DragonFruit = {
-		Name = "Dragon Fruit",
-		Price = "1,500,000,000",
-		Icon = "🐲",
-		Rarity = 6,
-		IsNew = true
-	}
+-- Canonical fruit list used by the auto-feed system
+local KNOWN_FRUITS = {
+    "Strawberry",
+    "Blueberry",
+    "Watermelon",
+    "Apple",
+    "Orange",
+    "Corn",
+    "Banana",
+    "Grape",
+    "Pear",
+    "Peach",
+    "Pineapple",
+    "GoldMango",
+    "BloodstoneCycad",
+    "ColossalPinecone",
+    "VoltGinkgo",
+    "DeepseaPearlFruit",
+    "DragonFruit",
+    "Durian",
 }
 
--- Build canonical name map from FruitData
-local function buildFruitCanonical()
-	local map = {}
-	for id, item in pairs(FruitData) do
-		local display = item.Name or id
-		map[normalizeFruitName(id)] = display
-		map[normalizeFruitName(display)] = display
-	end
-	return map
+local CANONICAL_FRUIT_BY_NORMALIZED = {}
+for _, fruitName in ipairs(KNOWN_FRUITS) do
+    CANONICAL_FRUIT_BY_NORMALIZED[normalizeFruitName(fruitName)] = fruitName
 end
-FRUIT_CANONICAL = buildFruitCanonical()
 
--- Function to get player's owned pets
-local function getPlayerOwnedPets()
-    local pets = {}
-    local localPlayer = Players.LocalPlayer
-    if not localPlayer then return pets end
+-- Augment canonical map from the player's Asset attributes dynamically
+local function augmentCanonicalFromAsset(asset)
+    if not asset then return end
+    local ok, attrs = pcall(function()
+        return asset:GetAttributes()
+    end)
+    if ok and type(attrs) == "table" then
+        for k, _ in pairs(attrs) do
+            local n = normalizeFruitName(k)
+            if n ~= "" and not CANONICAL_FRUIT_BY_NORMALIZED[n] then
+                CANONICAL_FRUIT_BY_NORMALIZED[n] = k
+            end
+        end
+    end
+end
+
+-- Helper function to find which BigPet station a pet is near
+local function findBigPetStationForPet(petPosition)
+    local localPlayer = game:GetService("Players").LocalPlayer
+    if not localPlayer then return nil end
     
-    local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return pets end
+    -- Get player's island
+    local islandName = localPlayer:GetAttribute("AssignedIslandName")
+    if not islandName then return nil end
     
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return pets end
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
     
-    local petsFolder = data:FindFirstChild("Pets")
-    if not petsFolder then return pets end
+    local island = art:FindFirstChild(islandName)
+    if not island then return nil end
     
-    -- Get all pet configurations
-    for _, petConfig in ipairs(petsFolder:GetChildren()) do
-        if petConfig:IsA("Configuration") then
-            local petType = petConfig:GetAttribute("T") or petConfig.Name
-            local petName = petConfig.Name
-            
-            table.insert(pets, {
-                name = petName,
-                type = petType,
-                displayName = petType or petName
-            })
+    local env = island:FindFirstChild("ENV")
+    if not env then return nil end
+    
+    local bigPetFolder = env:FindFirstChild("BigPet")
+    if not bigPetFolder then return nil end
+    
+    -- Find closest BigPet station
+    local closestStation = nil
+    local closestDistance = math.huge
+    
+    for _, station in ipairs(bigPetFolder:GetChildren()) do
+        if station:IsA("BasePart") then
+            local distance = (station.Position - petPosition).Magnitude
+            if distance < closestDistance and distance < 50 then -- Within 50 studs
+                closestDistance = distance
+                closestStation = station.Name
+            end
         end
     end
     
-    -- Sort by name for consistent display
-    table.sort(pets, function(a, b)
-        return a.displayName < b.displayName
-    end)
+    return closestStation
+end
+
+-- Auto Feed Functions
+function AutoFeedSystem.getBigPets()
+    local pets = {}
+    local localPlayer = game:GetService("Players").LocalPlayer
+    
+    if not localPlayer then
+        warn("Auto Feed: LocalPlayer not found")
+        return pets
+    end
+    
+    -- Go through all pet models in workspace.Pets
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then
+        warn("Auto Feed: Pets folder not found")
+        return pets
+    end
+    
+    for _, petModel in ipairs(petsFolder:GetChildren()) do
+        if petModel:IsA("Model") then
+            local rootPart = petModel:FindFirstChild("RootPart")
+            if rootPart then
+                -- Check if it's our pet by looking for UserId attribute
+                local petUserId = rootPart:GetAttribute("UserId")
+                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
+                    -- Check if this pet has BigPetGUI
+                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                    if bigPetGUI then
+                        -- Find which station this pet is at
+                        local stationId = findBigPetStationForPet(rootPart.Position)
+                        
+                            -- This is a Big Pet, add it to the list
+                            table.insert(pets, {
+                                model = petModel,
+                                name = petModel.Name,
+                            stationId = stationId, -- The BigPet Part name like "1", "2", "3"
+                                rootPart = rootPart,
+                                bigPetGUI = bigPetGUI
+                            })
+                    end
+                end
+            end
+        end
+    end
     
     return pets
 end
 
--- Local function to read player's fruit inventory using canonical name matching
-local function getPlayerFruitInventory()
-	local localPlayer = Players.LocalPlayer
-	if not localPlayer then
-		return {}
-	end
-
-	local playerGui = localPlayer:FindFirstChild("PlayerGui")
-	if not playerGui then
-		return {}
-	end
-
-	local data = playerGui:FindFirstChild("Data")
-	if not data then
-		return {}
-	end
-
-	local asset = data:FindFirstChild("Asset")
-	if not asset then
-		return {}
-	end
-
+-- Function to get player's fruit inventory
+function AutoFeedSystem.getPlayerFruitInventory()
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then
+        return {}
+    end
+    
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return {}
+    end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then
+        return {}
+    end
+    
+    local asset = data:FindFirstChild("Asset")
+    if not asset then
+        return {}
+    end
+    
     local fruitInventory = {}
-
-    -- First, read from Attributes on Asset (primary source)
+    
+    -- 1) Read from Attributes (primary source in many games)
     local attrMap = {}
     local ok, attrs = pcall(function()
         return asset:GetAttributes()
@@ -210,15 +197,17 @@ local function getPlayerFruitInventory()
     if ok and type(attrs) == "table" then
         attrMap = attrs
     end
-    for id, item in pairs(FruitData) do
-        local display = item.Name or id
-        local amount = attrMap[display] or attrMap[id]
+
+    -- Include all attribute keys in canonical mapping to support new fruits
+    augmentCanonicalFromAsset(asset)
+
+    for _, canonicalName in ipairs(KNOWN_FRUITS) do
+        local amount = attrMap[canonicalName]
         if amount == nil then
-            -- Fallback by normalized key search
-            local wantA, wantB = normalizeFruitName(display), normalizeFruitName(id)
+            -- try normalized key match
+            local want = normalizeFruitName(canonicalName)
             for k, v in pairs(attrMap) do
-                local nk = normalizeFruitName(k)
-                if nk == wantA or nk == wantB then
+                if normalizeFruitName(k) == want then
                     amount = v
                     break
                 end
@@ -226,1163 +215,797 @@ local function getPlayerFruitInventory()
         end
         if type(amount) == "string" then amount = tonumber(amount) or 0 end
         if type(amount) == "number" and amount > 0 then
-            fruitInventory[display] = amount
+            fruitInventory[canonicalName] = amount
         end
     end
 
-    -- Also support legacy children-based values as fallback/merge
+    -- 2) Merge children values as fallback
     for _, child in pairs(asset:GetChildren()) do
         if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-            local normalized = normalizeFruitName(child.Name)
-            local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
-            if canonical then
-                local amount = child.Value
-                if type(amount) == "string" then amount = tonumber(amount) or 0 end
-                if type(amount) == "number" and amount > 0 then
-                    fruitInventory[canonical] = amount
+            local rawName = child.Name
+            local normalized = normalizeFruitName(rawName)
+            local canonicalName = CANONICAL_FRUIT_BY_NORMALIZED[normalized]
+            if canonicalName then
+                local fruitAmount = child.Value
+                if type(fruitAmount) == "string" then
+                    fruitAmount = tonumber(fruitAmount) or 0
+                end
+                if fruitAmount and fruitAmount > 0 then
+                    fruitInventory[canonicalName] = fruitAmount
                 end
             end
         end
     end
-
+    
     return fruitInventory
 end
 
--- UI Variables
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local ScreenGui = nil
-local MainFrame = nil
-local selectedItems = {}
-local fruitPetAssignments = {} -- Table to store which pets each fruit should feed: {FruitID = {PetName1 = true, PetName2 = true}}
-local isDragging = false
-local dragStart = nil
-local startPos = nil
-local isMinimized = false
-local originalSize = nil
-local minimizedSize = nil
-local searchText = ""
-
--- Callback functions
-local onSelectionChanged = nil
-local onToggleChanged = nil
-
--- macOS Dark Theme Colors
-local colors = {
-    background = Color3.fromRGB(18, 18, 20),
-    surface = Color3.fromRGB(32, 32, 34),
-    primary = Color3.fromRGB(0, 122, 255),
-    secondary = Color3.fromRGB(88, 86, 214),
-    text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(200, 200, 200),
-    textTertiary = Color3.fromRGB(150, 150, 150),
-    border = Color3.fromRGB(50, 50, 52),
-    selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(45, 45, 47),
-    close = Color3.fromRGB(255, 69, 58),
-    minimize = Color3.fromRGB(255, 159, 10),
-    maximize = Color3.fromRGB(48, 209, 88)
-}
-
--- Utility Functions
-local function formatNumber(num)
-    if type(num) == "string" then
-        return num
+function AutoFeedSystem.isPetEating(petData)
+    if not petData or not petData.bigPetGUI then
+        return true -- Assume eating if we can't check
     end
-    if num >= 1e12 then
-        return string.format("%.1fT", num / 1e12)
-    elseif num >= 1e9 then
-        return string.format("%.1fB", num / 1e9)
-    elseif num >= 1e6 then
-        return string.format("%.1fM", num / 1e6)
-    elseif num >= 1e3 then
-        return string.format("%.1fK", num / 1e3)
+    
+    local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
+    if not feedGUI then
+        return true -- Assume eating if no feed GUI
+    end
+    
+    -- Check if Feed frame is visible - if not visible, pet is ready to feed
+    if not feedGUI.Visible then
+        return false -- Pet is ready to feed
+    end
+    
+    local feedText = feedGUI:FindFirstChild("TXT")
+    if not feedText or not feedText:IsA("TextLabel") then
+        return true -- Assume eating if no text
+    end
+    
+    local feedTime = feedText.Text
+    if not feedTime or type(feedTime) ~= "string" then
+        return true -- Assume eating if no valid text
+    end
+    
+    -- Check for stuck timer (00:01 for more than 2 seconds)
+    local currentTime = tick()
+    local petKey = petData.name
+    
+    -- Initialize stuck timer tracking if not exists
+    if not AutoFeedSystem.stuckTimers then
+        AutoFeedSystem.stuckTimers = {}
+    end
+    
+    if feedTime == "00:01" then
+        if not AutoFeedSystem.stuckTimers[petKey] then
+            -- First time seeing 00:01, start timer
+            AutoFeedSystem.stuckTimers[petKey] = currentTime
+            return true -- Still eating for now
+        else
+            -- Check how long it's been stuck at 00:01
+            local stuckDuration = currentTime - AutoFeedSystem.stuckTimers[petKey]
+            if stuckDuration > 2 then
+                -- Been stuck for more than 2 seconds, check if Feed frame is visible
+                
+                if not feedGUI.Visible then
+                    -- Feed frame not visible, pet is ready to feed
+                    AutoFeedSystem.stuckTimers[petKey] = nil -- Reset timer
+                    return false
+                end
+            end
+            return true -- Still eating
+        end
     else
-        return tostring(num)
+        -- Timer is not 00:01, reset stuck timer
+        AutoFeedSystem.stuckTimers[petKey] = nil
+        
+        -- Check if the pet is currently eating (not ready to eat)
+        -- Return true if eating, false if ready to eat
+        -- Pet is ready to eat when text is "00:00", "???", or ""
+        return feedTime ~= "00:00" and feedTime ~= "???" and feedTime ~= ""
     end
 end
 
-local function getRarityColor(rarity)
-    if rarity >= 100 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 50 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 20 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 10 then return Color3.fromRGB(255, 159, 10)
-    elseif rarity >= 6 then return Color3.fromRGB(255, 45, 85)
-    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58)
-    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222)
-    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214)
-    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88)
-    else return Color3.fromRGB(174, 174, 178)
-    end
-end
-
--- Price parsing function
-local function parsePrice(priceStr)
-    if type(priceStr) == "number" then
-        return priceStr
-    end
-    local cleanPrice = priceStr:gsub(",", "")
-    return tonumber(cleanPrice) or 0
-end
-
--- Sort data by price (low to high)
-local function sortDataByPrice(data)
-    local sortedData = {}
-    for id, item in pairs(data) do
-        table.insert(sortedData, {id = id, data = item})
+function AutoFeedSystem.equipFruit(fruitName)
+    if not fruitName or type(fruitName) ~= "string" then
+        return false
     end
     
-    table.sort(sortedData, function(a, b)
-        local priceA = parsePrice(a.data.Price)
-        local priceB = parsePrice(b.data.Price)
-        return priceA < priceB
+    -- Try multiple candidate keys to maximize compatibility
+    local candidates = {}
+    table.insert(candidates, fruitName)
+    local lower = string.lower(fruitName)
+    local upper = string.upper(fruitName)
+    table.insert(candidates, lower)
+    table.insert(candidates, upper)
+    local underscored = tostring(fruitName):gsub(" ", "_")
+    table.insert(candidates, underscored)
+    table.insert(candidates, string.lower(underscored))
+    -- Also try canonical name if we can resolve it via normalization
+    local canonical = CANONICAL_FRUIT_BY_NORMALIZED[normalizeFruitName(fruitName)]
+    if canonical and canonical ~= fruitName then table.insert(candidates, canonical) end
+
+    for _, key in ipairs(candidates) do
+        local args = { "Focus", key }
+        local ok, err = pcall(function()
+            ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer(unpack(args))
+        end)
+        if ok then
+            return true
+        end
+    end
+    warn("Failed to equip fruit after trying candidates for " .. tostring(fruitName))
+    return false
+end
+
+function AutoFeedSystem.feedPet(petName)
+    if not petName or type(petName) ~= "string" then
+        return false
+    end
+    
+    local args = {
+        "Feed",
+        petName
+    }
+    local ok, err = pcall(function()
+        ReplicatedStorage:WaitForChild("Remote"):WaitForChild("PetRE"):FireServer(unpack(args))
     end)
-    
-    return sortedData
+    if not ok then
+        warn("Failed to feed pet " .. tostring(petName) .. ": " .. tostring(err))
+        return false
+    end
+    return true
 end
 
--- Filter data by search text
-local function filterDataBySearch(data, searchText)
-    if searchText == "" then
-        return data
-    end
+function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, updateFeedStatusParagraph, getSelectedFruits)
+    -- Initialize feedFruitStatus if needed (for backward compatibility)
+    local feedFruitStatus = {
+        petsFound = 0,
+        availablePets = 0,
+        totalFeeds = 0,
+        lastFedPet = nil,
+        lastAction = ""
+    }
     
-    local filteredData = {}
-    local searchLower = string.lower(searchText)
-    
-    for id, item in pairs(data) do
-        local nameLower = string.lower(item.Name)
-        if string.find(nameLower, searchLower, 1, true) then
-            filteredData[id] = item
-        end
-    end
-    
-    return filteredData
-end
-
--- Create Pet Selection Popup
-local function createPetSelectionPopup(fruitId, fruitName, parentFrame)
-    -- Create overlay
-    local overlay = Instance.new("Frame")
-    overlay.Name = "PetSelectionOverlay"
-    overlay.Size = UDim2.new(1, 0, 1, 0)
-    overlay.Position = UDim2.new(0, 0, 0, 0)
-    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    overlay.BackgroundTransparency = 0.5
-    overlay.BorderSizePixel = 0
-    overlay.ZIndex = 100
-    overlay.Parent = parentFrame
-    
-    -- Create popup frame
-    local popup = Instance.new("Frame")
-    popup.Name = "PetSelectionPopup"
-    popup.Size = UDim2.new(0, 400, 0, 500)
-    popup.Position = UDim2.new(0.5, -200, 0.5, -250)
-    popup.BackgroundColor3 = colors.background
-    popup.BorderSizePixel = 0
-    popup.ZIndex = 101
-    popup.Parent = overlay
-    
-    local popupCorner = Instance.new("UICorner")
-    popupCorner.CornerRadius = UDim.new(0, 12)
-    popupCorner.Parent = popup
-    
-    local popupStroke = Instance.new("UIStroke")
-    popupStroke.Color = colors.primary
-    popupStroke.Thickness = 2
-    popupStroke.Parent = popup
-    
-    -- Title
-    local popupTitle = Instance.new("TextLabel")
-    popupTitle.Name = "Title"
-    popupTitle.Size = UDim2.new(1, -32, 0, 40)
-    popupTitle.Position = UDim2.new(0, 16, 0, 16)
-    popupTitle.BackgroundTransparency = 1
-    popupTitle.Text = "🍎 " .. fruitName .. " → Feed To:"
-    popupTitle.TextSize = 16
-    popupTitle.Font = Enum.Font.GothamBold
-    popupTitle.TextColor3 = colors.text
-    popupTitle.TextXAlignment = Enum.TextXAlignment.Left
-    popupTitle.ZIndex = 102
-    popupTitle.Parent = popup
-    
-    -- Subtitle
-    local subtitle = Instance.new("TextLabel")
-    subtitle.Name = "Subtitle"
-    subtitle.Size = UDim2.new(1, -32, 0, 20)
-    subtitle.Position = UDim2.new(0, 16, 0, 52)
-    subtitle.BackgroundTransparency = 1
-    subtitle.Text = "เลือกสัตว์ที่ต้องการให้ป้อนผลไม้นี้"
-    subtitle.TextSize = 12
-    subtitle.Font = Enum.Font.Gotham
-    subtitle.TextColor3 = colors.textSecondary
-    subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    subtitle.ZIndex = 102
-    subtitle.Parent = popup
-    
-    -- Pets scroll frame
-    local petsScroll = Instance.new("ScrollingFrame")
-    petsScroll.Name = "PetsScroll"
-    petsScroll.Size = UDim2.new(1, -32, 1, -160)
-    petsScroll.Position = UDim2.new(0, 16, 0, 80)
-    petsScroll.BackgroundColor3 = colors.surface
-    petsScroll.BorderSizePixel = 0
-    petsScroll.ScrollBarThickness = 6
-    petsScroll.ScrollBarImageColor3 = colors.primary
-    petsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    petsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    petsScroll.ZIndex = 102
-    petsScroll.Parent = popup
-    
-    local petsScrollCorner = Instance.new("UICorner")
-    petsScrollCorner.CornerRadius = UDim.new(0, 8)
-    petsScrollCorner.Parent = petsScroll
-    
-    local petsLayout = Instance.new("UIListLayout")
-    petsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    petsLayout.Padding = UDim.new(0, 4)
-    petsLayout.Parent = petsScroll
-    
-    local petsPadding = Instance.new("UIPadding")
-    petsPadding.PaddingTop = UDim.new(0, 8)
-    petsPadding.PaddingBottom = UDim.new(0, 8)
-    petsPadding.PaddingLeft = UDim.new(0, 8)
-    petsPadding.PaddingRight = UDim.new(0, 8)
-    petsPadding.Parent = petsScroll
-    
-    -- Get player's pets
-    local playerPets = getPlayerOwnedPets()
-    
-    -- Initialize fruit pet assignments if not exists
-    if not fruitPetAssignments[fruitId] then
-        fruitPetAssignments[fruitId] = {}
-    end
-    
-    -- "Select All" button
-    local selectAllBtn = Instance.new("TextButton")
-    selectAllBtn.Name = "SelectAll"
-    selectAllBtn.Size = UDim2.new(1, -16, 0, 36)
-    selectAllBtn.BackgroundColor3 = colors.primary
-    selectAllBtn.BorderSizePixel = 0
-    selectAllBtn.Text = "✓ เลือกทั้งหมด"
-    selectAllBtn.TextSize = 14
-    selectAllBtn.Font = Enum.Font.GothamBold
-    selectAllBtn.TextColor3 = colors.text
-    selectAllBtn.ZIndex = 103
-    selectAllBtn.LayoutOrder = 0
-    selectAllBtn.Parent = petsScroll
-    
-    local selectAllCorner = Instance.new("UICorner")
-    selectAllCorner.CornerRadius = UDim.new(0, 6)
-    selectAllCorner.Parent = selectAllBtn
-    
-    selectAllBtn.MouseButton1Click:Connect(function()
-        for _, petInfo in ipairs(playerPets) do
-            fruitPetAssignments[fruitId][petInfo.name] = true
-        end
-        -- Refresh pet items
-        for _, child in ipairs(petsScroll:GetChildren()) do
-            if child:IsA("TextButton") and child.Name ~= "SelectAll" and child.Name ~= "ClearAll" then
-                local checkmark = child:FindFirstChild("Checkmark")
-                if checkmark then
-                    checkmark.Visible = true
-                    child.BackgroundColor3 = colors.selected
+    while getAutoFeedEnabled() do
+        local shouldContinue = true
+        local ok, err = pcall(function()
+            local allBigPets = AutoFeedSystem.getBigPets()
+            
+            -- Get current selection dynamically
+            local selectedBigPets = getSelectedBigPets and getSelectedBigPets() or {}
+            
+            -- Filter pets based on selection
+            local bigPets = {}
+            if selectedBigPets and next(selectedBigPets) then
+                -- Only feed selected pets
+                for _, petData in ipairs(allBigPets) do
+                    if petData.stationId then
+                        -- Check if this pet's station is selected
+                        -- selectedBigPets keys are like "1", "2", "3" or "1 (Dragon)"
+                        local isSelected = false
+                        
+                        for selectedName, _ in pairs(selectedBigPets) do
+                            -- Match exact station ID or station ID with type info
+                            -- e.g., "1" matches "1" or "1 (Dragon)"
+                            if selectedName == petData.stationId or selectedName:match("^" .. petData.stationId .. "%s") then
+                                isSelected = true
+                                break
+                            end
+                        end
+                        
+                        if isSelected then
+                            table.insert(bigPets, petData)
+                        end
+                    end
                 end
-            end
-        end
-    end)
-    
-    -- "Clear All" button
-    local clearAllBtn = Instance.new("TextButton")
-    clearAllBtn.Name = "ClearAll"
-    clearAllBtn.Size = UDim2.new(1, -16, 0, 36)
-    clearAllBtn.BackgroundColor3 = colors.close
-    clearAllBtn.BorderSizePixel = 0
-    clearAllBtn.Text = "✗ ล้างทั้งหมด"
-    clearAllBtn.TextSize = 14
-    clearAllBtn.Font = Enum.Font.GothamBold
-    clearAllBtn.TextColor3 = colors.text
-    clearAllBtn.ZIndex = 103
-    clearAllBtn.LayoutOrder = 1
-    clearAllBtn.Parent = petsScroll
-    
-    local clearAllCorner = Instance.new("UICorner")
-    clearAllCorner.CornerRadius = UDim.new(0, 6)
-    clearAllCorner.Parent = clearAllBtn
-    
-    clearAllBtn.MouseButton1Click:Connect(function()
-        fruitPetAssignments[fruitId] = {}
-        -- Refresh pet items
-        for _, child in ipairs(petsScroll:GetChildren()) do
-            if child:IsA("TextButton") and child.Name ~= "SelectAll" and child.Name ~= "ClearAll" then
-                local checkmark = child:FindFirstChild("Checkmark")
-                if checkmark then
-                    checkmark.Visible = false
-                    child.BackgroundColor3 = colors.surface
-                end
-            end
-        end
-    end)
-    
-    -- Create pet items
-    for i, petInfo in ipairs(playerPets) do
-        local petItem = Instance.new("TextButton")
-        petItem.Name = petInfo.name
-        petItem.Size = UDim2.new(1, -16, 0, 44)
-        petItem.BackgroundColor3 = colors.surface
-        petItem.BorderSizePixel = 0
-        petItem.Text = ""
-        petItem.ZIndex = 103
-        petItem.LayoutOrder = i + 1
-        petItem.Parent = petsScroll
-        
-        local petItemCorner = Instance.new("UICorner")
-        petItemCorner.CornerRadius = UDim.new(0, 6)
-        petItemCorner.Parent = petItem
-        
-        local petItemStroke = Instance.new("UIStroke")
-        petItemStroke.Color = colors.border
-        petItemStroke.Thickness = 1
-        petItemStroke.ZIndex = 103
-        petItemStroke.Parent = petItem
-        
-        -- Pet name
-        local petNameLabel = Instance.new("TextLabel")
-        petNameLabel.Name = "PetName"
-        petNameLabel.Size = UDim2.new(1, -48, 1, 0)
-        petNameLabel.Position = UDim2.new(0, 12, 0, 0)
-        petNameLabel.BackgroundTransparency = 1
-        petNameLabel.Text = petInfo.displayName
-        petNameLabel.TextSize = 14
-        petNameLabel.Font = Enum.Font.GothamSemibold
-        petNameLabel.TextColor3 = colors.text
-        petNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        petNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-        petNameLabel.ZIndex = 104
-        petNameLabel.Parent = petItem
-        
-        -- Checkmark
-        local checkmark = Instance.new("TextLabel")
-        checkmark.Name = "Checkmark"
-        checkmark.Size = UDim2.new(0, 24, 0, 24)
-        checkmark.Position = UDim2.new(1, -32, 0.5, -12)
-        checkmark.BackgroundTransparency = 1
-        checkmark.Text = "✓"
-        checkmark.TextSize = 18
-        checkmark.Font = Enum.Font.GothamBold
-        checkmark.TextColor3 = colors.selected
-        checkmark.Visible = fruitPetAssignments[fruitId][petInfo.name] == true
-        checkmark.ZIndex = 104
-        checkmark.Parent = petItem
-        
-        -- Set initial background if selected
-        if fruitPetAssignments[fruitId][petInfo.name] then
-            petItem.BackgroundColor3 = colors.selected
-        end
-        
-        -- Click handler
-        petItem.MouseButton1Click:Connect(function()
-            if fruitPetAssignments[fruitId][petInfo.name] then
-                fruitPetAssignments[fruitId][petInfo.name] = nil
-                checkmark.Visible = false
-                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
             else
-                fruitPetAssignments[fruitId][petInfo.name] = true
-                checkmark.Visible = true
-                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+                -- No selection = feed all pets
+                bigPets = allBigPets
             end
-        end)
-        
-        -- Hover effect
-        petItem.MouseEnter:Connect(function()
-            if not fruitPetAssignments[fruitId][petInfo.name] then
-                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
-            end
-        end)
-        
-        petItem.MouseLeave:Connect(function()
-            if not fruitPetAssignments[fruitId][petInfo.name] then
-                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-            end
-        end)
-    end
-    
-    -- Bottom buttons
-    local buttonContainer = Instance.new("Frame")
-    buttonContainer.Name = "ButtonContainer"
-    buttonContainer.Size = UDim2.new(1, -32, 0, 44)
-    buttonContainer.Position = UDim2.new(0, 16, 1, -60)
-    buttonContainer.BackgroundTransparency = 1
-    buttonContainer.ZIndex = 102
-    buttonContainer.Parent = popup
-    
-    -- Close button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0.48, 0, 1, 0)
-    closeBtn.Position = UDim2.new(0, 0, 0, 0)
-    closeBtn.BackgroundColor3 = colors.surface
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "ปิด"
-    closeBtn.TextSize = 14
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextColor3 = colors.text
-    closeBtn.ZIndex = 103
-    closeBtn.Parent = buttonContainer
-    
-    local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0, 8)
-    closeBtnCorner.Parent = closeBtn
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        overlay:Destroy()
-    end)
-    
-    -- Save button
-    local saveBtn = Instance.new("TextButton")
-    saveBtn.Name = "SaveBtn"
-    saveBtn.Size = UDim2.new(0.48, 0, 1, 0)
-    saveBtn.Position = UDim2.new(0.52, 0, 0, 0)
-    saveBtn.BackgroundColor3 = colors.primary
-    saveBtn.BorderSizePixel = 0
-    saveBtn.Text = "✓ บันทึก"
-    saveBtn.TextSize = 14
-    saveBtn.Font = Enum.Font.GothamBold
-    saveBtn.TextColor3 = colors.text
-    saveBtn.ZIndex = 103
-    saveBtn.Parent = buttonContainer
-    
-    local saveBtnCorner = Instance.new("UICorner")
-    saveBtnCorner.CornerRadius = UDim.new(0, 8)
-    saveBtnCorner.Parent = saveBtn
-    
-    saveBtn.MouseButton1Click:Connect(function()
-        overlay:Destroy()
-        -- Trigger callback if needed
-        if onSelectionChanged then
-            onSelectionChanged(selectedItems, fruitPetAssignments)
-        end
-    end)
-    
-    -- Close on overlay click
-    overlay.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mousePos = UserInputService:GetMouseLocation()
-            local popupPos = popup.AbsolutePosition
-            local popupSize = popup.AbsoluteSize
             
-            -- Check if click is outside popup
-            if mousePos.X < popupPos.X or mousePos.X > popupPos.X + popupSize.X or
-               mousePos.Y < popupPos.Y or mousePos.Y > popupPos.Y + popupSize.Y then
-                overlay:Destroy()
-            end
-        end
-    end)
-end
-
--- Create macOS Style Window Controls
-local function createWindowControls(parent)
-    local controlsContainer = Instance.new("Frame")
-    controlsContainer.Name = "WindowControls"
-    controlsContainer.Size = UDim2.new(0, 70, 0, 12)
-    controlsContainer.Position = UDim2.new(0, 12, 0, 12)
-    controlsContainer.BackgroundTransparency = 1
-    controlsContainer.Parent = parent
-    
-    -- Close Button (Red)
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 12, 0, 12)
-    closeBtn.Position = UDim2.new(0, 0, 0, 0)
-    closeBtn.BackgroundColor3 = colors.close
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = ""
-    closeBtn.Parent = controlsContainer
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0.5, 0)
-    closeCorner.Parent = closeBtn
-    
-    -- Minimize Button (Yellow)
-    local minimizeBtn = Instance.new("TextButton")
-    minimizeBtn.Name = "MinimizeBtn"
-    minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    minimizeBtn.Position = UDim2.new(0, 18, 0, 0)
-    minimizeBtn.BackgroundColor3 = colors.minimize
-    minimizeBtn.BorderSizePixel = 0
-    minimizeBtn.Text = ""
-    minimizeBtn.Parent = controlsContainer
-    
-    local minimizeCorner = Instance.new("UICorner")
-    minimizeCorner.CornerRadius = UDim.new(0.5, 0)
-    minimizeCorner.Parent = minimizeBtn
-    
-    -- Maximize Button (Green)
-    local maximizeBtn = Instance.new("TextButton")
-    maximizeBtn.Name = "MaximizeBtn"
-    maximizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    maximizeBtn.Position = UDim2.new(0, 36, 0, 0)
-    maximizeBtn.BackgroundColor3 = colors.maximize
-    maximizeBtn.BorderSizePixel = 0
-    maximizeBtn.Text = ""
-    maximizeBtn.Parent = controlsContainer
-    
-    local maximizeCorner = Instance.new("UICorner")
-    maximizeCorner.CornerRadius = UDim.new(0.5, 0)
-    maximizeCorner.Parent = maximizeBtn
-    
-    return controlsContainer
-end
-
--- Create Item Card (macOS style)
-local function createItemCard(itemId, itemData, parent)
-    local card = Instance.new("TextButton")
-    card.Name = itemId
-    card.Size = UDim2.new(0.33, -8, 0, 145) -- เพิ่มจาก 120 เป็น 145 เพื่อรองรับปุ่มเลือกสัตว์
-    card.BackgroundColor3 = colors.surface
-    card.BorderSizePixel = 0
-    card.Text = ""
-    card.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = card
-    
-    -- Create Icon (TextLabel for fruits)
-    local icon = Instance.new("TextLabel")
-    icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 50, 0, 50)
-    icon.Position = UDim2.new(0.5, -25, 0.2, 0)
-    icon.BackgroundTransparency = 1
-    icon.Text = itemData.Icon
-    icon.TextSize = 32
-    icon.Font = Enum.Font.GothamBold
-    icon.TextColor3 = getRarityColor(itemData.Rarity)
-    icon.Parent = card
-    
-    local name = Instance.new("TextLabel")
-    name.Name = "Name"
-    name.Size = UDim2.new(1, -16, 0, 20)
-    name.Position = UDim2.new(0, 8, 0.6, 0)
-    name.BackgroundTransparency = 1
-    name.Text = itemData.Name
-    name.TextSize = 12
-    name.Font = Enum.Font.GothamSemibold
-    name.TextColor3 = colors.text
-    name.TextXAlignment = Enum.TextXAlignment.Center
-    name.TextWrapped = true
-    name.Parent = card
-    
-    local price = Instance.new("TextLabel")
-    price.Name = "Price"
-    price.Size = UDim2.new(1, -16, 0, 14)
-    price.Position = UDim2.new(0, 8, 0.75, 0)
-    price.BackgroundTransparency = 1
-    price.Text = "Loading..." -- Will be updated with inventory count
-    price.TextSize = 10
-    price.Font = Enum.Font.Gotham
-    price.TextColor3 = colors.textSecondary
-    price.TextXAlignment = Enum.TextXAlignment.Center
-    price.TextWrapped = true
-    price.Parent = card
-    
-    -- Pet selection button
-    local petSelectBtn = Instance.new("TextButton")
-    petSelectBtn.Name = "PetSelectBtn"
-    petSelectBtn.Size = UDim2.new(0.9, 0, 0, 22)
-    petSelectBtn.Position = UDim2.new(0.05, 0, 0.88, 0)
-    petSelectBtn.BackgroundColor3 = colors.primary
-    petSelectBtn.BorderSizePixel = 0
-    petSelectBtn.Text = "🐾 Selecc"
-    petSelectBtn.TextSize = 9
-    petSelectBtn.Font = Enum.Font.GothamBold
-    petSelectBtn.TextColor3 = colors.text
-    petSelectBtn.ZIndex = 2
-    petSelectBtn.Parent = card
-    
-    local petSelectCorner = Instance.new("UICorner")
-    petSelectCorner.CornerRadius = UDim.new(0, 4)
-    petSelectCorner.Parent = petSelectBtn
-    
-    -- Update button text to show assigned pet count
-    local function updatePetButtonText()
-        local assignedCount = 0
-        if fruitPetAssignments[itemId] then
-            for _ in pairs(fruitPetAssignments[itemId]) do
-                assignedCount = assignedCount + 1
-            end
-        end
-        
-        if assignedCount > 0 then
-            petSelectBtn.Text = string.format("🐾 %d สัตว์", assignedCount)
-            petSelectBtn.BackgroundColor3 = colors.maximize -- Green when assigned
-        else
-            petSelectBtn.Text = "🐾 เลือกสัตว์"
-            petSelectBtn.BackgroundColor3 = colors.primary
-        end
-    end
-    
-    -- Initial update
-    updatePetButtonText()
-    
-    -- Click handler to open pet selection popup
-    petSelectBtn.MouseButton1Click:Connect(function(input)
-        -- Stop event propagation to prevent card selection
-        if input then
-            input:StopPropagation()
-        end
-        
-        -- Create popup
-        if ScreenGui then
-            createPetSelectionPopup(itemId, itemData.Name, ScreenGui)
-        end
-        
-        -- Update button text after popup closes (delayed)
-        task.spawn(function()
-            task.wait(0.5)
-            while ScreenGui and ScreenGui:FindFirstChild("PetSelectionOverlay") do
-                task.wait(0.2)
-            end
-            updatePetButtonText()
-        end)
-    end)
-    
-    -- Hover effect for pet select button
-    petSelectBtn.MouseEnter:Connect(function()
-        TweenService:Create(petSelectBtn, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(
-                math.min(255, petSelectBtn.BackgroundColor3.R * 255 * 1.2),
-                math.min(255, petSelectBtn.BackgroundColor3.G * 255 * 1.2),
-                math.min(255, petSelectBtn.BackgroundColor3.B * 255 * 1.2)
-            )
-        }):Play()
-    end)
-    
-    petSelectBtn.MouseLeave:Connect(function()
-        updatePetButtonText() -- Reset to original color
-    end)
-        -- Update price label with inventory count
-    local function updateInventoryDisplay()
-        local fruitInventory = getPlayerFruitInventory()
-        local fruitAmount = fruitInventory[itemData.Name] or 0
-        
-        if fruitAmount > 0 then
-            price.Text = fruitAmount .. "x"
-            price.TextColor3 = colors.textSecondary
-        else
-            price.Text = "0x"
-            price.TextColor3 = Color3.fromRGB(255, 69, 58) -- Red for 0 inventory
-        end
-    end
-    
-    -- Update immediately
-    updateInventoryDisplay()
-    
-    -- Update every 2 seconds to keep inventory current
-    local lastUpdate = 0
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not card.Parent then
-            connection:Disconnect()
-            return
-        end
-        
-        -- Update every 2 seconds
-        local currentTime = tick()
-        if currentTime - lastUpdate >= 2 then
-            updateInventoryDisplay()
-            lastUpdate = currentTime
-        end
-    end)
-    
-    -- Clean up connection when card is destroyed
-    card.AncestryChanged:Connect(function()
-        if not card.Parent then
-            connection:Disconnect()
-        end
-    end)
-    
-    local checkmark = Instance.new("TextLabel")
-    checkmark.Name = "Checkmark"
-    checkmark.Size = UDim2.new(0, 20, 0, 20)
-    checkmark.Position = UDim2.new(1, -24, 0, 4)
-    checkmark.BackgroundTransparency = 1
-    checkmark.Text = "✓"
-    checkmark.TextSize = 16
-    checkmark.Font = Enum.Font.GothamBold
-    checkmark.TextColor3 = colors.selected
-    checkmark.Visible = false
-    checkmark.Parent = card
-    
-    -- Add "New" indicator for new items
-    if itemData.IsNew then
-        local newIndicator = Instance.new("TextLabel")
-        newIndicator.Name = "NewIndicator"
-        newIndicator.Size = UDim2.new(0, 30, 0, 16)
-        newIndicator.Position = UDim2.new(1, -34, 0, 2)
-        newIndicator.BackgroundColor3 = Color3.fromRGB(255, 69, 58) -- Red background
-        newIndicator.BorderSizePixel = 0
-        newIndicator.Text = "NEW"
-        newIndicator.TextSize = 8
-        newIndicator.Font = Enum.Font.GothamBold
-        newIndicator.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
-        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
-        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
-        newIndicator.Parent = card
-        
-        local newCorner = Instance.new("UICorner")
-        newCorner.CornerRadius = UDim.new(0, 3)
-        newCorner.Parent = newIndicator
-    end
-    
-    -- Set initial selection state
-    if selectedItems[itemId] then
-        checkmark.Visible = true
-        card.BackgroundColor3 = colors.selected
-    end
-    
-    -- Hover effect
-    card.MouseEnter:Connect(function()
-        if not selectedItems[itemId] then
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
-        end
-    end)
-    
-    card.MouseLeave:Connect(function()
-        if not selectedItems[itemId] then
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-        end
-    end)
-    
-    -- Click effect
-    card.MouseButton1Click:Connect(function()
-        if selectedItems[itemId] then
-            selectedItems[itemId] = nil
-            checkmark.Visible = false
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-        else
-            selectedItems[itemId] = true
-            checkmark.Visible = true
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
-        end
-        
-        -- Trigger callback with both selections and pet assignments
-        if onSelectionChanged then
-            onSelectionChanged(selectedItems, fruitPetAssignments)
-        end
-    end)
-    
-    return card
-end
-
--- Create Search Bar (macOS style)
-local function createSearchBar(parent)
-    local searchContainer = Instance.new("Frame")
-    searchContainer.Name = "SearchContainer"
-    searchContainer.Size = UDim2.new(1, -32, 0, 32)
-    searchContainer.Position = UDim2.new(0, 16, 0, 60)
-    searchContainer.BackgroundColor3 = colors.surface
-    searchContainer.BorderSizePixel = 0
-    searchContainer.Parent = parent
-    
-    local searchCorner = Instance.new("UICorner")
-    searchCorner.CornerRadius = UDim.new(0, 8)
-    searchCorner.Parent = searchContainer
-    
-    local searchStroke = Instance.new("UIStroke")
-    searchStroke.Color = colors.border
-    searchStroke.Thickness = 1
-    searchStroke.Parent = searchContainer
-    
-    local searchIcon = Instance.new("TextLabel")
-    searchIcon.Name = "SearchIcon"
-    searchIcon.Size = UDim2.new(0, 16, 0, 16)
-    searchIcon.Position = UDim2.new(0, 12, 0.5, -8)
-    searchIcon.BackgroundTransparency = 1
-    searchIcon.Text = "🔍"
-    searchIcon.TextSize = 12
-    searchIcon.Font = Enum.Font.Gotham
-    searchIcon.TextColor3 = colors.textSecondary
-    searchIcon.Parent = searchContainer
-    
-    local searchBox = Instance.new("TextBox")
-    searchBox.Name = "SearchBox"
-    searchBox.Size = UDim2.new(1, -44, 0.8, 0)
-    searchBox.Position = UDim2.new(0, 36, 0.1, 0)
-    searchBox.BackgroundTransparency = 1
-    searchBox.Text = ""
-    searchBox.PlaceholderText = "Search fruits..."
-    searchBox.TextSize = 14
-    searchBox.Font = Enum.Font.Gotham
-    searchBox.TextColor3 = colors.text
-    searchBox.TextXAlignment = Enum.TextXAlignment.Left
-    searchBox.ClearTextOnFocus = false
-    searchBox.Parent = searchContainer
-    
-    -- Search functionality
-    searchBox.Changed:Connect(function(prop)
-        if prop == "Text" then
-            searchText = searchBox.Text
-            FeedFruitSelection.RefreshContent()
-        end
-    end)
-    
-    return searchContainer
-end
-
--- Create UI
-function FeedFruitSelection.CreateUI()
-    if ScreenGui then
-        ScreenGui:Destroy()
-    end
-    
-    ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "FeedFruitSelectionUI"
-    ScreenGui.Parent = PlayerGui
-    
-    MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 600, 0, 400)
-    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    MainFrame.BackgroundColor3 = colors.background
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Parent = ScreenGui
-    
-    originalSize = MainFrame.Size
-    minimizedSize = UDim2.new(0, 600, 0, 60)
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = MainFrame
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = MainFrame
-    
-    -- Window Controls
-    local windowControls = createWindowControls(MainFrame)
-    
-    -- Title
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, -140, 0, 20)
-    title.Position = UDim2.new(0, 100, 0, 12)
-    title.BackgroundTransparency = 1
-    title.Text = "Feed Fruit Selection"
-    title.TextSize = 14
-    title.Font = Enum.Font.GothamSemibold
-    title.TextColor3 = colors.text
-    title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = MainFrame
-    
-    -- Search Bar
-    local searchBar = createSearchBar(MainFrame)
-    
-    -- Content Area
-    local content = Instance.new("Frame")
-    content.Name = "Content"
-    content.Size = UDim2.new(1, -32, 1, -120)
-    content.Position = UDim2.new(0, 16, 0, 120)
-    content.BackgroundTransparency = 1
-    content.Parent = MainFrame
-    
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Name = "ScrollFrame"
-    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 6
-    scrollFrame.ScrollBarImageColor3 = colors.primary
-    -- Ensure manual canvas sizing for reliable scrolling
-    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
-    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    scrollFrame.Parent = content
-    
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 145) -- เพิ่มจาก 120 เป็น 145 เพื่อรองรับปุ่มเลือกสัตว์
-    gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.Parent = scrollFrame
-    
-    -- Add UIPadding to ensure proper scrolling
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 8)
-    padding.PaddingBottom = UDim.new(0, 50)
-    padding.PaddingLeft = UDim.new(0, 8)
-    padding.PaddingRight = UDim.new(0, 8)
-    padding.Parent = scrollFrame
-    
-    -- Window Control Events
-    local closeBtn = windowControls.CloseBtn
-    local minimizeBtn = windowControls.MinimizeBtn
-    local maximizeBtn = windowControls.MaximizeBtn
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        if onToggleChanged then
-            onToggleChanged(false)
-        end
-        ScreenGui:Destroy()
-        ScreenGui = nil
-    end)
-    
-    minimizeBtn.MouseButton1Click:Connect(function()
-        if isMinimized then
-            MainFrame.Size = originalSize
-            content.Visible = true
-            searchBar.Visible = true
-            isMinimized = false
-        else
-            MainFrame.Size = minimizedSize
-            content.Visible = false
-            searchBar.Visible = false
-            isMinimized = true
-        end
-    end)
-    
-    maximizeBtn.MouseButton1Click:Connect(function()
-        if MainFrame.Size == originalSize then
-            MainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
-            MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-        else
-            MainFrame.Size = originalSize
-            MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-        end
-    end)
-    
-    -- Dragging
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundTransparency = 1
-    titleBar.Parent = MainFrame
-    
-    titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = true
-            dragStart = input.Position
-            startPos = MainFrame.Position
+            feedFruitStatus.petsFound = #bigPets
+            feedFruitStatus.availablePets = 0
             
-            local connection
-            connection = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    isDragging = false
-                    connection:Disconnect()
+            -- Log which stations are being fed
+            if selectedBigPets and next(selectedBigPets) then
+                local stationList = {}
+                for _, petData in ipairs(bigPets) do
+                    if petData.stationId then
+                        table.insert(stationList, petData.stationId)
+                    end
                 end
-            end)
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-            local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    
-    return ScreenGui
-end
-
--- Refresh Content
-function FeedFruitSelection.RefreshContent()
-    if not ScreenGui then return end
-    
-    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-    if not scrollFrame then return end
-    
-    -- Clear existing content
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    -- Filter by search
-    local filteredData = filterDataBySearch(FruitData, searchText)
-    
-    -- Sort by inventory count (high to low) instead of price
-    local sortedData = {}
-    for id, item in pairs(filteredData) do
-        table.insert(sortedData, {id = id, data = item})
-    end
-    
-    -- Sort by inventory count (high to low)
-    local fruitInventory = getPlayerFruitInventory()
-    table.sort(sortedData, function(a, b)
-        local amountA = fruitInventory[a.data.Name] or 0
-        local amountB = fruitInventory[b.data.Name] or 0
-        return amountA > amountB -- High to low
-    end)
-    
-    -- Add content
-    for i, item in ipairs(sortedData) do
-        local card = createItemCard(item.id, item.data, scrollFrame)
-        card.LayoutOrder = i
-        
-        -- Apply saved selection state
-        if selectedItems[item.id] then
-            local checkmark = card:FindFirstChild("Checkmark")
-            if checkmark then
-                checkmark.Visible = true
+                if #stationList > 0 then
+                    print("[Auto Feed] Feeding stations: " .. table.concat(stationList, ", "))
+                end
             end
-            card.BackgroundColor3 = colors.selected
-        end
-    end
-
-    -- Update canvas size based on number of items (3 per row)
-    local itemCount = #sortedData
-    if itemCount > 0 then
-        local rows = math.ceil(itemCount / 3)
-        local cellHeight = 145 -- เพิ่มจาก 120 เป็น 145
-        local cellPadding = 8
-        local topPadding = 8
-        local bottomPadding = 50
-        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-        scrollFrame.CanvasPosition = Vector2.new(0, 0)
-    end
-end
-
--- Public Functions
-function FeedFruitSelection.Show(callback, toggleCallback, savedFruits, savedAssignments)
-    onSelectionChanged = callback
-    onToggleChanged = toggleCallback
-    
-    -- Apply saved selections if provided
-    if savedFruits then
-        selectedItems = {}
-        for fruitId, _ in pairs(savedFruits) do
-            selectedItems[fruitId] = true
-        end
-    end
-    
-    -- Apply saved pet assignments if provided
-    if savedAssignments and type(savedAssignments) == "table" then
-        fruitPetAssignments = savedAssignments
-    end
-    
-    if not ScreenGui then
-        FeedFruitSelection.CreateUI()
-    end
-    
-    task.wait()
-    FeedFruitSelection.RefreshContent()
-    ScreenGui.Enabled = true
-    ScreenGui.Parent = PlayerGui
-end
-
-function FeedFruitSelection.Hide()
-    if ScreenGui then
-        ScreenGui.Enabled = false
-    end
-end
-
-function FeedFruitSelection.GetSelectedItems()
-    return selectedItems
-end
-
-function FeedFruitSelection.SetSelectedItems(items)
-    selectedItems = items or {}
-    
-    if ScreenGui then
-        local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-        for _, child in pairs(scrollFrame:GetChildren()) do
-            if child:IsA("TextButton") then
-                local checkmark = child:FindFirstChild("Checkmark")
-                if checkmark then
-                    if selectedItems[child.Name] then
-                        checkmark.Visible = true
-                        child.BackgroundColor3 = colors.selected
+            
+            if #bigPets == 0 then
+                if selectedBigPets and next(selectedBigPets) then
+                    feedFruitStatus.lastAction = "No selected Big Pets found"
+                else
+                feedFruitStatus.lastAction = "No Big Pets found"
+                end
+                if updateFeedStatusParagraph then
+                    updateFeedStatusParagraph()
+                end
+                shouldContinue = false
+                return
+            end
+            
+            -- Check each pet for feeding opportunity
+            for _, petData in ipairs(bigPets) do
+                if not getAutoFeedEnabled() then break end
+                
+                local isEating = AutoFeedSystem.isPetEating(petData)
+                
+                -- Get the actual feed time text for debugging
+                local feedTimeText = "unknown"
+                if petData.bigPetGUI then
+                    local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
+                    if feedGUI then
+                        local feedText = feedGUI:FindFirstChild("TXT")
+                        if feedText and feedText:IsA("TextLabel") then
+                            feedTimeText = feedText.Text
+                        end
+                    end
+                end
+                
+                
+                if not isEating then
+                    feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
+                    
+                    -- Get current selected fruits from main script
+                    local selectedFeedFruits = getSelectedFruits and getSelectedFruits() or {}
+                    
+                    -- Debug: Check if selections are being lost
+                    local fruitCount = 0
+                    local fruitList = {}
+                    if selectedFeedFruits then
+                        for fruitName, _ in pairs(selectedFeedFruits) do
+                            fruitCount = fruitCount + 1
+                            table.insert(fruitList, fruitName)
+                        end
+                    end
+                    
+                    -- Check if we have selected fruits
+                    if selectedFeedFruits and fruitCount > 0 then
+                        -- Get player's fruit inventory
+                        local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
+                        
+                        -- Get fruit-pet assignments
+                        local fruitPetAssignments = AutoFeedSystem.fruitPetAssignments or {}
+                        
+                        -- Try to feed with selected fruits
+                        for fruitName, _ in pairs(selectedFeedFruits) do
+                            if not getAutoFeedEnabled() then break end
+                            
+                            -- Check if this fruit is assigned to this specific pet
+                            local petAssignments = fruitPetAssignments[fruitName]
+                            local shouldFeedThisPet = false
+                            
+                            if not petAssignments or not next(petAssignments) then
+                                -- No specific assignments for this fruit = feed all pets
+                                shouldFeedThisPet = true
+                            else
+                                -- Check if this pet is in the assignment list
+                                -- petData.name is the pet's actual name (UID)
+                                shouldFeedThisPet = petAssignments[petData.name] == true
+                            end
+                            
+                            if not shouldFeedThisPet then
+                                -- Skip this fruit for this pet
+                                feedFruitStatus.lastAction = "⏭️ " .. fruitName .. " not assigned to " .. petData.name
+                                if updateFeedStatusParagraph then
+                                    updateFeedStatusParagraph()
+                                end
+                                task.wait(0.1)
+                            else
+                                -- Check if player has this fruit
+                                local fruitAmount = fruitInventory[fruitName] or 0
+                                if fruitAmount <= 0 then
+                                    feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
+                                    if updateFeedStatusParagraph then
+                                        updateFeedStatusParagraph()
+                                    end
+                                    task.wait(0.5)
+                                else
+                                    -- Update status to show which pet we're trying to feed
+                                    feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
+                                    if updateFeedStatusParagraph then
+                                        updateFeedStatusParagraph()
+                                    end
+                                    
+                                    -- Always equip the fruit before feeding (every time) - with retry
+                                    local equipSuccess = false
+                                    for retry = 1, 3 do -- Try up to 3 times
+                                        if AutoFeedSystem.equipFruit(fruitName) then
+                                            equipSuccess = true
+                                            break
+                                        else
+                                            task.wait(0.2) -- Wait before retry
+                                        end
+                                    end
+                                    
+                                    if equipSuccess then
+                                        task.wait(0.2) -- Small delay between equip and feed
+                                        
+                                        -- Feed the pet - with retry
+                                        local feedSuccess = false
+                                        for retry = 1, 3 do -- Try up to 3 times
+                                            if AutoFeedSystem.feedPet(petData.name) then
+                                                feedSuccess = true
+                                                break
+                                            else
+                                                task.wait(0.2) -- Wait before retry
+                                            end
+                                        end
+                                        
+                                        if feedSuccess then
+                                            feedFruitStatus.lastFedPet = petData.name
+                                            feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
+                                            feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
+                                            if updateFeedStatusParagraph then
+                                                updateFeedStatusParagraph()
+                                            end
+                                            
+                                            task.wait(1.5) -- Wait longer before trying next pet
+                                            break -- Move to next pet
+                                        else
+                                            feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName .. " after 3 attempts"
+                                            if updateFeedStatusParagraph then
+                                                updateFeedStatusParagraph()
+                                            end
+                                        end
+                                    else
+                                        feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. " after 3 attempts"
+                                        if updateFeedStatusParagraph then
+                                            updateFeedStatusParagraph()
+                                        end
+                                    end
+                                    
+                                    task.wait(0.3) -- Small delay between fruit attempts
+                                end
+                            end
+                        end
                     else
-                        checkmark.Visible = false
-                        child.BackgroundColor3 = colors.surface
+                        feedFruitStatus.lastAction = "No fruits selected for feeding"
+                        if updateFeedStatusParagraph then
+                            updateFeedStatusParagraph()
+                        end
+                    end
+                else
+                    -- Show which pets are currently eating
+                    feedFruitStatus.lastAction = petData.name .. " is currently eating"
+                    if updateFeedStatusParagraph then
+                        updateFeedStatusParagraph()
+                    end
+                end
+            end
+            
+            if feedFruitStatus.availablePets == 0 then
+                feedFruitStatus.lastAction = "All pets are currently eating"
+                if updateFeedStatusParagraph then
+                    updateFeedStatusParagraph()
+                end
+            end
+        end)
+        
+        if not ok then
+            warn("Auto Feed error: " .. tostring(err))
+            feedFruitStatus.lastAction = "Error: " .. tostring(err)
+            if updateFeedStatusParagraph then
+                updateFeedStatusParagraph()
+            end
+            task.wait(1) -- Wait before retrying
+        elseif not shouldContinue then
+            -- No big pets found, wait longer before checking again
+            task.wait(3)
+        else
+            -- Normal operation, wait before next cycle
+            task.wait(2)
+        end
+    end
+end
+
+-- Debug function to help troubleshoot auto feed issues
+function AutoFeedSystem.debugAutoFeed()
+    local localPlayer = game:GetService("Players").LocalPlayer
+    if not localPlayer then
+        return
+    end
+    
+    local petsFolder = workspace:FindFirstChild("Pets")
+    if not petsFolder then
+        return
+    end
+    
+    local totalPets = 0
+    local myPets = 0
+    local bigPets = 0
+    local availablePets = 0
+    
+    for _, petModel in ipairs(petsFolder:GetChildren()) do
+        if petModel:IsA("Model") then
+            totalPets = totalPets + 1
+            local rootPart = petModel:FindFirstChild("RootPart")
+            if rootPart then
+                local petUserId = rootPart:GetAttribute("UserId")
+                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
+                    myPets = myPets + 1
+                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                    if bigPetGUI then
+                        bigPets = bigPets + 1
+                        
+                        -- Check feed status
+                        local feedGUI = bigPetGUI:FindFirstChild("Feed")
+                        if feedGUI then
+                            local feedText = feedGUI:FindFirstChild("TXT")
+                            if feedText and feedText:IsA("TextLabel") then
+                                local feedTime = feedText.Text
+                                local feedVisible = feedGUI.Visible
+                                
+                                -- Check if ready using the same logic as isPetEating
+                                local isReady = false
+                                if not feedVisible then
+                                    isReady = true
+                                elseif feedTime == "00:00" or feedTime == "???" or feedTime == "" then
+                                    isReady = true
+                                end
+                                
+                                if isReady then
+                                    availablePets = availablePets + 1
+                                else
+                                end
+                            else
+                            end
+                        else
+                        end
+                    else
                     end
                 end
             end
         end
     end
-end
-
-function FeedFruitSelection.IsVisible()
-    return ScreenGui and ScreenGui.Enabled
-end
-
-function FeedFruitSelection.GetCurrentSelections()
-    return selectedItems
-end
-
-function FeedFruitSelection.UpdateSelections(fruits)
-    selectedItems = {}
     
-    if fruits then
-        for fruitId, _ in pairs(fruits) do
-            selectedItems[fruitId] = true
+    -- Check fruit inventory
+    local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
+    local fruitCount = 0
+    for fruitName, amount in pairs(fruitInventory) do
+        if amount > 0 then
+            fruitCount = fruitCount + 1
+        end
+    end
+
+end
+
+-- Helper function to get island name
+local function getAssignedIslandName()
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then return nil end
+    return localPlayer:GetAttribute("AssignedIslandName")
+end
+
+-- Helper function to get available Big pets from current island
+local function getAvailableBigPets()
+    local bigPets = {}
+    
+    local islandName = getAssignedIslandName()
+    if not islandName then return bigPets end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return bigPets end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return bigPets end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return bigPets end
+    
+    local bigPetFolder = env:FindFirstChild("BigPet")
+    if not bigPetFolder then return bigPets end
+    
+    -- Get only Parts from BigPet folder
+    for _, child in ipairs(bigPetFolder:GetChildren()) do
+        if child:IsA("BasePart") then
+            local displayName = child.Name
+            
+            -- Try to get a better name from attributes
+            local petType = child:GetAttribute("Type") 
+                or child:GetAttribute("T") 
+                or child:GetAttribute("PetType")
+            
+            if petType and tostring(petType) ~= "" then
+                displayName = displayName .. " (" .. tostring(petType) .. ")"
+            end
+            
+            if not table.find(bigPets, displayName) then
+                table.insert(bigPets, displayName)
+            end
         end
     end
     
-    if ScreenGui then
-        FeedFruitSelection.RefreshContent()
+    -- Sort numerically if names are numbers
+    table.sort(bigPets, function(a, b)
+        local numA = tonumber(a:match("^(%d+)"))
+        local numB = tonumber(b:match("^(%d+)"))
+        if numA and numB then
+            return numA < numB
+        end
+        return a < b
+    end)
+    
+    return bigPets
+end
+
+-- Callback to update custom UI selections
+local function updateCustomUISelection(uiType, selections)
+    -- This will be called to save selections
+    if not CustomUIConfig then return end
+    
+    -- Convert selections to array format for saving
+    local selectionsArray = {}
+    for key, _ in pairs(selections) do
+        table.insert(selectionsArray, key)
+    end
+    
+    -- Save using CustomUIConfig
+    pcall(function()
+        if uiType == "bigPetSelections" then
+            CustomUIConfig:Set("bigPetSelections", selectionsArray)
+            CustomUIConfig:Save()
+        elseif uiType == "feedFruitSelections" then
+            CustomUIConfig:Set("feedFruitSelections", selectionsArray)
+            CustomUIConfig:Save()
+        end
+    end)
+end
+
+-- Initialize the Auto Feed System
+function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIConfigRef, feedFruitSelectionRef)
+    WindUI = windUIRef
+    Tabs = tabsRef
+    AutoSystemsConfig = autoSystemsConfigRef
+    CustomUIConfig = customUIConfigRef
+    FeedFruitSelection = feedFruitSelectionRef
+    
+    -- Load saved selections from CustomUIConfig
+    if CustomUIConfig then
+        pcall(function()
+            local savedBigPets = CustomUIConfig:Get("bigPetSelections") or {}
+            local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
+            local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
+            
+            -- Convert array to set
+            selectedBigPets = {}
+            for _, petName in ipairs(savedBigPets) do
+                selectedBigPets[petName] = true
+            end
+            
+            selectedFeedFruits = {}
+            for _, fruitId in ipairs(savedFeedFruits) do
+                selectedFeedFruits[fruitId] = true
+            end
+            
+            -- Load pet assignments
+            AutoFeedSystem.fruitPetAssignments = savedPetAssignments
+            
+            print("[AutoFeed] Loaded pet assignments for", #AutoFeedSystem.getTableKeys(savedPetAssignments), "fruits")
+        end)
     end
 end
 
--- Get fruit-to-pet assignments
-function FeedFruitSelection.GetPetAssignments()
-    return fruitPetAssignments
+-- Helper function to count table keys
+function AutoFeedSystem.getTableKeys(tbl)
+    local keys = {}
+    if type(tbl) == "table" then
+        for k, _ in pairs(tbl) do
+            table.insert(keys, k)
+        end
+    end
+    return keys
 end
 
--- Set fruit-to-pet assignments
-function FeedFruitSelection.SetPetAssignments(assignments)
-    if type(assignments) == "table" then
-        fruitPetAssignments = assignments
+-- Create UI function
+function AutoFeedSystem.CreateUI()
+    if not Tabs or not Tabs.ShopTab then
+        warn("[AutoFeedSystem] Tabs.ShopTab not available")
+        return
+    end
+    
+    -- Section header
+    Tabs.ShopTab:Section({ Title = "Auto Feed", Icon = "coffee" })
+    
+    -- Feed Fruit Selection UI Button (with pet assignments)
+    Tabs.ShopTab:Button({
+        Title = "Open Feed Fruit & Pet Selection",
+        Desc = "Select fruits and which Big Pets to feed",
+        Callback = function()
+            if not feedFruitSelectionVisible then
+                if FeedFruitSelection then
+                    FeedFruitSelection.Show(
+                        function(selectedItems, petAssignments)
+                            -- Save both fruit selections and pet assignments
+                            selectedFeedFruits = selectedItems
+                            
+                            -- Store pet assignments for feeding logic
+                            AutoFeedSystem.fruitPetAssignments = petAssignments or {}
+                            
+                            -- Save to config
+                            updateCustomUISelection("feedFruitSelections", selectedItems)
+                            
+                            -- Save pet assignments separately
+                            if CustomUIConfig then
+                                pcall(function()
+                                    CustomUIConfig:Set("feedPetAssignments", petAssignments or {})
+                                    CustomUIConfig:Save()
+                                end)
+                            end
+                        end,
+                        function(isVisible)
+                            feedFruitSelectionVisible = isVisible
+                        end,
+                        selectedFeedFruits
+                    )
+                    feedFruitSelectionVisible = true
+                end
+            else
+                if FeedFruitSelection then
+                    FeedFruitSelection.Hide()
+                end
+                feedFruitSelectionVisible = false
+            end
+        end
+    })
+    
+    -- Big Pet Selection Dropdown
+    bigPetDropdown = Tabs.ShopTab:Dropdown({
+        Title = "Select Big Pets to Feed",
+        Desc = "Choose which Big pets should be fed (empty = feed all)",
+        Values = getAvailableBigPets(),
+        Value = {},
+        Multi = true,
+        AllowNone = true,
+        Callback = function(selection)
+            -- Convert array to set
+            selectedBigPets = {}
+            for _, petName in ipairs(selection) do
+                selectedBigPets[petName] = true
+            end
+            
+            -- Save selection
+            updateCustomUISelection("bigPetSelections", selectedBigPets)
+            
+            -- Log selection change (removed notification to reduce spam)
+            if #selection == 0 then
+                print("[AutoFeed] Big Pet selection updated: Feeding ALL Big Pets")
+            else
+                print("[AutoFeed] Big Pet selection updated:", table.concat(selection, ", "))
+            end
+        end
+    })
+    
+    -- Refresh Big Pet list button
+    Tabs.ShopTab:Button({
+        Title = "🔄 Refresh Big Pet List",
+        Desc = "Update the list of available Big pets",
+        Callback = function()
+            local availablePets = getAvailableBigPets()
+            if bigPetDropdown and bigPetDropdown.Refresh then
+                bigPetDropdown:Refresh(availablePets)
+                if WindUI then
+                    WindUI:Notify({ 
+                        Title = "Big Pets Refreshed", 
+                        Content = "Found " .. #availablePets .. " Big pets", 
+                        Duration = 2 
+                    })
+                end
+            end
+        end
+    })
+    
+    -- Auto Feed Toggle
+    autoFeedToggle = Tabs.ShopTab:Toggle({
+        Title = "Auto Feed Pets",
+        Desc = "Feed big pets with selected fruits",
+        Value = false,
+        Callback = function(state)
+            autoFeedEnabled = state
+            
+            if state and not autoFeedThread then
+                autoFeedThread = task.spawn(function()
+                    -- Get auto feed enabled status (dynamically checks current state)
+                    local function getAutoFeedEnabled()
+                        return autoFeedEnabled
+                    end
+                    
+                    -- Get selected Big Pets function (dynamically reads current selection)
+                    local function getSelectedBigPets()
+                        return selectedBigPets
+                    end
+                    
+                    -- Get selected fruits function
+                    local function getSelectedFruits()
+                        return selectedFeedFruits
+                    end
+                    
+                    -- Wrap in error handling
+                    local ok, err = pcall(function()
+                        AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, function() end, getSelectedFruits)
+                    end)
+                    
+                    if not ok then
+                        warn("Auto Feed thread error: " .. tostring(err))
+            if WindUI then
+                WindUI:Notify({
+                                Title = "Auto Feed Error", 
+                                Content = "Auto Feed stopped due to error: " .. tostring(err), 
+                                Duration = 5 
+                            })
+                        end
+                    end
+                    
+                    autoFeedThread = nil
+                end)
+                
+                if WindUI then
+                    WindUI:Notify({ Title = "Auto Feed", Content = "Started - Feeding Big Pets! 🎉", Duration = 3 })
+                end
+            elseif (not state) and autoFeedThread then
+                if WindUI then
+                    WindUI:Notify({ Title = "Auto Feed", Content = "Stopped", Duration = 3 })
+                end
+            end
+        end
+    })
+    
+    -- Register UI elements with config
+    if AutoSystemsConfig and autoFeedToggle then
+        pcall(function()
+            AutoSystemsConfig:Register("autoFeedEnabled", autoFeedToggle)
+        end)
+    end
+    
+    if CustomUIConfig and bigPetDropdown then
+        pcall(function()
+            CustomUIConfig:Register("bigPetDropdown", bigPetDropdown)
+        end)
     end
 end
 
--- Get assignment for a specific fruit
-function FeedFruitSelection.GetFruitAssignment(fruitId)
-    return fruitPetAssignments[fruitId] or {}
-end
-
--- Set assignment for a specific fruit
-function FeedFruitSelection.SetFruitAssignment(fruitId, petList)
-    if type(petList) == "table" then
-        fruitPetAssignments[fruitId] = petList
-    end
-end
-
--- Clear all assignments
-function FeedFruitSelection.ClearAllAssignments()
-    fruitPetAssignments = {}
-end
-
--- Get complete feeding data (fruits + pet assignments)
-function FeedFruitSelection.GetFeedingData()
+-- Get config elements for external registration
+function AutoFeedSystem.GetConfigElements()
     return {
-        selectedFruits = selectedItems,
-        petAssignments = fruitPetAssignments
+        AutoFeedToggle = autoFeedToggle,
+        BigPetDropdown = bigPetDropdown
     }
 end
 
--- Load complete feeding data
-function FeedFruitSelection.LoadFeedingData(data)
-    if type(data) ~= "table" then return end
-    
-    if data.selectedFruits then
-        selectedItems = data.selectedFruits
-    end
-    
-    if data.petAssignments then
-        fruitPetAssignments = data.petAssignments
-    end
-    
-    if ScreenGui then
-        FeedFruitSelection.RefreshContent()
+-- Sync loaded values (called after config load)
+function AutoFeedSystem.SyncLoadedValues()
+    -- Load selections from CustomUIConfig if available
+    if CustomUIConfig then
+        pcall(function()
+            local savedBigPets = CustomUIConfig:Get("bigPetSelections") or {}
+            local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
+            local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
+            
+            -- Convert array to set
+            selectedBigPets = {}
+            for _, petName in ipairs(savedBigPets) do
+                selectedBigPets[petName] = true
+            end
+            
+            selectedFeedFruits = {}
+            for _, fruitId in ipairs(savedFeedFruits) do
+                selectedFeedFruits[fruitId] = true
+            end
+            
+            -- Load pet assignments
+            AutoFeedSystem.fruitPetAssignments = savedPetAssignments
+            
+            local assignmentCount = #AutoFeedSystem.getTableKeys(savedPetAssignments)
+            print("[AutoFeed] Synced Big Pets:", #savedBigPets, "Synced Fruits:", #savedFeedFruits, "Pet Assignments:", assignmentCount)
+        end)
     end
 end
 
-return FeedFruitSelection
+return AutoFeedSystem
