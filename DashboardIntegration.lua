@@ -9,54 +9,6 @@ local DASHBOARD_URL = "http://localhost:3000" -- Change to your deployed URL lat
 local UPDATE_INTERVAL = 30 -- Send stats every 30 seconds
 local RETRY_DELAY = 5 -- Retry failed requests after 5 seconds
 
--- ============ GAME DETECTION (Auto-detect by PlaceId) ============
-local GAME_DATABASE = {
-    -- Build A Zoo
-    [105555311806207] = { id = "build-a-zoo", name = "Build A Zoo", icon = "🦁" },
-    
-    -- Pet Simulator 99 (example PlaceIds - update with real ones)
-    [12345678901] = { id = "pet-simulator-99", name = "Pet Simulator 99", icon = "🐾" },
-    
-    -- Anime Defenders (example PlaceIds - update with real ones)
-    [23456789012] = { id = "anime-defenders", name = "Anime Defenders", icon = "⚔️" },
-    
-    -- Blox Fruits (example PlaceIds - update with real ones)
-    [34567890123] = { id = "blox-fruits", name = "Blox Fruits", icon = "🍎" },
-}
-
--- Get game thumbnail URL from Roblox
-local function getGameThumbnail(placeId)
-    -- Roblox uses thumbnails API - we'll use the AssetThumbnail endpoint
-    -- Format: https://www.roblox.com/asset-thumbnail/image?assetId=PLACEID&width=768&height=432
-    return string.format("https://www.roblox.com/asset-thumbnail/image?assetId=%d&width=768&height=432&format=png", placeId)
-end
-
--- Auto-detect game from PlaceId
-local function detectGame()
-    local placeId = game.PlaceId
-    local gameInfo = GAME_DATABASE[placeId]
-    
-    if gameInfo then
-        -- Add thumbnail URL to game info
-        gameInfo.thumbnailUrl = getGameThumbnail(placeId)
-        return gameInfo
-    else
-        -- Unknown game - return default
-        return {
-            id = "unknown-" .. tostring(placeId),
-            name = "Unknown Game (" .. tostring(placeId) .. ")",
-            icon = "❓",
-            thumbnailUrl = getGameThumbnail(placeId)
-        }
-    end
-end
-
-local CURRENT_GAME = detectGame()
-local GAME_ID = CURRENT_GAME.id
-local GAME_NAME = CURRENT_GAME.name
-local GAME_ICON = CURRENT_GAME.icon
-local GAME_THUMBNAIL = CURRENT_GAME.thumbnailUrl
-
 -- ============ SERVICES ============
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -282,8 +234,9 @@ local function calculateEfficiencyMetrics()
     }
 end
 
--- Get egg type breakdown
-local function getEggStats()
+-- Get detailed egg inventory (like AutoPlaceGridUI)
+local function getEggInventory()
+    local eggs = {}
     local eggTypes = {}
     local mutations = {}
     
@@ -296,9 +249,19 @@ local function getEggStats()
             if #child:GetChildren() == 0 then -- Available egg
                 local eggType = child:GetAttribute("T") or "Unknown"
                 local mutation = child:GetAttribute("M")
+                local uid = child.Name
                 
+                -- Add to detailed list
+                table.insert(eggs, {
+                    uid = uid,
+                    type = eggType,
+                    mutation = mutation
+                })
+                
+                -- Count by type
                 eggTypes[eggType] = (eggTypes[eggType] or 0) + 1
                 
+                -- Count by mutation
                 if mutation and mutation ~= "" then
                     mutations[mutation] = (mutations[mutation] or 0) + 1
                 end
@@ -307,9 +270,46 @@ local function getEggStats()
     end
     
     return {
+        list = eggs, -- Detailed list for inventory view
         types = eggTypes,
         mutations = mutations
     }
+end
+
+-- Get detailed pet inventory (like AutoPlaceGridUI)
+local function getPetInventory()
+    local pets = {}
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = playerGui and playerGui:FindFirstChild("Data")
+    local petsFolder = data and data:FindFirstChild("Pets")
+    
+    if petsFolder then
+        for _, petConfig in ipairs(petsFolder:GetChildren()) do
+            if petConfig:IsA("Configuration") then
+                local uid = petConfig.Name
+                local petType = petConfig:GetAttribute("T") or "Unknown"
+                local mutation = petConfig:GetAttribute("M")
+                local level = petConfig:GetAttribute("V") or 0
+                local speed = petConfig:GetAttribute("S") or 0
+                local isPlaced = petConfig:GetAttribute("D") ~= nil
+                local isBigPet = petConfig:GetAttribute("IsBigpet") == true
+                
+                -- Skip big pets
+                if not isBigPet then
+                    table.insert(pets, {
+                        uid = uid,
+                        type = petType,
+                        mutation = mutation,
+                        level = level,
+                        speed = speed,
+                        isPlaced = isPlaced
+                    })
+                end
+            end
+        end
+    end
+    
+    return pets
 end
 
 -- Get conveyor level
@@ -347,60 +347,6 @@ local function getPerformanceMetrics()
     }
 end
 
--- Get detailed inventory (eggs + pets) like AutoPlaceGridUI
-local function getDetailedInventory()
-    local eggs = {}
-    local pets = {}
-    
-    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    local data = playerGui and playerGui:FindFirstChild("Data")
-    
-    -- Collect Eggs
-    local eggContainer = data and data:FindFirstChild("Egg")
-    if eggContainer then
-        for _, eggNode in ipairs(eggContainer:GetChildren()) do
-            if #eggNode:GetChildren() == 0 then -- Available egg
-                local eggType = eggNode:GetAttribute("T") or "Unknown"
-                local mutation = eggNode:GetAttribute("M")
-                
-                table.insert(eggs, {
-                    uid = eggNode.Name,
-                    type = eggType,
-                    mutation = mutation
-                })
-            end
-        end
-    end
-    
-    -- Collect Pets
-    local petsContainer = data and data:FindFirstChild("Pets")
-    if petsContainer then
-        for _, petNode in ipairs(petsContainer:GetChildren()) do
-            if petNode:IsA("Configuration") then
-                local petType = petNode:GetAttribute("T") or "Unknown"
-                local mutation = petNode:GetAttribute("M")
-                local level = petNode:GetAttribute("V") or 0
-                local speed = petNode:GetAttribute("S") or 0
-                local isPlaced = petNode:GetAttribute("D") ~= nil
-                
-                table.insert(pets, {
-                    uid = petNode.Name,
-                    type = petType,
-                    speed = speed,
-                    mutation = mutation,
-                    level = level,
-                    isPlaced = isPlaced
-                })
-            end
-        end
-    end
-    
-    return {
-        eggs = eggs,
-        pets = pets
-    }
-end
-
 -- ============ DASHBOARD COMMUNICATION ============
 
 -- Collect all stats
@@ -409,18 +355,16 @@ local function collectAccountStats()
     trackMoneyChanges()
     
     local petSpeedStats, bestPet, worstPet = getPetSpeedStats()
-    local eggStats = getEggStats()
+    local eggStats = getEggInventory() -- New: detailed inventory
+    local petInventory = getPetInventory() -- New: detailed inventory
     local automation = getAutomationStatus()
     local performance = getPerformanceMetrics()
     local efficiency = calculateEfficiencyMetrics()
-    local inventory = getDetailedInventory()
     
     return {
-        -- Game Info (IMPORTANT: Identifies which game this data is from)
-        gameId = GAME_ID,
-        gameName = GAME_NAME,
-        gameIcon = GAME_ICON,
-        gameThumbnail = GAME_THUMBNAIL,
+        -- Game Identifier (for multi-game support)
+        gameId = "build-a-zoo",
+        gameName = "Build A Zoo",
         
         -- Account Info
         accountId = tostring(LocalPlayer.UserId),
@@ -445,13 +389,16 @@ local function collectAccountStats()
         moneyPerHour = efficiency.moneyPerHour,
         uptimeHours = efficiency.uptimeHours,
         
-        -- Inventory Summary
+        -- Inventory Counts
         totalEggs = getTotalEggs(),
         totalPets = getTotalPets(),
         placedPets = getTotalPlacedPets(),
         
-        -- Detailed Inventory (like AutoPlaceGridUI)
-        inventory = inventory,
+        -- Detailed Inventory (for sidebar view)
+        inventory = {
+            eggs = eggStats.list, -- Detailed egg list
+            pets = petInventory -- Detailed pet list
+        },
         
         -- Progress
         currentIsland = getAssignedIslandName(),
@@ -462,11 +409,13 @@ local function collectAccountStats()
             fastest = petSpeedStats.fastest,
             slowest = petSpeedStats.slowest,
             average = petSpeedStats.average,
-            total = petSpeedStats.total
+            total = petSpeedStats.total,
+            totalPlaced = petSpeedStats.totalPlaced
         },
         
-        -- Egg Breakdown
-        eggStats = eggStats,
+        -- Egg/Mutation Breakdown (for charts)
+        eggBreakdown = eggStats.types,
+        mutationBreakdown = eggStats.mutations,
         
         -- Automation Status
         automation = automation,
@@ -743,7 +692,6 @@ function DashboardIntegration.Init(config)
     isRunning = true
     
     print("[Dashboard] 🚀 Initializing Dashboard Integration...")
-    print("[Dashboard] 🎮 Detected Game:", GAME_NAME, "(" .. GAME_ID .. ")")
     print("[Dashboard] 📡 Dashboard URL:", DASHBOARD_URL)
     
     -- Register account
