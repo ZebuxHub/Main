@@ -595,10 +595,10 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
     CustomUIConfig = customUIConfigRef
     StationFeedSetup = stationFeedSetupRef -- NEW: Station-First UI
     
-    -- Load saved assignments from CustomUIConfig
-    if CustomUIConfig then
+    -- Load saved assignments from customSelections (JSON file)
+    if _G.customSelections and _G.customSelections.stationFruitAssignments then
         local success, err = pcall(function()
-            local savedStationAssignments = CustomUIConfig:Get("stationFruitAssignments") or {}
+            local savedStationAssignments = _G.customSelections.stationFruitAssignments or {}
             
             -- Load station-fruit assignments (NEW STRUCTURE)
             AutoFeedSystem.stationFruitAssignments = savedStationAssignments
@@ -614,7 +614,7 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
             end
             
             if stationCount > 0 then
-                print("[AutoFeed] ✅ Loaded assignments for " .. stationCount .. " stations")
+                print("[AutoFeed] ✅ Loaded assignments for " .. stationCount .. " stations from JSON")
             else
                 print("[AutoFeed] ℹ️ No saved assignments found")
             end
@@ -624,7 +624,7 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
             warn("[AutoFeed] ❌ Failed to load: " .. tostring(err))
         end
     else
-        warn("[AutoFeed] ⚠️ CustomUIConfig not available for loading")
+        print("[AutoFeed] ℹ️ No customSelections available yet (will load later)")
     end
 end
 
@@ -661,25 +661,27 @@ function AutoFeedSystem.CreateUI()
                             -- Save station-fruit assignments (NEW STRUCTURE)
                             AutoFeedSystem.stationFruitAssignments = stationAssignments or {}
                             
-                            -- Save to config
-                            if CustomUIConfig then
-                                local success, err = pcall(function()
-                                    CustomUIConfig:Set("stationFruitAssignments", stationAssignments or {})
-                                    CustomUIConfig:Save()
-                                    
-                                    -- Count stations for logging
-                                    local count = 0
-                                    for _ in pairs(stationAssignments or {}) do
-                                        count = count + 1
-                                    end
-                                    print("[AutoFeed] ✅ Saved assignments for " .. count .. " stations")
-                                end)
-                                
-                                if not success then
-                                    warn("[AutoFeed] ❌ Failed to save: " .. tostring(err))
+                            -- Save to customSelections (JSON file - same as FruitSelection)
+                            local success, err = pcall(function()
+                                if _G.customSelections then
+                                    _G.customSelections.stationFruitAssignments = stationAssignments or {}
                                 end
-                            else
-                                warn("[AutoFeed] ⚠️ CustomUIConfig not available for saving")
+                                
+                                -- Trigger save
+                                if _G.saveCustomSelections then
+                                    _G.saveCustomSelections()
+                                end
+                                
+                                -- Count stations for logging
+                                local count = 0
+                                for _ in pairs(stationAssignments or {}) do
+                                    count = count + 1
+                                end
+                                print("[AutoFeed] ✅ Saved assignments for " .. count .. " stations to JSON")
+                            end)
+                            
+                            if not success then
+                                warn("[AutoFeed] ❌ Failed to save: " .. tostring(err))
                             end
                         end,
                         function(isVisible)
@@ -765,16 +767,16 @@ end
 
 -- Sync loaded values (called after config load)
 function AutoFeedSystem.SyncLoadedValues()
-    -- Load assignments from CustomUIConfig if available
-    if CustomUIConfig then
+    -- Load assignments from customSelections (JSON file)
+    if _G.customSelections and _G.customSelections.stationFruitAssignments then
         pcall(function()
-            local savedStationAssignments = CustomUIConfig:Get("stationFruitAssignments") or {}
+            local savedStationAssignments = _G.customSelections.stationFruitAssignments or {}
             
             -- Load station-fruit assignments (NEW STRUCTURE)
             AutoFeedSystem.stationFruitAssignments = savedStationAssignments
             
             local stationCount = #AutoFeedSystem.getTableKeys(savedStationAssignments)
-            print("[AutoFeed] Synced assignments for", stationCount, "stations")
+            print("[AutoFeed] Synced assignments for", stationCount, "stations from JSON")
         end)
     end
 end
