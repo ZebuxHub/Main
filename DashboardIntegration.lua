@@ -483,6 +483,12 @@ end
 
 -- Register account with dashboard
 local function registerAccount()
+    -- Check if link token exists
+    if not _G.ZebuxState or not _G.ZebuxState.linkToken or _G.ZebuxState.linkToken == "" then
+        warn("[Dashboard] ⚠️ No link token found. Please set a link key in the Dashboard tab to connect your account.")
+        return false
+    end
+    
     local stats = collectAccountStats()
     local jsonData = HttpService:JSONEncode(stats)
     
@@ -553,6 +559,12 @@ end
 -- Send stats update to dashboard
 local function sendStatsUpdate()
     if not dashboardEnabled then return false end
+    
+    -- Check if link token exists
+    if not _G.ZebuxState or not _G.ZebuxState.linkToken or _G.ZebuxState.linkToken == "" then
+        warn("[Dashboard] ⚠️ No link token found. Please set a link key in the Dashboard tab to connect your account.")
+        return false
+    end
     
     local stats = collectAccountStats()
     local jsonData = HttpService:JSONEncode(stats)
@@ -742,10 +754,27 @@ function DashboardIntegration.Init(config)
     
     print("[Dashboard] 🚀 Initializing Dashboard Integration...")
     print("[Dashboard] 📡 Dashboard URL:", DASHBOARD_URL)
+    print("[Dashboard] ℹ️  To link your account, paste your Discord Link Key in the Dashboard tab")
     
     -- Register account
     task.spawn(function()
         task.wait(2) -- Wait for game to load
+        
+        -- Check if link token exists before registering
+        if not _G.ZebuxState or not _G.ZebuxState.linkToken or _G.ZebuxState.linkToken == "" then
+            print("[Dashboard] ⏸️  Waiting for Discord Link Key... Dashboard will remain inactive until key is provided.")
+            
+            -- Show notification to user
+            if WindUI then
+                WindUI:Notify({
+                    Title = "🌐 Dashboard Ready",
+                    Content = "Paste your Discord Link Key in the Dashboard tab to connect!",
+                    Duration = 6
+                })
+            end
+            
+            return
+        end
         
         local registered = registerAccount()
         
@@ -808,6 +837,58 @@ end
 function DashboardIntegration.SetDashboardUrl(url)
     DASHBOARD_URL = url
     print("[Dashboard] 🔗 Dashboard URL updated:", url)
+end
+
+function DashboardIntegration.TriggerLinkAttempt()
+    -- Called when user pastes a link key
+    if not dashboardEnabled then
+        warn("[Dashboard] Dashboard not initialized")
+        return false
+    end
+    
+    if not _G.ZebuxState or not _G.ZebuxState.linkToken or _G.ZebuxState.linkToken == "" then
+        warn("[Dashboard] No link token found")
+        return false
+    end
+    
+    print("[Dashboard] 🔗 Link token detected, attempting registration...")
+    
+    -- Try to register with the new token
+    task.spawn(function()
+        local registered = registerAccount()
+        
+        if registered then
+            -- Start stats updater if not already running
+            if not updateThread then
+                startStatsUpdater()
+            end
+            
+            -- Start command listener if not already running
+            if not commandListenerThread then
+                startCommandListener()
+            end
+            
+            -- Notify user
+            if WindUI then
+                WindUI:Notify({
+                    Title = "🌐 Dashboard Connected",
+                    Content = "Account linked to Discord successfully!",
+                    Duration = 4
+                })
+            end
+        else
+            -- Failed to link
+            if WindUI then
+                WindUI:Notify({
+                    Title = "⚠️ Dashboard Link Failed",
+                    Content = "Failed to link account. Check console for details.",
+                    Duration = 4
+                })
+            end
+        end
+    end)
+    
+    return true
 end
 
 return DashboardIntegration
