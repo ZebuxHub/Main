@@ -738,7 +738,7 @@ end
 local function createItemCard(itemId, itemData, parent)
     local card = Instance.new("TextButton")
     card.Name = itemId
-    card.Size = UDim2.new(0.33, -8, 0, 120)
+    card.Size = UDim2.new(0.33, -8, 0, 145) -- เพิ่มจาก 120 เป็น 145 เพื่อรองรับปุ่มเลือกสัตว์
     card.BackgroundColor3 = colors.surface
     card.BorderSizePixel = 0
     card.Text = ""
@@ -1105,7 +1105,7 @@ function FeedFruitSelection.CreateUI()
     scrollFrame.Parent = content
     
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
+    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 145) -- เพิ่มจาก 120 เป็น 145 เพื่อรองรับปุ่มเลือกสัตว์
     gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = scrollFrame
@@ -1239,7 +1239,7 @@ function FeedFruitSelection.RefreshContent()
     local itemCount = #sortedData
     if itemCount > 0 then
         local rows = math.ceil(itemCount / 3)
-        local cellHeight = 120
+        local cellHeight = 145 -- เพิ่มจาก 120 เป็น 145
         local cellPadding = 8
         local topPadding = 8
         local bottomPadding = 50
@@ -1250,15 +1250,21 @@ function FeedFruitSelection.RefreshContent()
 end
 
 -- Public Functions
-function FeedFruitSelection.Show(callback, toggleCallback, savedFruits)
+function FeedFruitSelection.Show(callback, toggleCallback, savedFruits, savedAssignments)
     onSelectionChanged = callback
     onToggleChanged = toggleCallback
     
     -- Apply saved selections if provided
     if savedFruits then
+        selectedItems = {}
         for fruitId, _ in pairs(savedFruits) do
             selectedItems[fruitId] = true
         end
+    end
+    
+    -- Apply saved pet assignments if provided
+    if savedAssignments and type(savedAssignments) == "table" then
+        fruitPetAssignments = savedAssignments
     end
     
     if not ScreenGui then
