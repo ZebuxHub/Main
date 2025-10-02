@@ -17,14 +17,6 @@ local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Wait for RemoteEvent (created by server handler)
-local DashboardRemote = ReplicatedStorage:WaitForChild("DashboardRemote", 10)
-if not DashboardRemote then
-    warn("[Dashboard] ❌ DashboardRemote not found!")
-    warn("[Dashboard] ⚠️  Make sure DashboardIntegration_ServerHandler.lua is running on the server")
-    warn("[Dashboard] 📖 See ROBLOX_SERVER_SETUP.md for instructions")
-end
-
 -- ============ STATE ============
 local isRunning = false
 local lastUpdateTime = 0
@@ -282,80 +274,165 @@ end
 
 -- Register account with dashboard
 local function registerAccount()
-    if not DashboardRemote then
-        warn("[Dashboard] ❌ Cannot register: DashboardRemote not available")
-        warn("[Dashboard] 📖 Follow setup instructions in ROBLOX_SERVER_SETUP.md")
-        return false
+    local stats = collectAccountStats()
+    local jsonData = HttpService:JSONEncode(stats)
+    
+    local success, result = false, "No method available"
+    
+    -- Method 1: Try request function (common in executors)
+    if not success and _G.request then
+        success, result = pcall(function()
+            return _G.request({
+                Url = DASHBOARD_URL .. "/api/accounts/register",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+        end)
     end
     
-    local stats = collectAccountStats()
+    -- Method 2: Try syn.request (Synapse X)
+    if not success and syn and syn.request then
+        success, result = pcall(function()
+            return syn.request({
+                Url = DASHBOARD_URL .. "/api/accounts/register",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+        end)
+    end
     
-    -- Send registration request to server via RemoteEvent
-    DashboardRemote:FireServer("REGISTER", {
-        url = DASHBOARD_URL,
-        stats = stats
-    })
+    -- Method 3: Try http_request (common executor function)
+    if not success and http_request then
+        success, result = pcall(function()
+            return http_request({
+                Url = DASHBOARD_URL .. "/api/accounts/register",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+        end)
+    end
     
-    print("[Dashboard] 📤 Registration request sent to server")
-    return true
+    -- Method 4: Fallback to GET with URL params (if all else fails)
+    if not success then
+        local encodedData = HttpService:UrlEncode(jsonData)
+        success, result = pcall(function()
+            return HttpService:GetAsync(
+                DASHBOARD_URL .. "/api/accounts/register?data=" .. encodedData,
+                false
+            )
+        end)
+    end
+    
+    if success then
+        print("[Dashboard] ✅ Account registered successfully")
+        return true
+    else
+        warn("[Dashboard] ❌ Failed to register account:", tostring(result))
+        return false
+    end
 end
 
 -- Send stats update to dashboard
 local function sendStatsUpdate()
     if not dashboardEnabled then return false end
-    if not DashboardRemote then return false end
     
     local stats = collectAccountStats()
+    local jsonData = HttpService:JSONEncode(stats)
     
-    -- Send update request to server via RemoteEvent
-    DashboardRemote:FireServer("UPDATE_STATS", {
-        url = DASHBOARD_URL,
-        stats = stats
-    })
+    local success, result = false, "No method available"
     
-    print("[Dashboard] 📤 Stats update sent to server")
-    lastUpdateTime = os.time()
-    return true
+    -- Method 1: Try request function (common in executors)
+    if not success and _G.request then
+        success, result = pcall(function()
+            return _G.request({
+                Url = DASHBOARD_URL .. "/api/accounts/update-stats",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+        end)
+    end
+    
+    -- Method 2: Try syn.request (Synapse X)
+    if not success and syn and syn.request then
+        success, result = pcall(function()
+            return syn.request({
+                Url = DASHBOARD_URL .. "/api/accounts/update-stats",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+        end)
+    end
+    
+    -- Method 3: Try http_request (common executor function)
+    if not success and http_request then
+        success, result = pcall(function()
+            return http_request({
+                Url = DASHBOARD_URL .. "/api/accounts/update-stats",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+        end)
+    end
+    
+    -- Method 4: Fallback to GET with URL params (if all else fails)
+    if not success then
+        local encodedData = HttpService:UrlEncode(jsonData)
+        success, result = pcall(function()
+            return HttpService:GetAsync(
+                DASHBOARD_URL .. "/api/accounts/update-stats?data=" .. encodedData,
+                false
+            )
+        end)
+    end
+    
+    if success then
+        print("[Dashboard] 📊 Stats updated successfully")
+        lastUpdateTime = os.time()
+        return true
+    else
+        warn("[Dashboard] ⚠️ Failed to send stats update:", tostring(result))
+        return false
+    end
 end
 
 -- Listen for commands from dashboard
 local function checkForCommands()
     if not dashboardEnabled then return end
-    if not DashboardRemote then return end
     
-    -- Request commands from server via RemoteEvent
-    DashboardRemote:FireServer("FETCH_COMMANDS", {
-        url = DASHBOARD_URL
-    })
-end
-
--- Handle responses from server
-if DashboardRemote then
-    DashboardRemote.OnClientEvent:Connect(function(responseType, data)
-        if responseType == "REGISTER_SUCCESS" then
-            print("[Dashboard] ✅ Account registered successfully")
-            
-        elseif responseType == "REGISTER_FAILED" then
-            warn("[Dashboard] ❌ Failed to register account:", data.error)
-            
-        elseif responseType == "UPDATE_SUCCESS" then
-            print("[Dashboard] 📊 Stats updated successfully")
-            
-        elseif responseType == "UPDATE_FAILED" then
-            warn("[Dashboard] ⚠️ Failed to send stats update:", data.error)
-            
-        elseif responseType == "COMMANDS_RECEIVED" then
-            local commands = data.commands
-            if commands and #commands > 0 then
-                for _, command in ipairs(commands) do
-                    executeCommand(command)
-                end
-            end
-            
-        elseif responseType == "FETCH_FAILED" then
-            warn("[Dashboard] ⚠️ Failed to fetch commands:", data.error)
-        end
+    local success, response = pcall(function()
+        return HttpService:GetAsync(
+            DASHBOARD_URL .. "/api/commands/fetch?accountId=" .. tostring(LocalPlayer.UserId),
+            false
+        )
     end)
+    
+    if success and response then
+        local commands = HttpService:JSONDecode(response)
+        
+        if commands and #commands > 0 then
+            for _, command in ipairs(commands) do
+                executeCommand(command)
+            end
+        end
+    end
 end
 
 -- Execute remote command
