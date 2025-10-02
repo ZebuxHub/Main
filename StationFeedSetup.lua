@@ -87,14 +87,24 @@ local function getPlayerOwnedPets()
                     local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
                     if bigPetGUI then
                         local stationId = findBigPetStationForPet(rootPart.Position)
-                        local petType = rootPart:GetAttribute("T") or petModel.Name
+                        
+                        -- Get pet type - try multiple attributes
+                        local petType = rootPart:GetAttribute("T") 
+                                     or rootPart:GetAttribute("Type")
+                                     or rootPart:GetAttribute("PetType")
+                        
+                        -- If petType is still a UID-like string (long hex), don't show it
+                        local displayName = "Station " .. stationId
+                        if petType and #tostring(petType) <= 20 and petType ~= "" then
+                            displayName = "Station " .. stationId .. " (" .. petType .. ")"
+                        end
                         
                         if stationId then
                             table.insert(pets, {
                                 uid = petModel.Name,
                                 stationId = stationId,
-                                type = petType,
-                                displayName = "Station " .. stationId .. " (" .. petType .. ")"
+                                type = petType or "Unknown",
+                                displayName = displayName
                             })
                         end
                     end
@@ -173,22 +183,26 @@ local startPos = nil
 local onSaveCallback = nil
 local onVisibilityCallback = nil
 
--- macOS Dark Theme Colors
+-- macOS Monterey Style Colors
 local colors = {
-    background = Color3.fromRGB(18, 18, 20),
-    surface = Color3.fromRGB(32, 32, 34),
-    primary = Color3.fromRGB(0, 122, 255),
-    secondary = Color3.fromRGB(88, 86, 214),
+    background = Color3.fromRGB(30, 30, 32),
+    surface = Color3.fromRGB(40, 40, 43),
+    surfaceLight = Color3.fromRGB(50, 50, 53),
+    primary = Color3.fromRGB(10, 132, 255),
+    primaryHover = Color3.fromRGB(0, 122, 255),
+    secondary = Color3.fromRGB(94, 92, 230),
     text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(200, 200, 200),
-    textTertiary = Color3.fromRGB(150, 150, 150),
-    border = Color3.fromRGB(50, 50, 52),
-    selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(45, 45, 47),
+    textSecondary = Color3.fromRGB(152, 152, 157),
+    textTertiary = Color3.fromRGB(99, 99, 102),
+    border = Color3.fromRGB(58, 58, 60),
+    selected = Color3.fromRGB(10, 132, 255),
+    hover = Color3.fromRGB(55, 55, 58),
     close = Color3.fromRGB(255, 69, 58),
     minimize = Color3.fromRGB(255, 159, 10),
-    maximize = Color3.fromRGB(48, 209, 88),
-    warning = Color3.fromRGB(255, 204, 0)
+    maximize = Color3.fromRGB(52, 199, 89),
+    warning = Color3.fromRGB(255, 214, 10),
+    success = Color3.fromRGB(48, 209, 88),
+    shadow = Color3.fromRGB(0, 0, 0)
 }
 
 -- Create Fruit Selection Popup for a specific Station
@@ -220,12 +234,19 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
     popupStroke.Thickness = 2
     popupStroke.Parent = popup
     
-    -- Title
+    -- Title (แสดงเฉพาะส่วน Station X ไม่รวม UID)
+    local cleanDisplayName = stationDisplayName
+    -- ถ้ามี pattern "Station X (Type)" ให้ใช้แบบนั้น, ถ้าไม่ใช่ให้ตัดส่วนที่เป็น UID ออก
+    if not stationDisplayName:match("^Station %d+") then
+        -- ถ้าไม่ใช่รูปแบบ Station X แปลว่ามี UID ต่อท้าย ให้ใช้แค่ส่วน type
+        cleanDisplayName = stationDisplayName
+    end
+    
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -32, 0, 40)
     title.Position = UDim2.new(0, 16, 0, 16)
     title.BackgroundTransparency = 1
-    title.Text = "🍎 " .. stationDisplayName
+    title.Text = "🍎 " .. cleanDisplayName .. " → Select Fruits"
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
     title.TextColor3 = colors.text
@@ -339,20 +360,21 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
     for fruitId, fruitData in pairs(FruitData) do
         local item = Instance.new("TextButton")
         item.Name = "Fruit_" .. fruitId
-        item.Size = UDim2.new(1, -16, 0, 50)
-        item.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surface
+        item.Size = UDim2.new(1, -16, 0, 56)
+        item.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surfaceLight
         item.BorderSizePixel = 0
         item.Text = ""
         item.ZIndex = 203
         item.Parent = scroll
         
         local itemCorner = Instance.new("UICorner")
-        itemCorner.CornerRadius = UDim.new(0, 6)
+        itemCorner.CornerRadius = UDim.new(0, 10)
         itemCorner.Parent = item
         
         local itemStroke = Instance.new("UIStroke")
-        itemStroke.Color = colors.border
-        itemStroke.Thickness = 1
+        itemStroke.Color = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.border
+        itemStroke.Thickness = stationFruitAssignments[stationId][fruitId] and 2 or 1
+        itemStroke.Transparency = 0.3
         itemStroke.Parent = item
         
         -- Icon
@@ -392,43 +414,83 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
         amountLabel.ZIndex = 204
         amountLabel.Parent = item
         
-        -- Checkmark
+        -- Checkmark (macOS style circle with check)
+        local checkContainer = Instance.new("Frame")
+        checkContainer.Name = "CheckContainer"
+        checkContainer.Size = UDim2.new(0, 28, 0, 28)
+        checkContainer.Position = UDim2.new(1, -38, 0.5, -14)
+        checkContainer.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.success or Color3.fromRGB(70, 70, 73)
+        checkContainer.BorderSizePixel = 0
+        checkContainer.ZIndex = 204
+        checkContainer.Parent = item
+        
+        local checkCorner = Instance.new("UICorner")
+        checkCorner.CornerRadius = UDim.new(1, 0)
+        checkCorner.Parent = checkContainer
+        
         local check = Instance.new("TextLabel")
         check.Name = "Checkmark"
-        check.Size = UDim2.new(0, 24, 0, 24)
-        check.Position = UDim2.new(1, -36, 0.5, -12)
+        check.Size = UDim2.new(1, 0, 1, 0)
         check.BackgroundTransparency = 1
         check.Text = "✓"
-        check.TextSize = 18
+        check.TextSize = 16
         check.Font = Enum.Font.GothamBold
-        check.TextColor3 = colors.maximize
+        check.TextColor3 = colors.text
         check.Visible = stationFruitAssignments[stationId][fruitId] == true
-        check.ZIndex = 204
-        check.Parent = item
+        check.ZIndex = 205
+        check.Parent = checkContainer
         
-        -- Click handler
+        -- Click handler (macOS style animation)
         item.MouseButton1Click:Connect(function()
             if stationFruitAssignments[stationId][fruitId] then
                 stationFruitAssignments[stationId][fruitId] = nil
                 check.Visible = false
-                TweenService:Create(item, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+                TweenService:Create(item, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    BackgroundColor3 = colors.surfaceLight
+                }):Play()
+                TweenService:Create(itemStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    Color = colors.border,
+                    Thickness = 1
+                }):Play()
+                TweenService:Create(checkContainer, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+                    BackgroundColor3 = Color3.fromRGB(70, 70, 73),
+                    Size = UDim2.new(0, 24, 0, 24)
+                }):Play()
             else
                 stationFruitAssignments[stationId][fruitId] = true
                 check.Visible = true
-                TweenService:Create(item, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+                TweenService:Create(item, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    BackgroundColor3 = colors.selected
+                }):Play()
+                TweenService:Create(itemStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    Color = colors.selected,
+                    Thickness = 2
+                }):Play()
+                TweenService:Create(checkContainer, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+                    BackgroundColor3 = colors.success,
+                    Size = UDim2.new(0, 28, 0, 28)
+                }):Play()
             end
         end)
         
-        -- Hover
+        -- Hover (macOS style)
         item.MouseEnter:Connect(function()
             if not stationFruitAssignments[stationId][fruitId] then
-                TweenService:Create(item, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+                TweenService:Create(item, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+                    BackgroundColor3 = colors.hover,
+                    Size = UDim2.new(1, -16, 0, 58)
+                }):Play()
+            else
+                TweenService:Create(item, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+                    Size = UDim2.new(1, -16, 0, 58)
+                }):Play()
             end
         end)
         item.MouseLeave:Connect(function()
-            if not stationFruitAssignments[stationId][fruitId] then
-                TweenService:Create(item, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-            end
+            TweenService:Create(item, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+                BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surfaceLight,
+                Size = UDim2.new(1, -16, 0, 56)
+            }):Play()
         end)
     end
     
@@ -446,24 +508,26 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
     btnsLayout.Padding = UDim.new(0, 8)
     btnsLayout.Parent = btnsContainer
     
+    -- Close button (macOS style)
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 100, 0, 40)
-    closeBtn.BackgroundColor3 = colors.surface
+    closeBtn.Size = UDim2.new(0, 100, 0, 44)
+    closeBtn.BackgroundColor3 = colors.surfaceLight
     closeBtn.BorderSizePixel = 0
     closeBtn.Text = "ปิด"
     closeBtn.TextSize = 14
-    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Font = Enum.Font.GothamMedium
     closeBtn.TextColor3 = colors.text
     closeBtn.ZIndex = 203
     closeBtn.Parent = btnsContainer
     
     local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0, 8)
+    closeBtnCorner.CornerRadius = UDim.new(0, 10)
     closeBtnCorner.Parent = closeBtn
     
+    -- Save button (macOS style)
     local saveBtn = Instance.new("TextButton")
-    saveBtn.Size = UDim2.new(0, 120, 0, 40)
-    saveBtn.BackgroundColor3 = colors.maximize
+    saveBtn.Size = UDim2.new(0, 120, 0, 44)
+    saveBtn.BackgroundColor3 = colors.primary
     saveBtn.BorderSizePixel = 0
     saveBtn.Text = "✓ บันทึก"
     saveBtn.TextSize = 14
@@ -473,8 +537,31 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
     saveBtn.Parent = btnsContainer
     
     local saveBtnCorner = Instance.new("UICorner")
-    saveBtnCorner.CornerRadius = UDim.new(0, 8)
+    saveBtnCorner.CornerRadius = UDim.new(0, 10)
     saveBtnCorner.Parent = saveBtn
+    
+    -- Button hover effects
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            BackgroundColor3 = colors.hover
+        }):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            BackgroundColor3 = colors.surfaceLight
+        }):Play()
+    end)
+    
+    saveBtn.MouseEnter:Connect(function()
+        TweenService:Create(saveBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            BackgroundColor3 = colors.primaryHover
+        }):Play()
+    end)
+    saveBtn.MouseLeave:Connect(function()
+        TweenService:Create(saveBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            BackgroundColor3 = colors.primary
+        }):Play()
+    end)
     
     local function close()
         overlay:Destroy()
