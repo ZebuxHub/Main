@@ -611,20 +611,10 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
                 end
             end
             
+            -- Count loaded stations (silent)
             local stationCount = 0
             for stationId, fruits in pairs(AutoFeedSystem.stationFruitAssignments) do
-                local fruitCount = 0
-                for fruitId, _ in pairs(fruits) do
-                    fruitCount = fruitCount + 1
-                    print(string.format("[AutoFeed] 📥 Station %s → %s", stationId, fruitId))
-                end
                 stationCount = stationCount + 1
-            end
-            
-            if stationCount > 0 then
-                print("[AutoFeed] ✅ Loaded assignments for " .. stationCount .. " stations from JSON")
-            else
-                print("[AutoFeed] ℹ️ No saved assignments found")
             end
         end)
         
@@ -632,7 +622,6 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
             warn("[AutoFeed] ❌ Failed to load: " .. tostring(err))
         end
     else
-        print("[AutoFeed] ℹ️ No customSelections available yet (will load later)")
         AutoFeedSystem.stationFruitAssignments = {}
     end
 end
@@ -681,12 +670,11 @@ function AutoFeedSystem.CreateUI()
                                     _G.saveCustomSelections()
                                 end
                                 
-                                -- Count stations for logging
+                                -- Count stations (silent)
                                 local count = 0
                                 for _ in pairs(stationAssignments or {}) do
                                     count = count + 1
                                 end
-                                print("[AutoFeed] ✅ Saved assignments for " .. count .. " stations to JSON")
                             end)
                             
                             if not success then
@@ -783,9 +771,6 @@ function AutoFeedSystem.SyncLoadedValues()
             
             -- Load station-fruit assignments (NEW STRUCTURE)
             AutoFeedSystem.stationFruitAssignments = savedStationAssignments
-            
-            local stationCount = #AutoFeedSystem.getTableKeys(savedStationAssignments)
-            print("[AutoFeed] Synced assignments for", stationCount, "stations from JSON")
         end)
     end
 end
