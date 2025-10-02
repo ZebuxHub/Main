@@ -13,7 +13,7 @@ local WindUI = nil
 local Tabs = nil
 local AutoSystemsConfig = nil
 local CustomUIConfig = nil
-local FeedFruitSelection = nil
+local StationFeedSetup = nil -- NEW: Station-First UI
 
 -- UI Elements
 local autoFeedToggle = nil
@@ -24,9 +24,9 @@ local autoFeedThread = nil
 local selectedFeedFruits = {}
 local feedFruitSelectionVisible = false
 
--- Export fruitPetAssignments for external access (now uses Station ID as keys)
--- Structure: {FruitID = {StationID = true}}
-AutoFeedSystem.fruitPetAssignments = {}
+-- Export stationFruitAssignments for external access
+-- NEW STRUCTURE: {StationID: {FruitID: true}}
+AutoFeedSystem.stationFruitAssignments = {}
 
 -- Normalization helpers to robustly match fruit names from PlayerGui.Data.Asset
 local function normalizeFruitName(name)
@@ -398,30 +398,24 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                         -- Get player's fruit inventory
                         local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
                         
-                        -- Get fruit-pet assignments (now using Station ID as keys)
-                        local fruitPetAssignments = AutoFeedSystem.fruitPetAssignments or {}
+                        -- Get station-fruit assignments (NEW STRUCTURE)
+                        local stationFruitAssignments = AutoFeedSystem.stationFruitAssignments or {}
                         
-                        -- Try to feed with selected fruits
-                        for fruitName, _ in pairs(selectedFeedFruits) do
-                            if not getAutoFeedEnabled() then break end
-                            
-                            -- Check if this fruit has pet assignments
-                            local petAssignments = fruitPetAssignments[fruitName]
-                            local shouldFeedThisPet = false
-                            
-                            if not petAssignments or not next(petAssignments) then
-                                -- No assignments = skip this fruit (user's choice)
-                                shouldFeedThisPet = false
-                            else
-                                -- Check if this pet's station is in the assignment list
-                                -- petData.stationId is like "1", "2", "3"
-                                shouldFeedThisPet = petAssignments[petData.stationId] == true
+                        -- Check if this station has any fruit assignments
+                        local stationId = petData.stationId
+                        local assignedFruits = stationFruitAssignments[stationId]
+                        
+                        if not assignedFruits or not next(assignedFruits) then
+                            -- No fruits assigned to this station = skip
+                            feedFruitStatus.lastAction = "⏭️ Station " .. (stationId or "?") .. " has no fruit assignments"
+                            if updateFeedStatusParagraph then
+                                updateFeedStatusParagraph()
                             end
-                            
-                            if not shouldFeedThisPet then
-                                -- Skip this fruit for this pet (no message to reduce spam)
-                                -- Only show if this is the last fruit to check
-                            else
+                        else
+                            -- Try to feed with assigned fruits only
+                            for fruitName, _ in pairs(assignedFruits) do
+                                if not getAutoFeedEnabled() then break end
+                                
                                 -- Check if player has this fruit
                                 local fruitAmount = fruitInventory[fruitName] or 0
                                 if fruitAmount <= 0 then
@@ -489,7 +483,7 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                     task.wait(0.3) -- Small delay between fruit attempts
                                 end
                             end
-                        end
+                        end -- Close if not assignedFruits
                     else
                         feedFruitStatus.lastAction = "No fruits selected for feeding"
                         if updateFeedStatusParagraph then
@@ -605,28 +599,23 @@ end
 -- (Removed unused helper functions: getAssignedIslandName, getAvailableBigPets, updateCustomUISelection)
 
 -- Initialize the Auto Feed System
-function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIConfigRef, feedFruitSelectionRef)
+function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIConfigRef, stationFeedSetupRef)
     WindUI = windUIRef
     Tabs = tabsRef
     AutoSystemsConfig = autoSystemsConfigRef
     CustomUIConfig = customUIConfigRef
-    FeedFruitSelection = feedFruitSelectionRef
+    StationFeedSetup = stationFeedSetupRef -- NEW: Station-First UI
     
-    -- Load saved selections from CustomUIConfig
+    -- Load saved assignments from CustomUIConfig
     if CustomUIConfig then
         pcall(function()
-            local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
-            local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
+            local savedStationAssignments = CustomUIConfig:Get("stationFruitAssignments") or {}
             
-            selectedFeedFruits = {}
-            for _, fruitId in ipairs(savedFeedFruits) do
-                selectedFeedFruits[fruitId] = true
-            end
+            -- Load station-fruit assignments (NEW STRUCTURE)
+            AutoFeedSystem.stationFruitAssignments = savedStationAssignments
             
-            -- Load pet assignments (now uses Station ID as keys)
-            AutoFeedSystem.fruitPetAssignments = savedPetAssignments
-            
-            print("[AutoFeed] Loaded pet assignments for", #AutoFeedSystem.getTableKeys(savedPetAssignments), "fruits")
+            local stationCount = #AutoFeedSystem.getTableKeys(savedStationAssignments)
+            print("[AutoFeed] Loaded assignments for", stationCount, "stations")
         end)
     end
 end
@@ -652,45 +641,37 @@ function AutoFeedSystem.CreateUI()
     -- Section header
     Tabs.ShopTab:Section({ Title = "Auto Feed", Icon = "coffee" })
     
-    -- Feed Fruit Selection UI Button (with pet assignments)
+    -- NEW: Station Feed Setup UI Button
     Tabs.ShopTab:Button({
-        Title = "Open Feed Fruit & Pet Selection",
-        Desc = "Select fruits and which Big Pets to feed",
+        Title = "Open Station Feed Setup",
+        Desc = "กำหนดผลไม้ให้แต่ละ Station (คลิกเดียว!)",
         Callback = function()
             if not feedFruitSelectionVisible then
-                if FeedFruitSelection then
-                    FeedFruitSelection.Show(
-                        function(selectedItems, petAssignments)
-                            -- Save both fruit selections and pet assignments
-                            selectedFeedFruits = selectedItems
-                            
-                            -- Store pet assignments for feeding logic (now uses Station ID)
-                            AutoFeedSystem.fruitPetAssignments = petAssignments or {}
+                if StationFeedSetup then
+                    StationFeedSetup.Show(
+                        function(stationAssignments)
+                            -- Save station-fruit assignments (NEW STRUCTURE)
+                            AutoFeedSystem.stationFruitAssignments = stationAssignments or {}
                             
                             -- Save to config
                             if CustomUIConfig then
                                 pcall(function()
-                                    -- Convert selections to array format
-                                    local selectionsArray = {}
-                                    for key, _ in pairs(selectedItems) do
-                                        table.insert(selectionsArray, key)
-                                    end
-                                    CustomUIConfig:Set("feedFruitSelections", selectionsArray)
-                                    CustomUIConfig:Set("feedPetAssignments", petAssignments or {})
+                                    CustomUIConfig:Set("stationFruitAssignments", stationAssignments or {})
                                     CustomUIConfig:Save()
+                                    print("[AutoFeed] Saved station assignments")
                                 end)
                             end
                         end,
                         function(isVisible)
                             feedFruitSelectionVisible = isVisible
                         end,
-                        selectedFeedFruits
+                        AutoFeedSystem.stationFruitAssignments
                     )
                     feedFruitSelectionVisible = true
                 end
             else
-                if FeedFruitSelection then
-                    FeedFruitSelection.Hide()
+                if StationFeedSetup then
+                    StationFeedSetup.Hide()
                 end
                 feedFruitSelectionVisible = false
             end
@@ -764,22 +745,16 @@ end
 
 -- Sync loaded values (called after config load)
 function AutoFeedSystem.SyncLoadedValues()
-    -- Load selections from CustomUIConfig if available
+    -- Load assignments from CustomUIConfig if available
     if CustomUIConfig then
         pcall(function()
-            local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
-            local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
+            local savedStationAssignments = CustomUIConfig:Get("stationFruitAssignments") or {}
             
-            selectedFeedFruits = {}
-            for _, fruitId in ipairs(savedFeedFruits) do
-                selectedFeedFruits[fruitId] = true
-            end
+            -- Load station-fruit assignments (NEW STRUCTURE)
+            AutoFeedSystem.stationFruitAssignments = savedStationAssignments
             
-            -- Load pet assignments (now uses Station ID as keys)
-            AutoFeedSystem.fruitPetAssignments = savedPetAssignments
-            
-            local assignmentCount = #AutoFeedSystem.getTableKeys(savedPetAssignments)
-            print("[AutoFeed] Synced Fruits:", #savedFeedFruits, "Pet Assignments:", assignmentCount)
+            local stationCount = #AutoFeedSystem.getTableKeys(savedStationAssignments)
+            print("[AutoFeed] Synced assignments for", stationCount, "stations")
         end)
     end
 end
