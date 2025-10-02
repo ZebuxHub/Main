@@ -141,6 +141,43 @@ local function buildFruitCanonical()
 end
 FRUIT_CANONICAL = buildFruitCanonical()
 
+-- Function to get player's owned pets
+local function getPlayerOwnedPets()
+    local pets = {}
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then return pets end
+    
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return pets end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return pets end
+    
+    local petsFolder = data:FindFirstChild("Pets")
+    if not petsFolder then return pets end
+    
+    -- Get all pet configurations
+    for _, petConfig in ipairs(petsFolder:GetChildren()) do
+        if petConfig:IsA("Configuration") then
+            local petType = petConfig:GetAttribute("T") or petConfig.Name
+            local petName = petConfig.Name
+            
+            table.insert(pets, {
+                name = petName,
+                type = petType,
+                displayName = petType or petName
+            })
+        end
+    end
+    
+    -- Sort by name for consistent display
+    table.sort(pets, function(a, b)
+        return a.displayName < b.displayName
+    end)
+    
+    return pets
+end
+
 -- Local function to read player's fruit inventory using canonical name matching
 local function getPlayerFruitInventory()
 	local localPlayer = Players.LocalPlayer
@@ -217,6 +254,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ScreenGui = nil
 local MainFrame = nil
 local selectedItems = {}
+local fruitPetAssignments = {} -- Table to store which pets each fruit should feed: {FruitID = {PetName1 = true, PetName2 = true}}
 local isDragging = false
 local dragStart = nil
 local startPos = nil
@@ -322,6 +360,326 @@ local function filterDataBySearch(data, searchText)
     return filteredData
 end
 
+-- Create Pet Selection Popup
+local function createPetSelectionPopup(fruitId, fruitName, parentFrame)
+    -- Create overlay
+    local overlay = Instance.new("Frame")
+    overlay.Name = "PetSelectionOverlay"
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.Position = UDim2.new(0, 0, 0, 0)
+    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    overlay.BackgroundTransparency = 0.5
+    overlay.BorderSizePixel = 0
+    overlay.ZIndex = 100
+    overlay.Parent = parentFrame
+    
+    -- Create popup frame
+    local popup = Instance.new("Frame")
+    popup.Name = "PetSelectionPopup"
+    popup.Size = UDim2.new(0, 400, 0, 500)
+    popup.Position = UDim2.new(0.5, -200, 0.5, -250)
+    popup.BackgroundColor3 = colors.background
+    popup.BorderSizePixel = 0
+    popup.ZIndex = 101
+    popup.Parent = overlay
+    
+    local popupCorner = Instance.new("UICorner")
+    popupCorner.CornerRadius = UDim.new(0, 12)
+    popupCorner.Parent = popup
+    
+    local popupStroke = Instance.new("UIStroke")
+    popupStroke.Color = colors.primary
+    popupStroke.Thickness = 2
+    popupStroke.Parent = popup
+    
+    -- Title
+    local popupTitle = Instance.new("TextLabel")
+    popupTitle.Name = "Title"
+    popupTitle.Size = UDim2.new(1, -32, 0, 40)
+    popupTitle.Position = UDim2.new(0, 16, 0, 16)
+    popupTitle.BackgroundTransparency = 1
+    popupTitle.Text = "🍎 " .. fruitName .. " → Feed To:"
+    popupTitle.TextSize = 16
+    popupTitle.Font = Enum.Font.GothamBold
+    popupTitle.TextColor3 = colors.text
+    popupTitle.TextXAlignment = Enum.TextXAlignment.Left
+    popupTitle.ZIndex = 102
+    popupTitle.Parent = popup
+    
+    -- Subtitle
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Name = "Subtitle"
+    subtitle.Size = UDim2.new(1, -32, 0, 20)
+    subtitle.Position = UDim2.new(0, 16, 0, 52)
+    subtitle.BackgroundTransparency = 1
+    subtitle.Text = "เลือกสัตว์ที่ต้องการให้ป้อนผลไม้นี้"
+    subtitle.TextSize = 12
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextColor3 = colors.textSecondary
+    subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    subtitle.ZIndex = 102
+    subtitle.Parent = popup
+    
+    -- Pets scroll frame
+    local petsScroll = Instance.new("ScrollingFrame")
+    petsScroll.Name = "PetsScroll"
+    petsScroll.Size = UDim2.new(1, -32, 1, -160)
+    petsScroll.Position = UDim2.new(0, 16, 0, 80)
+    petsScroll.BackgroundColor3 = colors.surface
+    petsScroll.BorderSizePixel = 0
+    petsScroll.ScrollBarThickness = 6
+    petsScroll.ScrollBarImageColor3 = colors.primary
+    petsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    petsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    petsScroll.ZIndex = 102
+    petsScroll.Parent = popup
+    
+    local petsScrollCorner = Instance.new("UICorner")
+    petsScrollCorner.CornerRadius = UDim.new(0, 8)
+    petsScrollCorner.Parent = petsScroll
+    
+    local petsLayout = Instance.new("UIListLayout")
+    petsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    petsLayout.Padding = UDim.new(0, 4)
+    petsLayout.Parent = petsScroll
+    
+    local petsPadding = Instance.new("UIPadding")
+    petsPadding.PaddingTop = UDim.new(0, 8)
+    petsPadding.PaddingBottom = UDim.new(0, 8)
+    petsPadding.PaddingLeft = UDim.new(0, 8)
+    petsPadding.PaddingRight = UDim.new(0, 8)
+    petsPadding.Parent = petsScroll
+    
+    -- Get player's pets
+    local playerPets = getPlayerOwnedPets()
+    
+    -- Initialize fruit pet assignments if not exists
+    if not fruitPetAssignments[fruitId] then
+        fruitPetAssignments[fruitId] = {}
+    end
+    
+    -- "Select All" button
+    local selectAllBtn = Instance.new("TextButton")
+    selectAllBtn.Name = "SelectAll"
+    selectAllBtn.Size = UDim2.new(1, -16, 0, 36)
+    selectAllBtn.BackgroundColor3 = colors.primary
+    selectAllBtn.BorderSizePixel = 0
+    selectAllBtn.Text = "✓ เลือกทั้งหมด"
+    selectAllBtn.TextSize = 14
+    selectAllBtn.Font = Enum.Font.GothamBold
+    selectAllBtn.TextColor3 = colors.text
+    selectAllBtn.ZIndex = 103
+    selectAllBtn.LayoutOrder = 0
+    selectAllBtn.Parent = petsScroll
+    
+    local selectAllCorner = Instance.new("UICorner")
+    selectAllCorner.CornerRadius = UDim.new(0, 6)
+    selectAllCorner.Parent = selectAllBtn
+    
+    selectAllBtn.MouseButton1Click:Connect(function()
+        for _, petInfo in ipairs(playerPets) do
+            fruitPetAssignments[fruitId][petInfo.name] = true
+        end
+        -- Refresh pet items
+        for _, child in ipairs(petsScroll:GetChildren()) do
+            if child:IsA("TextButton") and child.Name ~= "SelectAll" and child.Name ~= "ClearAll" then
+                local checkmark = child:FindFirstChild("Checkmark")
+                if checkmark then
+                    checkmark.Visible = true
+                    child.BackgroundColor3 = colors.selected
+                end
+            end
+        end
+    end)
+    
+    -- "Clear All" button
+    local clearAllBtn = Instance.new("TextButton")
+    clearAllBtn.Name = "ClearAll"
+    clearAllBtn.Size = UDim2.new(1, -16, 0, 36)
+    clearAllBtn.BackgroundColor3 = colors.close
+    clearAllBtn.BorderSizePixel = 0
+    clearAllBtn.Text = "✗ ล้างทั้งหมด"
+    clearAllBtn.TextSize = 14
+    clearAllBtn.Font = Enum.Font.GothamBold
+    clearAllBtn.TextColor3 = colors.text
+    clearAllBtn.ZIndex = 103
+    clearAllBtn.LayoutOrder = 1
+    clearAllBtn.Parent = petsScroll
+    
+    local clearAllCorner = Instance.new("UICorner")
+    clearAllCorner.CornerRadius = UDim.new(0, 6)
+    clearAllCorner.Parent = clearAllBtn
+    
+    clearAllBtn.MouseButton1Click:Connect(function()
+        fruitPetAssignments[fruitId] = {}
+        -- Refresh pet items
+        for _, child in ipairs(petsScroll:GetChildren()) do
+            if child:IsA("TextButton") and child.Name ~= "SelectAll" and child.Name ~= "ClearAll" then
+                local checkmark = child:FindFirstChild("Checkmark")
+                if checkmark then
+                    checkmark.Visible = false
+                    child.BackgroundColor3 = colors.surface
+                end
+            end
+        end
+    end)
+    
+    -- Create pet items
+    for i, petInfo in ipairs(playerPets) do
+        local petItem = Instance.new("TextButton")
+        petItem.Name = petInfo.name
+        petItem.Size = UDim2.new(1, -16, 0, 44)
+        petItem.BackgroundColor3 = colors.surface
+        petItem.BorderSizePixel = 0
+        petItem.Text = ""
+        petItem.ZIndex = 103
+        petItem.LayoutOrder = i + 1
+        petItem.Parent = petsScroll
+        
+        local petItemCorner = Instance.new("UICorner")
+        petItemCorner.CornerRadius = UDim.new(0, 6)
+        petItemCorner.Parent = petItem
+        
+        local petItemStroke = Instance.new("UIStroke")
+        petItemStroke.Color = colors.border
+        petItemStroke.Thickness = 1
+        petItemStroke.ZIndex = 103
+        petItemStroke.Parent = petItem
+        
+        -- Pet name
+        local petNameLabel = Instance.new("TextLabel")
+        petNameLabel.Name = "PetName"
+        petNameLabel.Size = UDim2.new(1, -48, 1, 0)
+        petNameLabel.Position = UDim2.new(0, 12, 0, 0)
+        petNameLabel.BackgroundTransparency = 1
+        petNameLabel.Text = petInfo.displayName
+        petNameLabel.TextSize = 14
+        petNameLabel.Font = Enum.Font.GothamSemibold
+        petNameLabel.TextColor3 = colors.text
+        petNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        petNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        petNameLabel.ZIndex = 104
+        petNameLabel.Parent = petItem
+        
+        -- Checkmark
+        local checkmark = Instance.new("TextLabel")
+        checkmark.Name = "Checkmark"
+        checkmark.Size = UDim2.new(0, 24, 0, 24)
+        checkmark.Position = UDim2.new(1, -32, 0.5, -12)
+        checkmark.BackgroundTransparency = 1
+        checkmark.Text = "✓"
+        checkmark.TextSize = 18
+        checkmark.Font = Enum.Font.GothamBold
+        checkmark.TextColor3 = colors.selected
+        checkmark.Visible = fruitPetAssignments[fruitId][petInfo.name] == true
+        checkmark.ZIndex = 104
+        checkmark.Parent = petItem
+        
+        -- Set initial background if selected
+        if fruitPetAssignments[fruitId][petInfo.name] then
+            petItem.BackgroundColor3 = colors.selected
+        end
+        
+        -- Click handler
+        petItem.MouseButton1Click:Connect(function()
+            if fruitPetAssignments[fruitId][petInfo.name] then
+                fruitPetAssignments[fruitId][petInfo.name] = nil
+                checkmark.Visible = false
+                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+            else
+                fruitPetAssignments[fruitId][petInfo.name] = true
+                checkmark.Visible = true
+                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            end
+        end)
+        
+        -- Hover effect
+        petItem.MouseEnter:Connect(function()
+            if not fruitPetAssignments[fruitId][petInfo.name] then
+                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+            end
+        end)
+        
+        petItem.MouseLeave:Connect(function()
+            if not fruitPetAssignments[fruitId][petInfo.name] then
+                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+            end
+        end)
+    end
+    
+    -- Bottom buttons
+    local buttonContainer = Instance.new("Frame")
+    buttonContainer.Name = "ButtonContainer"
+    buttonContainer.Size = UDim2.new(1, -32, 0, 44)
+    buttonContainer.Position = UDim2.new(0, 16, 1, -60)
+    buttonContainer.BackgroundTransparency = 1
+    buttonContainer.ZIndex = 102
+    buttonContainer.Parent = popup
+    
+    -- Close button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseBtn"
+    closeBtn.Size = UDim2.new(0.48, 0, 1, 0)
+    closeBtn.Position = UDim2.new(0, 0, 0, 0)
+    closeBtn.BackgroundColor3 = colors.surface
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "ปิด"
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextColor3 = colors.text
+    closeBtn.ZIndex = 103
+    closeBtn.Parent = buttonContainer
+    
+    local closeBtnCorner = Instance.new("UICorner")
+    closeBtnCorner.CornerRadius = UDim.new(0, 8)
+    closeBtnCorner.Parent = closeBtn
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        overlay:Destroy()
+    end)
+    
+    -- Save button
+    local saveBtn = Instance.new("TextButton")
+    saveBtn.Name = "SaveBtn"
+    saveBtn.Size = UDim2.new(0.48, 0, 1, 0)
+    saveBtn.Position = UDim2.new(0.52, 0, 0, 0)
+    saveBtn.BackgroundColor3 = colors.primary
+    saveBtn.BorderSizePixel = 0
+    saveBtn.Text = "✓ บันทึก"
+    saveBtn.TextSize = 14
+    saveBtn.Font = Enum.Font.GothamBold
+    saveBtn.TextColor3 = colors.text
+    saveBtn.ZIndex = 103
+    saveBtn.Parent = buttonContainer
+    
+    local saveBtnCorner = Instance.new("UICorner")
+    saveBtnCorner.CornerRadius = UDim.new(0, 8)
+    saveBtnCorner.Parent = saveBtn
+    
+    saveBtn.MouseButton1Click:Connect(function()
+        overlay:Destroy()
+        -- Trigger callback if needed
+        if onSelectionChanged then
+            onSelectionChanged(selectedItems, fruitPetAssignments)
+        end
+    end)
+    
+    -- Close on overlay click
+    overlay.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mousePos = UserInputService:GetMouseLocation()
+            local popupPos = popup.AbsolutePosition
+            local popupSize = popup.AbsoluteSize
+            
+            -- Check if click is outside popup
+            if mousePos.X < popupPos.X or mousePos.X > popupPos.X + popupSize.X or
+               mousePos.Y < popupPos.Y or mousePos.Y > popupPos.Y + popupSize.Y then
+                overlay:Destroy()
+            end
+        end
+    end)
+end
+
 -- Create macOS Style Window Controls
 local function createWindowControls(parent)
     local controlsContainer = Instance.new("Frame")
@@ -422,8 +780,8 @@ local function createItemCard(itemId, itemData, parent)
     
     local price = Instance.new("TextLabel")
     price.Name = "Price"
-    price.Size = UDim2.new(1, -16, 0, 16)
-    price.Position = UDim2.new(0, 8, 0.8, 0)
+    price.Size = UDim2.new(1, -16, 0, 14)
+    price.Position = UDim2.new(0, 8, 0.75, 0)
     price.BackgroundTransparency = 1
     price.Text = "Loading..." -- Will be updated with inventory count
     price.TextSize = 10
@@ -433,7 +791,82 @@ local function createItemCard(itemId, itemData, parent)
     price.TextWrapped = true
     price.Parent = card
     
-    -- Update price label with inventory count
+    -- Pet selection button
+    local petSelectBtn = Instance.new("TextButton")
+    petSelectBtn.Name = "PetSelectBtn"
+    petSelectBtn.Size = UDim2.new(0.9, 0, 0, 22)
+    petSelectBtn.Position = UDim2.new(0.05, 0, 0.88, 0)
+    petSelectBtn.BackgroundColor3 = colors.primary
+    petSelectBtn.BorderSizePixel = 0
+    petSelectBtn.Text = "🐾 Selecc"
+    petSelectBtn.TextSize = 9
+    petSelectBtn.Font = Enum.Font.GothamBold
+    petSelectBtn.TextColor3 = colors.text
+    petSelectBtn.ZIndex = 2
+    petSelectBtn.Parent = card
+    
+    local petSelectCorner = Instance.new("UICorner")
+    petSelectCorner.CornerRadius = UDim.new(0, 4)
+    petSelectCorner.Parent = petSelectBtn
+    
+    -- Update button text to show assigned pet count
+    local function updatePetButtonText()
+        local assignedCount = 0
+        if fruitPetAssignments[itemId] then
+            for _ in pairs(fruitPetAssignments[itemId]) do
+                assignedCount = assignedCount + 1
+            end
+        end
+        
+        if assignedCount > 0 then
+            petSelectBtn.Text = string.format("🐾 %d สัตว์", assignedCount)
+            petSelectBtn.BackgroundColor3 = colors.maximize -- Green when assigned
+        else
+            petSelectBtn.Text = "🐾 เลือกสัตว์"
+            petSelectBtn.BackgroundColor3 = colors.primary
+        end
+    end
+    
+    -- Initial update
+    updatePetButtonText()
+    
+    -- Click handler to open pet selection popup
+    petSelectBtn.MouseButton1Click:Connect(function(input)
+        -- Stop event propagation to prevent card selection
+        if input then
+            input:StopPropagation()
+        end
+        
+        -- Create popup
+        if ScreenGui then
+            createPetSelectionPopup(itemId, itemData.Name, ScreenGui)
+        end
+        
+        -- Update button text after popup closes (delayed)
+        task.spawn(function()
+            task.wait(0.5)
+            while ScreenGui and ScreenGui:FindFirstChild("PetSelectionOverlay") do
+                task.wait(0.2)
+            end
+            updatePetButtonText()
+        end)
+    end)
+    
+    -- Hover effect for pet select button
+    petSelectBtn.MouseEnter:Connect(function()
+        TweenService:Create(petSelectBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(
+                math.min(255, petSelectBtn.BackgroundColor3.R * 255 * 1.2),
+                math.min(255, petSelectBtn.BackgroundColor3.G * 255 * 1.2),
+                math.min(255, petSelectBtn.BackgroundColor3.B * 255 * 1.2)
+            )
+        }):Play()
+    end)
+    
+    petSelectBtn.MouseLeave:Connect(function()
+        updatePetButtonText() -- Reset to original color
+    end)
+        -- Update price label with inventory count
     local function updateInventoryDisplay()
         local fruitInventory = getPlayerFruitInventory()
         local fruitAmount = fruitInventory[itemData.Name] or 0
@@ -538,8 +971,9 @@ local function createItemCard(itemId, itemData, parent)
             TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
         end
         
+        -- Trigger callback with both selections and pet assignments
         if onSelectionChanged then
-            onSelectionChanged(selectedItems)
+            onSelectionChanged(selectedItems, fruitPetAssignments)
         end
     end)
     
@@ -884,6 +1318,60 @@ function FeedFruitSelection.UpdateSelections(fruits)
         for fruitId, _ in pairs(fruits) do
             selectedItems[fruitId] = true
         end
+    end
+    
+    if ScreenGui then
+        FeedFruitSelection.RefreshContent()
+    end
+end
+
+-- Get fruit-to-pet assignments
+function FeedFruitSelection.GetPetAssignments()
+    return fruitPetAssignments
+end
+
+-- Set fruit-to-pet assignments
+function FeedFruitSelection.SetPetAssignments(assignments)
+    if type(assignments) == "table" then
+        fruitPetAssignments = assignments
+    end
+end
+
+-- Get assignment for a specific fruit
+function FeedFruitSelection.GetFruitAssignment(fruitId)
+    return fruitPetAssignments[fruitId] or {}
+end
+
+-- Set assignment for a specific fruit
+function FeedFruitSelection.SetFruitAssignment(fruitId, petList)
+    if type(petList) == "table" then
+        fruitPetAssignments[fruitId] = petList
+    end
+end
+
+-- Clear all assignments
+function FeedFruitSelection.ClearAllAssignments()
+    fruitPetAssignments = {}
+end
+
+-- Get complete feeding data (fruits + pet assignments)
+function FeedFruitSelection.GetFeedingData()
+    return {
+        selectedFruits = selectedItems,
+        petAssignments = fruitPetAssignments
+    }
+end
+
+-- Load complete feeding data
+function FeedFruitSelection.LoadFeedingData(data)
+    if type(data) ~= "table" then return end
+    
+    if data.selectedFruits then
+        selectedItems = data.selectedFruits
+    end
+    
+    if data.petAssignments then
+        fruitPetAssignments = data.petAssignments
     end
     
     if ScreenGui then
