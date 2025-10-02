@@ -23,6 +23,7 @@ local lastUpdateTime = 0
 local updateThread = nil
 local commandListenerThread = nil
 local dashboardEnabled = false
+local linkCode = nil -- Store generated link code
 
 -- ============ NERD STATS TRACKING ============
 local nerdStats = {
@@ -87,7 +88,15 @@ local function getTotalPets()
     local petsFolder = data and data:FindFirstChild("Pets")
     
     if petsFolder then
-        count = #petsFolder:GetChildren()
+        for _, petConfig in ipairs(petsFolder:GetChildren()) do
+            if petConfig:IsA("Configuration") then
+                local isBigPet = petConfig:GetAttribute("IsBigpet") == true
+                -- Only count non-BigPets
+                if not isBigPet then
+                    count = count + 1
+                end
+            end
+        end
     end
     
     return count
@@ -708,6 +717,50 @@ local function startCommandListener()
     end)
 end
 
+-- Generate link code for account linking
+local function generateLinkCode()
+    local accountId = tostring(LocalPlayer.UserId)
+    local username = LocalPlayer.Name or "Unknown"
+    
+    -- Use executor HTTP functions
+    local httpFunc = _G.request or syn.request or http_request or nil
+    
+    if not httpFunc then
+        warn("[Dashboard] ⚠️ No executor HTTP function available for link code generation")
+        return nil
+    end
+    
+    local payload = HttpService:JSONEncode({
+        accountId = accountId,
+        username = username
+    })
+    
+    local requestData = {
+        Url = DASHBOARD_URL .. "/api/accounts/generate-link-code",
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json"
+        },
+        Body = payload
+    }
+    
+    local success, response = pcall(function()
+        return httpFunc(requestData)
+    end)
+    
+    if success and response and response.StatusCode == 200 then
+        local data = HttpService:JSONDecode(response.Body)
+        if data and data.linkCode then
+            print("[Dashboard] ✅ Link code generated:", data.linkCode)
+            return data.linkCode
+        end
+    else
+        warn("[Dashboard] ❌ Failed to generate link code")
+    end
+    
+    return nil
+end
+
 -- ============ PUBLIC API ============
 
 function DashboardIntegration.Init(config)
@@ -727,6 +780,12 @@ function DashboardIntegration.Init(config)
     
     print("[Dashboard] 🚀 Initializing Dashboard Integration...")
     print("[Dashboard] 📡 Dashboard URL:", DASHBOARD_URL)
+    
+    -- Generate link code for account linking
+    task.spawn(function()
+        task.wait(1)
+        linkCode = generateLinkCode()
+    end)
     
     -- Register account
     task.spawn(function()
@@ -779,6 +838,10 @@ end
 
 function DashboardIntegration.SendManualUpdate()
     return sendStatsUpdate()
+end
+
+function DashboardIntegration.GetLinkCode()
+    return linkCode
 end
 
 function DashboardIntegration.GetStatus()
