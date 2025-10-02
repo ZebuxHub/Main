@@ -633,7 +633,7 @@ function AutoFeedSystem.CreateUI()
     -- NEW: Station Feed Setup UI Button
     Tabs.ShopTab:Button({
         Title = "Open Station Feed Setup",
-        Desc = "กำหนดผลไม้ให้แต่ละ Station (คลิกเดียว!)",
+        Desc = "Assign fruits to each station (One click!)",
         Callback = function()
             if not feedFruitSelectionVisible then
                 if StationFeedSetup then
