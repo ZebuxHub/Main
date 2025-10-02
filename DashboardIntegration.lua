@@ -789,64 +789,20 @@ function DashboardIntegration.Init(config)
         DASHBOARD_URL = config.dashboardUrl
     end
     
-    -- Enable dashboard
-    dashboardEnabled = true
+    -- Mark as initialized but don't enable yet
+    -- Dashboard will only be enabled when user toggles it ON
     isRunning = true
+    dashboardEnabled = false
     
-    print("[Dashboard] 🚀 Initializing Dashboard Integration...")
+    print("[Dashboard] 🚀 Dashboard Integration Module Loaded")
     print("[Dashboard] 📡 Dashboard URL:", DASHBOARD_URL)
-    print("[Dashboard] ℹ️  To link your account, paste your Discord Link Key in the Dashboard tab")
-    
-    -- Register account
-    task.spawn(function()
-        task.wait(2) -- Wait for game to load
-        
-        -- Check if link token exists before registering
-        if not _G.ZebuxState or not _G.ZebuxState.linkToken or _G.ZebuxState.linkToken == "" then
-            print("[Dashboard] ⏸️  Waiting for Discord Link Key... Dashboard will remain inactive until key is provided.")
-            
-            -- Show notification to user
-            if WindUI then
-                WindUI:Notify({
-                    Title = "🌐 Dashboard Ready",
-                    Content = "Paste your Discord Link Key in the Dashboard tab to connect!",
-                    Duration = 6
-                })
-            end
-            
-            return
-        end
-        
-        local registered = registerAccount()
-        
-        if registered then
-            -- Start stats updater
-            startStatsUpdater()
-            
-            -- Start command listener
-            startCommandListener()
-            
-            -- Notify user
-            if WindUI then
-                WindUI:Notify({
-                    Title = "🌐 Dashboard Connected",
-                    Content = "Account registered with dashboard successfully!",
-                    Duration = 4
-                })
-            end
-        else
-            -- Retry registration
-            task.wait(RETRY_DELAY)
-            registerAccount()
-        end
-    end)
+    print("[Dashboard] ⏸️  Dashboard is OFF - Enable it in the Dashboard tab")
     
     return true
 end
 
 function DashboardIntegration.Stop()
     dashboardEnabled = false
-    isRunning = false
     
     -- Cancel threads
     if updateThread then
@@ -859,7 +815,7 @@ function DashboardIntegration.Stop()
         commandListenerThread = nil
     end
     
-    print("[Dashboard] 🛑 Dashboard integration stopped")
+    print("[Dashboard] 🛑 Dashboard stopped - No longer sending data")
 end
 
 function DashboardIntegration.SendManualUpdate()
@@ -881,9 +837,9 @@ function DashboardIntegration.SetDashboardUrl(url)
 end
 
 function DashboardIntegration.TriggerLinkAttempt()
-    -- Called when user pastes a link key
-    if not dashboardEnabled then
-        warn("[Dashboard] Dashboard not initialized")
+    -- Called when user enables dashboard
+    if not isRunning then
+        warn("[Dashboard] Dashboard module not initialized")
         return false
     end
     
@@ -892,9 +848,12 @@ function DashboardIntegration.TriggerLinkAttempt()
         return false
     end
     
-    print("[Dashboard] 🔗 Link token detected, attempting registration...")
+    -- Enable dashboard
+    dashboardEnabled = true
     
-    -- Try to register with the new token
+    print("[Dashboard] 🔗 Enabling dashboard and attempting registration...")
+    
+    -- Try to register with the token
     task.spawn(function()
         local registered = registerAccount()
         
@@ -909,6 +868,8 @@ function DashboardIntegration.TriggerLinkAttempt()
                 startCommandListener()
             end
             
+            print("[Dashboard] ✅ Dashboard enabled and sending data")
+            
             -- Notify user
             if WindUI then
                 WindUI:Notify({
@@ -919,6 +880,8 @@ function DashboardIntegration.TriggerLinkAttempt()
             end
         else
             -- Failed to link
+            dashboardEnabled = false
+            warn("[Dashboard] Failed to register account")
             if WindUI then
                 WindUI:Notify({
                     Title = "⚠️ Dashboard Link Failed",
