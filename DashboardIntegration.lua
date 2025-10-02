@@ -276,22 +276,21 @@ end
 local function registerAccount()
     local stats = collectAccountStats()
     
+    -- Use GET with URL-encoded data (works from LocalScript)
+    local encodedData = HttpService:UrlEncode(HttpService:JSONEncode(stats))
+    
     local success, response = pcall(function()
-        return HttpService:RequestAsync({
-            Url = DASHBOARD_URL .. "/api/accounts/register",
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = HttpService:JSONEncode(stats)
-        })
+        return HttpService:GetAsync(
+            DASHBOARD_URL .. "/api/accounts/register?data=" .. encodedData,
+            false
+        )
     end)
     
-    if success and response.Success then
+    if success then
         print("[Dashboard] ✅ Account registered successfully")
         return true
     else
-        warn("[Dashboard] ❌ Failed to register account:", response)
+        warn("[Dashboard] ❌ Failed to register account:", tostring(response))
         return false
     end
 end
@@ -302,23 +301,22 @@ local function sendStatsUpdate()
     
     local stats = collectAccountStats()
     
+    -- Use GET with URL-encoded data (works from LocalScript)
+    local encodedData = HttpService:UrlEncode(HttpService:JSONEncode(stats))
+    
     local success, response = pcall(function()
-        return HttpService:RequestAsync({
-            Url = DASHBOARD_URL .. "/api/accounts/update-stats",
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = HttpService:JSONEncode(stats)
-        })
+        return HttpService:GetAsync(
+            DASHBOARD_URL .. "/api/accounts/update-stats?data=" .. encodedData,
+            false
+        )
     end)
     
-    if success and response.Success then
+    if success then
         print("[Dashboard] 📊 Stats updated successfully")
         lastUpdateTime = os.time()
         return true
     else
-        warn("[Dashboard] ⚠️ Failed to send stats update:", response)
+        warn("[Dashboard] ⚠️ Failed to send stats update:", tostring(response))
         return false
     end
 end
@@ -328,17 +326,14 @@ local function checkForCommands()
     if not dashboardEnabled then return end
     
     local success, response = pcall(function()
-        return HttpService:RequestAsync({
-            Url = DASHBOARD_URL .. "/api/commands/fetch?accountId=" .. tostring(LocalPlayer.UserId),
-            Method = "GET",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            }
-        })
+        return HttpService:GetAsync(
+            DASHBOARD_URL .. "/api/commands/fetch?accountId=" .. tostring(LocalPlayer.UserId),
+            false
+        )
     end)
     
-    if success and response.Success then
-        local commands = HttpService:JSONDecode(response.Body)
+    if success and response then
+        local commands = HttpService:JSONDecode(response)
         
         if commands and #commands > 0 then
             for _, command in ipairs(commands) do
