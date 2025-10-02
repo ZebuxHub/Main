@@ -26,6 +26,9 @@ local selectedBigPets = {}
 local selectedFeedFruits = {}
 local feedFruitSelectionVisible = false
 
+-- Export fruitPetAssignments for external access
+AutoFeedSystem.fruitPetAssignments = {}
+
 -- Normalization helpers to robustly match fruit names from PlayerGui.Data.Asset
 local function normalizeFruitName(name)
     if type(name) ~= "string" then return "" end
@@ -463,84 +466,104 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                         end
                     end
                     
-                    -- Log current selections for debugging
-                    if fruitCount > 0 then
-                    else
-                    end
-                    
                     -- Check if we have selected fruits
                     if selectedFeedFruits and fruitCount > 0 then
                         -- Get player's fruit inventory
                         local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
                         
+                        -- Get fruit-pet assignments
+                        local fruitPetAssignments = AutoFeedSystem.fruitPetAssignments or {}
+                        
                         -- Try to feed with selected fruits
                         for fruitName, _ in pairs(selectedFeedFruits) do
                             if not getAutoFeedEnabled() then break end
                             
-                            -- Check if player has this fruit
-                            local fruitAmount = fruitInventory[fruitName] or 0
-                            if fruitAmount <= 0 then
-                                feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
-                                if updateFeedStatusParagraph then
-                                    updateFeedStatusParagraph()
-                                end
-                                task.wait(0.5)
+                            -- Check if this fruit is assigned to this specific pet
+                            local petAssignments = fruitPetAssignments[fruitName]
+                            local shouldFeedThisPet = false
+                            
+                            if not petAssignments or not next(petAssignments) then
+                                -- No specific assignments for this fruit = feed all pets
+                                shouldFeedThisPet = true
                             else
-                                -- Update status to show which pet we're trying to feed
-                                feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
+                                -- Check if this pet is in the assignment list
+                                -- petData.name is the pet's actual name (UID)
+                                shouldFeedThisPet = petAssignments[petData.name] == true
+                            end
+                            
+                            if not shouldFeedThisPet then
+                                -- Skip this fruit for this pet
+                                feedFruitStatus.lastAction = "⏭️ " .. fruitName .. " not assigned to " .. petData.name
                                 if updateFeedStatusParagraph then
                                     updateFeedStatusParagraph()
                                 end
-                                
-                                -- Always equip the fruit before feeding (every time) - with retry
-                                local equipSuccess = false
-                                for retry = 1, 3 do -- Try up to 3 times
-                                    if AutoFeedSystem.equipFruit(fruitName) then
-                                        equipSuccess = true
-                                        break
-                                    else
-                                        task.wait(0.2) -- Wait before retry
+                                task.wait(0.1)
+                            else
+                                -- Check if player has this fruit
+                                local fruitAmount = fruitInventory[fruitName] or 0
+                                if fruitAmount <= 0 then
+                                    feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
+                                    if updateFeedStatusParagraph then
+                                        updateFeedStatusParagraph()
                                     end
-                                end
-                                
-                                if equipSuccess then
-                                    task.wait(0.2) -- Small delay between equip and feed
+                                    task.wait(0.5)
+                                else
+                                    -- Update status to show which pet we're trying to feed
+                                    feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
+                                    if updateFeedStatusParagraph then
+                                        updateFeedStatusParagraph()
+                                    end
                                     
-                                    -- Feed the pet - with retry
-                                    local feedSuccess = false
+                                    -- Always equip the fruit before feeding (every time) - with retry
+                                    local equipSuccess = false
                                     for retry = 1, 3 do -- Try up to 3 times
-                                        if AutoFeedSystem.feedPet(petData.name) then
-                                            feedSuccess = true
+                                        if AutoFeedSystem.equipFruit(fruitName) then
+                                            equipSuccess = true
                                             break
                                         else
                                             task.wait(0.2) -- Wait before retry
                                         end
                                     end
                                     
-                                    if feedSuccess then
-                                        feedFruitStatus.lastFedPet = petData.name
-                                        feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                        feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
-                                        if updateFeedStatusParagraph then
-                                            updateFeedStatusParagraph()
+                                    if equipSuccess then
+                                        task.wait(0.2) -- Small delay between equip and feed
+                                        
+                                        -- Feed the pet - with retry
+                                        local feedSuccess = false
+                                        for retry = 1, 3 do -- Try up to 3 times
+                                            if AutoFeedSystem.feedPet(petData.name) then
+                                                feedSuccess = true
+                                                break
+                                            else
+                                                task.wait(0.2) -- Wait before retry
+                                            end
                                         end
                                         
-                                        task.wait(1.5) -- Wait longer before trying next pet
-                                        break -- Move to next pet
+                                        if feedSuccess then
+                                            feedFruitStatus.lastFedPet = petData.name
+                                            feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
+                                            feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
+                                            if updateFeedStatusParagraph then
+                                                updateFeedStatusParagraph()
+                                            end
+                                            
+                                            task.wait(1.5) -- Wait longer before trying next pet
+                                            break -- Move to next pet
+                                        else
+                                            feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName .. " after 3 attempts"
+                                            if updateFeedStatusParagraph then
+                                                updateFeedStatusParagraph()
+                                            end
+                                        end
                                     else
-                                        feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName .. " after 3 attempts"
+                                        feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. " after 3 attempts"
                                         if updateFeedStatusParagraph then
                                             updateFeedStatusParagraph()
                                         end
                                     end
-                                else
-                                    feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. " after 3 attempts"
-                                    if updateFeedStatusParagraph then
-                                        updateFeedStatusParagraph()
-                                    end
+                                    
+                                    task.wait(0.3) -- Small delay between fruit attempts
                                 end
-                                
-                                task.wait(0.3) -- Small delay between fruit attempts
                             end
                         end
                     else
@@ -749,6 +772,7 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
         pcall(function()
             local savedBigPets = CustomUIConfig:Get("bigPetSelections") or {}
             local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
+            local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
             
             -- Convert array to set
             selectedBigPets = {}
@@ -760,8 +784,24 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
             for _, fruitId in ipairs(savedFeedFruits) do
                 selectedFeedFruits[fruitId] = true
             end
+            
+            -- Load pet assignments
+            AutoFeedSystem.fruitPetAssignments = savedPetAssignments
+            
+            print("[AutoFeed] Loaded pet assignments for", #AutoFeedSystem.getTableKeys(savedPetAssignments), "fruits")
         end)
     end
+end
+
+-- Helper function to count table keys
+function AutoFeedSystem.getTableKeys(tbl)
+    local keys = {}
+    if type(tbl) == "table" then
+        for k, _ in pairs(tbl) do
+            table.insert(keys, k)
+        end
+    end
+    return keys
 end
 
 -- Create UI function
@@ -774,17 +814,31 @@ function AutoFeedSystem.CreateUI()
     -- Section header
     Tabs.ShopTab:Section({ Title = "Auto Feed", Icon = "coffee" })
     
-    -- Feed Fruit Selection UI Button
+    -- Feed Fruit Selection UI Button (with pet assignments)
     Tabs.ShopTab:Button({
-        Title = "Open Feed Fruit Selection UI",
-        Desc = "Select fruits to feed pets",
+        Title = "Open Feed Fruit & Pet Selection",
+        Desc = "Select fruits and which Big Pets to feed",
         Callback = function()
             if not feedFruitSelectionVisible then
                 if FeedFruitSelection then
                     FeedFruitSelection.Show(
-                        function(selectedItems)
+                        function(selectedItems, petAssignments)
+                            -- Save both fruit selections and pet assignments
                             selectedFeedFruits = selectedItems
+                            
+                            -- Store pet assignments for feeding logic
+                            AutoFeedSystem.fruitPetAssignments = petAssignments or {}
+                            
+                            -- Save to config
                             updateCustomUISelection("feedFruitSelections", selectedItems)
+                            
+                            -- Save pet assignments separately
+                            if CustomUIConfig then
+                                pcall(function()
+                                    CustomUIConfig:Set("feedPetAssignments", petAssignments or {})
+                                    CustomUIConfig:Save()
+                                end)
+                            end
                         end,
                         function(isVisible)
                             feedFruitSelectionVisible = isVisible
@@ -932,6 +986,7 @@ function AutoFeedSystem.SyncLoadedValues()
         pcall(function()
             local savedBigPets = CustomUIConfig:Get("bigPetSelections") or {}
             local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
+            local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
             
             -- Convert array to set
             selectedBigPets = {}
@@ -944,7 +999,11 @@ function AutoFeedSystem.SyncLoadedValues()
                 selectedFeedFruits[fruitId] = true
             end
             
-            print("[AutoFeed] Synced Big Pets:", #savedBigPets, "Synced Fruits:", #savedFeedFruits)
+            -- Load pet assignments
+            AutoFeedSystem.fruitPetAssignments = savedPetAssignments
+            
+            local assignmentCount = #AutoFeedSystem.getTableKeys(savedPetAssignments)
+            print("[AutoFeed] Synced Big Pets:", #savedBigPets, "Synced Fruits:", #savedFeedFruits, "Pet Assignments:", assignmentCount)
         end)
     end
 end
