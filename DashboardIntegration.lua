@@ -8,8 +8,54 @@ local DashboardIntegration = {}
 local DASHBOARD_URL = "http://localhost:3000" -- Change to your deployed URL later
 local UPDATE_INTERVAL = 30 -- Send stats every 30 seconds
 local RETRY_DELAY = 5 -- Retry failed requests after 5 seconds
-local GAME_ID = "build-a-zoo" -- Game identifier for dashboard
-local GAME_NAME = "Build A Zoo" -- Display name
+
+-- ============ GAME DETECTION (Auto-detect by PlaceId) ============
+local GAME_DATABASE = {
+    -- Build A Zoo
+    [105555311806207] = { id = "build-a-zoo", name = "Build A Zoo", icon = "🦁" },
+    
+    -- Pet Simulator 99 (example PlaceIds - update with real ones)
+    [12345678901] = { id = "pet-simulator-99", name = "Pet Simulator 99", icon = "🐾" },
+    
+    -- Anime Defenders (example PlaceIds - update with real ones)
+    [23456789012] = { id = "anime-defenders", name = "Anime Defenders", icon = "⚔️" },
+    
+    -- Blox Fruits (example PlaceIds - update with real ones)
+    [34567890123] = { id = "blox-fruits", name = "Blox Fruits", icon = "🍎" },
+}
+
+-- Get game thumbnail URL from Roblox
+local function getGameThumbnail(placeId)
+    -- Roblox uses thumbnails API - we'll use the AssetThumbnail endpoint
+    -- Format: https://www.roblox.com/asset-thumbnail/image?assetId=PLACEID&width=768&height=432
+    return string.format("https://www.roblox.com/asset-thumbnail/image?assetId=%d&width=768&height=432&format=png", placeId)
+end
+
+-- Auto-detect game from PlaceId
+local function detectGame()
+    local placeId = game.PlaceId
+    local gameInfo = GAME_DATABASE[placeId]
+    
+    if gameInfo then
+        -- Add thumbnail URL to game info
+        gameInfo.thumbnailUrl = getGameThumbnail(placeId)
+        return gameInfo
+    else
+        -- Unknown game - return default
+        return {
+            id = "unknown-" .. tostring(placeId),
+            name = "Unknown Game (" .. tostring(placeId) .. ")",
+            icon = "❓",
+            thumbnailUrl = getGameThumbnail(placeId)
+        }
+    end
+end
+
+local CURRENT_GAME = detectGame()
+local GAME_ID = CURRENT_GAME.id
+local GAME_NAME = CURRENT_GAME.name
+local GAME_ICON = CURRENT_GAME.icon
+local GAME_THUMBNAIL = CURRENT_GAME.thumbnailUrl
 
 -- ============ SERVICES ============
 local Players = game:GetService("Players")
@@ -373,6 +419,8 @@ local function collectAccountStats()
         -- Game Info (IMPORTANT: Identifies which game this data is from)
         gameId = GAME_ID,
         gameName = GAME_NAME,
+        gameIcon = GAME_ICON,
+        gameThumbnail = GAME_THUMBNAIL,
         
         -- Account Info
         accountId = tostring(LocalPlayer.UserId),
@@ -695,6 +743,7 @@ function DashboardIntegration.Init(config)
     isRunning = true
     
     print("[Dashboard] 🚀 Initializing Dashboard Integration...")
+    print("[Dashboard] 🎮 Detected Game:", GAME_NAME, "(" .. GAME_ID .. ")")
     print("[Dashboard] 📡 Dashboard URL:", DASHBOARD_URL)
     
     -- Register account
