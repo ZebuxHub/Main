@@ -390,28 +390,23 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                 if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
                     
-                    -- Get current selected fruits from main script
-                    local selectedFeedFruits = getSelectedFruits and getSelectedFruits() or {}
+                    -- Get player's fruit inventory
+                    local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
                     
-                    -- Check if we have selected fruits
-                    if selectedFeedFruits and next(selectedFeedFruits) then
-                        -- Get player's fruit inventory
-                        local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
-                        
-                        -- Get station-fruit assignments (NEW STRUCTURE)
-                        local stationFruitAssignments = AutoFeedSystem.stationFruitAssignments or {}
-                        
-                        -- Check if this station has any fruit assignments
-                        local stationId = petData.stationId
-                        local assignedFruits = stationFruitAssignments[stationId]
-                        
-                        if not assignedFruits or not next(assignedFruits) then
-                            -- No fruits assigned to this station = skip
-                            feedFruitStatus.lastAction = "⏭️ Station " .. (stationId or "?") .. " has no fruit assignments"
-                            if updateFeedStatusParagraph then
-                                updateFeedStatusParagraph()
-                            end
-                        else
+                    -- Get station-fruit assignments (NEW STRUCTURE)
+                    local stationFruitAssignments = AutoFeedSystem.stationFruitAssignments or {}
+                    
+                    -- Check if this station has any fruit assignments
+                    local stationId = petData.stationId
+                    local assignedFruits = stationFruitAssignments[stationId]
+                    
+                    if not assignedFruits or not next(assignedFruits) then
+                        -- No fruits assigned to this station = skip
+                        feedFruitStatus.lastAction = "⏭️ Station " .. (stationId or "?") .. " has no fruit assignments"
+                        if updateFeedStatusParagraph then
+                            updateFeedStatusParagraph()
+                        end
+                    else
                             -- Try to feed with assigned fruits only
                             for fruitName, _ in pairs(assignedFruits) do
                                 if not getAutoFeedEnabled() then break end
@@ -484,12 +479,6 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                 end
                             end
                         end -- Close if not assignedFruits
-                    else
-                        feedFruitStatus.lastAction = "No fruits selected for feeding"
-                        if updateFeedStatusParagraph then
-                            updateFeedStatusParagraph()
-                        end
-                    end
                 else
                     -- Show which pets are currently eating (use Station ID)
                     local petDisplayName = petData.stationId or petData.name
@@ -497,7 +486,7 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                     if updateFeedStatusParagraph then
                         updateFeedStatusParagraph()
                     end
-                end
+                end -- Close for _, petData
             end
             
             if feedFruitStatus.availablePets == 0 then
