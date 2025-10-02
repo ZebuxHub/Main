@@ -276,6 +276,31 @@ local function getEggInventory()
     }
 end
 
+-- Get pet speed from UI (like AutoSellSystem)
+local function getPetSpeed(petNode)
+    if not petNode then return 0 end
+    local uid = petNode.Name
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local ss = pg and pg:FindFirstChild("ScreenStorage")
+    local frame = ss and ss:FindFirstChild("Frame")
+    local content = frame and frame:FindFirstChild("ContentPet")
+    local scroll = content and content:FindFirstChild("ScrollingFrame")
+    local item = scroll and scroll:FindFirstChild(uid)
+    local btn = item and item:FindFirstChild("BTN")
+    local stat = btn and btn:FindFirstChild("Stat")
+    local price = stat and stat:FindFirstChild("Price")
+    local valueLabel = price and price:FindFirstChild("Value")
+    local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+    if not txt and price and price:IsA("TextLabel") then
+        txt = price.Text
+    end
+    if txt then
+        local n = tonumber((txt:gsub("[^%d]", ""))) or 0
+        return n
+    end
+    return 0
+end
+
 -- Get detailed pet inventory (like AutoPlaceGridUI)
 local function getPetInventory()
     local pets = {}
@@ -290,9 +315,11 @@ local function getPetInventory()
                 local petType = petConfig:GetAttribute("T") or "Unknown"
                 local mutation = petConfig:GetAttribute("M")
                 local level = petConfig:GetAttribute("V") or 0
-                local speed = petConfig:GetAttribute("S") or 0
                 local isPlaced = petConfig:GetAttribute("D") ~= nil
                 local isBigPet = petConfig:GetAttribute("IsBigpet") == true
+                
+                -- Get real speed from UI (like AutoSellSystem)
+                local speed = getPetSpeed(petConfig)
                 
                 -- Skip big pets
                 if not isBigPet then
@@ -301,7 +328,7 @@ local function getPetInventory()
                         type = petType,
                         mutation = mutation,
                         level = level,
-                        speed = speed,
+                        speed = speed, -- Real speed from UI
                         isPlaced = isPlaced
                     })
                 end
