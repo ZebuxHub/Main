@@ -17,16 +17,15 @@ local FeedFruitSelection = nil
 
 -- UI Elements
 local autoFeedToggle = nil
-local bigPetDropdown = nil
 
 -- State variables
 local autoFeedEnabled = false
 local autoFeedThread = nil
-local selectedBigPets = {}
 local selectedFeedFruits = {}
 local feedFruitSelectionVisible = false
 
--- Export fruitPetAssignments for external access
+-- Export fruitPetAssignments for external access (now uses Station ID as keys)
+-- Structure: {FruitID = {StationID = true}}
 AutoFeedSystem.fruitPetAssignments = {}
 
 -- Normalization helpers to robustly match fruit names from PlayerGui.Data.Asset
@@ -370,60 +369,11 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
         local ok, err = pcall(function()
             local allBigPets = AutoFeedSystem.getBigPets()
             
-            -- Get current selection dynamically
-            local selectedBigPets = getSelectedBigPets and getSelectedBigPets() or {}
-            
-            -- Filter pets based on selection
-            local bigPets = {}
-            if selectedBigPets and next(selectedBigPets) then
-                -- Only feed selected pets
-                for _, petData in ipairs(allBigPets) do
-                    if petData.stationId then
-                        -- Check if this pet's station is selected
-                        -- selectedBigPets keys are like "1", "2", "3" or "1 (Dragon)"
-                        local isSelected = false
-                        
-                        for selectedName, _ in pairs(selectedBigPets) do
-                            -- Match exact station ID or station ID with type info
-                            -- e.g., "1" matches "1" or "1 (Dragon)"
-                            if selectedName == petData.stationId or selectedName:match("^" .. petData.stationId .. "%s") then
-                                isSelected = true
-                                break
-                            end
-                        end
-                        
-                        if isSelected then
-                            table.insert(bigPets, petData)
-                        end
-                    end
-                end
-            else
-                -- No selection = feed all pets
-                bigPets = allBigPets
-            end
-            
-            feedFruitStatus.petsFound = #bigPets
+            feedFruitStatus.petsFound = #allBigPets
             feedFruitStatus.availablePets = 0
             
-            -- Log which stations are being fed
-            if selectedBigPets and next(selectedBigPets) then
-                local stationList = {}
-                for _, petData in ipairs(bigPets) do
-                    if petData.stationId then
-                        table.insert(stationList, petData.stationId)
-                    end
-                end
-                if #stationList > 0 then
-                    print("[Auto Feed] Feeding stations: " .. table.concat(stationList, ", "))
-                end
-            end
-            
-            if #bigPets == 0 then
-                if selectedBigPets and next(selectedBigPets) then
-                    feedFruitStatus.lastAction = "No selected Big Pets found"
-                else
+            if #allBigPets == 0 then
                 feedFruitStatus.lastAction = "No Big Pets found"
-                end
                 if updateFeedStatusParagraph then
                     updateFeedStatusParagraph()
                 end
@@ -432,23 +382,10 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
             end
             
             -- Check each pet for feeding opportunity
-            for _, petData in ipairs(bigPets) do
+            for _, petData in ipairs(allBigPets) do
                 if not getAutoFeedEnabled() then break end
                 
                 local isEating = AutoFeedSystem.isPetEating(petData)
-                
-                -- Get the actual feed time text for debugging
-                local feedTimeText = "unknown"
-                if petData.bigPetGUI then
-                    local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
-                    if feedGUI then
-                        local feedText = feedGUI:FindFirstChild("TXT")
-                        if feedText and feedText:IsA("TextLabel") then
-                            feedTimeText = feedText.Text
-                        end
-                    end
-                end
-                
                 
                 if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
@@ -456,48 +393,34 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                     -- Get current selected fruits from main script
                     local selectedFeedFruits = getSelectedFruits and getSelectedFruits() or {}
                     
-                    -- Debug: Check if selections are being lost
-                    local fruitCount = 0
-                    local fruitList = {}
-                    if selectedFeedFruits then
-                        for fruitName, _ in pairs(selectedFeedFruits) do
-                            fruitCount = fruitCount + 1
-                            table.insert(fruitList, fruitName)
-                        end
-                    end
-                    
                     -- Check if we have selected fruits
-                    if selectedFeedFruits and fruitCount > 0 then
+                    if selectedFeedFruits and next(selectedFeedFruits) then
                         -- Get player's fruit inventory
                         local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
                         
-                        -- Get fruit-pet assignments
+                        -- Get fruit-pet assignments (now using Station ID as keys)
                         local fruitPetAssignments = AutoFeedSystem.fruitPetAssignments or {}
                         
                         -- Try to feed with selected fruits
                         for fruitName, _ in pairs(selectedFeedFruits) do
                             if not getAutoFeedEnabled() then break end
                             
-                            -- Check if this fruit is assigned to this specific pet
+                            -- Check if this fruit has pet assignments
                             local petAssignments = fruitPetAssignments[fruitName]
                             local shouldFeedThisPet = false
                             
                             if not petAssignments or not next(petAssignments) then
-                                -- No specific assignments for this fruit = feed all pets
-                                shouldFeedThisPet = true
+                                -- No assignments = skip this fruit (user's choice)
+                                shouldFeedThisPet = false
                             else
-                                -- Check if this pet is in the assignment list
-                                -- petData.name is the pet's actual name (UID)
-                                shouldFeedThisPet = petAssignments[petData.name] == true
+                                -- Check if this pet's station is in the assignment list
+                                -- petData.stationId is like "1", "2", "3"
+                                shouldFeedThisPet = petAssignments[petData.stationId] == true
                             end
                             
                             if not shouldFeedThisPet then
-                                -- Skip this fruit for this pet
-                                feedFruitStatus.lastAction = "⏭️ " .. fruitName .. " not assigned to " .. petData.name
-                                if updateFeedStatusParagraph then
-                                    updateFeedStatusParagraph()
-                                end
-                                task.wait(0.1)
+                                -- Skip this fruit for this pet (no message to reduce spam)
+                                -- Only show if this is the last fruit to check
                             else
                                 -- Check if player has this fruit
                                 local fruitAmount = fruitInventory[fruitName] or 0
@@ -508,8 +431,9 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                     end
                                     task.wait(0.5)
                                 else
-                                    -- Update status to show which pet we're trying to feed
-                                    feedFruitStatus.lastAction = "Trying to feed " .. petData.name .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
+                                    -- Update status to show which pet we're trying to feed (use Station ID)
+                                    local petDisplayName = petData.stationId or petData.name
+                                    feedFruitStatus.lastAction = "Trying to feed Station " .. petDisplayName .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
                                     if updateFeedStatusParagraph then
                                         updateFeedStatusParagraph()
                                     end
@@ -528,7 +452,7 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                     if equipSuccess then
                                         task.wait(0.2) -- Small delay between equip and feed
                                         
-                                        -- Feed the pet - with retry
+                                        -- Feed the pet - with retry (still use UID for server call)
                                         local feedSuccess = false
                                         for retry = 1, 3 do -- Try up to 3 times
                                             if AutoFeedSystem.feedPet(petData.name) then
@@ -540,9 +464,9 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                         end
                                         
                                         if feedSuccess then
-                                            feedFruitStatus.lastFedPet = petData.name
+                                            feedFruitStatus.lastFedPet = petDisplayName
                                             feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
-                                            feedFruitStatus.lastAction = "✅ Fed " .. petData.name .. " with " .. fruitName
+                                            feedFruitStatus.lastAction = "✅ Fed Station " .. petDisplayName .. " with " .. fruitName
                                             if updateFeedStatusParagraph then
                                                 updateFeedStatusParagraph()
                                             end
@@ -550,13 +474,13 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                             task.wait(1.5) -- Wait longer before trying next pet
                                             break -- Move to next pet
                                         else
-                                            feedFruitStatus.lastAction = "❌ Failed to feed " .. petData.name .. " with " .. fruitName .. " after 3 attempts"
+                                            feedFruitStatus.lastAction = "❌ Failed to feed Station " .. petDisplayName .. " with " .. fruitName .. " after 3 attempts"
                                             if updateFeedStatusParagraph then
                                                 updateFeedStatusParagraph()
                                             end
                                         end
                                     else
-                                        feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for " .. petData.name .. " after 3 attempts"
+                                        feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for Station " .. petDisplayName .. " after 3 attempts"
                                         if updateFeedStatusParagraph then
                                             updateFeedStatusParagraph()
                                         end
@@ -573,8 +497,9 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                         end
                     end
                 else
-                    -- Show which pets are currently eating
-                    feedFruitStatus.lastAction = petData.name .. " is currently eating"
+                    -- Show which pets are currently eating (use Station ID)
+                    local petDisplayName = petData.stationId or petData.name
+                    feedFruitStatus.lastAction = "Station " .. petDisplayName .. " is currently eating"
                     if updateFeedStatusParagraph then
                         updateFeedStatusParagraph()
                     end
@@ -677,87 +602,7 @@ function AutoFeedSystem.debugAutoFeed()
 
 end
 
--- Helper function to get island name
-local function getAssignedIslandName()
-    local localPlayer = Players.LocalPlayer
-    if not localPlayer then return nil end
-    return localPlayer:GetAttribute("AssignedIslandName")
-end
-
--- Helper function to get available Big pets from current island
-local function getAvailableBigPets()
-    local bigPets = {}
-    
-    local islandName = getAssignedIslandName()
-    if not islandName then return bigPets end
-    
-    local art = workspace:FindFirstChild("Art")
-    if not art then return bigPets end
-    
-    local island = art:FindFirstChild(islandName)
-    if not island then return bigPets end
-    
-    local env = island:FindFirstChild("ENV")
-    if not env then return bigPets end
-    
-    local bigPetFolder = env:FindFirstChild("BigPet")
-    if not bigPetFolder then return bigPets end
-    
-    -- Get only Parts from BigPet folder
-    for _, child in ipairs(bigPetFolder:GetChildren()) do
-        if child:IsA("BasePart") then
-            local displayName = child.Name
-            
-            -- Try to get a better name from attributes
-            local petType = child:GetAttribute("Type") 
-                or child:GetAttribute("T") 
-                or child:GetAttribute("PetType")
-            
-            if petType and tostring(petType) ~= "" then
-                displayName = displayName .. " (" .. tostring(petType) .. ")"
-            end
-            
-            if not table.find(bigPets, displayName) then
-                table.insert(bigPets, displayName)
-            end
-        end
-    end
-    
-    -- Sort numerically if names are numbers
-    table.sort(bigPets, function(a, b)
-        local numA = tonumber(a:match("^(%d+)"))
-        local numB = tonumber(b:match("^(%d+)"))
-        if numA and numB then
-            return numA < numB
-        end
-        return a < b
-    end)
-    
-    return bigPets
-end
-
--- Callback to update custom UI selections
-local function updateCustomUISelection(uiType, selections)
-    -- This will be called to save selections
-    if not CustomUIConfig then return end
-    
-    -- Convert selections to array format for saving
-    local selectionsArray = {}
-    for key, _ in pairs(selections) do
-        table.insert(selectionsArray, key)
-    end
-    
-    -- Save using CustomUIConfig
-    pcall(function()
-        if uiType == "bigPetSelections" then
-            CustomUIConfig:Set("bigPetSelections", selectionsArray)
-            CustomUIConfig:Save()
-        elseif uiType == "feedFruitSelections" then
-            CustomUIConfig:Set("feedFruitSelections", selectionsArray)
-            CustomUIConfig:Save()
-        end
-    end)
-end
+-- (Removed unused helper functions: getAssignedIslandName, getAvailableBigPets, updateCustomUISelection)
 
 -- Initialize the Auto Feed System
 function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIConfigRef, feedFruitSelectionRef)
@@ -770,22 +615,15 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
     -- Load saved selections from CustomUIConfig
     if CustomUIConfig then
         pcall(function()
-            local savedBigPets = CustomUIConfig:Get("bigPetSelections") or {}
             local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
             local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
-            
-            -- Convert array to set
-            selectedBigPets = {}
-            for _, petName in ipairs(savedBigPets) do
-                selectedBigPets[petName] = true
-            end
             
             selectedFeedFruits = {}
             for _, fruitId in ipairs(savedFeedFruits) do
                 selectedFeedFruits[fruitId] = true
             end
             
-            -- Load pet assignments
+            -- Load pet assignments (now uses Station ID as keys)
             AutoFeedSystem.fruitPetAssignments = savedPetAssignments
             
             print("[AutoFeed] Loaded pet assignments for", #AutoFeedSystem.getTableKeys(savedPetAssignments), "fruits")
@@ -826,15 +664,18 @@ function AutoFeedSystem.CreateUI()
                             -- Save both fruit selections and pet assignments
                             selectedFeedFruits = selectedItems
                             
-                            -- Store pet assignments for feeding logic
+                            -- Store pet assignments for feeding logic (now uses Station ID)
                             AutoFeedSystem.fruitPetAssignments = petAssignments or {}
                             
                             -- Save to config
-                            updateCustomUISelection("feedFruitSelections", selectedItems)
-                            
-                            -- Save pet assignments separately
                             if CustomUIConfig then
                                 pcall(function()
+                                    -- Convert selections to array format
+                                    local selectionsArray = {}
+                                    for key, _ in pairs(selectedItems) do
+                                        table.insert(selectionsArray, key)
+                                    end
+                                    CustomUIConfig:Set("feedFruitSelections", selectionsArray)
                                     CustomUIConfig:Set("feedPetAssignments", petAssignments or {})
                                     CustomUIConfig:Save()
                                 end)
@@ -856,52 +697,6 @@ function AutoFeedSystem.CreateUI()
         end
     })
     
-    -- Big Pet Selection Dropdown
-    bigPetDropdown = Tabs.ShopTab:Dropdown({
-        Title = "Select Big Pets to Feed",
-        Desc = "Choose which Big pets should be fed (empty = feed all)",
-        Values = getAvailableBigPets(),
-        Value = {},
-        Multi = true,
-        AllowNone = true,
-        Callback = function(selection)
-            -- Convert array to set
-            selectedBigPets = {}
-            for _, petName in ipairs(selection) do
-                selectedBigPets[petName] = true
-            end
-            
-            -- Save selection
-            updateCustomUISelection("bigPetSelections", selectedBigPets)
-            
-            -- Log selection change (removed notification to reduce spam)
-            if #selection == 0 then
-                print("[AutoFeed] Big Pet selection updated: Feeding ALL Big Pets")
-            else
-                print("[AutoFeed] Big Pet selection updated:", table.concat(selection, ", "))
-            end
-        end
-    })
-    
-    -- Refresh Big Pet list button
-    Tabs.ShopTab:Button({
-        Title = "🔄 Refresh Big Pet List",
-        Desc = "Update the list of available Big pets",
-        Callback = function()
-            local availablePets = getAvailableBigPets()
-            if bigPetDropdown and bigPetDropdown.Refresh then
-                bigPetDropdown:Refresh(availablePets)
-                if WindUI then
-                    WindUI:Notify({ 
-                        Title = "Big Pets Refreshed", 
-                        Content = "Found " .. #availablePets .. " Big pets", 
-                        Duration = 2 
-                    })
-                end
-            end
-        end
-    })
-    
     -- Auto Feed Toggle
     autoFeedToggle = Tabs.ShopTab:Toggle({
         Title = "Auto Feed Pets",
@@ -917,11 +712,6 @@ function AutoFeedSystem.CreateUI()
                         return autoFeedEnabled
                     end
                     
-                    -- Get selected Big Pets function (dynamically reads current selection)
-                    local function getSelectedBigPets()
-                        return selectedBigPets
-                    end
-                    
                     -- Get selected fruits function
                     local function getSelectedFruits()
                         return selectedFeedFruits
@@ -929,7 +719,7 @@ function AutoFeedSystem.CreateUI()
                     
                     -- Wrap in error handling
                     local ok, err = pcall(function()
-                        AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, function() end, getSelectedFruits)
+                        AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, nil, function() end, getSelectedFruits)
                     end)
                     
                     if not ok then
@@ -963,19 +753,12 @@ function AutoFeedSystem.CreateUI()
             AutoSystemsConfig:Register("autoFeedEnabled", autoFeedToggle)
         end)
     end
-    
-    if CustomUIConfig and bigPetDropdown then
-        pcall(function()
-            CustomUIConfig:Register("bigPetDropdown", bigPetDropdown)
-        end)
-    end
 end
 
 -- Get config elements for external registration
 function AutoFeedSystem.GetConfigElements()
     return {
-        AutoFeedToggle = autoFeedToggle,
-        BigPetDropdown = bigPetDropdown
+        AutoFeedToggle = autoFeedToggle
     }
 end
 
@@ -984,26 +767,19 @@ function AutoFeedSystem.SyncLoadedValues()
     -- Load selections from CustomUIConfig if available
     if CustomUIConfig then
         pcall(function()
-            local savedBigPets = CustomUIConfig:Get("bigPetSelections") or {}
             local savedFeedFruits = CustomUIConfig:Get("feedFruitSelections") or {}
             local savedPetAssignments = CustomUIConfig:Get("feedPetAssignments") or {}
-            
-            -- Convert array to set
-            selectedBigPets = {}
-            for _, petName in ipairs(savedBigPets) do
-                selectedBigPets[petName] = true
-            end
             
             selectedFeedFruits = {}
             for _, fruitId in ipairs(savedFeedFruits) do
                 selectedFeedFruits[fruitId] = true
             end
             
-            -- Load pet assignments
+            -- Load pet assignments (now uses Station ID as keys)
             AutoFeedSystem.fruitPetAssignments = savedPetAssignments
             
             local assignmentCount = #AutoFeedSystem.getTableKeys(savedPetAssignments)
-            print("[AutoFeed] Synced Big Pets:", #savedBigPets, "Synced Fruits:", #savedFeedFruits, "Pet Assignments:", assignmentCount)
+            print("[AutoFeed] Synced Fruits:", #savedFeedFruits, "Pet Assignments:", assignmentCount)
         end)
     end
 end
