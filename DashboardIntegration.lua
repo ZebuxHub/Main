@@ -17,6 +17,12 @@ local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- Wait for RemoteEvent (created by server handler)
+local DashboardRemote = ReplicatedStorage:WaitForChild("DashboardRemote", 10)
+if not DashboardRemote then
+    warn("[Dashboard] ❌ DashboardRemote not found! Make sure DashboardIntegration_ServerHandler.lua is running on the server")
+end
+
 -- ============ STATE ============
 local isRunning = false
 local lastUpdateTime = 0
@@ -274,71 +280,79 @@ end
 
 -- Register account with dashboard
 local function registerAccount()
-    local stats = collectAccountStats()
-    
-    local success, response = pcall(function()
-        return HttpService:PostAsync(
-            DASHBOARD_URL .. "/api/accounts/register",
-            HttpService:JSONEncode(stats),
-            Enum.HttpContentType.ApplicationJson,
-            false
-        )
-    end)
-    
-    if success then
-        print("[Dashboard] ✅ Account registered successfully")
-        return true
-    else
-        warn("[Dashboard] ❌ Failed to register account:", response)
+    if not DashboardRemote then
+        warn("[Dashboard] ❌ Cannot register: DashboardRemote not available")
         return false
     end
+    
+    local stats = collectAccountStats()
+    
+    -- Send registration request to server
+    DashboardRemote:FireServer("REGISTER", {
+        url = DASHBOARD_URL,
+        stats = stats
+    })
+    
+    print("[Dashboard] 📤 Registration request sent to server")
+    return true
 end
 
 -- Send stats update to dashboard
 local function sendStatsUpdate()
-    if not dashboardEnabled then return end
+    if not dashboardEnabled then return false end
+    if not DashboardRemote then return false end
     
     local stats = collectAccountStats()
     
-    local success, response = pcall(function()
-        return HttpService:PostAsync(
-            DASHBOARD_URL .. "/api/accounts/update-stats",
-            HttpService:JSONEncode(stats),
-            Enum.HttpContentType.ApplicationJson,
-            false
-        )
-    end)
+    -- Send update request to server
+    DashboardRemote:FireServer("UPDATE_STATS", {
+        url = DASHBOARD_URL,
+        stats = stats
+    })
     
-    if success then
-        print("[Dashboard] 📊 Stats updated successfully")
-        lastUpdateTime = os.time()
-        return true
-    else
-        warn("[Dashboard] ⚠️ Failed to send stats update:", response)
-        return false
-    end
+    print("[Dashboard] 📤 Stats update sent to server")
+    lastUpdateTime = os.time()
+    return true
 end
 
 -- Listen for commands from dashboard
 local function checkForCommands()
     if not dashboardEnabled then return end
+    if not DashboardRemote then return end
     
-    local success, response = pcall(function()
-        return HttpService:GetAsync(
-            DASHBOARD_URL .. "/api/commands/fetch?accountId=" .. tostring(LocalPlayer.UserId),
-            false
-        )
-    end)
-    
-    if success and response then
-        local commands = HttpService:JSONDecode(response)
-        
-        if commands and #commands > 0 then
-            for _, command in ipairs(commands) do
-                executeCommand(command)
+    -- Request commands from server
+    DashboardRemote:FireServer("FETCH_COMMANDS", {
+        url = DASHBOARD_URL
+    })
+end
+
+-- Handle responses from server
+if DashboardRemote then
+    DashboardRemote.OnClientEvent:Connect(function(responseType, data)
+        if responseType == "REGISTER_SUCCESS" then
+            print("[Dashboard] ✅ Account registered successfully")
+            
+        elseif responseType == "REGISTER_FAILED" then
+            warn("[Dashboard] ❌ Failed to register account:", data.error)
+            
+        elseif responseType == "UPDATE_SUCCESS" then
+            print("[Dashboard] 📊 Stats updated successfully")
+            
+        elseif responseType == "UPDATE_FAILED" then
+            warn("[Dashboard] ⚠️ Failed to send stats update:", data.error)
+            
+        elseif responseType == "COMMANDS_RECEIVED" then
+            local commands = data.commands
+            if commands and #commands > 0 then
+                for _, command in ipairs(commands) do
+                    executeCommand(command)
+                end
             end
+            
+        elseif responseType == "FETCH_FAILED" then
+            warn("[Dashboard] ⚠️ Failed to fetch commands:", data.error)
         end
-    end
+    end)
 end
 
 -- Execute remote command
