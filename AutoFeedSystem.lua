@@ -596,20 +596,28 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
     StationFeedSetup = stationFeedSetupRef -- NEW: Station-First UI
     
     -- Load saved assignments from customSelections (JSON file)
+    task.wait(0.1)  -- Small delay to ensure customSelections is loaded
+    
     if _G.customSelections and _G.customSelections.stationFruitAssignments then
         local success, err = pcall(function()
             local savedStationAssignments = _G.customSelections.stationFruitAssignments or {}
             
-            -- Load station-fruit assignments (NEW STRUCTURE)
-            AutoFeedSystem.stationFruitAssignments = savedStationAssignments
+            -- Deep copy to ensure we have a proper table structure
+            AutoFeedSystem.stationFruitAssignments = {}
+            for stationId, fruits in pairs(savedStationAssignments) do
+                AutoFeedSystem.stationFruitAssignments[stationId] = {}
+                for fruitId, value in pairs(fruits) do
+                    AutoFeedSystem.stationFruitAssignments[stationId][fruitId] = value
+                end
+            end
             
             local stationCount = 0
-            for stationId, fruits in pairs(savedStationAssignments) do
+            for stationId, fruits in pairs(AutoFeedSystem.stationFruitAssignments) do
                 local fruitCount = 0
-                for _ in pairs(fruits) do
+                for fruitId, _ in pairs(fruits) do
                     fruitCount = fruitCount + 1
+                    print(string.format("[AutoFeed] 📥 Station %s → %s", stationId, fruitId))
                 end
-                print(string.format("[AutoFeed] 📥 Station %s → %d fruits", stationId, fruitCount))
                 stationCount = stationCount + 1
             end
             
@@ -625,6 +633,7 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
         end
     else
         print("[AutoFeed] ℹ️ No customSelections available yet (will load later)")
+        AutoFeedSystem.stationFruitAssignments = {}
     end
 end
 
