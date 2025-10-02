@@ -8,6 +8,8 @@ local DashboardIntegration = {}
 local DASHBOARD_URL = "http://localhost:3000" -- Change to your deployed URL later
 local UPDATE_INTERVAL = 30 -- Send stats every 30 seconds
 local RETRY_DELAY = 5 -- Retry failed requests after 5 seconds
+local GAME_ID = "build-a-zoo" -- Game identifier for dashboard
+local GAME_NAME = "Build A Zoo" -- Display name
 
 -- ============ SERVICES ============
 local Players = game:GetService("Players")
@@ -23,6 +25,17 @@ local lastUpdateTime = 0
 local updateThread = nil
 local commandListenerThread = nil
 local dashboardEnabled = false
+
+-- ============ NERD STATS TRACKING ============
+local nerdStats = {
+    moneyProduced = 0, -- Total money produced
+    moneySpent = 0, -- Total money spent
+    sessionStartMoney = 0, -- Money when script started
+    sessionStartTime = 0, -- Timestamp when tracking started
+    lastMoney = 0, -- Last recorded money value
+    eggsCollected = 0, -- Total eggs collected this session
+    petsHatched = 0 -- Total pets hatched this session
+}
 
 -- ============ HELPER FUNCTIONS ============
 
@@ -114,13 +127,16 @@ local function getAutomationStatus()
     }
 end
 
--- Get pet speed stats
+-- Get pet speed stats with best/worst pet info
 local function getPetSpeedStats()
     local speeds = {}
     local totalSpeed = 0
     local fastestSpeed = 0
     local slowestSpeed = math.huge
     local avgSpeed = 0
+    local bestPet = nil
+    local worstPet = nil
+    local totalPlaced = 0
     
     local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
     local data = playerGui and playerGui:FindFirstChild("Data")
@@ -131,11 +147,38 @@ local function getPetSpeedStats()
         for _, petConfig in ipairs(petsFolder:GetChildren()) do
             if petConfig:IsA("Configuration") then
                 local speed = petConfig:GetAttribute("S") or petConfig:GetAttribute("Speed") or 0
+                local petType = petConfig:GetAttribute("T") or "Unknown"
+                local mutation = petConfig:GetAttribute("M")
+                local isPlaced = petConfig:GetAttribute("D") ~= nil
+                
+                if isPlaced then
+                    totalPlaced = totalPlaced + 1
+                end
+                
                 if type(speed) == "number" and speed > 0 then
                     table.insert(speeds, speed)
                     totalSpeed = totalSpeed + speed
-                    fastestSpeed = math.max(fastestSpeed, speed)
-                    slowestSpeed = math.min(slowestSpeed, speed)
+                    
+                    -- Track best pet
+                    if speed > fastestSpeed then
+                        fastestSpeed = speed
+                        bestPet = {
+                            name = petType,
+                            speed = speed,
+                            mutation = mutation
+                        }
+                    end
+                    
+                    -- Track worst pet
+                    if speed < slowestSpeed then
+                        slowestSpeed = speed
+                        worstPet = {
+                            name = petType,
+                            speed = speed,
+                            mutation = mutation
+                        }
+                    end
+                    
                     petCount = petCount + 1
                 end
             end
@@ -150,7 +193,46 @@ local function getPetSpeedStats()
         fastest = fastestSpeed,
         slowest = slowestSpeed == math.huge and 0 or slowestSpeed,
         average = avgSpeed,
-        total = totalSpeed
+        total = totalSpeed,
+        totalPlaced = totalPlaced
+    }, bestPet, worstPet
+end
+
+-- Track money changes
+local function trackMoneyChanges()
+    local currentMoney = getPlayerNetWorth()
+    
+    -- Initialize tracking on first run
+    if nerdStats.sessionStartTime == 0 then
+        nerdStats.sessionStartMoney = currentMoney
+        nerdStats.lastMoney = currentMoney
+        nerdStats.sessionStartTime = os.time()
+        return
+    end
+    
+    -- Check if money increased (produced)
+    if currentMoney > nerdStats.lastMoney then
+        nerdStats.moneyProduced = nerdStats.moneyProduced + (currentMoney - nerdStats.lastMoney)
+    -- Check if money decreased (spent)
+    elseif currentMoney < nerdStats.lastMoney then
+        nerdStats.moneySpent = nerdStats.moneySpent + (nerdStats.lastMoney - currentMoney)
+    end
+    
+    nerdStats.lastMoney = currentMoney
+end
+
+-- Calculate efficiency metrics
+local function calculateEfficiencyMetrics()
+    local uptimeSeconds = os.time() - nerdStats.sessionStartTime
+    local uptimeHours = uptimeSeconds / 3600
+    
+    if uptimeHours == 0 then uptimeHours = 0.01 end -- Avoid division by zero
+    
+    return {
+        eggsPerHour = nerdStats.eggsCollected / uptimeHours,
+        petsPerHour = nerdStats.petsHatched / uptimeHours,
+        moneyPerHour = nerdStats.moneyProduced / uptimeHours,
+        uptimeHours = uptimeHours
     }
 end
 
@@ -219,28 +301,109 @@ local function getPerformanceMetrics()
     }
 end
 
+-- Get detailed inventory (eggs + pets) like AutoPlaceGridUI
+local function getDetailedInventory()
+    local eggs = {}
+    local pets = {}
+    
+    local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    local data = playerGui and playerGui:FindFirstChild("Data")
+    
+    -- Collect Eggs
+    local eggContainer = data and data:FindFirstChild("Egg")
+    if eggContainer then
+        for _, eggNode in ipairs(eggContainer:GetChildren()) do
+            if #eggNode:GetChildren() == 0 then -- Available egg
+                local eggType = eggNode:GetAttribute("T") or "Unknown"
+                local mutation = eggNode:GetAttribute("M")
+                
+                table.insert(eggs, {
+                    uid = eggNode.Name,
+                    type = eggType,
+                    mutation = mutation
+                })
+            end
+        end
+    end
+    
+    -- Collect Pets
+    local petsContainer = data and data:FindFirstChild("Pets")
+    if petsContainer then
+        for _, petNode in ipairs(petsContainer:GetChildren()) do
+            if petNode:IsA("Configuration") then
+                local petType = petNode:GetAttribute("T") or "Unknown"
+                local mutation = petNode:GetAttribute("M")
+                local level = petNode:GetAttribute("V") or 0
+                local speed = petNode:GetAttribute("S") or 0
+                local isPlaced = petNode:GetAttribute("D") ~= nil
+                
+                table.insert(pets, {
+                    uid = petNode.Name,
+                    type = petType,
+                    speed = speed,
+                    mutation = mutation,
+                    level = level,
+                    isPlaced = isPlaced
+                })
+            end
+        end
+    end
+    
+    return {
+        eggs = eggs,
+        pets = pets
+    }
+end
+
 -- ============ DASHBOARD COMMUNICATION ============
 
 -- Collect all stats
 local function collectAccountStats()
-    local petSpeedStats = getPetSpeedStats()
+    -- Track money changes before collecting stats
+    trackMoneyChanges()
+    
+    local petSpeedStats, bestPet, worstPet = getPetSpeedStats()
     local eggStats = getEggStats()
     local automation = getAutomationStatus()
     local performance = getPerformanceMetrics()
+    local efficiency = calculateEfficiencyMetrics()
+    local inventory = getDetailedInventory()
     
     return {
+        -- Game Info (IMPORTANT: Identifies which game this data is from)
+        gameId = GAME_ID,
+        gameName = GAME_NAME,
+        
         -- Account Info
         accountId = tostring(LocalPlayer.UserId),
         username = LocalPlayer.Name,
         displayName = LocalPlayer.DisplayName,
+        userId = tostring(LocalPlayer.UserId),
         
         -- Economy
         money = getPlayerNetWorth(),
         
-        -- Inventory
+        -- Nerd Stats - Money Tracking
+        moneyProduced = nerdStats.moneyProduced,
+        moneySpent = nerdStats.moneySpent,
+        
+        -- Nerd Stats - Best/Worst Pets
+        bestPet = bestPet,
+        worstPet = worstPet,
+        
+        -- Nerd Stats - Efficiency
+        eggsPerHour = efficiency.eggsPerHour,
+        petsPerHour = efficiency.petsPerHour,
+        moneyPerHour = efficiency.moneyPerHour,
+        uptimeHours = efficiency.uptimeHours,
+        
+        -- Inventory Summary
         totalEggs = getTotalEggs(),
         totalPets = getTotalPets(),
         placedPets = getTotalPlacedPets(),
+        
+        -- Detailed Inventory (like AutoPlaceGridUI)
+        inventory = inventory,
         
         -- Progress
         currentIsland = getAssignedIslandName(),
