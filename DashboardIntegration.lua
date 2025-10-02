@@ -125,6 +125,31 @@ local function getAutomationStatus()
     }
 end
 
+-- Get pet speed from UI (like AutoSellSystem) - MOVED UP
+local function getPetSpeed(petNode)
+    if not petNode then return 0 end
+    local uid = petNode.Name
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local ss = pg and pg:FindFirstChild("ScreenStorage")
+    local frame = ss and ss:FindFirstChild("Frame")
+    local content = frame and frame:FindFirstChild("ContentPet")
+    local scroll = content and content:FindFirstChild("ScrollingFrame")
+    local item = scroll and scroll:FindFirstChild(uid)
+    local btn = item and item:FindFirstChild("BTN")
+    local stat = btn and btn:FindFirstChild("Stat")
+    local price = stat and stat:FindFirstChild("Price")
+    local valueLabel = price and price:FindFirstChild("Value")
+    local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+    if not txt and price and price:IsA("TextLabel") then
+        txt = price.Text
+    end
+    if txt then
+        local n = tonumber((txt:gsub("[^%d]", ""))) or 0
+        return n
+    end
+    return 0
+end
+
 -- Get pet speed stats with best/worst pet info
 local function getPetSpeedStats()
     local speeds = {}
@@ -144,10 +169,17 @@ local function getPetSpeedStats()
         local petCount = 0
         for _, petConfig in ipairs(petsFolder:GetChildren()) do
             if petConfig:IsA("Configuration") then
-                local speed = petConfig:GetAttribute("S") or petConfig:GetAttribute("Speed") or 0
+                -- Get real speed from UI (like AutoSellSystem)
+                local speed = getPetSpeed(petConfig)
                 local petType = petConfig:GetAttribute("T") or "Unknown"
                 local mutation = petConfig:GetAttribute("M")
                 local isPlaced = petConfig:GetAttribute("D") ~= nil
+                local isBigPet = petConfig:GetAttribute("IsBigpet") == true
+                
+                -- Skip big pets
+                if isBigPet then
+                    continue
+                end
                 
                 if isPlaced then
                     totalPlaced = totalPlaced + 1
@@ -274,31 +306,6 @@ local function getEggInventory()
         types = eggTypes,
         mutations = mutations
     }
-end
-
--- Get pet speed from UI (like AutoSellSystem)
-local function getPetSpeed(petNode)
-    if not petNode then return 0 end
-    local uid = petNode.Name
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    local ss = pg and pg:FindFirstChild("ScreenStorage")
-    local frame = ss and ss:FindFirstChild("Frame")
-    local content = frame and frame:FindFirstChild("ContentPet")
-    local scroll = content and content:FindFirstChild("ScrollingFrame")
-    local item = scroll and scroll:FindFirstChild(uid)
-    local btn = item and item:FindFirstChild("BTN")
-    local stat = btn and btn:FindFirstChild("Stat")
-    local price = stat and stat:FindFirstChild("Price")
-    local valueLabel = price and price:FindFirstChild("Value")
-    local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
-    if not txt and price and price:IsA("TextLabel") then
-        txt = price.Text
-    end
-    if txt then
-        local n = tonumber((txt:gsub("[^%d]", ""))) or 0
-        return n
-    end
-    return 0
 end
 
 -- Get detailed pet inventory (like AutoPlaceGridUI)
