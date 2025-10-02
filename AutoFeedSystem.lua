@@ -597,15 +597,34 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
     
     -- Load saved assignments from CustomUIConfig
     if CustomUIConfig then
-        pcall(function()
+        local success, err = pcall(function()
             local savedStationAssignments = CustomUIConfig:Get("stationFruitAssignments") or {}
             
             -- Load station-fruit assignments (NEW STRUCTURE)
             AutoFeedSystem.stationFruitAssignments = savedStationAssignments
             
-            local stationCount = #AutoFeedSystem.getTableKeys(savedStationAssignments)
-            print("[AutoFeed] Loaded assignments for", stationCount, "stations")
+            local stationCount = 0
+            for stationId, fruits in pairs(savedStationAssignments) do
+                local fruitCount = 0
+                for _ in pairs(fruits) do
+                    fruitCount = fruitCount + 1
+                end
+                print(string.format("[AutoFeed] 📥 Station %s → %d fruits", stationId, fruitCount))
+                stationCount = stationCount + 1
+            end
+            
+            if stationCount > 0 then
+                print("[AutoFeed] ✅ Loaded assignments for " .. stationCount .. " stations")
+            else
+                print("[AutoFeed] ℹ️ No saved assignments found")
+            end
         end)
+        
+        if not success then
+            warn("[AutoFeed] ❌ Failed to load: " .. tostring(err))
+        end
+    else
+        warn("[AutoFeed] ⚠️ CustomUIConfig not available for loading")
     end
 end
 
@@ -644,11 +663,23 @@ function AutoFeedSystem.CreateUI()
                             
                             -- Save to config
                             if CustomUIConfig then
-                                pcall(function()
+                                local success, err = pcall(function()
                                     CustomUIConfig:Set("stationFruitAssignments", stationAssignments or {})
                                     CustomUIConfig:Save()
-                                    print("[AutoFeed] Saved station assignments")
+                                    
+                                    -- Count stations for logging
+                                    local count = 0
+                                    for _ in pairs(stationAssignments or {}) do
+                                        count = count + 1
+                                    end
+                                    print("[AutoFeed] ✅ Saved assignments for " .. count .. " stations")
                                 end)
+                                
+                                if not success then
+                                    warn("[AutoFeed] ❌ Failed to save: " .. tostring(err))
+                                end
+                            else
+                                warn("[AutoFeed] ⚠️ CustomUIConfig not available for saving")
                             end
                         end,
                         function(isVisible)
