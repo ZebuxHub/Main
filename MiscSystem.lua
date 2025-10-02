@@ -19,6 +19,8 @@ local likedUserIds = {} -- session memory to avoid repeating targets
 local autoLotteryEnabled = false
 local autoClaimSnowEnabled = false
 local autoClaimSnowThread = nil
+local autoClaimDailyLoginEnabled = false
+local autoClaimDailyLoginThread = nil
 -- Forward refs for UI controls that we may need to flip programmatically
 local potionToggleRef = nil
 
@@ -436,6 +438,111 @@ local function runAutoClaimSnow(statusParagraph)
 	end
 end
 
+-- Daily Login Helper Functions
+local function getGameFlagFolder()
+	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	return data and data:FindFirstChild("GameFlag")
+end
+
+local function getDailyLoginStatus()
+	local gameFlag = getGameFlagFolder()
+	if not gameFlag then return nil end
+	
+	local dayCount = gameFlag:GetAttribute("SevenDaysLoginDayCount") or 0
+	local statusList = {}
+	
+	for day = 1, 7 do
+		local claimed = gameFlag:GetAttribute("SevenDaysLoginRewardClaimed_" .. tostring(day))
+		local canClaim = (day <= dayCount) and not claimed
+		
+		table.insert(statusList, {
+			day = day,
+			claimed = claimed or false,
+			canClaim = canClaim,
+			available = day <= dayCount
+		})
+	end
+	
+	return {
+		dayCount = dayCount,
+		days = statusList
+	}
+end
+
+local function claimDailyLoginReward(day)
+	if not day then return false end
+	
+	local args = {
+		{
+			event = "claimreward",
+			day = day
+		}
+	}
+	
+	local ok, err = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("SevenDaysLoginRE"):FireServer(unpack(args))
+	end)
+	
+	return ok, err
+end
+
+local function runAutoClaimDailyLogin(statusParagraph)
+	while autoClaimDailyLoginEnabled do
+		local status = getDailyLoginStatus()
+		local statusLines = {}
+		local claimedAny = false
+		
+		if status then
+			-- Try to claim all available rewards
+			for _, dayInfo in ipairs(status.days) do
+				if dayInfo.canClaim then
+					local ok, err = claimDailyLoginReward(dayInfo.day)
+					if ok then
+						claimedAny = true
+						if WindUI then
+							WindUI:Notify({ 
+								Title = "🎁 Daily Login", 
+								Content = string.format("Claimed Day %d reward!", dayInfo.day), 
+								Duration = 3 
+							})
+						end
+						task.wait(1.0) -- Wait between claims
+					end
+				end
+				
+				-- Build status text
+				local dayStatus = string.format("Day %d: ", dayInfo.day)
+				if dayInfo.claimed then
+					dayStatus = dayStatus .. "✅ Claimed"
+				elseif dayInfo.canClaim then
+					dayStatus = dayStatus .. "🎁 Ready to claim"
+				elseif dayInfo.available then
+					dayStatus = dayStatus .. "⏳ Already claimed"
+				else
+					dayStatus = dayStatus .. "🔒 Locked"
+				end
+				
+				table.insert(statusLines, dayStatus)
+			end
+			
+			-- Update status display
+			if statusParagraph and statusParagraph.SetDesc then
+				local statusText = string.format("Current Day: %d/7\n", status.dayCount)
+				statusText = statusText .. table.concat(statusLines, "\n")
+				statusParagraph:SetDesc(statusText)
+			end
+		else
+			if statusParagraph and statusParagraph.SetDesc then
+				statusParagraph:SetDesc("Waiting for data...")
+			end
+		end
+		
+		-- Wait longer if nothing was claimed
+		task.wait(claimedAny and 2.0 or 5.0)
+	end
+end
+
 -- Public Init
 function MiscSystem.Init(deps)
 	WindUI = deps.WindUI
@@ -545,6 +652,31 @@ function MiscSystem.Init(deps)
 		end
 	})
 
+	-- Auto Claim Daily Login section
+	MiscTab:Section({ Title = "Auto Claim Daily Login", Icon = "calendar-check" })
+	local dailyLoginStatus = MiscTab:Paragraph({ Title = "Login Status", Desc = "Daily Login: Detecting..." })
+	local dailyLoginToggle = MiscTab:Toggle({
+		Title = "Auto Claim Daily Login",
+		Desc = "Automatically claim daily login rewards (7 days)",
+		Value = false,
+		Callback = function(state)
+			autoClaimDailyLoginEnabled = state
+			if state and not autoClaimDailyLoginThread then
+				autoClaimDailyLoginThread = task.spawn(function()
+					runAutoClaimDailyLogin(dailyLoginStatus)
+					autoClaimDailyLoginThread = nil
+				end)
+				if WindUI then
+					WindUI:Notify({ Title = "🎁 Daily Login", Content = "Started monitoring login rewards", Duration = 2 })
+				end
+			elseif not state and autoClaimDailyLoginThread then
+				if WindUI then
+					WindUI:Notify({ Title = "🎁 Daily Login", Content = "Stopped", Duration = 2 })
+				end
+			end
+		end
+	})
+
 	-- Config registration (optional)
 	if Config then
 		pcall(function()
@@ -553,6 +685,7 @@ function MiscSystem.Init(deps)
 			Config:Register("misc_potion_dropdown", potionDropdown)
 			Config:Register("misc_like_toggle", likeToggle)
 			Config:Register("misc_snow_toggle", snowToggle)
+			Config:Register("misc_daily_login_toggle", dailyLoginToggle)
 		end)
 	end
 
