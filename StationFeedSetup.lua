@@ -609,7 +609,6 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
         -- Trigger save callback when user clicks Save in popup
         if onSaveCallback then
             onSaveCallback(stationFruitAssignments)
-            print("[StationFeed] 💾 Auto-saved assignments from popup")
         end
         close()
     end)
@@ -902,7 +901,6 @@ local function createMainUI()
         end
         
         refreshStations()
-        print("[StationFeed] Copied Station 1 to all")
     end)
     
     -- Save & Close
