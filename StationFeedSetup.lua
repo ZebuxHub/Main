@@ -207,6 +207,11 @@ local colors = {
 
 -- Create Fruit Selection Popup for a specific Station
 local function createFruitSelectionPopup(stationId, stationDisplayName, parentFrame, refreshCallback)
+    -- Initialize station's fruit assignments if not exists
+    if not stationFruitAssignments[stationId] then
+        stationFruitAssignments[stationId] = {}
+    end
+    
     local overlay = Instance.new("Frame")
     overlay.Name = "FruitSelectionOverlay"
     overlay.Size = UDim2.new(1, 0, 1, 0)
