@@ -600,7 +600,14 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
     end
     
     closeBtn.MouseButton1Click:Connect(close)
-    saveBtn.MouseButton1Click:Connect(close)
+    saveBtn.MouseButton1Click:Connect(function()
+        -- Trigger save callback when user clicks Save in popup
+        if onSaveCallback then
+            onSaveCallback(stationFruitAssignments)
+            print("[StationFeed] 💾 Auto-saved assignments from popup")
+        end
+        close()
+    end)
     
     -- Click outside to close
     overlay.MouseButton1Click:Connect(function(input)
@@ -722,10 +729,10 @@ local function createMainUI()
     layout.Parent = scroll
     
     local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 12)
-    padding.PaddingBottom = UDim.new(0, 12)
-    padding.PaddingLeft = UDim.new(0, 12)
-    padding.PaddingRight = UDim.new(0, 12)
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.PaddingRight = UDim.new(0, 8)
     padding.Parent = scroll
     
     -- Refresh station list
@@ -752,7 +759,7 @@ local function createMainUI()
         
         for _, petInfo in ipairs(pets) do
             local card = Instance.new("Frame")
-            card.Size = UDim2.new(1, -24, 0, 80)
+            card.Size = UDim2.new(1, 0, 0, 70)
             card.BackgroundColor3 = colors.background
             card.BorderSizePixel = 0
             card.Parent = scroll
@@ -767,11 +774,11 @@ local function createMainUI()
             cardStroke.Parent = card
             
             local stationLabel = Instance.new("TextLabel")
-            stationLabel.Size = UDim2.new(1, -120, 0, 24)
-            stationLabel.Position = UDim2.new(0, 12, 0, 12)
+            stationLabel.Size = UDim2.new(1, -100, 0, 20)
+            stationLabel.Position = UDim2.new(0, 10, 0, 10)
             stationLabel.BackgroundTransparency = 1
             stationLabel.Text = petInfo.displayName
-            stationLabel.TextSize = 14
+            stationLabel.TextSize = 13
             stationLabel.Font = Enum.Font.GothamBold
             stationLabel.TextColor3 = colors.text
             stationLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -785,22 +792,22 @@ local function createMainUI()
             end
             
             local countLabel = Instance.new("TextLabel")
-            countLabel.Size = UDim2.new(1, -120, 0, 18)
-            countLabel.Position = UDim2.new(0, 12, 0, 38)
+            countLabel.Size = UDim2.new(1, -100, 0, 16)
+            countLabel.Position = UDim2.new(0, 10, 0, 32)
             countLabel.BackgroundTransparency = 1
-            countLabel.Text = string.format("🍎 %d Fruits assigned", fruitCount)
-            countLabel.TextSize = 11
+            countLabel.Text = string.format("🍎 %d fruits", fruitCount)
+            countLabel.TextSize = 10
             countLabel.Font = Enum.Font.Gotham
             countLabel.TextColor3 = fruitCount > 0 and colors.maximize or colors.textSecondary
             countLabel.TextXAlignment = Enum.TextXAlignment.Left
             countLabel.Parent = card
             
             local selectBtn = Instance.new("TextButton")
-            selectBtn.Size = UDim2.new(0, 100, 0, 32)
-            selectBtn.Position = UDim2.new(1, -108, 0.5, -16)
+            selectBtn.Size = UDim2.new(0, 85, 0, 28)
+            selectBtn.Position = UDim2.new(1, -92, 0.5, -14)
             selectBtn.BackgroundColor3 = colors.primary
             selectBtn.BorderSizePixel = 0
-            selectBtn.Text = "Select Fruits"
+            selectBtn.Text = "Select"
             selectBtn.TextSize = 11
             selectBtn.Font = Enum.Font.GothamBold
             selectBtn.TextColor3 = colors.text
