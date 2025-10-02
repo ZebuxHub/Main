@@ -141,7 +141,45 @@ local function buildFruitCanonical()
 end
 FRUIT_CANONICAL = buildFruitCanonical()
 
--- Function to get player's owned Big Pets only
+-- Helper function to find which BigPet station a pet is near
+local function findBigPetStationForPet(petPosition)
+    local localPlayer = Players.LocalPlayer
+    if not localPlayer then return nil end
+    
+    -- Get player's island
+    local islandName = localPlayer:GetAttribute("AssignedIslandName")
+    if not islandName then return nil end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return nil end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return nil end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return nil end
+    
+    local bigPetFolder = env:FindFirstChild("BigPet")
+    if not bigPetFolder then return nil end
+    
+    -- Find closest BigPet station
+    local closestStation = nil
+    local closestDistance = math.huge
+    
+    for _, station in ipairs(bigPetFolder:GetChildren()) do
+        if station:IsA("BasePart") then
+            local distance = (station.Position - petPosition).Magnitude
+            if distance < closestDistance and distance < 50 then -- Within 50 studs
+                closestDistance = distance
+                closestStation = station.Name
+            end
+        end
+    end
+    
+    return closestStation
+end
+
+-- Function to get player's owned Big Pets with Station IDs
 local function getPlayerOwnedPets()
     local pets = {}
     local localPlayer = Players.LocalPlayer
@@ -161,23 +199,35 @@ local function getPlayerOwnedPets()
                     -- Check if this is a Big Pet (has BigPetGUI)
                     local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
                     if bigPetGUI then
+                        -- Find which station this pet is at
+                        local stationId = findBigPetStationForPet(rootPart.Position)
+                        
                         -- Get pet type for display
                         local petType = rootPart:GetAttribute("T") or petModel.Name
                         
-                        table.insert(pets, {
-                            name = petModel.Name, -- UID for feeding
-                            type = petType,
-                            displayName = petType or petModel.Name
-                        })
+                        -- Only add pets that have a valid station ID
+                        if stationId then
+                            table.insert(pets, {
+                                uid = petModel.Name, -- Keep UID for feeding
+                                stationId = stationId, -- Station ID like "1", "2", "3"
+                                type = petType,
+                                displayName = stationId .. " (" .. petType .. ")" -- Display as "1 (Dragon)"
+                            })
+                        end
                     end
                 end
             end
         end
     end
     
-    -- Sort by display name for consistent display
+    -- Sort by station ID numerically
     table.sort(pets, function(a, b)
-        return a.displayName < b.displayName
+        local numA = tonumber(a.stationId)
+        local numB = tonumber(b.stationId)
+        if numA and numB then
+            return numA < numB
+        end
+        return a.stationId < b.stationId
     end)
     
     return pets
@@ -483,7 +533,7 @@ local function createPetSelectionPopup(fruitId, fruitName, parentFrame)
     
     selectAllBtn.MouseButton1Click:Connect(function()
         for _, petInfo in ipairs(playerPets) do
-            fruitPetAssignments[fruitId][petInfo.name] = true
+            fruitPetAssignments[fruitId][petInfo.stationId] = true -- Use stationId instead of name
         end
         -- Refresh pet items
         for _, child in ipairs(petsScroll:GetChildren()) do
@@ -532,7 +582,7 @@ local function createPetSelectionPopup(fruitId, fruitName, parentFrame)
     -- Create pet items
     for i, petInfo in ipairs(playerPets) do
         local petItem = Instance.new("TextButton")
-        petItem.Name = petInfo.name
+        petItem.Name = "Pet_" .. petInfo.stationId -- Use stationId for Name
         petItem.Size = UDim2.new(1, -16, 0, 44)
         petItem.BackgroundColor3 = colors.surface
         petItem.BorderSizePixel = 0
@@ -576,23 +626,23 @@ local function createPetSelectionPopup(fruitId, fruitName, parentFrame)
         checkmark.TextSize = 18
         checkmark.Font = Enum.Font.GothamBold
         checkmark.TextColor3 = colors.selected
-        checkmark.Visible = fruitPetAssignments[fruitId][petInfo.name] == true
+        checkmark.Visible = fruitPetAssignments[fruitId][petInfo.stationId] == true -- Use stationId
         checkmark.ZIndex = 104
         checkmark.Parent = petItem
         
         -- Set initial background if selected
-        if fruitPetAssignments[fruitId][petInfo.name] then
+        if fruitPetAssignments[fruitId][petInfo.stationId] then -- Use stationId
             petItem.BackgroundColor3 = colors.selected
         end
         
         -- Click handler
         petItem.MouseButton1Click:Connect(function()
-            if fruitPetAssignments[fruitId][petInfo.name] then
-                fruitPetAssignments[fruitId][petInfo.name] = nil
+            if fruitPetAssignments[fruitId][petInfo.stationId] then -- Use stationId
+                fruitPetAssignments[fruitId][petInfo.stationId] = nil -- Use stationId
                 checkmark.Visible = false
                 TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
             else
-                fruitPetAssignments[fruitId][petInfo.name] = true
+                fruitPetAssignments[fruitId][petInfo.stationId] = true -- Use stationId
                 checkmark.Visible = true
                 TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
             end
@@ -600,13 +650,7 @@ local function createPetSelectionPopup(fruitId, fruitName, parentFrame)
         
         -- Hover effect
         petItem.MouseEnter:Connect(function()
-            if not fruitPetAssignments[fruitId][petInfo.name] then
-                TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
-            end
-        end)
-        
-        petItem.MouseLeave:Connect(function()
-            if not fruitPetAssignments[fruitId][petInfo.name] then
+            if not fruitPetAssignments[fruitId][petInfo.stationId] then -- Use stationId
                 TweenService:Create(petItem, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
             end
         end)
