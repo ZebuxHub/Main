@@ -9,6 +9,26 @@ local DASHBOARD_URL = "http://localhost:3000" -- Change to your deployed URL lat
 local UPDATE_INTERVAL = 30 -- Send stats every 30 seconds
 local RETRY_DELAY = 5 -- Retry failed requests after 5 seconds
 
+-- ============ GAME DATABASE ============
+-- Map of Place IDs to game information
+local GAME_DATABASE = {
+    -- Build A Zoo
+    ["18901773881"] = {
+        gameId = "build-a-zoo",
+        gameName = "Build A Zoo",
+        icon = "🦁",
+        color = "#10b981" -- green
+    },
+    -- Add more games here in the future
+    -- Example:
+    -- ["123456789"] = {
+    --     gameId = "pet-simulator",
+    --     gameName = "Pet Simulator 99",
+    --     icon = "🐾",
+    --     color = "#3b82f6" -- blue
+    -- }
+}
+
 -- ============ SERVICES ============
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -391,6 +411,24 @@ end
 
 -- ============ DASHBOARD COMMUNICATION ============
 
+-- Get game info from database
+local function getGameInfo()
+    local placeId = tostring(game.PlaceId)
+    local gameInfo = GAME_DATABASE[placeId]
+    
+    if gameInfo then
+        return gameInfo
+    else
+        -- Fallback for unknown games
+        return {
+            gameId = "unknown-" .. placeId,
+            gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name or "Unknown Game",
+            icon = "🎮",
+            color = "#6b7280" -- gray
+        }
+    end
+end
+
 -- Collect all stats
 local function collectAccountStats()
     -- Track money changes before collecting stats
@@ -402,11 +440,14 @@ local function collectAccountStats()
     local automation = getAutomationStatus()
     local performance = getPerformanceMetrics()
     local efficiency = calculateEfficiencyMetrics()
+    local gameInfo = getGameInfo() -- Get game info from database
     
     local stats = {
         -- Game Identifier (for multi-game support)
-        gameId = "build-a-zoo",
-        gameName = "Build A Zoo",
+        gameId = gameInfo.gameId,
+        gameName = gameInfo.gameName,
+        gameIcon = gameInfo.icon,
+        gameColor = gameInfo.color,
         
         -- Account Info
         accountId = tostring(LocalPlayer.UserId),
