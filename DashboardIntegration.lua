@@ -23,7 +23,6 @@ local lastUpdateTime = 0
 local updateThread = nil
 local commandListenerThread = nil
 local dashboardEnabled = false
-local linkCode = nil -- Store generated link code
 
 -- ============ NERD STATS TRACKING ============
 local nerdStats = {
@@ -404,7 +403,7 @@ local function collectAccountStats()
     local performance = getPerformanceMetrics()
     local efficiency = calculateEfficiencyMetrics()
     
-    return {
+    local stats = {
         -- Game Identifier (for multi-game support)
         gameId = "build-a-zoo",
         gameName = "Build A Zoo",
@@ -473,6 +472,13 @@ local function collectAccountStats()
         placeId = game.PlaceId,
         jobId = game.JobId
     }
+    
+    -- Add link token if available (for Discord linking)
+    if _G.ZebuxState and _G.ZebuxState.linkToken then
+        stats.linkToken = _G.ZebuxState.linkToken
+    end
+    
+    return stats
 end
 
 -- Register account with dashboard
@@ -717,65 +723,6 @@ local function startCommandListener()
     end)
 end
 
--- Generate link code for account linking (with fallback)
-local function generateLinkCode()
-    local accountId = tostring(LocalPlayer.UserId)
-    local username = LocalPlayer.Name or "Unknown"
-    
-    -- Try executor HTTP functions first
-    local httpFunc = _G.request or syn.request or http_request or (syn and syn.request) or nil
-    
-    if httpFunc then
-        -- Try using executor HTTP
-        local payload = HttpService:JSONEncode({
-            accountId = accountId,
-            username = username
-        })
-        
-        local requestData = {
-            Url = DASHBOARD_URL .. "/api/accounts/generate-link-code",
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = payload
-        }
-        
-        local success, response = pcall(function()
-            return httpFunc(requestData)
-        end)
-        
-        if success and response and response.StatusCode == 200 then
-            local data = HttpService:JSONDecode(response.Body)
-            if data and data.linkCode then
-                print("[Dashboard] ✅ Link code generated:", data.linkCode)
-                return data.linkCode
-            end
-        end
-    end
-    
-    -- FALLBACK: Generate simple code from UserID
-    warn("[Dashboard] ⚠️ Using fallback: No executor HTTP function available")
-    warn("[Dashboard] 💡 Generating simple link code from UserID")
-    
-    -- Simple 6-char code based on UserID (not secure, but works for demo)
-    local userId = LocalPlayer.UserId
-    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    local code = ""
-    
-    -- Use UserID as seed for consistent code generation
-    math.randomseed(userId)
-    for i = 1, 6 do
-        local index = math.random(1, #chars)
-        code = code .. chars:sub(index, index)
-    end
-    
-    print("[Dashboard] ⚠️ Fallback code generated:", code)
-    print("[Dashboard] 💡 Note: This is a simplified code. For full functionality, use an executor with HTTP support.")
-    
-    return code
-end
-
 -- ============ PUBLIC API ============
 
 function DashboardIntegration.Init(config)
@@ -795,12 +742,6 @@ function DashboardIntegration.Init(config)
     
     print("[Dashboard] 🚀 Initializing Dashboard Integration...")
     print("[Dashboard] 📡 Dashboard URL:", DASHBOARD_URL)
-    
-    -- Generate link code for account linking
-    task.spawn(function()
-        task.wait(1)
-        linkCode = generateLinkCode()
-    end)
     
     -- Register account
     task.spawn(function()
@@ -853,10 +794,6 @@ end
 
 function DashboardIntegration.SendManualUpdate()
     return sendStatsUpdate()
-end
-
-function DashboardIntegration.GetLinkCode()
-    return linkCode
 end
 
 function DashboardIntegration.GetStatus()
