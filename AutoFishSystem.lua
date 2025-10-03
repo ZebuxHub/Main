@@ -440,16 +440,22 @@ function AutoFishSystem.Init(dependencies)
 	-- Silence notifications for smooth flow
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
 	
-    baitDropdown = FishTab:Dropdown({
+	-- Create dropdown config without Value if no bait is selected
+	local dropdownConfig = {
 		Title = "Select Bait",
 		Desc = "⚠️ Required! Choose bait before starting.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
-        Value = FishingConfig.SelectedBait or nil,  -- nil if not set, not "" or false
-		AllowNone = true,  -- Allow no selection initially
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
-        end
-    })
+		end
+	}
+	
+	-- Only set Value if we have a valid saved bait
+	if FishingConfig.SelectedBait and type(FishingConfig.SelectedBait) == "string" and FishingConfig.SelectedBait ~= "" then
+		dropdownConfig.Value = FishingConfig.SelectedBait
+	end
+	
+    baitDropdown = FishTab:Dropdown(dropdownConfig)
 	
 	speedSlider = FishTab:Slider({
 		Title = "Cast Speed",
