@@ -34,7 +34,7 @@ local currentFrostSpotPos = nil
 
 -- Config
 local FishingConfig = {
-    SelectedBait = "FishingBait1",  -- Default bait (must be non-empty for WindUI dropdown to work)
+    SelectedBait = "",  -- Default bait (must be non-empty for WindUI dropdown to work)
     AutoFishEnabled = false,
 	VerticalOffset = 10,
 	CastDelay = 0.1,  -- Delay between casts in seconds (adjustable via slider)
@@ -159,7 +159,6 @@ local function onFrostSpotAdded(fxSpecial, fishPoint)
 	local pos = getFrostSpotPosition(fxSpecial)
 	if pos then
 		currentFrostSpotPos = pos
-		print("[AutoFish] 🧊 Frost Spot detected at:", fishPoint.Name)
 		
 		-- If in ONLY Mode and not anchored yet, anchor now
 		if FishingConfig.FrostSpotOnlyMode and not isAnchored then
@@ -173,7 +172,6 @@ local function onFrostSpotAdded(fxSpecial, fishPoint)
 			if not parent then
 				-- Frost Spot removed
 				currentFrostSpotPos = nil
-				print("[AutoFish] ❄️ Frost Spot disappeared")
 				
 				-- If in ONLY Mode, unanchor until next Frost Spot
 				if FishingConfig.FrostSpotOnlyMode and isAnchored then
@@ -336,7 +334,6 @@ function AutoFishSystem.SetEnabled(state)
 		-- Ensure we have a bait (fallback to default if somehow missing)
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
 			FishingConfig.SelectedBait = "FishingBait1"
-			print("[AutoFish] 🎣 Using default bait: FishingBait1")
 		end
 		
 		active = true
@@ -413,14 +410,12 @@ function AutoFishSystem.SetFrostSpotOnlyMode(enabled)
 			if isAnchored and not currentFrostSpotPos then
 				unanchorPlayer()
 				isAnchored = false
-				print("[AutoFish] ❄️ ONLY Mode enabled - unanchoring until Frost Spot appears")
 			end
 		else
 			-- Exiting ONLY mode - anchor normally
 			if not isAnchored then
 				anchorPlayer()
 				isAnchored = true
-				print("[AutoFish] ❄️ ONLY Mode disabled - anchoring for normal fishing")
 			end
 		end
 	end
@@ -470,7 +465,6 @@ function AutoFishSystem.Init(dependencies)
         Value = FishingConfig.SelectedBait,  -- Always have a default
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
-			print("[AutoFish] 🎣 Bait selected:", sel)
         end
     })
 	
@@ -530,11 +524,9 @@ end
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
 	if not (autoFishToggle and baitDropdown and speedSlider and frostSpotToggle and frostSpotOnlyToggle) then 
-		print("AutoFish UI elements not ready for config")
 		return {} 
 	end
 	
-	print("AutoFish returning UI elements directly")
 	return {
 		-- Register the actual UI elements directly
 		autoFishToggleElement = autoFishToggle,
@@ -551,8 +543,6 @@ end
 
 -- Sync loaded values from UI elements after config load
 function AutoFishSystem.SyncLoadedValues()
-	print("[AutoFish] 🔄 Starting sync process...")
-	
 	-- Step 1: Sync bait selection FIRST (most important)
 	if baitDropdown and baitDropdown.Value then
 		local baitValue = baitDropdown.Value
@@ -561,9 +551,6 @@ function AutoFishSystem.SyncLoadedValues()
 		elseif type(baitValue) == "string" then
 			FishingConfig.SelectedBait = baitValue
 		end
-		print("[AutoFish] ✅ Synced Bait Selection:", FishingConfig.SelectedBait)
-	else
-		print("[AutoFish] ⚠️ No bait value to sync")
 	end
 	
 	-- Step 2: Sync speed slider
@@ -575,22 +562,16 @@ function AutoFishSystem.SyncLoadedValues()
 		elseif type(speedValue) == "table" and speedValue.Default then
 			FishingConfig.CastDelay = speedValue.Default
 		end
-		print("[AutoFish] ✅ Synced Cast Speed:", FishingConfig.CastDelay, "| Type:", type(speedValue))
 	end
 	
 	-- Step 3: Sync frost spot toggles
 	if frostSpotToggle and frostSpotToggle.Value ~= nil then
 		FishingConfig.FrostSpotEnabled = frostSpotToggle.Value
-		print("[AutoFish] ✅ Synced Frost Spot Enabled:", FishingConfig.FrostSpotEnabled)
 	end
 	
 	if frostSpotOnlyToggle and frostSpotOnlyToggle.Value ~= nil then
 		FishingConfig.FrostSpotOnlyMode = frostSpotOnlyToggle.Value
-		print("[AutoFish] ✅ Synced Frost Spot ONLY Mode:", FishingConfig.FrostSpotOnlyMode)
 	end
-	
-	-- Note: Don't re-enable Auto Fish here, let the toggle load naturally
-	print("[AutoFish] ✅ Sync complete - ready for toggle activation")
 end
 
 return AutoFishSystem
