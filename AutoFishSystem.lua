@@ -548,7 +548,6 @@ end
 
 function AutoFishSystem.Cleanup()
 	AutoFishSystem.SetEnabled(false)
-	return true
 end
 
 -- Sync loaded values from UI elements after config load
