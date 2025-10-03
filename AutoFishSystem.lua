@@ -311,14 +311,8 @@ local function loopCast()
 			task.wait(2)
 		else
 			-- Wait based on configured speed
-			local delay = FishingConfig.CastDelay
-			-- Safety check: ensure delay is a number
-			if type(delay) ~= "number" then
-				delay = 0.1 -- default fallback
-			end
-			
-			if delay > 0 then
-				task.wait(delay)
+			if FishingConfig.CastDelay > 0 then
+				task.wait(FishingConfig.CastDelay)
 			else
 				RunService.Heartbeat:Wait()
 			end
@@ -331,16 +325,11 @@ function AutoFishSystem.SetEnabled(state)
 	if state then
 		if active then return end
 		
-		-- ⚠️ Don't start if no bait selected
+		-- ⚠️ Check if bait is selected (only if not hardcoded)
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
-			print("[AutoFish] ❌ Cannot start - No bait selected!")
-			-- Turn off the toggle visually
-			pcall(function() 
-				if autoFishToggle then 
-					autoFishToggle:SetValue(false)
-				end
-			end)
-			return
+			-- Hardcode bait to FishingBait3 if not set
+			FishingConfig.SelectedBait = "FishingBait3"
+			print("[AutoFish] 🎣 No bait selected - using FishingBait3 by default")
 		end
 		
 		active = true
@@ -350,10 +339,8 @@ function AutoFishSystem.SetEnabled(state)
 		currentFrostSpotPos = nil
 		isAnchored = false
 		
-		print("[AutoFish] 🎣 Starting with bait:", FishingConfig.SelectedBait)
-		
-		-- Only anchor immediately if NOT in Frost Spot Only Mode
-		if not (FishingConfig.FrostSpotOnlyMode and FishingConfig.FrostSpotEnabled) then
+		-- Only anchor if Frost Spot ONLY Mode is NOT enabled
+		if not FishingConfig.FrostSpotOnlyMode then
 			anchorPlayer()
 			isAnchored = true
 		end
@@ -401,7 +388,7 @@ end
 
 function AutoFishSystem.SetFrostSpot(enabled)
 	FishingConfig.FrostSpotEnabled = enabled
-	pcall(function() if frostSpotToggle then frostSpotToggle:Select(enabled) end end)
+	pcall(function() if frostSpotToggle then frostSpotToggle:SetValue(enabled) end end)
 	
 	if active then
 		setupFrostSpotMonitoring()
@@ -410,7 +397,26 @@ end
 
 function AutoFishSystem.SetFrostSpotOnlyMode(enabled)
 	FishingConfig.FrostSpotOnlyMode = enabled
-	pcall(function() if frostSpotOnlyToggle then frostSpotOnlyToggle:Select(enabled) end end)
+	pcall(function() if frostSpotOnlyToggle then frostSpotOnlyToggle:SetValue(enabled) end end)
+	
+	-- Handle anchoring state when toggling ONLY mode while fishing
+	if active then
+		if enabled then
+			-- Entering ONLY mode - unanchor until Frost Spot appears
+			if isAnchored and not currentFrostSpotPos then
+				unanchorPlayer()
+				isAnchored = false
+				print("[AutoFish] ❄️ ONLY Mode enabled - unanchoring until Frost Spot appears")
+			end
+		else
+			-- Exiting ONLY mode - anchor normally
+			if not isAnchored then
+				anchorPlayer()
+				isAnchored = true
+				print("[AutoFish] ❄️ ONLY Mode disabled - anchoring for normal fishing")
+			end
+		end
+	end
 end
 
 -- Get current state (for config saving)
@@ -446,22 +452,15 @@ function AutoFishSystem.Init(dependencies)
 	-- Silence notifications for smooth flow
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
 	
-	-- Create dropdown config without Value if no bait is selected
-	local dropdownConfig = {
+    baitDropdown = FishTab:Dropdown({
 		Title = "Select Bait",
 		Desc = "⚠️ Required! Choose bait before starting.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
+        Value = FishingConfig.SelectedBait,
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
-		end
-	}
-	
-	-- Only set Value if we have a valid saved bait
-	if FishingConfig.SelectedBait and type(FishingConfig.SelectedBait) == "string" and FishingConfig.SelectedBait ~= "" then
-		dropdownConfig.Value = FishingConfig.SelectedBait
-	end
-	
-    baitDropdown = FishTab:Dropdown(dropdownConfig)
+        end
+    })
 	
 	speedSlider = FishTab:Slider({
 		Title = "Cast Speed",
@@ -553,14 +552,8 @@ function AutoFishSystem.SyncLoadedValues()
 	
 	-- Sync speed slider
 	if speedSlider and speedSlider.Value then
-		local speedValue = speedSlider.Value
-		-- Handle if Value is a table (config object) or a number
-		if type(speedValue) == "number" then
-			FishingConfig.CastDelay = speedValue
-		elseif type(speedValue) == "table" and speedValue.Default then
-			FishingConfig.CastDelay = speedValue.Default
-		end
-		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay, "| Type:", type(speedSlider.Value))
+		FishingConfig.CastDelay = speedSlider.Value
+		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay)
 	end
 	
 	-- Sync frost spot toggle
