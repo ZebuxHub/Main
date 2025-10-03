@@ -24,6 +24,7 @@ local baitDropdown = nil
 local autoFishToggle = nil
 local speedSlider = nil
 local frostSpotToggle = nil
+local frostSpotOnlyToggle = nil
 local lastCastPos = nil
 local lastCastPosAt = 0
 local controlsRef = nil
@@ -38,6 +39,7 @@ local FishingConfig = {
 	VerticalOffset = 10,
 	CastDelay = 0.1,  -- Delay between casts in seconds (adjustable via slider)
 	FrostSpotEnabled = false,  -- Cast at Frost Spot when available
+	FrostSpotOnlyMode = false,  -- Stop fishing if no Frost Spot available
 }
 
 -- Focus helper
@@ -234,7 +236,12 @@ local function getCachedCastPos()
 		return currentFrostSpotPos
 	end
 	
-	-- Priority 2: Use cached position above player
+	-- Priority 2: If Frost Spot Only Mode is enabled and no Frost Spot available, return nil (don't cast)
+	if FishingConfig.FrostSpotOnlyMode and FishingConfig.FrostSpotEnabled and not currentFrostSpotPos then
+		return nil -- Don't cast when waiting for Frost Spot in Only Mode
+	end
+	
+	-- Priority 3: Use cached position above player (normal mode)
 	local now = tick()
 	if (not lastCastPos) or (now - (lastCastPosAt or 0) >= 5) then
 		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -254,13 +261,22 @@ local function castOnce()
 		return false
 	end
 	
+	-- Get casting position
+	local pos = getCachedCastPos()
+	
+	-- If Frost Spot Only Mode is active and no position available, skip casting
+	if not pos then
+		-- In Frost Spot Only Mode, waiting for Frost Spot to appear
+		return false
+	end
+	
 	if not ensureFishRobFocus() then return false end
 	
 	-- Start fishing state after focus
     pcall(function()
         ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Start")
     end)
-	local pos = getCachedCastPos()
+	
 	local bait = FishingConfig.SelectedBait
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("Throw", { Bait = bait, Pos = pos, NoMove = true })
@@ -348,6 +364,17 @@ function AutoFishSystem.SetFrostSpot(enabled)
 	print("[AutoFish] Frost Spot casting:", enabled and "ENABLED" or "DISABLED")
 end
 
+function AutoFishSystem.SetFrostSpotOnlyMode(enabled)
+	FishingConfig.FrostSpotOnlyMode = enabled
+	pcall(function() if frostSpotOnlyToggle then frostSpotOnlyToggle:Select(enabled) end end)
+	
+	if enabled then
+		print("[AutoFish] ⚠️ Frost Spot ONLY Mode: Will only cast when Frost Spot appears!")
+	else
+		print("[AutoFish] Normal Mode: Will cast above head when no Frost Spot")
+	end
+end
+
 -- Get current state (for config saving)
 function AutoFishSystem.GetEnabled()
 	return FishingConfig.AutoFishEnabled or false
@@ -363,6 +390,10 @@ end
 
 function AutoFishSystem.GetFrostSpot()
 	return FishingConfig.FrostSpotEnabled or false
+end
+
+function AutoFishSystem.GetFrostSpotOnlyMode()
+	return FishingConfig.FrostSpotOnlyMode or false
 end
 
 -- UI integration
@@ -404,10 +435,21 @@ function AutoFishSystem.Init(dependencies)
 	
 	frostSpotToggle = FishTab:Toggle({
 		Title = "🧊 Cast at Frost Spot",
+		Desc = "Automatically cast at Frost Spot (FX_Fish_Special) when it appears",
 		Value = FishingConfig.FrostSpotEnabled,
 		Callback = function(state)
 			print("AutoFish Frost Spot callback triggered:", state)
 			AutoFishSystem.SetFrostSpot(state)
+		end
+	})
+	
+	frostSpotOnlyToggle = FishTab:Toggle({
+		Title = "❄️ Frost Spot ONLY Mode",
+		Desc = "Stop fishing when no Frost Spot - only cast at Frost Spot (requires Frost Spot toggle ON)",
+		Value = FishingConfig.FrostSpotOnlyMode,
+		Callback = function(state)
+			print("AutoFish Frost Spot Only Mode callback triggered:", state)
+			AutoFishSystem.SetFrostSpotOnlyMode(state)
 		end
 	})
 	
@@ -429,13 +471,14 @@ function AutoFishSystem.GetUIElements()
 		toggle = autoFishToggle,
 		dropdown = baitDropdown,
 		slider = speedSlider,
-		frostSpotToggle = frostSpotToggle
+		frostSpotToggle = frostSpotToggle,
+		frostSpotOnlyToggle = frostSpotOnlyToggle
 	}
 end
 
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
-	if not (autoFishToggle and baitDropdown and speedSlider and frostSpotToggle) then 
+	if not (autoFishToggle and baitDropdown and speedSlider and frostSpotToggle and frostSpotOnlyToggle) then 
 		print("AutoFish UI elements not ready for config")
 		return {} 
 	end
@@ -446,7 +489,8 @@ function AutoFishSystem.GetConfigElements()
 		autoFishToggleElement = autoFishToggle,
 		autoFishBaitElement = baitDropdown,
 		autoFishSpeedElement = speedSlider,
-		autoFishFrostSpotElement = frostSpotToggle
+		autoFishFrostSpotElement = frostSpotToggle,
+		autoFishFrostSpotOnlyElement = frostSpotOnlyToggle
 	}
 end
 
