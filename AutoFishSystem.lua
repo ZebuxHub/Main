@@ -150,6 +150,8 @@ local function getFrostSpotPosition(fxSpecial)
 	return nil
 end
 
+local isAnchored = false
+
 local function onFrostSpotAdded(fxSpecial, fishPoint)
 	if not active or not FishingConfig.FrostSpotEnabled then return end
 	
@@ -159,13 +161,26 @@ local function onFrostSpotAdded(fxSpecial, fishPoint)
 		currentFrostSpotPos = pos
 		print("[AutoFish] 🧊 Frost Spot detected at:", fishPoint.Name)
 		
+		-- If in ONLY Mode and not anchored yet, anchor now
+		if FishingConfig.FrostSpotOnlyMode and not isAnchored then
+			anchorPlayer()
+			isAnchored = true
+		end
+		
 		-- Monitor for when it's removed
 		local removeConn
 		removeConn = fxSpecial.AncestryChanged:Connect(function(_, parent)
 			if not parent then
 				-- Frost Spot removed
 				currentFrostSpotPos = nil
-				print("[AutoFish] ❄️ Frost Spot disappeared, returning to normal casting")
+				print("[AutoFish] ❄️ Frost Spot disappeared")
+				
+				-- If in ONLY Mode, unanchor until next Frost Spot
+				if FishingConfig.FrostSpotOnlyMode and isAnchored then
+					unanchorPlayer()
+					isAnchored = false
+				end
+				
 				if removeConn then
 					removeConn:Disconnect()
 					removeConn = nil
@@ -228,14 +243,8 @@ end
 
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
 local function getCachedCastPos()
-	print("[AutoFish DEBUG] 🔍 Getting cast position...")
-	print("  - FrostSpotEnabled:", FishingConfig.FrostSpotEnabled)
-	print("  - FrostSpotOnlyMode:", FishingConfig.FrostSpotOnlyMode)
-	print("  - currentFrostSpotPos:", currentFrostSpotPos)
-	
 	-- Priority 1: Use Frost Spot if enabled and available
 	if FishingConfig.FrostSpotEnabled and currentFrostSpotPos then
-		print("[AutoFish DEBUG] ✅ Using Frost Spot position:", currentFrostSpotPos)
 		pcall(function()
 			shared.LastFishPosList = { { position = currentFrostSpotPos } }
 		end)
@@ -244,12 +253,10 @@ local function getCachedCastPos()
 	
 	-- Priority 2: If Frost Spot Only Mode is enabled and no Frost Spot available, return nil (don't cast)
 	if FishingConfig.FrostSpotOnlyMode and FishingConfig.FrostSpotEnabled and not currentFrostSpotPos then
-		print("[AutoFish DEBUG] 🔴 ONLY Mode active - No Frost Spot - Blocking cast")
 		return nil -- Don't cast when waiting for Frost Spot in Only Mode
 	end
 	
 	-- Priority 3: Use cached position above player (normal mode)
-	print("[AutoFish DEBUG] ✅ Using normal position above head")
 	local now = tick()
 	if (not lastCastPos) or (now - (lastCastPosAt or 0) >= 5) then
 		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -262,7 +269,6 @@ local function getCachedCastPos()
 	return lastCastPos
 end
 
-local lastWaitMessage = 0
 local function castOnce()
 	-- Check if bait is selected
 	if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
@@ -276,12 +282,6 @@ local function castOnce()
 	-- If Frost Spot Only Mode is active and no position available, skip casting
 	if not pos then
 		-- In Frost Spot Only Mode, waiting for Frost Spot to appear
-		-- Show message every 10 seconds to avoid spam
-		local now = tick()
-		if now - lastWaitMessage >= 10 then
-			print("[AutoFish] ⏸️ Frost Spot ONLY Mode: Waiting for Frost Spot to appear...")
-			lastWaitMessage = now
-		end
 		return false
 	end
 	
@@ -329,7 +329,14 @@ function AutoFishSystem.SetEnabled(state)
 		lastCastPos = nil
 		lastCastPosAt = 0
 		currentFrostSpotPos = nil
-		anchorPlayer()
+		isAnchored = false
+		
+		-- Only anchor immediately if NOT in Frost Spot Only Mode
+		if not (FishingConfig.FrostSpotOnlyMode and FishingConfig.FrostSpotEnabled) then
+			anchorPlayer()
+			isAnchored = true
+		end
+		
 		setupFrostSpotMonitoring()
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
@@ -347,7 +354,10 @@ function AutoFishSystem.SetEnabled(state)
 			if conn then conn:Disconnect() end
 		end
 		frostSpotWatchers = {}
-		unanchorPlayer()
+		if isAnchored then
+			unanchorPlayer()
+			isAnchored = false
+		end
 		lastCastPos = nil
 		lastCastPosAt = 0
 		currentFrostSpotPos = nil
@@ -365,7 +375,6 @@ end
 function AutoFishSystem.SetSpeed(delaySeconds)
 	if delaySeconds and type(delaySeconds) == "number" and delaySeconds >= 0 then
 		FishingConfig.CastDelay = delaySeconds
-		print("[AutoFish] Cast delay set to:", delaySeconds, "seconds")
     end
 end
 
@@ -376,19 +385,11 @@ function AutoFishSystem.SetFrostSpot(enabled)
 	if active then
 		setupFrostSpotMonitoring()
 	end
-	
-	print("[AutoFish] Frost Spot casting:", enabled and "ENABLED" or "DISABLED")
 end
 
 function AutoFishSystem.SetFrostSpotOnlyMode(enabled)
 	FishingConfig.FrostSpotOnlyMode = enabled
 	pcall(function() if frostSpotOnlyToggle then frostSpotOnlyToggle:Select(enabled) end end)
-	
-	if enabled then
-		print("[AutoFish] ⚠️ Frost Spot ONLY Mode: Will only cast when Frost Spot appears!")
-	else
-		print("[AutoFish] Normal Mode: Will cast above head when no Frost Spot")
-	end
 end
 
 -- Get current state (for config saving)
@@ -430,7 +431,6 @@ function AutoFishSystem.Init(dependencies)
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
         Default = FishingConfig.SelectedBait,
 		Callback = function(sel)
-			print("AutoFish bait callback triggered:", sel)
 			AutoFishSystem.SetBait(sel)
         end
     })
@@ -444,7 +444,6 @@ function AutoFishSystem.Init(dependencies)
 			Default = FishingConfig.CastDelay,
 		},
 		Callback = function(val)
-			print("AutoFish speed callback triggered:", val)
 			AutoFishSystem.SetSpeed(val)
 		end
 	})
@@ -454,7 +453,6 @@ function AutoFishSystem.Init(dependencies)
 		Desc = "Automatically cast at Frost Spot when it appears",
 		Value = FishingConfig.FrostSpotEnabled,
 		Callback = function(state)
-			print("AutoFish Frost Spot callback triggered:", state)
 			AutoFishSystem.SetFrostSpot(state)
 		end
 	})
@@ -464,10 +462,6 @@ function AutoFishSystem.Init(dependencies)
 		Desc = "⚠️ STOPS fishing when no Frost Spot - saves bait! (Enable '🧊 Cast at Frost Spot' first)",
 		Value = FishingConfig.FrostSpotOnlyMode,
 		Callback = function(state)
-			print("[AutoFish] ========================================")
-			print("[AutoFish] Frost Spot ONLY Mode toggled:", state)
-			print("[AutoFish] Current FrostSpotEnabled:", FishingConfig.FrostSpotEnabled)
-			print("[AutoFish] ========================================")
 			AutoFishSystem.SetFrostSpotOnlyMode(state)
 		end
 	})
@@ -476,7 +470,6 @@ function AutoFishSystem.Init(dependencies)
 		Title = "Auto Fish",
         Value = FishingConfig.AutoFishEnabled,
         Callback = function(state)
-			print("AutoFish toggle callback triggered:", state)
 			AutoFishSystem.SetEnabled(state)
         end
     })
