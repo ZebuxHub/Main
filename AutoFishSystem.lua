@@ -603,8 +603,14 @@ function AutoFishSystem.SyncLoadedValues()
 	
 	-- Sync speed slider
 	if speedSlider and speedSlider.Value then
-		FishingConfig.CastDelay = speedSlider.Value
-		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay)
+		local speedValue = speedSlider.Value
+		-- Handle if Value is a table (config object) or a number
+		if type(speedValue) == "number" then
+			FishingConfig.CastDelay = speedValue
+		elseif type(speedValue) == "table" and speedValue.Default then
+			FishingConfig.CastDelay = speedValue.Default
+		end
+		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay, "| Type:", type(speedSlider.Value))
 	end
 	
 	-- Sync frost spot toggle
