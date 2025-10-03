@@ -311,8 +311,16 @@ local function loopCast()
 			task.wait(2)
 		else
 			-- Wait based on configured speed
-			if FishingConfig.CastDelay > 0 then
-				task.wait(FishingConfig.CastDelay)
+			local delay = FishingConfig.CastDelay
+			-- Safety: ensure delay is a number
+			if type(delay) == "table" and delay.Default then
+				delay = delay.Default
+			elseif type(delay) ~= "number" then
+				delay = 0.1 -- fallback
+			end
+			
+			if delay > 0 then
+				task.wait(delay)
 			else
 				RunService.Heartbeat:Wait()
 			end
@@ -560,8 +568,14 @@ function AutoFishSystem.SyncLoadedValues()
 	
 	-- Step 2: Sync speed slider
 	if speedSlider and speedSlider.Value then
-		FishingConfig.CastDelay = speedSlider.Value
-		print("[AutoFish] ✅ Synced Cast Speed:", FishingConfig.CastDelay)
+		local speedValue = speedSlider.Value
+		-- Handle if Value is a table (config object) or a number
+		if type(speedValue) == "number" then
+			FishingConfig.CastDelay = speedValue
+		elseif type(speedValue) == "table" and speedValue.Default then
+			FishingConfig.CastDelay = speedValue.Default
+		end
+		print("[AutoFish] ✅ Synced Cast Speed:", FishingConfig.CastDelay, "| Type:", type(speedValue))
 	end
 	
 	-- Step 3: Sync frost spot toggles
