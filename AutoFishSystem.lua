@@ -573,10 +573,15 @@ function AutoFishSystem.SyncLoadedValues()
 	print("[AutoFish] 🔄 Starting SyncLoadedValues...")
 	
 	-- Sync bait selection
-	if baitDropdown and baitDropdown.Value then
-		local baitValue = baitDropdown.Value
-		print("[AutoFish] 🔍 Dropdown.Value type:", type(baitValue), "| Value:", baitValue)
-		
+	if not baitDropdown then
+		warn("[AutoFish] ⚠️ baitDropdown doesn't exist!")
+		return
+	end
+	
+	local baitValue = baitDropdown.Value
+	print("[AutoFish] 🔍 Dropdown.Value type:", type(baitValue), "| Value:", tostring(baitValue))
+	
+	if baitValue then
 		-- Handle both table and string values
 		if type(baitValue) == "table" then
 			FishingConfig.SelectedBait = baitValue[1]
@@ -589,8 +594,8 @@ function AutoFishSystem.SyncLoadedValues()
 		end
 		print("[AutoFish] ✅ Synced Bait Selection:", FishingConfig.SelectedBait)
 	else
-		warn("[AutoFish] ⚠️ No dropdown or dropdown.Value is nil!")
-		print("[AutoFish] 🔍 Dropdown exists:", baitDropdown ~= nil, "| Value:", baitDropdown and baitDropdown.Value or "nil")
+		print("[AutoFish] ℹ️ Dropdown.Value is nil - config hasn't loaded a saved bait yet")
+		print("[AutoFish] ℹ️ User will need to select bait manually or it will be set when config loads")
 	end
 	
 	-- Sync speed slider
