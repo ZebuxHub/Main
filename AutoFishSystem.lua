@@ -42,20 +42,6 @@ local FishingConfig = {
 	FrostSpotOnlyMode = false,  -- Stop fishing if no Frost Spot available
 }
 
--- Bait mapping for display names (used globally)
-local baitMap = {
-	["🧀 Cheese Bait"] = "FishingBait1",
-	["🪰 Fly Bait"] = "FishingBait2",
-	["🐟 Fish Bait"] = "FishingBait3"
-}
-
--- Reverse map for loading saved values (used globally)
-local baitReverseMap = {
-	["FishingBait1"] = "🧀 Cheese Bait",
-	["FishingBait2"] = "🪰 Fly Bait",
-	["FishingBait3"] = "🐟 Fish Bait"
-}
-
 -- Focus helper
 local function readHoldUID()
 	local lp = LocalPlayer
@@ -479,20 +465,13 @@ function AutoFishSystem.Init(dependencies)
 	-- Silence notifications for smooth flow
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
 	
-	-- Convert saved bait ID to display name for initial value
-	local initialBaitDisplay = FishingConfig.SelectedBait and baitReverseMap[FishingConfig.SelectedBait] or nil
-	
     baitDropdown = FishTab:Dropdown({
 		Title = "Select Bait",
 		Desc = "⚠️ Required! Choose bait before starting.",
-		Values = {"🧀 Cheese Bait", "🪰 Fly Bait", "🐟 Fish Bait"},
-        Value = initialBaitDisplay,
+		Values = {"FishingBait1", "FishingBait2", "FishingBait3"},
+        Value = FishingConfig.SelectedBait,
 		Callback = function(sel)
-			-- Convert display name to actual bait ID
-			local baitId = baitMap[sel]
-			if baitId then
-				AutoFishSystem.SetBait(baitId)
-			end
+			AutoFishSystem.SetBait(sel)
         end
     })
 	
@@ -569,47 +548,21 @@ end
 
 function AutoFishSystem.Cleanup()
 	AutoFishSystem.SetEnabled(false)
+	return true
 end
 
 -- Sync loaded values from UI elements after config load
 function AutoFishSystem.SyncLoadedValues()
-	-- Sync bait selection (convert display name back to internal ID)
+	-- Sync bait selection
 	if baitDropdown and baitDropdown.Value then
 		local baitValue = baitDropdown.Value
-		local displayName = nil
-		
 		-- Handle both table and string values
 		if type(baitValue) == "table" then
-			displayName = baitValue[1]
+			FishingConfig.SelectedBait = baitValue[1]
 		elseif type(baitValue) == "string" then
-			displayName = baitValue
+			FishingConfig.SelectedBait = baitValue
 		end
-		
-		-- Convert display name to internal ID OR convert internal ID to display name
-		if displayName then
-			local internalId = baitMap[displayName]
-			if internalId then
-				-- User selected a display name, convert to internal ID
-				FishingConfig.SelectedBait = internalId
-				print("[AutoFish] Synced Bait Selection:", displayName, "→", internalId)
-			elseif displayName == "FishingBait1" or displayName == "FishingBait2" or displayName == "FishingBait3" then
-				-- Config loaded an internal ID, convert to display name and update dropdown
-				FishingConfig.SelectedBait = displayName
-				local convertedDisplayName = baitReverseMap[displayName]
-				if convertedDisplayName then
-					-- Use task.spawn to update dropdown after a small delay to ensure it's ready
-					task.spawn(function()
-						task.wait(0.2)
-						if baitDropdown and baitDropdown.SetValue then
-							baitDropdown:SetValue(convertedDisplayName)
-							print("[AutoFish] ✅ Converted loaded bait:", displayName, "→", convertedDisplayName)
-						end
-					end)
-				else
-					print("[AutoFish] Synced Bait Selection (legacy):", displayName)
-				end
-			end
-		end
+		print("[AutoFish] Synced Bait Selection:", FishingConfig.SelectedBait)
 	end
 	
 	-- Sync speed slider
