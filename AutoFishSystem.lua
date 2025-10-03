@@ -176,14 +176,9 @@ local function onFrostSpotAdded(fxSpecial, fishPoint)
 				print("[AutoFish] ❄️ Frost Spot disappeared")
 				
 				-- If in ONLY Mode, unanchor until next Frost Spot
-				-- But re-anchor immediately to prevent being pulled
-				if FishingConfig.FrostSpotOnlyMode then
-					if isAnchored then
-						-- Stay anchored briefly, then unanchor
-						task.wait(0.5)
-						unanchorPlayer()
-						isAnchored = false
-					end
+				if FishingConfig.FrostSpotOnlyMode and isAnchored then
+					unanchorPlayer()
+					isAnchored = false
 				end
 				
 				if removeConn then
@@ -304,12 +299,6 @@ local function castOnce()
 	pcall(function()
 		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("POUT", { SUC = 1, NoMove = true })
 	end)
-	
-	-- Unfocus fishing rod to prevent holding/pulling
-	pcall(function()
-		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "")
-	end)
-	
 	return true
 end
 
