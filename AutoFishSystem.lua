@@ -131,32 +131,58 @@ local function unanchorPlayer()
 	safeCF = nil
 end
 
--- Frost Spot Detection
-local function findFrostSpot()
-	local fishPoints = workspace:FindFirstChild("FishPoints")
-	if not fishPoints then return nil end
+-- Frost Spot Detection (optimized with event-based monitoring)
+local frostSpotWatchers = {} -- Store connections for cleanup
+
+local function getFrostSpotPosition(fxSpecial)
+	if not fxSpecial then return nil end
 	
-	-- Scan all FishPoint children for FX_Fish_Special
-	for _, fishPoint in ipairs(fishPoints:GetChildren()) do
-		if fishPoint.Name:match("^FishPoint%d+$") then
-			local fxSpecial = fishPoint:FindFirstChild("FX_Fish_Special")
-			if fxSpecial then
-				-- Found active Frost Spot, get position from Scope
-				local scope = fxSpecial:FindFirstChild("Scope")
-				if scope and scope:IsA("BasePart") then
-					return scope.CFrame.Position
-				elseif fxSpecial:IsA("BasePart") then
-					return fxSpecial.Position
-				end
-			end
-		end
+	-- Try to get position from Scope first
+	local scope = fxSpecial:FindFirstChild("Scope")
+	if scope and scope:IsA("BasePart") then
+		return scope.CFrame.Position
+	elseif fxSpecial:IsA("BasePart") then
+		return fxSpecial.Position
 	end
 	
 	return nil
 end
 
+local function onFrostSpotAdded(fxSpecial, fishPoint)
+	if not active or not FishingConfig.FrostSpotEnabled then return end
+	
+	-- Get and cache the Frost Spot position
+	local pos = getFrostSpotPosition(fxSpecial)
+	if pos then
+		currentFrostSpotPos = pos
+		print("[AutoFish] 🧊 Frost Spot detected at:", fishPoint.Name)
+		
+		-- Monitor for when it's removed
+		local removeConn
+		removeConn = fxSpecial.AncestryChanged:Connect(function(_, parent)
+			if not parent then
+				-- Frost Spot removed
+				currentFrostSpotPos = nil
+				print("[AutoFish] ❄️ Frost Spot disappeared, returning to normal casting")
+				if removeConn then
+					removeConn:Disconnect()
+					removeConn = nil
+				end
+			end
+		end)
+		
+		-- Store connection for cleanup
+		table.insert(frostSpotWatchers, removeConn)
+	end
+end
+
 local function setupFrostSpotMonitoring()
-	-- Clean up existing connection
+	-- Clean up existing watchers
+	for _, conn in ipairs(frostSpotWatchers) do
+		if conn then conn:Disconnect() end
+	end
+	frostSpotWatchers = {}
+	
 	if frostSpotConnection then
 		frostSpotConnection:Disconnect()
 		frostSpotConnection = nil
@@ -167,19 +193,33 @@ local function setupFrostSpotMonitoring()
 		return
 	end
 	
-	-- Monitor for Frost Spot appearance
+	-- Find FishPoints container
 	local fishPoints = workspace:FindFirstChild("FishPoints")
 	if not fishPoints then return end
 	
-	-- Check periodically for Frost Spot
-	frostSpotConnection = RunService.Heartbeat:Connect(function()
+	-- Check existing Frost Spots (in case one is already active)
+	for _, fishPoint in ipairs(fishPoints:GetChildren()) do
+		if fishPoint.Name:match("^FishPoint%d+$") then
+			local existingFX = fishPoint:FindFirstChild("FX_Fish_Special")
+			if existingFX then
+				onFrostSpotAdded(existingFX, fishPoint)
+			end
+		end
+	end
+	
+	-- Set up event-based monitoring for NEW Frost Spots
+	-- This only fires when FX_Fish_Special is ADDED, not every frame!
+	frostSpotConnection = fishPoints.DescendantAdded:Connect(function(descendant)
 		if not active or not FishingConfig.FrostSpotEnabled then return end
 		
-		local frostPos = findFrostSpot()
-		if frostPos then
-			currentFrostSpotPos = frostPos
-		else
-			currentFrostSpotPos = nil
+		-- Check if this is a FX_Fish_Special being added
+		if descendant.Name == "FX_Fish_Special" then
+			local fishPoint = descendant.Parent
+			if fishPoint and fishPoint.Name:match("^FishPoint%d+$") then
+				-- Small delay to let the Scope load
+				task.wait(0.1)
+				onFrostSpotAdded(descendant, fishPoint)
+			end
 		end
 	end)
 end
@@ -270,6 +310,11 @@ function AutoFishSystem.SetEnabled(state)
 		if castThread then task.cancel(castThread) castThread = nil end
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		if frostSpotConnection then frostSpotConnection:Disconnect() frostSpotConnection = nil end
+		-- Clean up frost spot watchers
+		for _, conn in ipairs(frostSpotWatchers) do
+			if conn then conn:Disconnect() end
+		end
+		frostSpotWatchers = {}
 		unanchorPlayer()
 		lastCastPos = nil
 		lastCastPosAt = 0
