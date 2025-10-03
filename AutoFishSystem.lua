@@ -585,16 +585,27 @@ function AutoFishSystem.SyncLoadedValues()
 			displayName = baitValue
 		end
 		
-		-- Convert display name to internal ID
+		-- Convert display name to internal ID OR convert internal ID to display name
 		if displayName then
 			local internalId = baitMap[displayName]
 			if internalId then
+				-- User selected a display name, convert to internal ID
 				FishingConfig.SelectedBait = internalId
 				print("[AutoFish] Synced Bait Selection:", displayName, "→", internalId)
-			else
-				-- If it's already an internal ID (backwards compatibility)
-				if displayName == "FishingBait1" or displayName == "FishingBait2" or displayName == "FishingBait3" then
-					FishingConfig.SelectedBait = displayName
+			elseif displayName == "FishingBait1" or displayName == "FishingBait2" or displayName == "FishingBait3" then
+				-- Config loaded an internal ID, convert to display name and update dropdown
+				FishingConfig.SelectedBait = displayName
+				local convertedDisplayName = baitReverseMap[displayName]
+				if convertedDisplayName then
+					-- Use task.spawn to update dropdown after a small delay to ensure it's ready
+					task.spawn(function()
+						task.wait(0.2)
+						if baitDropdown and baitDropdown.SetValue then
+							baitDropdown:SetValue(convertedDisplayName)
+							print("[AutoFish] ✅ Converted loaded bait:", displayName, "→", convertedDisplayName)
+						end
+					end)
+				else
 					print("[AutoFish] Synced Bait Selection (legacy):", displayName)
 				end
 			end
