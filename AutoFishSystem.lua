@@ -459,7 +459,7 @@ function AutoFishSystem.Init(dependencies)
 	
 	frostSpotOnlyToggle = FishTab:Toggle({
 		Title = "❄️ Frost Spot ONLY Mode",
-		Desc = "⚠️ STOPS fishing when no Frost Spot - saves bait! (Enable '🧊 Cast at Frost Spot' first)",
+		Desc = "⚠️ STOPS fishing when no Frost Spot | (Enable '🧊 Cast at Frost Spot' first)",
 		Value = FishingConfig.FrostSpotOnlyMode,
 		Callback = function(state)
 			AutoFishSystem.SetFrostSpotOnlyMode(state)
