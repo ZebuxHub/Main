@@ -501,8 +501,8 @@ function AutoFishSystem.GetConfigElements()
 		autoFishToggleElement = autoFishToggle,
 		autoFishBaitElement = baitDropdown,
 		autoFishSpeedElement = speedSlider,
-		autoFishFrostSpotElement = frostSpotToggle,
-		autoFishFrostSpotOnlyElement = frostSpotOnlyToggle
+		frostSpotToggle = frostSpotToggle,
+		frostSpotOnlyToggle = frostSpotOnlyToggle
 	}
 end
 
