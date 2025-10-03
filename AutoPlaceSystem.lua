@@ -1489,6 +1489,7 @@ local function runAutoPickUp()
                         if rootPart then
                             -- Classify by pet type (from Data.Pets) instead of world position
                             local petTypeForFilter = nil
+                            local isBigPetByAttribute = false
                             do
                                 local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
                                 local data = pg and pg:FindFirstChild("Data")
@@ -1496,11 +1497,18 @@ local function runAutoPickUp()
                                 local conf = invPets and invPets:FindFirstChild(pet.Name)
                                 if conf and conf:IsA("Configuration") then
                                     petTypeForFilter = conf:GetAttribute("T")
+                                    
+                                    -- Check for BPT (Big Pet Type) and BPV (Big Pet Value) attributes
+                                    local bpt = conf:GetAttribute("BPT")
+                                    local bpv = conf:GetAttribute("BPV")
+                                    if bpt or bpv then
+                                        isBigPetByAttribute = true
+                                    end
                                 end
                             end
                             
-                            -- Skip big pets
-                            if petTypeForFilter and isBigPet(petTypeForFilter) then
+                            -- Skip big pets (check both attribute and type-based detection)
+                            if isBigPetByAttribute or (petTypeForFilter and isBigPet(petTypeForFilter)) then
                                 -- Skip big pets - they should never be picked up
                             else
                                 local isOcean = false
