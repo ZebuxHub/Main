@@ -311,16 +311,8 @@ local function loopCast()
 			task.wait(2)
 		else
 			-- Wait based on configured speed
-			local delay = FishingConfig.CastDelay
-			-- Ensure delay is a number
-			if type(delay) == "table" and delay.Default then
-				delay = delay.Default
-			elseif type(delay) ~= "number" then
-				delay = 0.1
-			end
-			
-			if delay > 0 then
-				task.wait(delay)
+			if FishingConfig.CastDelay > 0 then
+				task.wait(FishingConfig.CastDelay)
 			else
 				RunService.Heartbeat:Wait()
 			end
@@ -333,26 +325,9 @@ function AutoFishSystem.SetEnabled(state)
 	if state then
 		if active then return end
 		
-		-- Debug: Show current bait state
-		print("[AutoFish] 🔍 Attempting to start with bait:", FishingConfig.SelectedBait, "| Type:", type(FishingConfig.SelectedBait))
-		print("[AutoFish] 🔍 Dropdown exists:", baitDropdown ~= nil, "| Dropdown.Value:", baitDropdown and baitDropdown.Value or "nil")
-		
-		-- If no bait is set, try to sync from dropdown immediately
-		if (not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "") and baitDropdown and baitDropdown.Value then
-			print("[AutoFish] 🔄 No bait set, syncing from dropdown...")
-			local baitValue = baitDropdown.Value
-			if type(baitValue) == "table" then
-				FishingConfig.SelectedBait = baitValue[1]
-			elseif type(baitValue) == "string" then
-				FishingConfig.SelectedBait = baitValue
-			end
-			print("[AutoFish] 🔄 Synced bait:", FishingConfig.SelectedBait)
-		end
-		
 		-- ⚠️ Check if bait is selected - REQUIRED!
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
 			warn("[AutoFish] ❌ Cannot start - Please select a bait first! (FishingBait1, FishingBait2, or FishingBait3)")
-			warn("[AutoFish] 🔍 Debug - Bait value:", FishingConfig.SelectedBait, "| Dropdown value:", baitDropdown and baitDropdown.Value or "nil")
 			-- Turn off the toggle
 			pcall(function() 
 				if autoFishToggle then 
@@ -362,7 +337,6 @@ function AutoFishSystem.SetEnabled(state)
 			return
 		end
 		
-		print("[AutoFish] ✅ Starting with bait:", FishingConfig.SelectedBait)
 		active = true
     FishingConfig.AutoFishEnabled = true
 		lastCastPos = nil
@@ -484,12 +458,17 @@ function AutoFishSystem.Init(dependencies)
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
 	
     baitDropdown = FishTab:Dropdown({
-		Title = "Select Bait",
-		Desc = "⚠️ Required! Choose bait before starting.",
-		Values = {"FishingBait1", "FishingBait2", "FishingBait3"},
+		Title = "🎣 Select Bait Type",
+		Desc = "Choose your fishing bait (Required to start)",
+		Values = {
+			"FishingBait1",
+			"FishingBait2",
+			"FishingBait3"
+		},
         Value = FishingConfig.SelectedBait,
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
+			print("[AutoFish] 🎣 Bait selected:", sel)
         end
     })
 	
@@ -570,44 +549,21 @@ end
 
 -- Sync loaded values from UI elements after config load
 function AutoFishSystem.SyncLoadedValues()
-	print("[AutoFish] 🔄 Starting SyncLoadedValues...")
-	
 	-- Sync bait selection
-	if not baitDropdown then
-		warn("[AutoFish] ⚠️ baitDropdown doesn't exist!")
-		return
-	end
-	
-	local baitValue = baitDropdown.Value
-	print("[AutoFish] 🔍 Dropdown.Value type:", type(baitValue), "| Value:", tostring(baitValue))
-	
-	if baitValue then
-		-- Handle both table and string values
+	if baitDropdown and baitDropdown.Value then
+		local baitValue = baitDropdown.Value
 		if type(baitValue) == "table" then
 			FishingConfig.SelectedBait = baitValue[1]
-			print("[AutoFish] 📦 Extracted from table:", FishingConfig.SelectedBait)
 		elseif type(baitValue) == "string" then
 			FishingConfig.SelectedBait = baitValue
-			print("[AutoFish] 📝 Set from string:", FishingConfig.SelectedBait)
-		else
-			warn("[AutoFish] ⚠️ Unexpected bait value type:", type(baitValue))
 		end
-		print("[AutoFish] ✅ Synced Bait Selection:", FishingConfig.SelectedBait)
-	else
-		print("[AutoFish] ℹ️ Dropdown.Value is nil - config hasn't loaded a saved bait yet")
-		print("[AutoFish] ℹ️ User will need to select bait manually or it will be set when config loads")
+		print("[AutoFish] Synced Bait Selection:", FishingConfig.SelectedBait)
 	end
 	
 	-- Sync speed slider
 	if speedSlider and speedSlider.Value then
-		local speedValue = speedSlider.Value
-		-- Handle if Value is a table (config object) or a number
-		if type(speedValue) == "number" then
-			FishingConfig.CastDelay = speedValue
-		elseif type(speedValue) == "table" and speedValue.Default then
-			FishingConfig.CastDelay = speedValue.Default
-		end
-		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay, "| Type:", type(speedSlider.Value))
+		FishingConfig.CastDelay = speedSlider.Value
+		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay)
 	end
 	
 	-- Sync frost spot toggle
