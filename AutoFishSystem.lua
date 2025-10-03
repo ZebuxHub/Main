@@ -575,13 +575,8 @@ function AutoFishSystem.SyncLoadedValues()
 		print("[AutoFish] ✅ Synced Frost Spot ONLY Mode:", FishingConfig.FrostSpotOnlyMode)
 	end
 	
-	-- Step 4: Re-enable Auto Fish if it was enabled (AFTER bait is synced)
-	if autoFishToggle and autoFishToggle.Value == true then
-		print("[AutoFish] 🔄 Re-enabling Auto Fish with synced bait:", FishingConfig.SelectedBait)
-		-- Small delay to ensure everything is ready
-		task.wait(0.1)
-		AutoFishSystem.SetEnabled(true)
-	end
+	-- Note: Don't re-enable Auto Fish here, let the toggle load naturally
+	print("[AutoFish] ✅ Sync complete - ready for toggle activation")
 end
 
 return AutoFishSystem
