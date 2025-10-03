@@ -34,7 +34,7 @@ local currentFrostSpotPos = nil
 
 -- Config
 local FishingConfig = {
-    SelectedBait = "",  -- Default to FishingBait1
+    SelectedBait = "FishingBait1",  -- Default bait (must be non-empty for WindUI dropdown to work)
     AutoFishEnabled = false,
 	VerticalOffset = 10,
 	CastDelay = 0.1,  -- Delay between casts in seconds (adjustable via slider)
