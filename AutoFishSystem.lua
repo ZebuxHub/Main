@@ -333,9 +333,13 @@ function AutoFishSystem.SetEnabled(state)
 	if state then
 		if active then return end
 		
+		-- Debug: Show current bait state
+		print("[AutoFish] 🔍 Attempting to start with bait:", FishingConfig.SelectedBait, "| Type:", type(FishingConfig.SelectedBait))
+		
 		-- ⚠️ Check if bait is selected - REQUIRED!
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
 			warn("[AutoFish] ❌ Cannot start - Please select a bait first! (FishingBait1, FishingBait2, or FishingBait3)")
+			warn("[AutoFish] 🔍 Debug - Bait value:", FishingConfig.SelectedBait, "| Dropdown value:", baitDropdown and baitDropdown.Value or "nil")
 			-- Turn off the toggle
 			pcall(function() 
 				if autoFishToggle then 
@@ -345,6 +349,7 @@ function AutoFishSystem.SetEnabled(state)
 			return
 		end
 		
+		print("[AutoFish] ✅ Starting with bait:", FishingConfig.SelectedBait)
 		active = true
     FishingConfig.AutoFishEnabled = true
 		lastCastPos = nil
@@ -552,16 +557,27 @@ end
 
 -- Sync loaded values from UI elements after config load
 function AutoFishSystem.SyncLoadedValues()
+	print("[AutoFish] 🔄 Starting SyncLoadedValues...")
+	
 	-- Sync bait selection
 	if baitDropdown and baitDropdown.Value then
 		local baitValue = baitDropdown.Value
+		print("[AutoFish] 🔍 Dropdown.Value type:", type(baitValue), "| Value:", baitValue)
+		
 		-- Handle both table and string values
 		if type(baitValue) == "table" then
 			FishingConfig.SelectedBait = baitValue[1]
+			print("[AutoFish] 📦 Extracted from table:", FishingConfig.SelectedBait)
 		elseif type(baitValue) == "string" then
 			FishingConfig.SelectedBait = baitValue
+			print("[AutoFish] 📝 Set from string:", FishingConfig.SelectedBait)
+		else
+			warn("[AutoFish] ⚠️ Unexpected bait value type:", type(baitValue))
 		end
-		print("[AutoFish] Synced Bait Selection:", FishingConfig.SelectedBait)
+		print("[AutoFish] ✅ Synced Bait Selection:", FishingConfig.SelectedBait)
+	else
+		warn("[AutoFish] ⚠️ No dropdown or dropdown.Value is nil!")
+		print("[AutoFish] 🔍 Dropdown exists:", baitDropdown ~= nil, "| Value:", baitDropdown and baitDropdown.Value or "nil")
 	end
 	
 	-- Sync speed slider
