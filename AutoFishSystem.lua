@@ -335,6 +335,19 @@ function AutoFishSystem.SetEnabled(state)
 		
 		-- Debug: Show current bait state
 		print("[AutoFish] 🔍 Attempting to start with bait:", FishingConfig.SelectedBait, "| Type:", type(FishingConfig.SelectedBait))
+		print("[AutoFish] 🔍 Dropdown exists:", baitDropdown ~= nil, "| Dropdown.Value:", baitDropdown and baitDropdown.Value or "nil")
+		
+		-- If no bait is set, try to sync from dropdown immediately
+		if (not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "") and baitDropdown and baitDropdown.Value then
+			print("[AutoFish] 🔄 No bait set, syncing from dropdown...")
+			local baitValue = baitDropdown.Value
+			if type(baitValue) == "table" then
+				FishingConfig.SelectedBait = baitValue[1]
+			elseif type(baitValue) == "string" then
+				FishingConfig.SelectedBait = baitValue
+			end
+			print("[AutoFish] 🔄 Synced bait:", FishingConfig.SelectedBait)
+		end
 		
 		-- ⚠️ Check if bait is selected - REQUIRED!
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
