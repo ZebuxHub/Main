@@ -359,7 +359,6 @@ function AutoFishSystem.Init(dependencies)
 	
 	frostSpotToggle = FishTab:Toggle({
 		Title = "🧊 Cast at Frost Spot",
-		Desc = "Automatically cast at Frost Spot (FX_Fish_Special) when it appears",
 		Value = FishingConfig.FrostSpotEnabled,
 		Callback = function(state)
 			print("AutoFish Frost Spot callback triggered:", state)
