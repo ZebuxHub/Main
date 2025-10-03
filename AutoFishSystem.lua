@@ -429,7 +429,7 @@ function AutoFishSystem.Init(dependencies)
 		Title = "Select Bait",
 		Desc = "⚠️ Required! Choose bait before starting.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
-        Default = FishingConfig.SelectedBait,
+        Value = FishingConfig.SelectedBait,
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
         end
@@ -508,6 +508,38 @@ end
 
 function AutoFishSystem.Cleanup()
 	AutoFishSystem.SetEnabled(false)
+end
+
+-- Sync loaded values from UI elements after config load
+function AutoFishSystem.SyncLoadedValues()
+	-- Sync bait selection
+	if baitDropdown and baitDropdown.Value then
+		local baitValue = baitDropdown.Value
+		if type(baitValue) == "table" then
+			FishingConfig.SelectedBait = baitValue[1]
+		elseif type(baitValue) == "string" then
+			FishingConfig.SelectedBait = baitValue
+		end
+		print("[AutoFish] Synced Bait Selection:", FishingConfig.SelectedBait)
+	end
+	
+	-- Sync speed slider
+	if speedSlider and speedSlider.Value then
+		FishingConfig.CastDelay = speedSlider.Value
+		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay)
+	end
+	
+	-- Sync frost spot toggle
+	if frostSpotToggle and frostSpotToggle.Value ~= nil then
+		FishingConfig.FrostSpotEnabled = frostSpotToggle.Value
+		print("[AutoFish] Synced Frost Spot Enabled:", FishingConfig.FrostSpotEnabled)
+	end
+	
+	-- Sync frost spot only mode toggle
+	if frostSpotOnlyToggle and frostSpotOnlyToggle.Value ~= nil then
+		FishingConfig.FrostSpotOnlyMode = frostSpotOnlyToggle.Value
+		print("[AutoFish] Synced Frost Spot ONLY Mode:", FishingConfig.FrostSpotOnlyMode)
+	end
 end
 
 return AutoFishSystem
