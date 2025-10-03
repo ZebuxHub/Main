@@ -549,7 +549,9 @@ end
 
 -- Sync loaded values from UI elements after config load
 function AutoFishSystem.SyncLoadedValues()
-	-- Sync bait selection
+	print("[AutoFish] 🔄 Starting sync process...")
+	
+	-- Step 1: Sync bait selection FIRST (most important)
 	if baitDropdown and baitDropdown.Value then
 		local baitValue = baitDropdown.Value
 		if type(baitValue) == "table" then
@@ -557,25 +559,34 @@ function AutoFishSystem.SyncLoadedValues()
 		elseif type(baitValue) == "string" then
 			FishingConfig.SelectedBait = baitValue
 		end
-		print("[AutoFish] Synced Bait Selection:", FishingConfig.SelectedBait)
+		print("[AutoFish] ✅ Synced Bait Selection:", FishingConfig.SelectedBait)
+	else
+		print("[AutoFish] ⚠️ No bait value to sync")
 	end
 	
-	-- Sync speed slider
+	-- Step 2: Sync speed slider
 	if speedSlider and speedSlider.Value then
 		FishingConfig.CastDelay = speedSlider.Value
-		print("[AutoFish] Synced Cast Speed:", FishingConfig.CastDelay)
+		print("[AutoFish] ✅ Synced Cast Speed:", FishingConfig.CastDelay)
 	end
 	
-	-- Sync frost spot toggle
+	-- Step 3: Sync frost spot toggles
 	if frostSpotToggle and frostSpotToggle.Value ~= nil then
 		FishingConfig.FrostSpotEnabled = frostSpotToggle.Value
-		print("[AutoFish] Synced Frost Spot Enabled:", FishingConfig.FrostSpotEnabled)
+		print("[AutoFish] ✅ Synced Frost Spot Enabled:", FishingConfig.FrostSpotEnabled)
 	end
 	
-	-- Sync frost spot only mode toggle
 	if frostSpotOnlyToggle and frostSpotOnlyToggle.Value ~= nil then
 		FishingConfig.FrostSpotOnlyMode = frostSpotOnlyToggle.Value
-		print("[AutoFish] Synced Frost Spot ONLY Mode:", FishingConfig.FrostSpotOnlyMode)
+		print("[AutoFish] ✅ Synced Frost Spot ONLY Mode:", FishingConfig.FrostSpotOnlyMode)
+	end
+	
+	-- Step 4: Re-enable Auto Fish if it was enabled (AFTER bait is synced)
+	if autoFishToggle and autoFishToggle.Value == true then
+		print("[AutoFish] 🔄 Re-enabling Auto Fish with synced bait:", FishingConfig.SelectedBait)
+		-- Small delay to ensure everything is ready
+		task.wait(0.1)
+		AutoFishSystem.SetEnabled(true)
 	end
 end
 
