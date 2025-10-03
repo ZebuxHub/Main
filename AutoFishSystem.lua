@@ -324,12 +324,27 @@ end
 function AutoFishSystem.SetEnabled(state)
 	if state then
 		if active then return end
+		
+		-- ⚠️ Don't start if no bait selected
+		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
+			print("[AutoFish] ❌ Cannot start - No bait selected!")
+			-- Turn off the toggle visually
+			pcall(function() 
+				if autoFishToggle then 
+					autoFishToggle:SetValue(false)
+				end
+			end)
+			return
+		end
+		
 		active = true
     FishingConfig.AutoFishEnabled = true
 		lastCastPos = nil
 		lastCastPosAt = 0
 		currentFrostSpotPos = nil
 		isAnchored = false
+		
+		print("[AutoFish] 🎣 Starting with bait:", FishingConfig.SelectedBait)
 		
 		-- Only anchor immediately if NOT in Frost Spot Only Mode
 		if not (FishingConfig.FrostSpotOnlyMode and FishingConfig.FrostSpotEnabled) then
