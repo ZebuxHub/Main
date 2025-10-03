@@ -238,6 +238,8 @@ local function getCachedCastPos()
 	
 	-- Priority 2: If Frost Spot Only Mode is enabled and no Frost Spot available, return nil (don't cast)
 	if FishingConfig.FrostSpotOnlyMode and FishingConfig.FrostSpotEnabled and not currentFrostSpotPos then
+		-- Debug: Show that we're waiting
+		-- print("[AutoFish] ⏸️ Waiting for Frost Spot to appear...")
 		return nil -- Don't cast when waiting for Frost Spot in Only Mode
 	end
 	
@@ -254,6 +256,7 @@ local function getCachedCastPos()
 	return lastCastPos
 end
 
+local lastWaitMessage = 0
 local function castOnce()
 	-- Check if bait is selected
 	if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
@@ -267,6 +270,12 @@ local function castOnce()
 	-- If Frost Spot Only Mode is active and no position available, skip casting
 	if not pos then
 		-- In Frost Spot Only Mode, waiting for Frost Spot to appear
+		-- Show message every 10 seconds to avoid spam
+		local now = tick()
+		if now - lastWaitMessage >= 10 then
+			print("[AutoFish] ⏸️ Frost Spot ONLY Mode: Waiting for Frost Spot to appear...")
+			lastWaitMessage = now
+		end
 		return false
 	end
 	
@@ -291,8 +300,9 @@ local function loopCast()
 	while active do
 		local success = castOnce()
 		if not success then
-			-- If cast failed (e.g., no bait), stop auto fishing
-			task.wait(1)
+			-- If cast failed (waiting for Frost Spot or no bait)
+			-- Wait a bit longer to avoid spam
+			task.wait(2)
 		else
 			-- Wait based on configured speed
 			if FishingConfig.CastDelay > 0 then
