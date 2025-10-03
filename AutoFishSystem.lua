@@ -325,11 +325,16 @@ function AutoFishSystem.SetEnabled(state)
 	if state then
 		if active then return end
 		
-		-- ⚠️ Check if bait is selected (only if not hardcoded)
+		-- ⚠️ Check if bait is selected - REQUIRED!
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
-			-- Hardcode bait to FishingBait3 if not set
-			FishingConfig.SelectedBait = "FishingBait3"
-			print("[AutoFish] 🎣 No bait selected - using FishingBait3 by default")
+			warn("[AutoFish] ❌ Cannot start - Please select a bait first! (FishingBait1, FishingBait2, or FishingBait3)")
+			-- Turn off the toggle
+			pcall(function() 
+				if autoFishToggle then 
+					autoFishToggle:SetValue(false)
+				end
+			end)
+			return
 		end
 		
 		active = true
@@ -452,13 +457,34 @@ function AutoFishSystem.Init(dependencies)
 	-- Silence notifications for smooth flow
 	pcall(function() if WindUI and type(WindUI) == "table" then WindUI.Notify = function() end end end)
 	
+	-- Bait mapping for display names
+	local baitMap = {
+		["🧀 Cheese Bait"] = "FishingBait1",
+		["🪰 Fly Bait"] = "FishingBait2",
+		["🐟 Fish Bait"] = "FishingBait3"
+	}
+	
+	-- Reverse map for loading saved values
+	local baitReverseMap = {
+		["FishingBait1"] = "🧀 Cheese Bait",
+		["FishingBait2"] = "🪰 Fly Bait",
+		["FishingBait3"] = "🐟 Fish Bait"
+	}
+	
+	-- Convert saved bait ID to display name for initial value
+	local initialBaitDisplay = FishingConfig.SelectedBait and baitReverseMap[FishingConfig.SelectedBait] or nil
+	
     baitDropdown = FishTab:Dropdown({
 		Title = "Select Bait",
 		Desc = "⚠️ Required! Choose bait before starting.",
-		Values = {"FishingBait1","FishingBait2","FishingBait3"},
-        Value = FishingConfig.SelectedBait,
+		Values = {"🧀 Cheese Bait", "🪰 Fly Bait", "🐟 Fish Bait"},
+        Value = initialBaitDisplay,
 		Callback = function(sel)
-			AutoFishSystem.SetBait(sel)
+			-- Convert display name to actual bait ID
+			local baitId = baitMap[sel]
+			if baitId then
+				AutoFishSystem.SetBait(baitId)
+			end
         end
     })
 	
