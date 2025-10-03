@@ -444,7 +444,8 @@ function AutoFishSystem.Init(dependencies)
 		Title = "Select Bait",
 		Desc = "⚠️ Required! Choose bait before starting.",
 		Values = {"FishingBait1","FishingBait2","FishingBait3"},
-        Value = FishingConfig.SelectedBait,
+        Value = FishingConfig.SelectedBait or nil,  -- nil if not set, not "" or false
+		AllowNone = true,  -- Allow no selection initially
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
         end
