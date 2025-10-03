@@ -34,7 +34,7 @@ local currentFrostSpotPos = nil
 
 -- Config
 local FishingConfig = {
-    SelectedBait = nil,  -- No default bait - must be selected by user
+    SelectedBait = "",  -- Default to FishingBait1
     AutoFishEnabled = false,
 	VerticalOffset = 10,
 	CastDelay = 0.1,  -- Delay between casts in seconds (adjustable via slider)
@@ -325,16 +325,10 @@ function AutoFishSystem.SetEnabled(state)
 	if state then
 		if active then return end
 		
-		-- ⚠️ Check if bait is selected - REQUIRED!
+		-- Ensure we have a bait (fallback to default if somehow missing)
 		if not FishingConfig.SelectedBait or FishingConfig.SelectedBait == "" then
-			warn("[AutoFish] ❌ Cannot start - Please select a bait first! (FishingBait1, FishingBait2, or FishingBait3)")
-			-- Turn off the toggle
-			pcall(function() 
-				if autoFishToggle then 
-					autoFishToggle:SetValue(false)
-				end
-			end)
-			return
+			FishingConfig.SelectedBait = "FishingBait1"
+			print("[AutoFish] 🎣 Using default bait: FishingBait1")
 		end
 		
 		active = true
@@ -459,13 +453,13 @@ function AutoFishSystem.Init(dependencies)
 	
     baitDropdown = FishTab:Dropdown({
 		Title = "🎣 Select Bait Type",
-		Desc = "Choose your fishing bait (Required to start)",
+		Desc = "Choose your fishing bait",
 		Values = {
 			"FishingBait1",
 			"FishingBait2",
 			"FishingBait3"
 		},
-        Value = FishingConfig.SelectedBait,
+        Value = FishingConfig.SelectedBait,  -- Always have a default
 		Callback = function(sel)
 			AutoFishSystem.SetBait(sel)
 			print("[AutoFish] 🎣 Bait selected:", sel)
