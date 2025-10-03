@@ -185,6 +185,7 @@ local OCEAN_EGGS = {
     ["SharkEgg"] = true,
     ["AnglerfishEgg"] = true,
     ["OctopusEgg"] = true,
+    ["SailfishEgg"] = true,
     ["SeaDragonEgg"] = true
 }
 
@@ -1497,24 +1498,30 @@ local function runAutoPickUp()
                                     petTypeForFilter = conf:GetAttribute("T")
                                 end
                             end
-                            local isOcean = false
-                            if petTypeForFilter then
-                                isOcean = isOceanPet(petTypeForFilter)
-                            end
-                            if autoPickUpTileFilter == "Regular" and isOcean then
-                                -- Skip ocean pets when filtering for Normal tiles
-                                -- (using type classification from ResPet)
+                            
+                            -- Skip big pets
+                            if petTypeForFilter and isBigPet(petTypeForFilter) then
+                                -- Skip big pets - they should never be picked up
                             else
-                                if autoPickUpTileFilter == "Ocean" and not isOcean then
-                                    -- Skip normal pets when filtering for Ocean
+                                local isOcean = false
+                                if petTypeForFilter then
+                                    isOcean = isOceanPet(petTypeForFilter)
+                                end
+                                if autoPickUpTileFilter == "Regular" and isOcean then
+                                    -- Skip ocean pets when filtering for Normal tiles
+                                    -- (using type classification from ResPet)
                                 else
-                                    local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
-                                    if idleGUI then
-                                        local speedText = idleGUI:FindFirstChild("Speed")
-                                        if speedText and speedText:IsA("TextLabel") then
-                                            local speedValue = parseNumberWithSuffix(speedText.Text)
-                                            if speedValue and speedValue < pickUpSpeedThreshold then
-                                                table.insert(petsToDelete, { name = pet.Name })
+                                    if autoPickUpTileFilter == "Ocean" and not isOcean then
+                                        -- Skip normal pets when filtering for Ocean
+                                    else
+                                        local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
+                                        if idleGUI then
+                                            local speedText = idleGUI:FindFirstChild("Speed")
+                                            if speedText and speedText:IsA("TextLabel") then
+                                                local speedValue = parseNumberWithSuffix(speedText.Text)
+                                                if speedValue and speedValue < pickUpSpeedThreshold then
+                                                    table.insert(petsToDelete, { name = pet.Name })
+                                                end
                                             end
                                         end
                                     end
@@ -1640,7 +1647,7 @@ function AutoPlaceSystem.CreateUI()
             "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg", "UnicornProEgg",
             "DarkGoatyEgg", "SnowbunnyEgg", "RhinoRockEgg", "SaberCubEgg", "GeneralKongEgg", "PegasusEgg",
             "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
-            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SeaDragonEgg"
+            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SailfishEgg", "🌊 SeaDragonEgg"
         },
         Value = {},
         Multi = true,
@@ -1996,3 +2003,4 @@ function AutoPlaceSystem.GetConfigElements()
 end
 
 return AutoPlaceSystem
+
