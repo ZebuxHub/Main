@@ -23,10 +23,13 @@ local active = false
 local baitDropdown = nil
 local autoFishToggle = nil
 local speedSlider = nil
+local frostSpotToggle = nil
 local lastCastPos = nil
 local lastCastPosAt = 0
 local controlsRef = nil
 local safeCF = nil
+local frostSpotConnection = nil
+local currentFrostSpotPos = nil
 
 -- Config
 local FishingConfig = {
@@ -34,6 +37,7 @@ local FishingConfig = {
     AutoFishEnabled = false,
 	VerticalOffset = 10,
 	CastDelay = 0.1,  -- Delay between casts in seconds (adjustable via slider)
+	FrostSpotEnabled = false,  -- Cast at Frost Spot when available
 }
 
 -- Focus helper
@@ -127,8 +131,70 @@ local function unanchorPlayer()
 	safeCF = nil
 end
 
+-- Frost Spot Detection
+local function findFrostSpot()
+	local fishPoints = workspace:FindFirstChild("FishPoints")
+	if not fishPoints then return nil end
+	
+	-- Scan all FishPoint children for FX_Fish_Special
+	for _, fishPoint in ipairs(fishPoints:GetChildren()) do
+		if fishPoint.Name:match("^FishPoint%d+$") then
+			local fxSpecial = fishPoint:FindFirstChild("FX_Fish_Special")
+			if fxSpecial then
+				-- Found active Frost Spot, get position from Scope
+				local scope = fxSpecial:FindFirstChild("Scope")
+				if scope and scope:IsA("BasePart") then
+					return scope.CFrame.Position
+				elseif fxSpecial:IsA("BasePart") then
+					return fxSpecial.Position
+				end
+			end
+		end
+	end
+	
+	return nil
+end
+
+local function setupFrostSpotMonitoring()
+	-- Clean up existing connection
+	if frostSpotConnection then
+		frostSpotConnection:Disconnect()
+		frostSpotConnection = nil
+	end
+	
+	if not FishingConfig.FrostSpotEnabled then
+		currentFrostSpotPos = nil
+		return
+	end
+	
+	-- Monitor for Frost Spot appearance
+	local fishPoints = workspace:FindFirstChild("FishPoints")
+	if not fishPoints then return end
+	
+	-- Check periodically for Frost Spot
+	frostSpotConnection = RunService.Heartbeat:Connect(function()
+		if not active or not FishingConfig.FrostSpotEnabled then return end
+		
+		local frostPos = findFrostSpot()
+		if frostPos then
+			currentFrostSpotPos = frostPos
+		else
+			currentFrostSpotPos = nil
+		end
+	end)
+end
+
 -- Minimal cast loop: Focus -> Throw -> POUT -> repeat (no waits)
 local function getCachedCastPos()
+	-- Priority 1: Use Frost Spot if enabled and available
+	if FishingConfig.FrostSpotEnabled and currentFrostSpotPos then
+		pcall(function()
+			shared.LastFishPosList = { { position = currentFrostSpotPos } }
+		end)
+		return currentFrostSpotPos
+	end
+	
+	-- Priority 2: Use cached position above player
 	local now = tick()
 	if (not lastCastPos) or (now - (lastCastPosAt or 0) >= 5) then
 		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -190,7 +256,9 @@ function AutoFishSystem.SetEnabled(state)
     FishingConfig.AutoFishEnabled = true
 		lastCastPos = nil
 		lastCastPosAt = 0
+		currentFrostSpotPos = nil
 		anchorPlayer()
+		setupFrostSpotMonitoring()
 		if holdConn then holdConn:Disconnect() holdConn = nil end
 		holdConn = Players.LocalPlayer:GetAttributeChangedSignal("HoldUID"):Connect(function()
 			if active and readHoldUID() == "FishRob" then castOnce() end
@@ -201,9 +269,11 @@ function AutoFishSystem.SetEnabled(state)
 		active = false
 		if castThread then task.cancel(castThread) castThread = nil end
 		if holdConn then holdConn:Disconnect() holdConn = nil end
+		if frostSpotConnection then frostSpotConnection:Disconnect() frostSpotConnection = nil end
 		unanchorPlayer()
 		lastCastPos = nil
 		lastCastPosAt = 0
+		currentFrostSpotPos = nil
 		pcall(function() shared.LastFishPosList = nil end)
     end
 end
@@ -222,6 +292,17 @@ function AutoFishSystem.SetSpeed(delaySeconds)
     end
 end
 
+function AutoFishSystem.SetFrostSpot(enabled)
+	FishingConfig.FrostSpotEnabled = enabled
+	pcall(function() if frostSpotToggle then frostSpotToggle:Select(enabled) end end)
+	
+	if active then
+		setupFrostSpotMonitoring()
+	end
+	
+	print("[AutoFish] Frost Spot casting:", enabled and "ENABLED" or "DISABLED")
+end
+
 -- Get current state (for config saving)
 function AutoFishSystem.GetEnabled()
 	return FishingConfig.AutoFishEnabled or false
@@ -233,6 +314,10 @@ end
 
 function AutoFishSystem.GetSpeed()
 	return FishingConfig.CastDelay or 0.1
+end
+
+function AutoFishSystem.GetFrostSpot()
+	return FishingConfig.FrostSpotEnabled or false
 end
 
 -- UI integration
@@ -272,6 +357,16 @@ function AutoFishSystem.Init(dependencies)
 		end
 	})
 	
+	frostSpotToggle = FishTab:Toggle({
+		Title = "🧊 Cast at Frost Spot",
+		Desc = "Automatically cast at Frost Spot (FX_Fish_Special) when it appears",
+		Value = FishingConfig.FrostSpotEnabled,
+		Callback = function(state)
+			print("AutoFish Frost Spot callback triggered:", state)
+			AutoFishSystem.SetFrostSpot(state)
+		end
+	})
+	
     autoFishToggle = FishTab:Toggle({
 		Title = "Auto Fish",
         Value = FishingConfig.AutoFishEnabled,
@@ -289,13 +384,14 @@ function AutoFishSystem.GetUIElements()
 	return {
 		toggle = autoFishToggle,
 		dropdown = baitDropdown,
-		slider = speedSlider
+		slider = speedSlider,
+		frostSpotToggle = frostSpotToggle
 	}
 end
 
 -- Get config elements for WindUI ConfigManager registration
 function AutoFishSystem.GetConfigElements()
-	if not (autoFishToggle and baitDropdown and speedSlider) then 
+	if not (autoFishToggle and baitDropdown and speedSlider and frostSpotToggle) then 
 		print("AutoFish UI elements not ready for config")
 		return {} 
 	end
@@ -305,7 +401,8 @@ function AutoFishSystem.GetConfigElements()
 		-- Register the actual UI elements directly
 		autoFishToggleElement = autoFishToggle,
 		autoFishBaitElement = baitDropdown,
-		autoFishSpeedElement = speedSlider
+		autoFishSpeedElement = speedSlider,
+		autoFishFrostSpotElement = frostSpotToggle
 	}
 end
 
