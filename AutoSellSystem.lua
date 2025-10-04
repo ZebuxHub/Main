@@ -81,6 +81,7 @@ local sessionLimit = 0 -- 0 = unlimited
 local sessionSold = 0
 local eggsToKeep = {} -- Table of egg names to keep (don't sell)
 local mutationsToKeep = {} -- Table of mutation names to keep (don't sell)
+local configSynced = false -- Flag to prevent premature activation
 
 -- UI refs
 local statusParagraph
@@ -686,13 +687,35 @@ function AutoSellSystem.CreateUI()
 		Callback = function(state)
 			autoSellEnabled = state
 			if state and not autoSellThread then
-				sessionSold = 0
-				autoSellThread = task.spawn(function()
-					runAutoSell()
-					autoSellThread = nil
-				end)
-				if WindUI then
-					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Started", Duration = 2 })
+				-- Always wait for config sync to ensure correct settings
+				local function startAutoSell()
+					sessionSold = 0
+					autoSellThread = task.spawn(function()
+						runAutoSell()
+						autoSellThread = nil
+					end)
+					if WindUI then
+						WindUI:Notify({ Title = "💸 Auto Sell", Content = "Started with saved settings!", Duration = 2 })
+					end
+				end
+				
+				if not configSynced then
+					-- Wait for config sync during auto-load
+					task.spawn(function()
+						local maxWait = 0
+						while not configSynced and maxWait < 20 do -- Wait max 2 seconds
+							task.wait(0.1)
+							maxWait = maxWait + 1
+						end
+						
+						-- Now start if still enabled
+						if autoSellEnabled then
+							startAutoSell()
+						end
+					end)
+				else
+					-- Config already synced, start immediately
+					startAutoSell()
 				end
 			elseif not state and autoSellThread then
 				if WindUI then
@@ -730,6 +753,11 @@ function AutoSellSystem.GetConfigElements()
 		sessionLimitInput = sessionLimitInput,
 		eggKeepDropdown = eggKeepDropdown
 	}
+end
+
+-- Function to mark config as ready (for manual toggles)
+function AutoSellSystem.MarkConfigReady()
+	configSynced = true
 end
 
 -- Function to sync loaded values to internal variables
@@ -804,6 +832,9 @@ function AutoSellSystem.SyncLoadedValues()
 	
 	-- Update status display
 	updateStatus()
+	
+	-- Mark config as synced to allow auto-start
+	configSynced = true
 end
 
 return AutoSellSystem
