@@ -614,10 +614,13 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	-- Create mutation selection dropdown
+	-- Create mutation selection dropdown (use raw names for better compatibility)
 	local mutationNames = {}
-	for _, data in pairs(MutationData) do
-		table.insert(mutationNames, data.Icon .. " " .. data.Name)
+	local mutationDisplayMap = {} -- Map display name to actual name
+	for key, data in pairs(MutationData) do
+		local displayName = data.Icon .. " " .. data.Name
+		table.insert(mutationNames, displayName)
+		mutationDisplayMap[displayName] = data.Name
 	end
 	table.sort(mutationNames) -- Sort alphabetically
 
@@ -629,12 +632,12 @@ function AutoSellSystem.CreateUI()
 		Multi = true,
 		AllowNone = true,
 		Callback = function(selection)
-			-- Convert display names back to mutation names
+			-- Convert display names back to mutation names using map
 			mutationsToKeep = {}
 			if selection then
 				for _, displayName in pairs(selection) do
-					-- Extract mutation name from "Icon Name" format
-					local mutationName = displayName:match("^.+ (.+)$") or displayName
+					-- Use map first, fallback to pattern matching
+					local mutationName = mutationDisplayMap[displayName] or displayName:match("^.+ (.+)$") or displayName
 					table.insert(mutationsToKeep, mutationName)
 				end
 			end
@@ -779,8 +782,20 @@ function AutoSellSystem.SyncLoadedValues()
 			mutationsToKeep = {}
 			for _, displayName in pairs(mutationValue) do
 				-- Extract mutation name from "Icon Name" format
-				local mutationName = displayName:match("^.+ (.+)$") or displayName
-				table.insert(mutationsToKeep, mutationName)
+				-- Try to match with MutationData first for accuracy
+				local found = false
+				for key, data in pairs(MutationData) do
+					if displayName == (data.Icon .. " " .. data.Name) then
+						table.insert(mutationsToKeep, data.Name)
+						found = true
+						break
+					end
+				end
+				-- Fallback to pattern matching if not found
+				if not found then
+					local mutationName = displayName:match("^.+ (.+)$") or displayName
+					table.insert(mutationsToKeep, mutationName)
+				end
 			end
 		else
 			mutationsToKeep = {}
