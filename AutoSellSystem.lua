@@ -699,29 +699,8 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	-- Register with shared config if available (for persistence)
-	-- Use AutoSystemsConfig if available, otherwise fall back to Config
-	local configToUse = AutoSystemsConfig or Config
-	if configToUse then
-		pcall(function()
-			configToUse:Register("autoSellEnabled", autoSellToggle)
-		end)
-		pcall(function()
-			configToUse:Register("autoSellMutationsToKeep", mutationKeepDropdown)
-		end)
-		pcall(function()
-			configToUse:Register("autoSellSessionLimit", sessionLimitInput)
-		end)
-		pcall(function()
-			configToUse:Register("autoSellEggsToKeep", eggKeepDropdown)
-		end)
-		pcall(function()
-			configToUse:Register("autoSellMode", sellModeDropdown)
-		end)
-		pcall(function()
-			configToUse:Register("autoSellSpeedThreshold", speedThresholdInput)
-		end)
-	end
+	-- Config registration is handled externally in Premium_Build_A_ZOO.lua
+	-- via GetConfigElements() to avoid double registration
 
 	updateStatus()
 end
@@ -758,7 +737,6 @@ function AutoSellSystem.SyncLoadedValues()
 		if type(thresholdValue) == "string" then
 			local parsedValue = parseSpeedThreshold(thresholdValue)
 			speedThreshold = parsedValue
-			print("[AutoSell] Synced Speed Threshold:", speedThreshold)
 		end
 	end
 	
@@ -770,7 +748,6 @@ function AutoSellSystem.SyncLoadedValues()
 		else
 			sellMode = modeValue or "Pets Only"
 		end
-		print("[AutoSell] Synced Sell Mode:", sellMode)
 	end
 	
 	-- Sync Session Limit value
@@ -782,7 +759,32 @@ function AutoSellSystem.SyncLoadedValues()
 			n = tonumber(cleaned) or 0
 		end
 		sessionLimit = math.max(0, math.floor(n))
-		print("[AutoSell] Synced Session Limit:", sessionLimit)
+	end
+	
+	-- Sync Eggs to Keep dropdown
+	if eggKeepDropdown and eggKeepDropdown.Value then
+		local eggValue = eggKeepDropdown.Value
+		if type(eggValue) == "table" then
+			eggsToKeep = eggValue
+		else
+			eggsToKeep = {}
+		end
+	end
+	
+	-- Sync Mutations to Keep dropdown
+	if mutationKeepDropdown and mutationKeepDropdown.Value then
+		local mutationValue = mutationKeepDropdown.Value
+		if type(mutationValue) == "table" then
+			-- Convert display names back to mutation names
+			mutationsToKeep = {}
+			for _, displayName in pairs(mutationValue) do
+				-- Extract mutation name from "Icon Name" format
+				local mutationName = displayName:match("^.+ (.+)$") or displayName
+				table.insert(mutationsToKeep, mutationName)
+			end
+		else
+			mutationsToKeep = {}
+		end
 	end
 	
 	-- Update status display
