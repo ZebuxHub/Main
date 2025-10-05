@@ -26,51 +26,119 @@ local WindUI, Tabs, MainTab, Config, AutoSystemsConfig
 local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
 local PetRE = Remotes and Remotes:FindFirstChild("PetRE")
 
--- Hardcoded Egg Data for selection (updated with complete list)
-local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://86783205334263", Rarity = 1 },
-    RareEgg = { Name = "Rare Egg", Price = "600", Icon = "rbxassetid://92360220594881", Rarity = 2 },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "3,000", Icon = "rbxassetid://114593167151091", Rarity = 2 },
-    SeaweedEgg = { Name = "Seaweed Egg", Price = "300", Icon = "rbxassetid://83071703588226", Rarity = 2 },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://118390666254578", Rarity = 2 },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://70573001058005", Rarity = 3 },
-    ClownfishEgg = { Name = "Clownfish Egg", Price = "300", Icon = "rbxassetid://134581421196477", Rarity = 3 },
-    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://98700887273727", Rarity = 3 },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://116342289419267", Rarity = 4 },
-    LionfishEgg = { Name = "Lionfish Egg", Price = "300", Icon = "rbxassetid://109178769208956", Rarity = 4 },
-    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://95160801997871", Rarity = 4 },
-    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://107381728103466", Rarity = 4 },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://91598797684023", Rarity = 5 },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://117118367570176", Rarity = 5 },
-    SharkEgg = { Name = "Shark Egg", Price = "10,000,000", Icon = "rbxassetid://100309591286506", Rarity = 5 },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://98860640309332", Rarity = 5 },
-    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://107622817209375", Rarity = 5 },
-    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://89607346860887", Rarity = 5 },
-    AnglerfishEgg = { Name = "Anglerfish Egg", Price = "10,000,000", Icon = "rbxassetid://75040057191824", Rarity = 5 },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://90061673164351", Rarity = 5 },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://125017061714581", Rarity = 6 },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://89202977833846", Rarity = 6 },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://124585798513880", Rarity = 6 },
-    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://139650300263607", Rarity = 6 },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://136448818476629", Rarity = 6 },
-    OctopusEgg = { Name = "Octopus Egg", Price = "800,000,000", Icon = "rbxassetid://109425850264541", Rarity = 6 },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://101395257898929", Rarity = 6 },
-    SailfishEgg = { Name = "Sailfish Egg", Price = "800,000,000", Icon = "rbxassetid://81397448808415", Rarity = 6 },
-    SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "999,999,999,999", Icon = "rbxassetid://109025633299772", Rarity = 6 },
-    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://85536865895155", Rarity = 6 },
-    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://87872914784536", Rarity = 6 },
-    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://113005786229298", Rarity = 6 }
-}
+-- Dynamic data that will be loaded from the game
+local EggData = {}
+local MutationData = {}
 
--- Hardcoded Mutation Data for selection
-local MutationData = {
-    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
-    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
-    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Dino = { Name = "Dino", Icon = "🦕", Rarity = 100 },
-    Snow = { Name = "Snow", Icon = "❄️", Rarity = 150 }
-}
+-- Function to load egg data from the game automatically
+local function LoadEggDataFromGame()
+    local success, result = pcall(function()
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResEgg", 10)
+        if configModule then
+            local gameEggData = require(configModule)
+            
+            -- Convert game data format to our UI format
+            local convertedData = {}
+            
+            for eggId, eggInfo in pairs(gameEggData) do
+                -- Skip the __index table
+                if eggId ~= "__index" and type(eggInfo) == "table" then
+                    -- Exclude Ocean eggs
+                    local category = eggInfo.Category or ""
+                    if category ~= "Ocean" then
+                        convertedData[eggId] = {
+                            Name = eggInfo.ID or eggId,
+                            Price = eggInfo.Price or 0,
+                            Icon = eggInfo.Icon or "",
+                            Rarity = eggInfo.Rarity or 1
+                        }
+                    end
+                end
+            end
+            
+            return convertedData
+        end
+    end)
+    
+    if success and result then
+        return result
+    else
+        warn("[AutoSell] Failed to load egg data from game:", result)
+        return {}
+    end
+end
+
+-- Function to load mutation data from the game automatically
+local function LoadMutationDataFromGame()
+    local success, result = pcall(function()
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResMutate", 10)
+        if configModule then
+            local gameMutationData = require(configModule)
+            
+            -- Convert game data format to our UI format
+            local convertedData = {}
+            
+            for mutationId, mutationInfo in pairs(gameMutationData) do
+                -- Skip the __index table
+                if mutationId ~= "__index" and type(mutationInfo) == "table" then
+                    -- Special handling: "Dino" in game → "Jurassic" in UI
+                    local displayId = mutationId
+                    local displayName = mutationInfo.ID or mutationId
+                    
+                    if mutationId == "Dino" then
+                        displayId = "Jurassic"
+                        displayName = "Jurassic"
+                    end
+                    
+                    convertedData[displayId] = {
+                        Name = displayName,
+                        Icon = mutationInfo.Icon or "", -- Use Icon from ResMutate
+                        Rarity = mutationInfo.RarityNum or 1,
+                        OriginalId = mutationId -- Keep original ID for matching
+                    }
+                end
+            end
+            
+            return convertedData
+        end
+    end)
+    
+    if success and result then
+        return result
+    else
+        warn("[AutoSell] Failed to load mutation data from game:", result)
+        return {}
+    end
+end
+
+-- Load data on initialization
+EggData = LoadEggDataFromGame()
+MutationData = LoadMutationDataFromGame()
+
+-- Flag to indicate data is loaded
+AutoSellSystem.DataLoaded = true
+
+-- Function to check if data is loaded
+function AutoSellSystem.IsDataLoaded()
+    return AutoSellSystem.DataLoaded and next(EggData) ~= nil and next(MutationData) ~= nil
+end
+
+-- Function to wait for data to be loaded
+function AutoSellSystem.WaitForDataLoad(timeout)
+    local maxWait = timeout or 10
+    local waited = 0
+    
+    while waited < maxWait do
+        if AutoSellSystem.IsDataLoaded() then
+            return true
+        end
+        task.wait(0.1)
+        waited = waited + 0.1
+    end
+    
+    warn("[AutoSell] ⚠️ Data load timeout after " .. maxWait .. " seconds")
+    return false
+end
 
 -- State
 local autoSellEnabled = false
@@ -91,6 +159,62 @@ local speedThresholdInput
 local autoSellToggle
 local sessionLimitInput
 local eggKeepDropdown
+
+-- Forward declaration for updateStatus
+local updateStatus
+
+-- Function to reload data and preserve selections
+function AutoSellSystem.ReloadData()
+    -- Store current selections
+    local savedEggs = {}
+    local savedMutations = {}
+    
+    for _, eggName in pairs(eggsToKeep) do
+        table.insert(savedEggs, eggName)
+    end
+    
+    for _, mutationName in pairs(mutationsToKeep) do
+        table.insert(savedMutations, mutationName)
+    end
+    
+    -- Reload data from game
+    EggData = LoadEggDataFromGame()
+    MutationData = LoadMutationDataFromGame()
+    
+    -- Restore selections that still exist in new data
+    eggsToKeep = {}
+    for _, savedEgg in pairs(savedEggs) do
+        for _, data in pairs(EggData) do
+            if data.Name == savedEgg then
+                table.insert(eggsToKeep, savedEgg)
+                break
+            end
+        end
+    end
+    
+    mutationsToKeep = {}
+    for _, savedMutation in pairs(savedMutations) do
+        for _, data in pairs(MutationData) do
+            if data.Name == savedMutation then
+                table.insert(mutationsToKeep, savedMutation)
+                break
+            end
+        end
+    end
+    
+    -- Update UI if available
+    if eggKeepDropdown and eggKeepDropdown.SetValue then
+        eggKeepDropdown:SetValue(eggsToKeep)
+    end
+    
+    if mutationKeepDropdown and mutationKeepDropdown.SetValue then
+        mutationKeepDropdown:SetValue(mutationsToKeep)
+    end
+    
+    if updateStatus then
+        updateStatus()
+    end
+end
 
 -- Helpers
 local function getPetContainer()
@@ -132,15 +256,26 @@ local function getMutationType(node)
 	local m = node:GetAttribute("M")
 	if not m or tostring(m) == "" then return nil end
 	
+	local mutationId = tostring(m)
+	
+	-- Special handling: "Dino" in game → "Jurassic" in UI
+	if mutationId == "Dino" then
+		mutationId = "Jurassic"
+	end
+	
 	-- Try to match mutation type with our MutationData
 	for key, data in pairs(MutationData) do
-		if tostring(m) == key or tostring(m) == data.Name then
+		if mutationId == key or mutationId == data.Name then
+			return data.Name
+		end
+		-- Also check OriginalId for reverse mapping
+		if data.OriginalId and tostring(m) == data.OriginalId then
 			return data.Name
 		end
 	end
 	
-	-- Return the raw mutation value if not found in our data
-	return tostring(m)
+	-- Return the mapped mutation ID if not found in our data
+	return mutationId
 end
 
 local function shouldKeepMutation(node)
@@ -378,7 +513,7 @@ local sellStats = {
 	scannedEggs = 0,
 }
 
-local function updateStatus()
+updateStatus = function()
 	if not statusParagraph then return end
 	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
 	local speedText = speedThreshold > 0 and ("Sell if speed≤" .. tostring(speedThreshold) .. " | ") or ""
@@ -615,33 +750,22 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	-- Create mutation selection dropdown (use raw names for better compatibility)
+	-- Create mutation selection dropdown (use names only since Icon is rbxassetid)
 	local mutationNames = {}
-	local mutationDisplayMap = {} -- Map display name to actual name
 	for key, data in pairs(MutationData) do
-		local displayName = data.Icon .. " " .. data.Name
-		table.insert(mutationNames, displayName)
-		mutationDisplayMap[displayName] = data.Name
+		table.insert(mutationNames, data.Name)
 	end
 	table.sort(mutationNames) -- Sort alphabetically
 
 	mutationKeepDropdown = MainTab:Dropdown({
-		Title = "🧬 Mutations to Keep",
+		Title = "Mutations to Keep",
 		Desc = "Select mutations to keep (don't sell)",
 		Values = mutationNames,
 		Value = {},
 		Multi = true,
 		AllowNone = true,
 		Callback = function(selection)
-			-- Convert display names back to mutation names using map
-			mutationsToKeep = {}
-			if selection then
-				for _, displayName in pairs(selection) do
-					-- Use map first, fallback to pattern matching
-					local mutationName = mutationDisplayMap[displayName] or displayName:match("^.+ (.+)$") or displayName
-					table.insert(mutationsToKeep, mutationName)
-				end
-			end
+			mutationsToKeep = selection or {}
 			updateStatus()
 		end
 	})
@@ -699,13 +823,36 @@ function AutoSellSystem.CreateUI()
 					end
 				end
 				
-				if not configSynced then
-					-- Wait for config sync during auto-load
 					task.spawn(function()
+					-- CRITICAL: Wait for AutoSellSystem data to load before starting
+					if AutoSellSystem and AutoSellSystem.WaitForDataLoad then
+						WindUI:Notify({ Title = "Auto Sell", Content = "⏳ Waiting for data to load...", Duration = 2 })
+						
+						local dataLoaded = AutoSellSystem.WaitForDataLoad(10)
+						
+						if not dataLoaded then
+							WindUI:Notify({ 
+								Title = "Auto Sell Error", 
+								Content = "❌ Failed to load data! Auto Sell disabled.", 
+								Duration = 5 
+							})
+							autoSellEnabled = false
+							if autoSellToggle and autoSellToggle.SetValue then
+								autoSellToggle:SetValue(false)
+							end
+							return
+						end
+						
+						WindUI:Notify({ Title = "Auto Sell", Content = "✅ Data loaded! Starting...", Duration = 2 })
+					end
+					
+					-- Wait for config sync if needed
+					if not configSynced then
 						local maxWait = 0
 						while not configSynced and maxWait < 20 do -- Wait max 2 seconds
 							task.wait(0.1)
 							maxWait = maxWait + 1
+						end
 						end
 						
 						-- Now start if still enabled
@@ -713,10 +860,6 @@ function AutoSellSystem.CreateUI()
 							startAutoSell()
 						end
 					end)
-				else
-					-- Config already synced, start immediately
-					startAutoSell()
-				end
 			elseif not state and autoSellThread then
 				if WindUI then
 					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Stopped", Duration = 2 })
@@ -806,25 +949,7 @@ function AutoSellSystem.SyncLoadedValues()
 	if mutationKeepDropdown and mutationKeepDropdown.Value then
 		local mutationValue = mutationKeepDropdown.Value
 		if type(mutationValue) == "table" then
-			-- Convert display names back to mutation names
-			mutationsToKeep = {}
-			for _, displayName in pairs(mutationValue) do
-				-- Extract mutation name from "Icon Name" format
-				-- Try to match with MutationData first for accuracy
-				local found = false
-				for key, data in pairs(MutationData) do
-					if displayName == (data.Icon .. " " .. data.Name) then
-						table.insert(mutationsToKeep, data.Name)
-						found = true
-						break
-					end
-				end
-				-- Fallback to pattern matching if not found
-				if not found then
-					local mutationName = displayName:match("^.+ (.+)$") or displayName
-					table.insert(mutationsToKeep, mutationName)
-				end
-			end
+			mutationsToKeep = mutationValue
 		else
 			mutationsToKeep = {}
 		end
