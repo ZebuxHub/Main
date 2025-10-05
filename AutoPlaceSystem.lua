@@ -1662,11 +1662,8 @@ function AutoPlaceSystem.CreateUI()
         if success and resEgg then
             for eggId, eggData in pairs(resEgg) do
                 if eggId ~= "__index" and type(eggData) == "table" then
-                    local category = eggData.Category or ""
-                    -- Skip Ocean eggs (they're filtered out)
-                    if category ~= "Ocean" then
-                        table.insert(eggTypes, eggId)
-                    end
+                    -- Include ALL eggs (including Ocean eggs)
+                    table.insert(eggTypes, eggId)
                 end
             end
             -- Sort alphabetically for better UX
