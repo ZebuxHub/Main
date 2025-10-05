@@ -67,8 +67,8 @@ local function ensureFishRobFocus()
 end
 
 -- FishRob parts removal (for better visibility)
-local removedFishRobParts = {}
-
+-- Keep ONLY: FRBody
+-- Remove: Everything else (FR2, FR3, FR_P, add, add2, etc.)
 local function removeFishRobParts()
 	local char = LocalPlayer.Character
 	if not char then return end
@@ -76,29 +76,32 @@ local function removeFishRobParts()
 	local fishRob = char:FindFirstChild("FishRob")
 	if not fishRob then return end
 	
-	-- Parts to remove for better visibility
-	local partsToRemove = {"FR2", "FR3", "FRBody"}
+	-- Parts to remove permanently (by name)
+	local partsToRemoveByName = {"FR2", "FR3", "FR_P", "add", "add2"}
 	
-	for _, partName in ipairs(partsToRemove) do
+	for _, partName in ipairs(partsToRemoveByName) do
 		local part = fishRob:FindFirstChild(partName)
 		if part then
-			-- Store original parent for restoration
-			table.insert(removedFishRobParts, {part = part, parent = fishRob})
-			-- Remove from workspace
-			part.Parent = nil
-		end
-	end
-end
-
-local function restoreFishRobParts()
-	for _, data in ipairs(removedFishRobParts) do
-		if data.part and data.parent then
 			pcall(function()
-				data.part.Parent = data.parent
+				part:Destroy()
 			end)
 		end
 	end
-	removedFishRobParts = {}
+	
+	-- Parts to remove by index (GetChildren positions)
+	local indicesToRemove = {6, 7, 9}
+	local children = fishRob:GetChildren()
+	
+	-- Sort indices in descending order to avoid index shifting issues
+	table.sort(indicesToRemove, function(a, b) return a > b end)
+	
+	for _, index in ipairs(indicesToRemove) do
+		if children[index] then
+			pcall(function()
+				children[index]:Destroy()
+			end)
+		end
+	end
 end
 
 -- Anchor helpers (stable while fishing)
@@ -187,6 +190,16 @@ end
 
 local isAnchored = false
 
+local function unfocusFishRob()
+	-- Cancel fishing focus
+	pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("CharacterRE"):FireServer("Focus", "")
+	end)
+	pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("FishingRE"):FireServer("End")
+	end)
+end
+
 local function onFrostSpotAdded(fxSpecial, fishPoint)
 	if not active or not FishingConfig.FrostSpotEnabled then return end
 	
@@ -208,8 +221,15 @@ local function onFrostSpotAdded(fxSpecial, fishPoint)
 				-- Frost Spot removed
 				currentFrostSpotPos = nil
 				
-				-- If in ONLY Mode, unanchor until next Frost Spot
+				-- If in ONLY Mode, handle Frost Spot disappearance
 				if FishingConfig.FrostSpotOnlyMode and isAnchored then
+					-- 1. Unfocus fishing rod first
+					unfocusFishRob()
+					
+					-- 2. Small delay to ensure unfocus completes
+					task.wait(0.1)
+					
+					-- 3. Unanchor player
 					unanchorPlayer()
 					isAnchored = false
 				end
@@ -408,8 +428,6 @@ function AutoFishSystem.SetEnabled(state)
 			unanchorPlayer()
 			isAnchored = false
 		end
-		-- Restore FishRob parts
-		restoreFishRobParts()
 		lastCastPos = nil
 		lastCastPosAt = 0
 		currentFrostSpotPos = nil
