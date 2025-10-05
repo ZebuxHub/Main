@@ -526,7 +526,12 @@ local function createItemCard(itemId, itemData, parent)
     price.Size = UDim2.new(1, -16, 0, 16)
     price.Position = UDim2.new(0, 8, 0.8, 0)
     price.BackgroundTransparency = 1
-    price.Text = "$" .. itemData.Price
+    -- Format price with commas
+    local priceValue = itemData.Price
+    if type(priceValue) == "string" then
+        priceValue = tonumber(priceValue:gsub(",", "")) or 0
+    end
+    price.Text = "$" .. formatNumber(priceValue)
     price.TextSize = 10
     price.Font = Enum.Font.Gotham
     price.TextColor3 = colors.textSecondary
