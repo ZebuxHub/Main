@@ -1,7 +1,8 @@
--- StationFeedSetup.lua - Station-First UI for Auto Feed (New Design)
+-- StationFeedSetup.lua - Station-First UI for Auto Feed (macOS Style)
 -- Author: Zebux
--- Version: 2.0
+-- Version: 3.0
 -- Description: Redesigned UI where you select Station → Fruits instead of Fruit → Pets
+-- Features: Auto-update fruit data from game, 3D model display, macOS style UI
 
 local StationFeedSetup = {}
 
@@ -10,28 +11,98 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Hardcoded fruit data (same as FeedFruitSelection)
-local FruitData = {
-	Strawberry = { Name = "Strawberry", Icon = "🍓", Rarity = 1 },
-	Blueberry = { Name = "Blueberry", Icon = "🔵", Rarity = 1 },
-	Watermelon = { Name = "Watermelon", Icon = "🍉", Rarity = 2 },
-	Apple = { Name = "Apple", Icon = "🍎", Rarity = 2 },
-	Orange = { Name = "Orange", Icon = "🍊", Rarity = 3 },
-	Corn = { Name = "Corn", Icon = "🌽", Rarity = 3 },
-	Banana = { Name = "Banana", Icon = "🍌", Rarity = 4 },
-	Grape = { Name = "Grape", Icon = "🍇", Rarity = 4 },
-	Pear = { Name = "Pear", Icon = "🍐", Rarity = 5 },
-	Peach = { Name = "Peach", Icon = "🍑", Rarity = 5 },
-	Pineapple = { Name = "Pineapple", Icon = "🍍", Rarity = 5 },
-	GoldMango = { Name = "Gold Mango", Icon = "🥭", Rarity = 6 },
-	BloodstoneCycad = { Name = "Bloodstone Cycad", Icon = "🌿", Rarity = 6 },
-	ColossalPinecone = { Name = "Colossal Pinecone", Icon = "🌲", Rarity = 7 },
-	VoltGinkgo = { Name = "Volt Ginkgo", Icon = "⚡", Rarity = 7 },
-	DeepseaPearlFruit = { Name = "Deepsea Pearl Fruit", Icon = "🌊", Rarity = 8 },
-	DragonFruit = { Name = "Dragon Fruit", Icon = "🐉", Rarity = 8 },
-	Durian = { Name = "Durian", Icon = "🥥", Rarity = 9 }
-}
+-- Dynamic data that will be loaded from the game
+local FruitData = {}
+
+-- Cache for fruit models from ReplicatedStorage
+local FruitModels = {}
+
+-- Function to get fruit model from ReplicatedStorage
+local function GetFruitModel(fruitId)
+    -- Check cache first
+    if FruitModels[fruitId] then
+        return FruitModels[fruitId]
+    end
+    
+    -- Try to find the model
+    local success, model = pcall(function()
+        -- Search in ReplicatedStorage children for PetFood folder
+        for _, child in ipairs(ReplicatedStorage:GetChildren()) do
+            if child:IsA("Folder") or child:IsA("Model") then
+                -- Look for PetFood/FruitName pattern
+                local fruitModel = child:FindFirstChild("PetFood/" .. fruitId)
+                if fruitModel then
+                    return fruitModel
+                end
+                
+                -- Also try direct search
+                local petFoodFolder = child:FindFirstChild("PetFood")
+                if petFoodFolder then
+                    fruitModel = petFoodFolder:FindFirstChild(fruitId)
+                    if fruitModel then
+                        return fruitModel
+                    end
+                end
+            end
+        end
+        return nil
+    end)
+    
+    if success and model then
+        FruitModels[fruitId] = model
+        return model
+    end
+    
+    return nil
+end
+
+-- Function to load fruit data from the game automatically
+local function LoadFruitDataFromGame()
+    local success, result = pcall(function()
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResPetFood", 10)
+        if configModule then
+            local gameFruitData = require(configModule)
+            
+            -- Convert game data format to our UI format
+            local convertedData = {}
+            
+            for fruitId, fruitInfo in pairs(gameFruitData) do
+                -- Skip the __index table
+                if fruitId ~= "__index" and type(fruitInfo) == "table" then
+                    -- Get model from ReplicatedStorage
+                    local fruitModel = GetFruitModel(fruitId)
+                    
+                    -- Convert to our format
+                    convertedData[fruitId] = {
+                        Name = fruitInfo.ID or fruitId,
+                        Price = fruitInfo.Price or "0",
+                        Icon = fruitInfo.Icon or "",
+                        Model = fruitModel,
+                        Rarity = fruitInfo.Rarity or 1,
+                        FeedValue = fruitInfo.FeedValue or 0
+                    }
+                end
+            end
+            
+            return convertedData
+        end
+    end)
+    
+    if success and result then
+        return result
+    else
+        warn("[StationFeedSetup] Failed to load fruit data from game:", result)
+        return {}
+    end
+end
+
+-- Load fruit data on initialization
+FruitData = LoadFruitDataFromGame()
+
+-- Flag to indicate data is loaded
+StationFeedSetup.DataLoaded = true
 
 -- Helper to find BigPet station
 local function findBigPetStationForPet(petPosition)
@@ -183,27 +254,38 @@ local startPos = nil
 local onSaveCallback = nil
 local onVisibilityCallback = nil
 
--- macOS Monterey Style Colors
+-- macOS Monterey Style Colors (Enhanced)
 local colors = {
-    background = Color3.fromRGB(30, 30, 32),
-    surface = Color3.fromRGB(40, 40, 43),
-    surfaceLight = Color3.fromRGB(50, 50, 53),
-    primary = Color3.fromRGB(10, 132, 255),
-    primaryHover = Color3.fromRGB(0, 122, 255),
-    secondary = Color3.fromRGB(94, 92, 230),
+    background = Color3.fromRGB(18, 18, 20),
+    surface = Color3.fromRGB(32, 32, 34),
+    surfaceLight = Color3.fromRGB(45, 45, 47),
+    primary = Color3.fromRGB(0, 122, 255),
+    primaryHover = Color3.fromRGB(10, 132, 255),
+    secondary = Color3.fromRGB(88, 86, 214),
     text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(152, 152, 157),
-    textTertiary = Color3.fromRGB(99, 99, 102),
-    border = Color3.fromRGB(58, 58, 60),
-    selected = Color3.fromRGB(10, 132, 255),
-    hover = Color3.fromRGB(55, 55, 58),
+    textSecondary = Color3.fromRGB(200, 200, 200),
+    textTertiary = Color3.fromRGB(150, 150, 150),
+    border = Color3.fromRGB(50, 50, 52),
+    selected = Color3.fromRGB(0, 122, 255),
+    hover = Color3.fromRGB(45, 45, 47),
     close = Color3.fromRGB(255, 69, 58),
     minimize = Color3.fromRGB(255, 159, 10),
-    maximize = Color3.fromRGB(52, 199, 89),
+    maximize = Color3.fromRGB(48, 209, 88),
     warning = Color3.fromRGB(255, 214, 10),
     success = Color3.fromRGB(48, 209, 88),
     shadow = Color3.fromRGB(0, 0, 0)
 }
+
+-- Utility function to get rarity color
+local function getRarityColor(rarity)
+    if rarity >= 6 then return Color3.fromRGB(255, 45, 85)
+    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58)
+    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222)
+    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214)
+    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88)
+    else return Color3.fromRGB(174, 174, 178)
+    end
+end
 
 -- Create Fruit Selection Popup for a specific Station
 local function createFruitSelectionPopup(stationId, stationDisplayName, parentFrame, refreshCallback)
@@ -413,15 +495,82 @@ local function createFruitSelectionPopup(stationId, stationDisplayName, parentFr
         itemStroke.Transparency = 0.3
         itemStroke.Parent = item
         
-        -- Icon
-        local icon = Instance.new("TextLabel")
-        icon.Size = UDim2.new(0, 32, 0, 32)
-        icon.Position = UDim2.new(0, 12, 0.5, -16)
-        icon.BackgroundTransparency = 1
-        icon.Text = fruitData.Icon
-        icon.TextSize = 24
-        icon.ZIndex = 204
-        icon.Parent = item
+        -- Icon Container (for 3D model or icon)
+        local iconContainer = Instance.new("Frame")
+        iconContainer.Name = "IconContainer"
+        iconContainer.Size = UDim2.new(0, 40, 0, 40)
+        iconContainer.Position = UDim2.new(0, 8, 0.5, -20)
+        iconContainer.BackgroundTransparency = 1
+        iconContainer.ZIndex = 204
+        iconContainer.Parent = item
+        
+        -- Try to show model first, fallback to icon/emoji
+        if fruitData.Model and fruitData.Model:IsA("Model") then
+            -- Create ViewportFrame for 3D model
+            local viewport = Instance.new("ViewportFrame")
+            viewport.Name = "ModelViewport"
+            viewport.Size = UDim2.new(1, 0, 1, 0)
+            viewport.BackgroundTransparency = 1
+            viewport.ZIndex = 205
+            viewport.Parent = iconContainer
+            
+            -- Clone the model
+            local modelClone = fruitData.Model:Clone()
+            modelClone.Parent = viewport
+            
+            -- Create camera
+            local camera = Instance.new("Camera")
+            camera.Parent = viewport
+            viewport.CurrentCamera = camera
+            
+            -- Position camera to show the model
+            local modelCF, modelSize = modelClone:GetBoundingBox()
+            local maxSize = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+            local distance = maxSize * 1.8
+            camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.4, distance), modelCF.Position)
+            
+            -- Add lighting
+            local light = Instance.new("PointLight")
+            light.Brightness = 2
+            light.Range = 30
+            light.Parent = camera
+        elseif fruitData.Icon and fruitData.Icon ~= "" then
+            -- Use ImageLabel for rbxassetid icons
+            if string.find(fruitData.Icon, "rbxassetid://") then
+                local imageLabel = Instance.new("ImageLabel")
+                imageLabel.Name = "IconImage"
+                imageLabel.Size = UDim2.new(1, 0, 1, 0)
+                imageLabel.BackgroundTransparency = 1
+                imageLabel.Image = fruitData.Icon
+                imageLabel.ScaleType = Enum.ScaleType.Fit
+                imageLabel.ZIndex = 205
+                imageLabel.Parent = iconContainer
+            else
+                -- Fallback to text (emoji)
+                local textLabel = Instance.new("TextLabel")
+                textLabel.Name = "IconText"
+                textLabel.Size = UDim2.new(1, 0, 1, 0)
+                textLabel.BackgroundTransparency = 1
+                textLabel.Text = fruitData.Icon
+                textLabel.TextSize = 28
+                textLabel.Font = Enum.Font.GothamBold
+                textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
+                textLabel.ZIndex = 205
+                textLabel.Parent = iconContainer
+            end
+        else
+            -- Default emoji if nothing available
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Name = "IconText"
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = "🍎"
+            textLabel.TextSize = 28
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
+            textLabel.ZIndex = 205
+            textLabel.Parent = iconContainer
+        end
         
         -- Name
         local nameLabel = Instance.new("TextLabel")
@@ -966,6 +1115,67 @@ end
 
 function StationFeedSetup.ClearAll()
     stationFruitAssignments = {}
+end
+
+-- Function to reload fruit data from the game (useful when game updates)
+function StationFeedSetup.ReloadFruitData()
+    local newFruitData = LoadFruitDataFromGame()
+    
+    if newFruitData and next(newFruitData) then
+        -- Preserve existing station assignments
+        local oldAssignments = {}
+        for stationId, fruits in pairs(stationFruitAssignments) do
+            oldAssignments[stationId] = {}
+            for fruitId, _ in pairs(fruits) do
+                oldAssignments[stationId][fruitId] = true
+            end
+        end
+        
+        -- Update fruit data
+        FruitData = newFruitData
+        
+        -- Re-apply assignments that still exist in new data
+        stationFruitAssignments = {}
+        for stationId, fruits in pairs(oldAssignments) do
+            stationFruitAssignments[stationId] = {}
+            for fruitId, _ in pairs(fruits) do
+                if FruitData[fruitId] then
+                    stationFruitAssignments[stationId][fruitId] = true
+                end
+            end
+        end
+        
+        return true
+    end
+    
+    return false
+end
+
+-- Function to get current fruit data (for debugging)
+function StationFeedSetup.GetFruitData()
+    return FruitData
+end
+
+-- Function to check if data is loaded
+function StationFeedSetup.IsDataLoaded()
+    return StationFeedSetup.DataLoaded and next(FruitData) ~= nil
+end
+
+-- Function to wait for data to be loaded
+function StationFeedSetup.WaitForDataLoad(timeout)
+    local maxWait = timeout or 10
+    local waited = 0
+    
+    while waited < maxWait do
+        if StationFeedSetup.IsDataLoaded() then
+            return true
+        end
+        task.wait(0.1)
+        waited = waited + 0.1
+    end
+    
+    warn("[StationFeedSetup] ⚠️ Data load timeout after " .. maxWait .. " seconds")
+    return false
 end
 
 return StationFeedSetup
