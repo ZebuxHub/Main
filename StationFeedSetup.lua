@@ -297,8 +297,8 @@ local function createMainUI()
     ScreenGui.Parent = PlayerGui
     
     MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 800, 0, 500)
-    MainFrame.Position = UDim2.new(0.5, -400, 0.5, -250)
+    MainFrame.Size = UDim2.new(0, 900, 0, 550)
+    MainFrame.Position = UDim2.new(0.5, -450, 0.5, -275)
     MainFrame.BackgroundColor3 = colors.background
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
@@ -488,8 +488,8 @@ local function createMainUI()
     fruitScroll.Parent = rightPanel
     
     local fruitGrid = Instance.new("UIGridLayout")
-    fruitGrid.CellSize = UDim2.new(0.32, 0, 0, 110)
-    fruitGrid.CellPadding = UDim2.new(0.01, 0, 0, 6)
+    fruitGrid.CellSize = UDim2.new(0.31, 0, 0, 130)
+    fruitGrid.CellPadding = UDim2.new(0.015, 0, 0, 8)
     fruitGrid.SortOrder = Enum.SortOrder.LayoutOrder
     fruitGrid.Parent = fruitScroll
     
@@ -538,7 +538,7 @@ local function createMainUI()
             
             local card = Instance.new("TextButton")
             card.Name = "Fruit_" .. fruitId
-            card.Size = UDim2.new(0.32, 0, 0, 110)
+            card.Size = UDim2.new(0.31, 0, 0, 130)
             card.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surface
             card.BorderSizePixel = 0
             card.Text = ""
@@ -554,10 +554,10 @@ local function createMainUI()
             cardStroke.Thickness = stationFruitAssignments[stationId][fruitId] and 2 or 1
             cardStroke.Parent = card
             
-            -- Icon Container
+            -- Icon Container (larger)
             local iconContainer = Instance.new("Frame")
-            iconContainer.Size = UDim2.new(0, 60, 0, 60)
-            iconContainer.Position = UDim2.new(0.5, -30, 0.15, 0)
+            iconContainer.Size = UDim2.new(0, 70, 0, 70)
+            iconContainer.Position = UDim2.new(0.5, -35, 0.12, 0)
             iconContainer.BackgroundTransparency = 1
             iconContainer.Parent = card
             
@@ -597,7 +597,7 @@ local function createMainUI()
                     textLabel.Size = UDim2.new(1, 0, 1, 0)
                     textLabel.BackgroundTransparency = 1
                     textLabel.Text = fruitData.Icon
-                    textLabel.TextSize = 40
+                    textLabel.TextSize = 48
                     textLabel.Font = Enum.Font.GothamBold
                     textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
                     textLabel.Parent = iconContainer
@@ -607,7 +607,7 @@ local function createMainUI()
                 textLabel.Size = UDim2.new(1, 0, 1, 0)
                 textLabel.BackgroundTransparency = 1
                 textLabel.Text = "🍎"
-                textLabel.TextSize = 40
+                textLabel.TextSize = 48
                 textLabel.Font = Enum.Font.GothamBold
                 textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
                 textLabel.Parent = iconContainer
@@ -615,11 +615,11 @@ local function createMainUI()
             
             -- Name
             local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, -8, 0, 16)
-            nameLabel.Position = UDim2.new(0, 4, 0.65, 0)
+            nameLabel.Size = UDim2.new(1, -12, 0, 20)
+            nameLabel.Position = UDim2.new(0, 6, 0.68, 0)
             nameLabel.BackgroundTransparency = 1
             nameLabel.Text = fruitData.Name
-            nameLabel.TextSize = 10
+            nameLabel.TextSize = 11
             nameLabel.Font = Enum.Font.GothamSemibold
             nameLabel.TextColor3 = colors.text
             nameLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -629,11 +629,11 @@ local function createMainUI()
             -- Amount
             local amount = inventory[fruitId] or 0
             local amountLabel = Instance.new("TextLabel")
-            amountLabel.Size = UDim2.new(1, -8, 0, 14)
-            amountLabel.Position = UDim2.new(0, 4, 0.82, 0)
+            amountLabel.Size = UDim2.new(1, -12, 0, 16)
+            amountLabel.Position = UDim2.new(0, 6, 0.85, 0)
             amountLabel.BackgroundTransparency = 1
             amountLabel.Text = formatNumber(amount)
-            amountLabel.TextSize = 9
+            amountLabel.TextSize = 10
             amountLabel.Font = Enum.Font.Gotham
             amountLabel.TextColor3 = amount > 0 and colors.textSecondary or colors.close
             amountLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -844,33 +844,44 @@ local function createMainUI()
     
     refreshPetList()
     
-    -- Bottom buttons
+    -- Bottom buttons (macOS style)
     local actions = Instance.new("Frame")
-    actions.Size = UDim2.new(1, -32, 0, 44)
-    actions.Position = UDim2.new(0, 16, 1, -60)
+    actions.Size = UDim2.new(1, -32, 0, 48)
+    actions.Position = UDim2.new(0, 16, 1, -64)
     actions.BackgroundTransparency = 1
     actions.Parent = MainFrame
     
     local actionsLayout = Instance.new("UIListLayout")
     actionsLayout.FillDirection = Enum.FillDirection.Horizontal
     actionsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    actionsLayout.Padding = UDim.new(0, 8)
+    actionsLayout.Padding = UDim.new(0, 10)
     actionsLayout.Parent = actions
     
     -- Refresh
     local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Size = UDim2.new(0, 110, 0, 36)
+    refreshBtn.Size = UDim2.new(0, 130, 0, 42)
     refreshBtn.BackgroundColor3 = colors.secondary
     refreshBtn.BorderSizePixel = 0
     refreshBtn.Text = "🔄 Refresh"
-    refreshBtn.TextSize = 12
+    refreshBtn.TextSize = 13
     refreshBtn.Font = Enum.Font.GothamBold
     refreshBtn.TextColor3 = colors.text
     refreshBtn.Parent = actions
     
     local refreshCorner = Instance.new("UICorner")
-    refreshCorner.CornerRadius = UDim.new(0, 8)
+    refreshCorner.CornerRadius = UDim.new(0, 10)
     refreshCorner.Parent = refreshBtn
+    
+    refreshBtn.MouseEnter:Connect(function()
+        TweenService:Create(refreshBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(98, 96, 224)
+        }):Play()
+    end)
+    refreshBtn.MouseLeave:Connect(function()
+        TweenService:Create(refreshBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = colors.secondary
+        }):Play()
+    end)
     
     refreshBtn.MouseButton1Click:Connect(function()
         refreshPetList()
@@ -881,18 +892,29 @@ local function createMainUI()
     
     -- Copy to all
     local copyBtn = Instance.new("TextButton")
-    copyBtn.Size = UDim2.new(0, 130, 0, 36)
+    copyBtn.Size = UDim2.new(0, 150, 0, 42)
     copyBtn.BackgroundColor3 = colors.warning
     copyBtn.BorderSizePixel = 0
     copyBtn.Text = "📋 Copy to All"
-    copyBtn.TextSize = 12
+    copyBtn.TextSize = 13
     copyBtn.Font = Enum.Font.GothamBold
     copyBtn.TextColor3 = Color3.new(0, 0, 0)
     copyBtn.Parent = actions
     
     local copyCorner = Instance.new("UICorner")
-    copyCorner.CornerRadius = UDim.new(0, 8)
+    copyCorner.CornerRadius = UDim.new(0, 10)
     copyCorner.Parent = copyBtn
+    
+    copyBtn.MouseEnter:Connect(function()
+        TweenService:Create(copyBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(255, 224, 20)
+        }):Play()
+    end)
+    copyBtn.MouseLeave:Connect(function()
+        TweenService:Create(copyBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = colors.warning
+        }):Play()
+    end)
     
     copyBtn.MouseButton1Click:Connect(function()
         local pets = getPlayerOwnedPets()
@@ -921,18 +943,29 @@ local function createMainUI()
     
     -- Save & Close
     local saveBtn = Instance.new("TextButton")
-    saveBtn.Size = UDim2.new(0, 140, 0, 36)
+    saveBtn.Size = UDim2.new(0, 160, 0, 42)
     saveBtn.BackgroundColor3 = colors.maximize
     saveBtn.BorderSizePixel = 0
     saveBtn.Text = "✓ Save & Close"
-    saveBtn.TextSize = 12
+    saveBtn.TextSize = 13
     saveBtn.Font = Enum.Font.GothamBold
     saveBtn.TextColor3 = colors.text
     saveBtn.Parent = actions
     
     local saveCorner = Instance.new("UICorner")
-    saveCorner.CornerRadius = UDim.new(0, 8)
+    saveCorner.CornerRadius = UDim.new(0, 10)
     saveCorner.Parent = saveBtn
+    
+    saveBtn.MouseEnter:Connect(function()
+        TweenService:Create(saveBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(58, 219, 98)
+        }):Play()
+    end)
+    saveBtn.MouseLeave:Connect(function()
+        TweenService:Create(saveBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = colors.maximize
+        }):Play()
+    end)
     
     saveBtn.MouseButton1Click:Connect(function()
         if onSaveCallback then
