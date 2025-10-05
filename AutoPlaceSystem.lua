@@ -1190,21 +1190,28 @@ local function exitDormantMode(trigger)
     
     print("[AutoPlace] Exiting dormant mode, triggered by:", trigger)
     
-    -- Only invalidate what might have changed based on trigger
-    if trigger:find("eggs") then
+    -- Invalidate relevant caches immediately for instant response
+    if trigger:find("eggs") or trigger:find("new eggs") then
         eggCache.lastUpdate = 0
-    elseif trigger:find("pets") then
+        -- Also invalidate pet cache in case eggs were converted to pets
         petCache.lastUpdate = 0
-    elseif trigger:find("tile") then
+    elseif trigger:find("pets") or trigger:find("new pets") then
+        petCache.lastUpdate = 0
+    elseif trigger:find("tile") or trigger:find("freed") or trigger:find("built") then
         tileCache.lastUpdate = 0
     else
-        -- Unknown trigger, invalidate all (safe fallback)
+        -- Unknown trigger, invalidate all for safety
         eggCache.lastUpdate = 0
         petCache.lastUpdate = 0
         tileCache.lastUpdate = 0
     end
     
-    task.spawn(attemptPlacement)
+    -- Immediately attempt placement without delay
+    task.spawn(function()
+        if autoPlaceEnabled and not placementState.isDormant then
+            attemptPlacement()
+        end
+    end)
 end
 
 local function setupEventMonitoring()
@@ -1221,12 +1228,19 @@ local function setupEventMonitoring()
     if eggContainer then
         local function onEggChanged()
             if not autoPlaceEnabled then return end
-            task.wait(0.1) -- Brief wait for attributes
+            -- Minimal wait for attributes to be set
+            task.wait(0.05) -- Reduced from 0.1 for faster response
             exitDormantMode("new eggs available")
         end
         
         table.insert(placementState.connections, eggContainer.ChildAdded:Connect(onEggChanged))
-        table.insert(placementState.connections, eggContainer.ChildRemoved:Connect(onEggChanged))
+        -- Also monitor removal in case we need to switch to different eggs
+        table.insert(placementState.connections, eggContainer.ChildRemoved:Connect(function()
+            if not autoPlaceEnabled then return end
+            task.wait(0.05)
+            -- Invalidate cache when eggs are removed
+            eggCache.lastUpdate = 0
+        end))
     end
     
     -- Monitor for new pets (triggers reactivation)
@@ -1234,12 +1248,16 @@ local function setupEventMonitoring()
     if petContainer then
         local function onPetChanged()
             if not autoPlaceEnabled then return end
-            task.wait(0.1)
+            task.wait(0.05) -- Reduced from 0.1
             exitDormantMode("new pets available")
         end
         
         table.insert(placementState.connections, petContainer.ChildAdded:Connect(onPetChanged))
-        table.insert(placementState.connections, petContainer.ChildRemoved:Connect(onPetChanged))
+        table.insert(placementState.connections, petContainer.ChildRemoved:Connect(function()
+            if not autoPlaceEnabled then return end
+            task.wait(0.05)
+            petCache.lastUpdate = 0
+        end))
     end
     
     -- Monitor workspace pets (tiles becoming available)
@@ -1247,7 +1265,7 @@ local function setupEventMonitoring()
     if workspacePets then
         local function onWorkspacePetChanged()
             if not autoPlaceEnabled then return end
-            task.wait(0.2) -- Wait for tile to be properly freed
+            task.wait(0.1) -- Reduced from 0.2
             exitDormantMode("tile freed")
         end
         
@@ -1260,7 +1278,7 @@ local function setupEventMonitoring()
     if playerBuiltBlocks then
         local function onBlockChanged()
             if not autoPlaceEnabled then return end
-            task.wait(0.2)
+            task.wait(0.1) -- Reduced from 0.2
             exitDormantMode("new tiles built")
         end
         
@@ -1271,7 +1289,7 @@ end
 
 local function runAutoPlace()
     local consecutiveFailures = 0
-    local maxFailures = 3
+    local maxFailures = 2 -- Reduced from 3 for faster dormant mode entry
     
     -- Setup event monitoring
     setupEventMonitoring()
@@ -1287,8 +1305,8 @@ local function runAutoPlace()
                 placementStats.lastPlacement = os.time()
                 consecutiveFailures = 0
                 
-                -- Longer wait after success to reduce lag
-                waitJitter(2.0)
+                -- Minimal wait after success - try to place next item immediately
+                waitJitter(0.5) -- Reduced from 2.0 for faster placement
             else
                 consecutiveFailures = consecutiveFailures + 1
                 
@@ -1296,7 +1314,17 @@ local function runAutoPlace()
                 local shouldGoDormant = false
                 local dormantReason = ""
                 
-                if message:find("no_tiles_available") or message:find("No tiles available") then
+                -- Check for "no matching items" conditions first
+                if message:find("No suitable eggs found") or message:find("skip_ocean") then
+                    shouldGoDormant = true
+                    dormantReason = "No eggs match filters"
+                elseif message:find("no_pets") or message:find("No pets pass filters") then
+                    shouldGoDormant = true
+                    dormantReason = "No pets/eggs match filters"
+                elseif message:find("No suitable pets found") then
+                    shouldGoDormant = true
+                    dormantReason = "No pets match filters"
+                elseif message:find("no_tiles_available") or message:find("No tiles available") then
                     shouldGoDormant = true
                     dormantReason = "No tiles available"
                 elseif message:find("ocean_pets_no_tiles") or message:find("Ocean pets need") then
@@ -1314,31 +1342,28 @@ local function runAutoPlace()
                 elseif message:find("regular_pet_no_regular_tiles") or message:find("Regular pet: no") then
                     shouldGoDormant = true
                     dormantReason = "No regular tiles for regular pets"
-                elseif message:find("no_pets") or message:find("No pets pass filters") then
-                    shouldGoDormant = true
-                    dormantReason = "No pets pass filters"
                 elseif consecutiveFailures >= maxFailures then
                     shouldGoDormant = true
-                    dormantReason = "Too many consecutive failures"
+                    dormantReason = "No matching items available"
                     consecutiveFailures = 0
                 end
                 
                 if shouldGoDormant then
                     enterDormantMode(dormantReason)
                 else
-                    -- Normal retry delays for temporary issues
+                    -- Minimal retry delays for temporary issues
                     if message:find("already placed") then
-                        waitJitter(0.3)
+                        waitJitter(0.2) -- Reduced from 0.3
                     elseif message:find("disabled") then
-                        waitJitter(5)
+                        waitJitter(3) -- Reduced from 5
                     else
-                        waitJitter(2)
+                        waitJitter(0.5) -- Reduced from 2 for faster retry
                     end
                 end
             end
         else
-            -- Dormant mode - just wait and check periodically
-            waitJitter(5)
+            -- Dormant mode - just wait for events to wake us up
+            waitJitter(2) -- Reduced from 5 for more responsive wake-up check
         end
     end
     
