@@ -414,8 +414,8 @@ local function createItemCard(itemId, itemData, parent)
     -- Create Icon (ViewportFrame for 3D model or ImageLabel for icon)
     local iconContainer = Instance.new("Frame")
     iconContainer.Name = "IconContainer"
-    iconContainer.Size = UDim2.new(0, 50, 0, 50)
-    iconContainer.Position = UDim2.new(0.5, -25, 0.2, 0)
+    iconContainer.Size = UDim2.new(0, 90, 0, 90)
+    iconContainer.Position = UDim2.new(0.5, -45, 0.1, 0)
     iconContainer.BackgroundTransparency = 1
     iconContainer.Parent = card
     
@@ -437,11 +437,11 @@ local function createItemCard(itemId, itemData, parent)
         camera.Parent = viewport
         viewport.CurrentCamera = camera
         
-        -- Position camera to show the model
+        -- Position camera to show the model (closer for better visibility)
         local modelCF, modelSize = modelClone:GetBoundingBox()
         local maxSize = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-        local distance = maxSize * 2.5
-        camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.5, distance), modelCF.Position)
+        local distance = maxSize * 1.8  -- Closer camera (was 2.5)
+        camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.4, distance), modelCF.Position)
         
         -- Add lighting
         local light = Instance.new("PointLight")
@@ -465,7 +465,7 @@ local function createItemCard(itemId, itemData, parent)
             textLabel.Size = UDim2.new(1, 0, 1, 0)
             textLabel.BackgroundTransparency = 1
             textLabel.Text = itemData.Icon
-            textLabel.TextSize = 32
+            textLabel.TextSize = 56
             textLabel.Font = Enum.Font.GothamBold
             textLabel.TextColor3 = getRarityColor(itemData.Rarity)
             textLabel.Parent = iconContainer
@@ -477,7 +477,7 @@ local function createItemCard(itemId, itemData, parent)
         textLabel.Size = UDim2.new(1, 0, 1, 0)
         textLabel.BackgroundTransparency = 1
         textLabel.Text = "🍎"
-        textLabel.TextSize = 32
+        textLabel.TextSize = 56
         textLabel.Font = Enum.Font.GothamBold
         textLabel.TextColor3 = getRarityColor(itemData.Rarity)
         textLabel.Parent = iconContainer
