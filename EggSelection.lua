@@ -23,12 +23,20 @@ local function LoadEggDataFromGame()
             
             -- Convert game data format to our UI format
             local convertedData = {}
+            local excludedCount = 0
+            local totalCount = 0
+            
             for eggId, eggInfo in pairs(gameEggData) do
                 -- Skip the __index table
                 if eggId ~= "__index" and type(eggInfo) == "table" then
+                    totalCount = totalCount + 1
+                    
                     -- Exclude eggs with Category = "Ocean"
                     local category = eggInfo.Category or ""
-                    if category ~= "Ocean" then
+                    if category == "Ocean" then
+                        excludedCount = excludedCount + 1
+                        print("[EggSelection] Excluded Ocean egg:", eggId)
+                    else
                         -- Convert to our format
                         convertedData[eggId] = {
                             Name = eggInfo.ID or eggId, -- Use ID or fallback to key
@@ -40,6 +48,9 @@ local function LoadEggDataFromGame()
                     end
                 end
             end
+            
+            print(string.format("[EggSelection] Loaded %d eggs, excluded %d Ocean eggs", 
+                totalCount - excludedCount, excludedCount))
             
             return convertedData
         end
