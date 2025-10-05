@@ -60,147 +60,110 @@ local savedPosition = nil
 -- External Dependencies
 local WindUI = nil
 
--- Hardcoded Data (from existing systems)
-local EggData = {
-    BasicEgg = { Name = "Basic Egg", Price = "100", Icon = "rbxassetid://86783205334263", Rarity = 1, Category = "" },
-    RareEgg = { Name = "Rare Egg", Price = "600", Icon = "rbxassetid://92360220594881", Rarity = 2, Category = "" },
-    SuperRareEgg = { Name = "Super Rare Egg", Price = "3,000", Icon = "rbxassetid://114593167151091", Rarity = 2, Category = "" },
-    SeaweedEgg = { Name = "Seaweed Egg", Price = "300", Icon = "rbxassetid://83071703588226", Rarity = 2, Category = "Ocean" },
-    EpicEgg = { Name = "Epic Egg", Price = "15,000", Icon = "rbxassetid://118390666254578", Rarity = 2, Category = "" },
-    LegendEgg = { Name = "Legend Egg", Price = "100,000", Icon = "rbxassetid://70573001058005", Rarity = 3, Category = "" },
-    ClownfishEgg = { Name = "Clownfish Egg", Price = "300", Icon = "rbxassetid://134581421196477", Rarity = 3, Category = "Ocean" },
-    SnowbunnyEgg = { Name = "Snowbunny Egg", Price = "1,500,000", Icon = "rbxassetid://98700887273727", Rarity = 3, Category = "" },
-    PrismaticEgg = { Name = "Prismatic Egg", Price = "1,000,000", Icon = "rbxassetid://116342289419267", Rarity = 4, Category = "" },
-    LionfishEgg = { Name = "Lionfish Egg", Price = "300", Icon = "rbxassetid://109178769208956", Rarity = 4, Category = "Ocean" },
-    HyperEgg = { Name = "Hyper Egg", Price = "2,500,000", Icon = "rbxassetid://95160801997871", Rarity = 4, Category = "" },
-    DarkGoatyEgg = { Name = "Dark Goaty Egg", Price = "100,000,000", Icon = "rbxassetid://107381728103466", Rarity = 4, Category = "" },
-    VoidEgg = { Name = "Void Egg", Price = "24,000,000", Icon = "rbxassetid://91598797684023", Rarity = 5, Category = "" },
-    BowserEgg = { Name = "Bowser Egg", Price = "130,000,000", Icon = "rbxassetid://117118367570176", Rarity = 5, Category = "" },
-    SharkEgg = { Name = "Shark Egg", Price = "10,000,000", Icon = "rbxassetid://100309591286506", Rarity = 5, Category = "Ocean" },
-    DemonEgg = { Name = "Demon Egg", Price = "400,000,000", Icon = "rbxassetid://98860640309332", Rarity = 5, Category = "" },
-    RhinoRockEgg = { Name = "Rhino Rock Egg", Price = "3,000,000,000", Icon = "rbxassetid://107622817209375", Rarity = 5, Category = "" },
-    CornEgg = { Name = "Corn Egg", Price = "1,000,000,000", Icon = "rbxassetid://89607346860887", Rarity = 5, Category = "" },
-    AnglerfishEgg = { Name = "Anglerfish Egg", Price = "10,000,000", Icon = "rbxassetid://75040057191824", Rarity = 5, Category = "Ocean" },
-    BoneDragonEgg = { Name = "Bone Dragon Egg", Price = "2,000,000,000", Icon = "rbxassetid://90061673164351", Rarity = 5, Category = "" },
-    UltraEgg = { Name = "Ultra Egg", Price = "10,000,000,000", Icon = "rbxassetid://125017061714581", Rarity = 6, Category = "" },
-    DinoEgg = { Name = "Dino Egg", Price = "10,000,000,000", Icon = "rbxassetid://89202977833846", Rarity = 6, Category = "" },
-    FlyEgg = { Name = "Fly Egg", Price = "999,999,999,999", Icon = "rbxassetid://124585798513880", Rarity = 6, Category = "" },
-    SaberCubEgg = { Name = "Saber Cub Egg", Price = "40,000,000,000", Icon = "rbxassetid://139650300263607", Rarity = 6, Category = "" },
-    UnicornEgg = { Name = "Unicorn Egg", Price = "40,000,000,000", Icon = "rbxassetid://136448818476629", Rarity = 6, Category = "" },
-    OctopusEgg = { Name = "Octopus Egg", Price = "800,000,000", Icon = "rbxassetid://109425850264541", Rarity = 6, Category = "Ocean" },
-    AncientEgg = { Name = "Ancient Egg", Price = "999,999,999,999", Icon = "rbxassetid://101395257898929", Rarity = 6, Category = "" },
-    SailfishEgg = { Name = "Sailfish Egg", Price = "800,000,000", Icon = "rbxassetid://81397448808415", Rarity = 6, Category = "Ocean" },
-    SeaDragonEgg = { Name = "Sea Dragon Egg", Price = "999,999,999,999", Icon = "rbxassetid://109025633299772", Rarity = 6, Category = "Ocean" },
-    UnicornProEgg = { Name = "Unicorn Pro Egg", Price = "50,000,000,000", Icon = "rbxassetid://85536865895155", Rarity = 6, Category = "" },
-    GeneralKongEgg = { Name = "General Kong Egg", Price = "80,000,000,000", Icon = "rbxassetid://87872914784536", Rarity = 6, Category = "" },
-    PegasusEgg = { Name = "Pegasus Egg", Price = "999,999,999,999", Icon = "rbxassetid://113005786229298", Rarity = 6, Category = "" }
-}
+-- Fruit Models Cache
+local FruitModels = {}
 
-local FruitData = {
-    Strawberry = { Name = "Strawberry", Price = "5,000", Icon = "🍓", Rarity = 1 },
-    Blueberry = { Name = "Blueberry", Price = "20,000", Icon = "🔵", Rarity = 1 },
-    Watermelon = { Name = "Watermelon", Price = "80,000", Icon = "🍉", Rarity = 2 },
-    Apple = { Name = "Apple", Price = "400,000", Icon = "🍎", Rarity = 2 },
-    Orange = { Name = "Orange", Price = "1,200,000", Icon = "🍊", Rarity = 3 },
-    Corn = { Name = "Corn", Price = "3,500,000", Icon = "🌽", Rarity = 3 },
-    Banana = { Name = "Banana", Price = "12,000,000", Icon = "🍌", Rarity = 4 },
-    Grape = { Name = "Grape", Price = "50,000,000", Icon = "🍇", Rarity = 4 },
-    Pear = { Name = "Pear", Price = "200,000,000", Icon = "🍐", Rarity = 5 },
-    Pineapple = { Name = "Pineapple", Price = "600,000,000", Icon = "🍍", Rarity = 5 },
-    GoldMango = { Name = "Gold Mango", Price = "2,000,000,000", Icon = "🥭", Rarity = 6 },
-    BloodstoneCycad = { Name = "Bloodstone Cycad", Price = "8,000,000,000", Icon = "🌿", Rarity = 6 },
-    ColossalPinecone = { Name = "Colossal Pinecone", Price = "40,000,000,000", Icon = "🌲", Rarity = 6 },
-    VoltGinkgo = { Name = "Volt Ginkgo", Price = "80,000,000,000", Icon = "⚡", Rarity = 6 },
-    DeepseaPearlFruit = { Name = "DeepseaPearlFruit", Price = "40,000,000,000", Icon = "💠", Rarity = 6 },
-    Durian = { Name = "Durian", Price = "80,000,000,000", Icon = "🥥", Rarity = 6 },
-    DragonFruit = { Name = "Dragon Fruit", Price = "1,500,000,000", Icon = "🐲", Rarity = 6 }
-}
+-- Dynamic Data (loaded from game)
+local EggData = {}
+local FruitData = {}
+local MutationData = {}
+local HardcodedPetTypes = {}
+local PetCategoryData = {}
 
-local MutationData = {
-    Golden = { Name = "Golden", Icon = "✨", Rarity = 10 },
-    Diamond = { Name = "Diamond", Icon = "💎", Rarity = 20 },
-    Electirc = { Name = "Electirc", Icon = "⚡", Rarity = 50 },
-    Fire = { Name = "Fire", Icon = "🔥", Rarity = 100 },
-    Dino = { Name = "Jurassic", Icon = "🦕", Rarity = 100 },
-    Snow = { Name = "Snow", Icon = "❄️", Rarity = 150 }
-}
-
-local HardcodedPetTypes = {
-    "Capy1", "Capy2", "Pig", "Capy3", "Dog", "AngelFish", "Cat", "CapyL1", "Cow", "CapyL2", 
-    "Sheep", "CapyL3", "Horse", "Zebra", "Bighead", "Giraffe", "Hippo", "Elephant", "Rabbit", 
-    "Mouse", "Butterflyfish", "Ankylosaurus", "Needlefish", "Wolverine", "Tiger", "Fox", "Hairtail", 
-    "Panda", "Tuna", "Catfish", "Toucan", "Bee", "Snake", "Butterfly", "Tigerfish", "Okapi", 
-    "Panther", "Penguin", "Velociraptor", "Stegosaurus", "Seaturtle", "Bear", "Flounder", "Lion", 
-    "Lionfish", "Rhino", "Kangroo", "Gorilla", "Alligator", "Ostrich", "Triceratops", "Pachycephalosaur", 
-    "Sawfish", "Pterosaur", "ElectricEel", "Wolf", "Rex", "Dolphin", "Dragon", "Baldeagle", "Shark", 
-    "Griffin", "Brontosaurus", "Anglerfish", "Plesiosaur", "Alpaca", "Spinosaurus", "Manta", "Unicorn", 
-    "Phoenix", "Toothless", "Tyrannosaurus", "Mosasaur", "Octopus", "Killerwhale", "Peacock",
-    "Sheep_E1", "Horse_E1", "Zebra_E1", "Giraffe_E1", "Hippo_E1", "Elephant_E1", "Rabbit_E1", 
-    "Mouse_E1", "Wolverine_E1", "Tiger_E1", "Fox_E1", "Panda_E1", "Toucan_E1", "Snake_E1", 
-    "Okapi_E1", "Panther_E1", "Seaturtle_E1", "Bear_E1", "Lion_E1", "Rhino_E1", "Kangroo_E1", 
-    "Gorilla_E1", "Wolf_E1", "Rex_E1", "Dragon_E1", "Griffin_E1", "Penguin_E1", "Ostrich_E1", 
-    "Baldeagle_E1", "Butterfly_E1", "Bee_E1"
-}
-
--- Pet Category Data (for ocean filter)
-local PetCategoryData = {
-    -- Ocean Pets
-    AngelFish = { Category = "Ocean" },
-    Butterflyfish = { Category = "Ocean" },
-    Needlefish = { Category = "Ocean" },
-    Hairtail = { Category = "Ocean" },
-    Tuna = { Category = "Ocean" },
-    Catfish = { Category = "Ocean" },
-    Tigerfish = { Category = "Ocean" },
-    Flounder = { Category = "Ocean" },
-    Lionfish = { Category = "Ocean" },
-    ElectricEel = { Category = "Ocean" },
-    Dolphin = { Category = "Ocean" },
-    Shark = { Category = "Ocean" },
-    Anglerfish = { Category = "Ocean" },
-    Plesiosaur = { Category = "Ocean" },
-    Manta = { Category = "Ocean" },
-    Mosasaur = { Category = "Ocean" },
-    Octopus = { Category = "Ocean" },
-    Killerwhale = { Category = "Ocean" },
-    Sawfish = { Category = "Ocean" },
-    Seaturtle = { Category = "Ocean" },
-    Seaturtle_E1 = { Category = "Ocean" },
+-- Load data from game
+local function LoadGameData()
+    -- Load Egg Data
+    local success, eggModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResEgg"))
+    end)
     
-    -- Evolution Pets
-    Sheep_E1 = { Category = "Evolution" },
-    Horse_E1 = { Category = "Evolution" },
-    Zebra_E1 = { Category = "Evolution" },
-    Giraffe_E1 = { Category = "Evolution" },
-    Hippo_E1 = { Category = "Evolution" },
-    Elephant_E1 = { Category = "Evolution" },
-    Rabbit_E1 = { Category = "Evolution" },
-    Mouse_E1 = { Category = "Evolution" },
-    Wolverine_E1 = { Category = "Evolution" },
-    Tiger_E1 = { Category = "Evolution" },
-    Fox_E1 = { Category = "Evolution" },
-    Panda_E1 = { Category = "Evolution" },
-    Toucan_E1 = { Category = "Evolution" },
-    Snake_E1 = { Category = "Evolution" },
-    Okapi_E1 = { Category = "Evolution" },
-    Panther_E1 = { Category = "Evolution" },
-    Bear_E1 = { Category = "Evolution" },
-    Lion_E1 = { Category = "Evolution" },
-    Rhino_E1 = { Category = "Evolution" },
-    Kangroo_E1 = { Category = "Evolution" },
-    Gorilla_E1 = { Category = "Evolution" },
-    Wolf_E1 = { Category = "Evolution" },
-    Rex_E1 = { Category = "Evolution" },
-    Dragon_E1 = { Category = "Evolution" },
-    Griffin_E1 = { Category = "Evolution" },
-    Penguin_E1 = { Category = "Evolution" },
-    Ostrich_E1 = { Category = "Evolution" },
-    Baldeagle_E1 = { Category = "Evolution" },
-    Butterfly_E1 = { Category = "Evolution" },
-    Bee_E1 = { Category = "Evolution" },
+    if success and eggModule then
+        for eggId, eggInfo in pairs(eggModule) do
+            if type(eggInfo) == "table" and eggInfo.ID then
+                EggData[eggId] = {
+                    Name = eggId:gsub("Egg", " Egg"),
+                    Price = tostring(eggInfo.Price or 0),
+                    Icon = eggInfo.Icon or "",
+                    Rarity = eggInfo.Rarity or 1,
+                    Category = eggInfo.Category or ""
+                }
+            end
+        end
+    end
     
-    -- All other pets have Category = "" (normal pets)
-}
+    -- Load Mutation Data
+    local success2, mutationModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResMutate"))
+    end)
+    
+    if success2 and mutationModule then
+        for mutationId, mutationInfo in pairs(mutationModule) do
+            if type(mutationInfo) == "table" and mutationInfo.ID then
+                local displayId = mutationId
+                local displayName = mutationId
+                
+                -- Handle Dino -> Jurassic mapping
+                if mutationId == "Dino" then
+                    displayId = "Dino"
+                    displayName = "Jurassic"
+                end
+                
+                MutationData[displayId] = {
+                    Name = displayName,
+                    Icon = mutationInfo.Icon or "🧬",
+                    Rarity = mutationInfo.RarityNum or 0
+                }
+            end
+        end
+    end
+    
+    -- Load Fruit Data
+    local success3, fruitModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResPetFood"))
+    end)
+    
+    if success3 and fruitModule then
+        for fruitId, fruitInfo in pairs(fruitModule) do
+            if type(fruitInfo) == "table" and fruitInfo.ID then
+                FruitData[fruitId] = {
+                    Name = fruitId,
+                    Price = tostring(fruitInfo.Price or 0),
+                    Icon = fruitInfo.Icon or "🍎",
+                    Rarity = fruitInfo.Rarity or 1
+                }
+            end
+        end
+    end
+    
+    -- Load Pet Types and Categories from ResPet
+    local success4, petModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResPet"))
+    end)
+    
+    if success4 and petModule then
+        for petId, petInfo in pairs(petModule) do
+            if type(petInfo) == "table" and petInfo.ID then
+                -- Add to pet types list
+                table.insert(HardcodedPetTypes, petId)
+                
+                -- Store category data
+                PetCategoryData[petId] = {
+                    Category = petInfo.Category or ""
+                }
+            end
+        end
+        
+        -- Sort alphabetically
+        table.sort(HardcodedPetTypes)
+    end
+end
+
+
+-- Initialize game data on module load
+task.spawn(function()
+    task.wait(2) -- Wait for game to load
+    LoadGameData()
+end)
 
 -- macOS Dark Theme Colors
 local colors = {
@@ -222,6 +185,56 @@ local colors = {
     error = Color3.fromRGB(255, 69, 58),
     disabled = Color3.fromRGB(100, 100, 100)
 }
+
+-- Fruit Model Functions
+local function GetFruitModel(fruitId)
+    -- Check cache first
+    if FruitModels[fruitId] then
+        return FruitModels[fruitId]
+    end
+    
+    -- Search for fruit model in ReplicatedStorage
+    local success, model = pcall(function()
+        -- Try common paths for fruit models
+        local paths = {
+            ReplicatedStorage:WaitForChild("PetFood", 1),
+            ReplicatedStorage:FindFirstChild("Models") and ReplicatedStorage.Models:FindFirstChild("PetFood"),
+            ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("PetFood"),
+        }
+        
+        for _, path in ipairs(paths) do
+            if path then
+                local fruitModel = path:FindFirstChild(fruitId)
+                if fruitModel and fruitModel:IsA("Model") then
+                    FruitModels[fruitId] = fruitModel
+                    return fruitModel
+                end
+            end
+        end
+        
+        -- Try searching in all children
+        for _, child in ipairs(ReplicatedStorage:GetChildren()) do
+            if child:IsA("Folder") or child:IsA("Model") then
+                local petFood = child:FindFirstChild("PetFood")
+                if petFood then
+                    local fruitModel = petFood:FindFirstChild(fruitId)
+                    if fruitModel and fruitModel:IsA("Model") then
+                        FruitModels[fruitId] = fruitModel
+                        return fruitModel
+                    end
+                end
+            end
+        end
+        
+        return nil
+    end)
+    
+    if success and model then
+        return model
+    end
+    
+    return nil
+end
 
 -- Utility Functions
 local function formatNumber(num)
@@ -1151,15 +1164,35 @@ local function createTargetSection(parent)
     
     local speedLabel = Instance.new("TextLabel")
     speedLabel.Name = "SpeedLabel"
-    speedLabel.Size = UDim2.new(1, 0, 0, 20)
+    speedLabel.Size = UDim2.new(0.5, 0, 0, 20)
     speedLabel.Position = UDim2.new(0, 0, 0, 0)
     speedLabel.BackgroundTransparency = 1
-    speedLabel.Text = "Send Speed: " .. string.format("%.1fs", sendingSpeed)
+    speedLabel.Text = "Send Speed:"
     speedLabel.TextSize = 12
     speedLabel.Font = Enum.Font.GothamSemibold
     speedLabel.TextColor3 = colors.text
-    speedLabel.TextXAlignment = Enum.TextXAlignment.Center
+    speedLabel.TextXAlignment = Enum.TextXAlignment.Left
     speedLabel.Parent = speedFrame
+    
+    -- Speed Input Box
+    local speedInput = Instance.new("TextBox")
+    speedInput.Name = "SpeedInput"
+    speedInput.Size = UDim2.new(0.5, 0, 0, 20)
+    speedInput.Position = UDim2.new(0.5, 0, 0, 0)
+    speedInput.BackgroundColor3 = colors.hover
+    speedInput.BorderSizePixel = 0
+    speedInput.Text = string.format("%.1f", sendingSpeed)
+    speedInput.PlaceholderText = "0.5-2.5s"
+    speedInput.TextSize = 12
+    speedInput.Font = Enum.Font.Gotham
+    speedInput.TextColor3 = colors.text
+    speedInput.TextXAlignment = Enum.TextXAlignment.Center
+    speedInput.ClearTextOnFocus = false
+    speedInput.Parent = speedFrame
+    
+    local speedInputCorner = Instance.new("UICorner")
+    speedInputCorner.CornerRadius = UDim.new(0, 4)
+    speedInputCorner.Parent = speedInput
     
     -- Speed Slider Background
     local sliderBg = Instance.new("Frame")
@@ -1201,6 +1234,35 @@ local function createTargetSection(parent)
     sliderHandleCorner.CornerRadius = UDim.new(0, 8)
     sliderHandleCorner.Parent = sliderHandle
     
+    -- Input validation for speed
+    speedInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local text = speedInput.Text
+        local filteredText = text:gsub("[^%d%.]", "") -- Only allow digits and decimal
+        if text ~= filteredText then
+            speedInput.Text = filteredText
+        end
+    end)
+    
+    speedInput.FocusLost:Connect(function()
+        local value = tonumber(speedInput.Text)
+        if value then
+            -- Clamp between 0.5 and 2.5
+            value = math.max(0.5, math.min(2.5, value))
+            sendingSpeed = value
+            speedInput.Text = string.format("%.1f", value)
+            
+            -- Update slider position
+            local relativeX = (2.5 - value) / 2.0
+            sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
+            
+            saveConfig()
+        else
+            -- Invalid input, reset to current value
+            speedInput.Text = string.format("%.1f", sendingSpeed)
+        end
+    end)
+    
     -- Speed Slider Interaction
     local isDraggingSlider = false
     
@@ -1221,7 +1283,7 @@ local function createTargetSection(parent)
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
-            speedLabel.Text = "Send Speed: " .. string.format("%.1fs", sendingSpeed)
+            speedInput.Text = string.format("%.1f", sendingSpeed)
             
             -- Save to config
             saveConfig()
@@ -1237,7 +1299,7 @@ local function createTargetSection(parent)
             -- Update UI
             sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             sliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
-            speedLabel.Text = "Send Speed: " .. string.format("%.1fs", sendingSpeed)
+            speedInput.Text = string.format("%.1f", sendingSpeed)
         end
     end)
     
@@ -1261,15 +1323,35 @@ local function createTargetSection(parent)
     
     local scaleLabel = Instance.new("TextLabel")
     scaleLabel.Name = "ScaleLabel"
-    scaleLabel.Size = UDim2.new(1, 0, 0, 20)
+    scaleLabel.Size = UDim2.new(0.5, 0, 0, 20)
     scaleLabel.Position = UDim2.new(0, 0, 0, 0)
     scaleLabel.BackgroundTransparency = 1
-    scaleLabel.Text = "UI Scale: 100%"
+    scaleLabel.Text = "UI Scale:"
     scaleLabel.TextSize = 12
     scaleLabel.Font = Enum.Font.GothamSemibold
     scaleLabel.TextColor3 = colors.text
-    scaleLabel.TextXAlignment = Enum.TextXAlignment.Center
+    scaleLabel.TextXAlignment = Enum.TextXAlignment.Left
     scaleLabel.Parent = scaleFrame
+    
+    -- Scale Input Box
+    local scaleInput = Instance.new("TextBox")
+    scaleInput.Name = "ScaleInput"
+    scaleInput.Size = UDim2.new(0.5, 0, 0, 20)
+    scaleInput.Position = UDim2.new(0.5, 0, 0, 0)
+    scaleInput.BackgroundColor3 = colors.hover
+    scaleInput.BorderSizePixel = 0
+    scaleInput.Text = "100"
+    scaleInput.PlaceholderText = "50-120%"
+    scaleInput.TextSize = 12
+    scaleInput.Font = Enum.Font.Gotham
+    scaleInput.TextColor3 = colors.text
+    scaleInput.TextXAlignment = Enum.TextXAlignment.Center
+    scaleInput.ClearTextOnFocus = false
+    scaleInput.Parent = scaleFrame
+    
+    local scaleInputCorner = Instance.new("UICorner")
+    scaleInputCorner.CornerRadius = UDim.new(0, 4)
+    scaleInputCorner.Parent = scaleInput
     
     -- Scale Slider Background
     local scaleSliderBg = Instance.new("Frame")
@@ -1311,6 +1393,41 @@ local function createTargetSection(parent)
     scaleSliderHandleCorner.CornerRadius = UDim.new(0, 8)
     scaleSliderHandleCorner.Parent = scaleSliderHandle
     
+    -- Input validation for scale
+    scaleInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local text = scaleInput.Text
+        local filteredText = text:gsub("[^%d]", "") -- Only allow digits
+        if text ~= filteredText then
+            scaleInput.Text = filteredText
+        end
+    end)
+    
+    scaleInput.FocusLost:Connect(function()
+        local value = tonumber(scaleInput.Text)
+        if value then
+            -- Clamp between 50 and 120
+            value = math.max(50, math.min(120, value))
+            local uiScaleValue = value / 100 -- Convert to 0.5-1.2
+            scaleInput.Text = tostring(value)
+            
+            -- Update slider position
+            local relativeX = (uiScaleValue - 0.5) / 0.7
+            scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
+            
+            -- Apply scale
+            if AutoTradeUI.SetUIScale then
+                AutoTradeUI.SetUIScale(uiScaleValue)
+            end
+            
+            saveConfig()
+        else
+            -- Invalid input, reset to current value
+            local currentScale = ScreenGui and ScreenGui.UIScale and ScreenGui.UIScale.Scale or 1.0
+            scaleInput.Text = tostring(math.floor(currentScale * 100))
+        end
+    end)
+    
     -- Scale Slider Interaction
     local isDraggingScaleSlider = false
     
@@ -1331,7 +1448,7 @@ local function createTargetSection(parent)
             -- Update UI
             scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
-            scaleLabel.Text = "UI Scale: " .. math.floor(uiScaleValue * 100) .. "%"
+            scaleInput.Text = tostring(math.floor(uiScaleValue * 100))
             
             -- Apply scale
             if AutoTradeUI.SetUIScale then
@@ -1349,7 +1466,7 @@ local function createTargetSection(parent)
             -- Update UI
             scaleSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
             scaleSliderHandle.Position = UDim2.new(relativeX, -8, 0, 20)
-            scaleLabel.Text = "UI Scale: " .. math.floor(uiScaleValue * 100) .. "%"
+            scaleInput.Text = tostring(math.floor(uiScaleValue * 100))
             
             -- Apply scale
             if AutoTradeUI.SetUIScale then
@@ -1990,30 +2107,81 @@ local function createItemCard(itemId, itemData, category, parent)
     
     -- Icon (for eggs and fruits)
     if category ~= "pets" then
-        local icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 40, 0, 40)
-        icon.Position = UDim2.new(0, 10, 0, 10)
-        icon.BackgroundTransparency = 1
         if category == "eggs" then
-            icon.Image = itemData.Icon or ""
-        else
-            -- For fruits, create text icon
-            icon:Destroy()
-            icon = Instance.new("TextLabel")
+            -- Egg icon (ImageLabel)
+            local icon = Instance.new("ImageLabel")
             icon.Name = "Icon"
             icon.Size = UDim2.new(0, 40, 0, 40)
             icon.Position = UDim2.new(0, 10, 0, 10)
             icon.BackgroundTransparency = 1
-            icon.Text = itemData.Icon or "🍎"
-            icon.TextSize = 24
-            icon.Font = Enum.Font.GothamBold
-            icon.TextColor3 = getRarityColor(itemData.Rarity)
-            icon.ZIndex = 2
+            icon.Image = itemData.Icon or ""
             icon.Parent = card
-        end
-        if category == "eggs" then
-            icon.Parent = card
+        else
+            -- Fruit icon - try 3D model first, then fallback to emoji
+            local iconContainer = Instance.new("Frame")
+            iconContainer.Name = "IconContainer"
+            iconContainer.Size = UDim2.new(0, 40, 0, 40)
+            iconContainer.Position = UDim2.new(0, 10, 0, 10)
+            iconContainer.BackgroundTransparency = 1
+            iconContainer.ZIndex = 2
+            iconContainer.Parent = card
+            
+            -- Try to get 3D model
+            local fruitModel = GetFruitModel(itemId)
+            
+            if fruitModel then
+                -- Create ViewportFrame for 3D model
+                local viewport = Instance.new("ViewportFrame")
+                viewport.Size = UDim2.new(1, 0, 1, 0)
+                viewport.BackgroundTransparency = 1
+                viewport.BorderSizePixel = 0
+                viewport.ZIndex = 3
+                viewport.Parent = iconContainer
+                
+                -- Clone and setup model
+                local modelClone = fruitModel:Clone()
+                modelClone.Parent = viewport
+                
+                -- Create camera
+                local camera = Instance.new("Camera")
+                camera.Parent = viewport
+                viewport.CurrentCamera = camera
+                
+                -- Position camera to view model
+                local cf, size = modelClone:GetBoundingBox()
+                local maxSize = math.max(size.X, size.Y, size.Z)
+                local distance = maxSize * 1.8
+                camera.CFrame = CFrame.new(cf.Position + Vector3.new(distance, distance * 0.4, distance), cf.Position)
+                
+                -- Add lighting
+                local light = Instance.new("PointLight")
+                light.Brightness = 2
+                light.Range = 20
+                light.Parent = modelClone
+            else
+                -- Fallback to emoji/icon
+                if itemData.Icon and string.match(itemData.Icon, "rbxassetid://") then
+                    -- Use ImageLabel for rbxassetid
+                    local imageLabel = Instance.new("ImageLabel")
+                    imageLabel.Size = UDim2.new(1, 0, 1, 0)
+                    imageLabel.BackgroundTransparency = 1
+                    imageLabel.Image = itemData.Icon
+                    imageLabel.ScaleType = Enum.ScaleType.Fit
+                    imageLabel.ZIndex = 3
+                    imageLabel.Parent = iconContainer
+                else
+                    -- Use TextLabel for emoji
+                    local textLabel = Instance.new("TextLabel")
+                    textLabel.Size = UDim2.new(1, 0, 1, 0)
+                    textLabel.BackgroundTransparency = 1
+                    textLabel.Text = itemData.Icon or "🍎"
+                    textLabel.TextSize = 24
+                    textLabel.Font = Enum.Font.GothamBold
+                    textLabel.TextColor3 = getRarityColor(itemData.Rarity)
+                    textLabel.ZIndex = 3
+                    textLabel.Parent = iconContainer
+                end
+            end
         end
     end
     
