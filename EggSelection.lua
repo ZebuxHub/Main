@@ -16,34 +16,54 @@ local function LoadEggDataFromGame()
     local EggData = {}
     
     -- Try to get the game's egg config
-    local success, result = pcall(function()
+    local success, resEggModule = pcall(function()
         return ReplicatedStorage:WaitForChild("Config", 5):WaitForChild("ResEgg", 5)
     end)
     
-    if success and result then
-        print("✅ Loading eggs from game data...")
+    if success and resEggModule then
+        -- ResEgg is a ModuleScript, so we need to require it
+        local loadSuccess, result = pcall(function()
+            return require(resEggModule)
+        end)
         
-        -- Convert game data to our format
-        for eggId, eggInfo in pairs(result) do
-            -- Skip the __index array
-            if type(eggInfo) == "table" and eggInfo.ID then
-                -- Format the egg name nicely
-                local formattedName = eggInfo.ID:gsub("Egg$", ""):gsub("(%u)", " %1"):sub(2) .. " Egg"
-                
-                EggData[eggInfo.ID] = {
-                    Name = formattedName,
-                    Price = eggInfo.Price,
-                    Icon = eggInfo.Icon or "rbxassetid://0",
-                    Rarity = eggInfo.Rarity or 1,
-                    IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
-                }
+        if loadSuccess and result then
+            print("✅ Loading eggs from game data...")
+            
+            local eggCount = 0
+            -- Convert game data to our format
+            for eggId, eggInfo in pairs(result) do
+                -- Skip the __index array
+                if type(eggInfo) == "table" and eggInfo.ID then
+                    -- Format the egg name nicely (remove "Egg" suffix, add spaces before capitals)
+                    local nameWithoutEgg = eggInfo.ID:gsub("Egg$", "")
+                    local formattedName = nameWithoutEgg:gsub("(%u)", " %1"):gsub("^%s+", "") .. " Egg"
+                    
+                    EggData[eggInfo.ID] = {
+                        Name = formattedName,
+                        Price = eggInfo.Price,
+                        Icon = eggInfo.Icon or "rbxassetid://0",
+                        Rarity = eggInfo.Rarity or 1,
+                        IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
+                    }
+                    eggCount = eggCount + 1
+                end
             end
+            
+            print("✅ Loaded " .. tostring(eggCount) .. " eggs from game!")
+        else
+            warn("⚠️ Could not require ResEgg module: " .. tostring(result))
+            -- Use fallback
+            EggData = nil
         end
-        
-        print("✅ Loaded " .. tostring(#EggData) .. " eggs from game!")
     else
-        warn("⚠️ Could not load game data, using fallback eggs")
-        -- Fallback to basic eggs if game data fails
+        warn("⚠️ Could not find ResEgg in game: " .. tostring(resEggModule))
+        -- Use fallback
+        EggData = nil
+    end
+    
+    -- Fallback to basic eggs if game data fails
+    if not EggData or not next(EggData) then
+        warn("⚠️ Using fallback egg data")
         EggData = {
             BasicEgg = {
                 Name = "Basic Egg",
