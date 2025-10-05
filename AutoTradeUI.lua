@@ -386,7 +386,7 @@ local function getPlayerInventory()
         end
     end
     
-    -- Get Fruits (using robust method like WebhookSystem)
+    -- Get Fruits (using robust method like FeedFruitSelection)
     local asset = LocalPlayer.PlayerGui.Data:FindFirstChild("Asset")
     if asset then
         -- Name normalization helper
@@ -431,27 +431,6 @@ local function getPlayerInventory()
             if type(amount) == "string" then amount = tonumber(amount) or 0 end
             if type(amount) == "number" and amount > 0 then
                 inventory.fruits[id] = amount
-            end
-        end
-        
-        -- Also support legacy children-based values as fallback/merge
-        for _, child in pairs(asset:GetChildren()) do
-            if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
-                local normalized = normalizeFruitName(child.Name)
-                local canonical = FRUIT_CANONICAL and FRUIT_CANONICAL[normalized]
-                if canonical then
-                    local amount = child.Value
-                    if type(amount) == "string" then amount = tonumber(amount) or 0 end
-                    if type(amount) == "number" and amount > 0 then
-                        -- Use the ID that matches the canonical name
-                        for id, item in pairs(FruitData) do
-                            if item.Name == canonical then
-                                inventory.fruits[id] = amount
-                                break
-                            end
-                        end
-                    end
-                end
             end
         end
     end
