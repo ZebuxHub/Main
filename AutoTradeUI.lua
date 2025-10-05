@@ -2131,7 +2131,7 @@ local function createItemCard(itemId, itemData, category, parent)
             -- Fruit icon - try 3D model first, then fallback to emoji
             local iconContainer = Instance.new("Frame")
             iconContainer.Name = "IconContainer"
-            iconContainer.Size = UDim2.new(0, 45, 0, 45)
+            iconContainer.Size = UDim2.new(0, 20, 0, 20)
             iconContainer.Position = UDim2.new(0, 8, 0, 8)
             iconContainer.BackgroundTransparency = 1
             iconContainer.ZIndex = 2
