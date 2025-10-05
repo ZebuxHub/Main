@@ -26,18 +26,14 @@ local function LoadEggDataFromGame()
             for eggId, eggInfo in pairs(gameEggData) do
                 -- Skip the __index table
                 if eggId ~= "__index" and type(eggInfo) == "table" then
-                    -- Exclude eggs with Category = "Ocean"
-                    local category = eggInfo.Category or ""
-                    if category ~= "Ocean" then
-                        -- Convert to our format
-                        convertedData[eggId] = {
-                            Name = eggInfo.ID or eggId, -- Use ID or fallback to key
-                            Price = eggInfo.Price or 0, -- Now a number
-                            Icon = eggInfo.Icon or "", -- Already in correct format
-                            Rarity = eggInfo.Rarity or 1,
-                            IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
-                        }
-                    end
+                    -- Convert to our format
+                    convertedData[eggId] = {
+                        Name = eggInfo.ID or eggId, -- Use ID or fallback to key
+                        Price = eggInfo.Price or 0, -- Now a number
+                        Icon = eggInfo.Icon or "", -- Already in correct format
+                        Rarity = eggInfo.Rarity or 1,
+                        IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
+                    }
                 end
             end
             
