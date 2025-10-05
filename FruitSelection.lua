@@ -271,15 +271,38 @@ local function formatNumber(num)
         return num
     end
     if num >= 1e12 then
-        return string.format("%.1fT", num / 1e12)
+        local formatted = string.format("%.1f", num / 1e12)
+        -- Add comma for numbers >= 1,000T
+        if num >= 1e15 then
+            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
+        end
+        return formatted .. "T"
     elseif num >= 1e9 then
-        return string.format("%.1fB", num / 1e9)
+        local formatted = string.format("%.1f", num / 1e9)
+        -- Add comma for numbers >= 1,000B
+        if num >= 1e12 then
+            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
+        end
+        return formatted .. "B"
     elseif num >= 1e6 then
-        return string.format("%.1fM", num / 1e6)
+        local formatted = string.format("%.1f", num / 1e6)
+        -- Add comma for numbers >= 1,000M
+        if num >= 1e9 then
+            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
+        end
+        return formatted .. "M"
     elseif num >= 1e3 then
-        return string.format("%.1fK", num / 1e3)
+        local formatted = string.format("%.1f", num / 1e3)
+        -- Add comma for numbers >= 1,000K
+        if num >= 1e6 then
+            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
+        end
+        return formatted .. "K"
     else
-        return tostring(num)
+        -- Add comma for numbers >= 1,000
+        local formatted = tostring(math.floor(num))
+        formatted = string.gsub(formatted, "^(%d+)(%d%d%d)$", "%1,%2")
+        return formatted
     end
 end
 
@@ -414,7 +437,7 @@ local function createItemCard(itemId, itemData, parent)
     -- Create Icon (ViewportFrame for 3D model or ImageLabel for icon)
     local iconContainer = Instance.new("Frame")
     iconContainer.Name = "IconContainer"
-    iconContainer.Size = UDim2.new(0, 180, 0, 180)
+    iconContainer.Size = UDim2.new(0, 360, 0, 360)
     iconContainer.Position = UDim2.new(0.5, -45, 0.1, 0)
     iconContainer.BackgroundTransparency = 1
     iconContainer.Parent = card
