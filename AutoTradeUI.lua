@@ -2131,8 +2131,8 @@ local function createItemCard(itemId, itemData, category, parent)
             -- Fruit icon - try 3D model first, then fallback to emoji
             local iconContainer = Instance.new("Frame")
             iconContainer.Name = "IconContainer"
-            iconContainer.Size = UDim2.new(0, 50, 0, 50)
-            iconContainer.Position = UDim2.new(0, 5, 0, 5)
+            iconContainer.Size = UDim2.new(0, 45, 0, 45)
+            iconContainer.Position = UDim2.new(0, 8, 0, 8)
             iconContainer.BackgroundTransparency = 1
             iconContainer.ZIndex = 2
             iconContainer.Parent = card
@@ -2204,7 +2204,7 @@ local function createItemCard(itemId, itemData, category, parent)
                     textLabel.Size = UDim2.new(1, 0, 1, 0)
                     textLabel.BackgroundTransparency = 1
                     textLabel.Text = itemData.Icon or "🍎"
-                    textLabel.TextSize = 36
+                    textLabel.TextSize = 32
                     textLabel.Font = Enum.Font.GothamBold
                     textLabel.TextColor3 = getRarityColor(itemData.Rarity)
                     textLabel.ZIndex = 3
@@ -2218,7 +2218,7 @@ local function createItemCard(itemId, itemData, category, parent)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
     nameLabel.Size = UDim2.new(0, 150, 0, 20)
-    nameLabel.Position = UDim2.new(0, category == "pets" and 10 or 62, 0, 5)
+    nameLabel.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 5)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = itemData.Name or itemId
     nameLabel.TextSize = 14
@@ -2232,7 +2232,7 @@ local function createItemCard(itemId, itemData, category, parent)
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
     ownedLabel.Size = UDim2.new(0, 80, 0, 16)
-    local ownedLabelX = category == "pets" and 10 or 62
+    local ownedLabelX = category == "pets" and 10 or 60
     ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 25)
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
