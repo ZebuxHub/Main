@@ -297,8 +297,8 @@ local function createMainUI()
     ScreenGui.Parent = PlayerGui
     
     MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 900, 0, 550)
-    MainFrame.Position = UDim2.new(0.5, -450, 0.5, -275)
+    MainFrame.Size = UDim2.new(0, 700, 0, 450)
+    MainFrame.Position = UDim2.new(0.5, -350, 0.5, -225)
     MainFrame.BackgroundColor3 = colors.background
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
@@ -308,80 +308,111 @@ local function createMainUI()
     corner.Parent = MainFrame
     
     local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.primary
-    stroke.Thickness = 2
+    stroke.Color = colors.border
+    stroke.Thickness = 1
     stroke.Parent = MainFrame
     
-    -- Title Bar
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 50)
-    titleBar.BackgroundColor3 = colors.surface
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = MainFrame
+    -- macOS Window Controls
+    local controlsContainer = Instance.new("Frame")
+    controlsContainer.Name = "WindowControls"
+    controlsContainer.Size = UDim2.new(0, 70, 0, 12)
+    controlsContainer.Position = UDim2.new(0, 12, 0, 12)
+    controlsContainer.BackgroundTransparency = 1
+    controlsContainer.Parent = MainFrame
     
-    local titleBarCorner = Instance.new("UICorner")
-    titleBarCorner.CornerRadius = UDim.new(0, 12)
-    titleBarCorner.Parent = titleBar
-    
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -100, 1, 0)
-    titleLabel.Position = UDim2.new(0, 16, 0, 0)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "🍎 Station Feed Setup"
-    titleLabel.TextSize = 14
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextColor3 = colors.text
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Parent = titleBar
-    
-    local closeButton = Instance.new("TextButton")
-    closeButton.Size = UDim2.new(0, 40, 0, 40)
-    closeButton.Position = UDim2.new(1, -45, 0, 5)
-    closeButton.BackgroundColor3 = colors.close
-    closeButton.BorderSizePixel = 0
-    closeButton.Text = "❌"
-    closeButton.TextSize = 18
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.TextColor3 = Color3.new(1, 1, 1)
-    closeButton.Parent = titleBar
+    -- Close Button (Red)
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseBtn"
+    closeBtn.Size = UDim2.new(0, 12, 0, 12)
+    closeBtn.Position = UDim2.new(0, 0, 0, 0)
+    closeBtn.BackgroundColor3 = colors.close
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = ""
+    closeBtn.Parent = controlsContainer
     
     local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(1, 0)
-    closeCorner.Parent = closeButton
+    closeCorner.CornerRadius = UDim.new(0.5, 0)
+    closeCorner.Parent = closeBtn
     
-    closeButton.MouseButton1Click:Connect(function()
+    closeBtn.MouseButton1Click:Connect(function()
         StationFeedSetup.Hide()
     end)
     
-    -- Draggable
+    -- Minimize Button (Yellow)
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Name = "MinimizeBtn"
+    minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
+    minimizeBtn.Position = UDim2.new(0, 18, 0, 0)
+    minimizeBtn.BackgroundColor3 = colors.minimize
+    minimizeBtn.BorderSizePixel = 0
+    minimizeBtn.Text = ""
+    minimizeBtn.Parent = controlsContainer
+    
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(0.5, 0)
+    minimizeCorner.Parent = minimizeBtn
+    
+    -- Maximize Button (Green)
+    local maximizeBtn = Instance.new("TextButton")
+    maximizeBtn.Name = "MaximizeBtn"
+    maximizeBtn.Size = UDim2.new(0, 12, 0, 12)
+    maximizeBtn.Position = UDim2.new(0, 36, 0, 0)
+    maximizeBtn.BackgroundColor3 = colors.maximize
+    maximizeBtn.BorderSizePixel = 0
+    maximizeBtn.Text = ""
+    maximizeBtn.Parent = controlsContainer
+    
+    local maximizeCorner = Instance.new("UICorner")
+    maximizeCorner.CornerRadius = UDim.new(0.5, 0)
+    maximizeCorner.Parent = maximizeBtn
+    
+    -- Title
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -140, 0, 20)
+    titleLabel.Position = UDim2.new(0, 100, 0, 12)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "Station Feed Setup"
+    titleLabel.TextSize = 14
+    titleLabel.Font = Enum.Font.GothamSemibold
+    titleLabel.TextColor3 = colors.text
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+    titleLabel.Parent = MainFrame
+    
+    -- Draggable title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundTransparency = 1
+    titleBar.Parent = MainFrame
+    
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             isDragging = true
             dragStart = input.Position
             startPos = MainFrame.Position
+            
+            local connection
+            connection = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isDragging = false
+                    connection:Disconnect()
+                end
+            end)
         end
     end)
     
     UserInputService.InputChanged:Connect(function(input)
-        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
             local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = false
+            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     
     -- Left Panel: Big Pet List
     local leftPanel = Instance.new("Frame")
-    leftPanel.Size = UDim2.new(0.35, -8, 1, -120)
-    leftPanel.Position = UDim2.new(0, 16, 0, 66)
+    leftPanel.Size = UDim2.new(0.35, -8, 1, -100)
+    leftPanel.Position = UDim2.new(0, 16, 0, 50)
     leftPanel.BackgroundColor3 = colors.surface
     leftPanel.BorderSizePixel = 0
     leftPanel.Parent = MainFrame
@@ -416,8 +447,8 @@ local function createMainUI()
     
     -- Right Panel: Fruit Grid
     local rightPanel = Instance.new("Frame")
-    rightPanel.Size = UDim2.new(0.65, -24, 1, -120)
-    rightPanel.Position = UDim2.new(0.35, 8, 0, 66)
+    rightPanel.Size = UDim2.new(0.65, -24, 1, -100)
+    rightPanel.Position = UDim2.new(0.35, 8, 0, 50)
     rightPanel.BackgroundColor3 = colors.surface
     rightPanel.BorderSizePixel = 0
     rightPanel.Parent = MainFrame
@@ -488,8 +519,8 @@ local function createMainUI()
     fruitScroll.Parent = rightPanel
     
     local fruitGrid = Instance.new("UIGridLayout")
-    fruitGrid.CellSize = UDim2.new(0.31, 0, 0, 130)
-    fruitGrid.CellPadding = UDim2.new(0.015, 0, 0, 8)
+    fruitGrid.CellSize = UDim2.new(0.31, 0, 0, 120)
+    fruitGrid.CellPadding = UDim2.new(0.015, 0, 0, 6)
     fruitGrid.SortOrder = Enum.SortOrder.LayoutOrder
     fruitGrid.Parent = fruitScroll
     
@@ -538,7 +569,7 @@ local function createMainUI()
             
             local card = Instance.new("TextButton")
             card.Name = "Fruit_" .. fruitId
-            card.Size = UDim2.new(0.31, 0, 0, 130)
+            card.Size = UDim2.new(0.31, 0, 0, 120)
             card.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surface
             card.BorderSizePixel = 0
             card.Text = ""
@@ -554,10 +585,10 @@ local function createMainUI()
             cardStroke.Thickness = stationFruitAssignments[stationId][fruitId] and 2 or 1
             cardStroke.Parent = card
             
-            -- Icon Container (larger)
+            -- Icon Container
             local iconContainer = Instance.new("Frame")
-            iconContainer.Size = UDim2.new(0, 70, 0, 70)
-            iconContainer.Position = UDim2.new(0.5, -35, 0.12, 0)
+            iconContainer.Size = UDim2.new(0, 60, 0, 60)
+            iconContainer.Position = UDim2.new(0.5, -30, 0.1, 0)
             iconContainer.BackgroundTransparency = 1
             iconContainer.Parent = card
             
@@ -597,7 +628,7 @@ local function createMainUI()
                     textLabel.Size = UDim2.new(1, 0, 1, 0)
                     textLabel.BackgroundTransparency = 1
                     textLabel.Text = fruitData.Icon
-                    textLabel.TextSize = 48
+                    textLabel.TextSize = 42
                     textLabel.Font = Enum.Font.GothamBold
                     textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
                     textLabel.Parent = iconContainer
@@ -607,7 +638,7 @@ local function createMainUI()
                 textLabel.Size = UDim2.new(1, 0, 1, 0)
                 textLabel.BackgroundTransparency = 1
                 textLabel.Text = "🍎"
-                textLabel.TextSize = 48
+                textLabel.TextSize = 42
                 textLabel.Font = Enum.Font.GothamBold
                 textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
                 textLabel.Parent = iconContainer
@@ -615,11 +646,11 @@ local function createMainUI()
             
             -- Name
             local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, -12, 0, 20)
-            nameLabel.Position = UDim2.new(0, 6, 0.68, 0)
+            nameLabel.Size = UDim2.new(1, -10, 0, 18)
+            nameLabel.Position = UDim2.new(0, 5, 0.65, 0)
             nameLabel.BackgroundTransparency = 1
             nameLabel.Text = fruitData.Name
-            nameLabel.TextSize = 11
+            nameLabel.TextSize = 10
             nameLabel.Font = Enum.Font.GothamSemibold
             nameLabel.TextColor3 = colors.text
             nameLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -629,11 +660,11 @@ local function createMainUI()
             -- Amount
             local amount = inventory[fruitId] or 0
             local amountLabel = Instance.new("TextLabel")
-            amountLabel.Size = UDim2.new(1, -12, 0, 16)
-            amountLabel.Position = UDim2.new(0, 6, 0.85, 0)
+            amountLabel.Size = UDim2.new(1, -10, 0, 14)
+            amountLabel.Position = UDim2.new(0, 5, 0.83, 0)
             amountLabel.BackgroundTransparency = 1
             amountLabel.Text = formatNumber(amount)
-            amountLabel.TextSize = 10
+            amountLabel.TextSize = 9
             amountLabel.Font = Enum.Font.Gotham
             amountLabel.TextColor3 = amount > 0 and colors.textSecondary or colors.close
             amountLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -846,8 +877,8 @@ local function createMainUI()
     
     -- Bottom buttons (macOS style)
     local actions = Instance.new("Frame")
-    actions.Size = UDim2.new(1, -32, 0, 48)
-    actions.Position = UDim2.new(0, 16, 1, -64)
+    actions.Size = UDim2.new(1, -32, 0, 40)
+    actions.Position = UDim2.new(0, 16, 1, -52)
     actions.BackgroundTransparency = 1
     actions.Parent = MainFrame
     
@@ -859,11 +890,11 @@ local function createMainUI()
     
     -- Refresh
     local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Size = UDim2.new(0, 130, 0, 42)
+    refreshBtn.Size = UDim2.new(0, 110, 0, 36)
     refreshBtn.BackgroundColor3 = colors.secondary
     refreshBtn.BorderSizePixel = 0
     refreshBtn.Text = "🔄 Refresh"
-    refreshBtn.TextSize = 13
+    refreshBtn.TextSize = 12
     refreshBtn.Font = Enum.Font.GothamBold
     refreshBtn.TextColor3 = colors.text
     refreshBtn.Parent = actions
@@ -892,11 +923,11 @@ local function createMainUI()
     
     -- Copy to all
     local copyBtn = Instance.new("TextButton")
-    copyBtn.Size = UDim2.new(0, 150, 0, 42)
+    copyBtn.Size = UDim2.new(0, 130, 0, 36)
     copyBtn.BackgroundColor3 = colors.warning
     copyBtn.BorderSizePixel = 0
     copyBtn.Text = "📋 Copy to All"
-    copyBtn.TextSize = 13
+    copyBtn.TextSize = 12
     copyBtn.Font = Enum.Font.GothamBold
     copyBtn.TextColor3 = Color3.new(0, 0, 0)
     copyBtn.Parent = actions
@@ -943,11 +974,11 @@ local function createMainUI()
     
     -- Save & Close
     local saveBtn = Instance.new("TextButton")
-    saveBtn.Size = UDim2.new(0, 160, 0, 42)
+    saveBtn.Size = UDim2.new(0, 140, 0, 36)
     saveBtn.BackgroundColor3 = colors.maximize
     saveBtn.BorderSizePixel = 0
     saveBtn.Text = "✓ Save & Close"
-    saveBtn.TextSize = 13
+    saveBtn.TextSize = 12
     saveBtn.Font = Enum.Font.GothamBold
     saveBtn.TextColor3 = colors.text
     saveBtn.Parent = actions
