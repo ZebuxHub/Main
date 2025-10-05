@@ -295,22 +295,32 @@ local function updateAvailableEggs()
             if eggType then
                 local mutation = getEggMutation(child.Name)
                 
-                -- Apply filters
-                local passesTypeFilter = true
-                local passesMutationFilter = true
+                -- Apply filters with proper logic
+                local passesTypeFilter = false
+                local passesMutationFilter = false
                 
+                -- Check egg type filter
                 if #selectedEggTypes > 0 then
                     passesTypeFilter = selectedTypeSet[eggType] == true
+                else
+                    -- No egg type filter = accept all egg types
+                    passesTypeFilter = true
                 end
                 
+                -- Check mutation filter
                 if #selectedMutations > 0 then
-                    if not mutation then
-                        passesMutationFilter = false
+                    -- Mutation filter is active
+                    if mutation and selectedMutationSet[mutation] == true then
+                        passesMutationFilter = true
                     else
-                        passesMutationFilter = selectedMutationSet[mutation] == true
+                        passesMutationFilter = false
                     end
+                else
+                    -- No mutation filter = accept all (including non-mutated)
+                    passesMutationFilter = true
                 end
                 
+                -- BOTH filters must pass
                 if passesTypeFilter and passesMutationFilter then
                     local eggInfo = { 
                         uid = child.Name, 
