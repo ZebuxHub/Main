@@ -1918,6 +1918,12 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(selection)
             selectedEggTypes = selection
             eggCache.lastUpdate = 0
+            
+            -- Wake up from dormant if new eggs match filters
+            if placementState.isDormant and autoPlaceEnabled then
+                print("[AutoPlace] Egg filter changed, checking if should wake up...")
+                exitDormantMode("filter changed")
+            end
         end
     })
     -- Register with CustomUIConfig for dropdowns
@@ -1977,6 +1983,12 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(selection)
             selectedMutations = selection
             eggCache.lastUpdate = 0
+            
+            -- Wake up from dormant if new mutations match filters
+            if placementState.isDormant and autoPlaceEnabled then
+                print("[AutoPlace] Mutation filter changed, checking if should wake up...")
+                exitDormantMode("filter changed")
+            end
         end
     })
     if configForDropdowns then
@@ -2003,6 +2015,12 @@ function AutoPlaceSystem.CreateUI()
                 minPetRateFilter = tonumber(value) or 0
             end
             petCache.lastUpdate = 0
+            
+            -- Wake up from dormant if new speed threshold allows more pets
+            if placementState.isDormant and autoPlaceEnabled and placePetsEnabled then
+                print("[AutoPlace] Speed threshold changed, checking if should wake up...")
+                exitDormantMode("filter changed")
+            end
         end
     })
     if configForSettings then
@@ -2021,6 +2039,12 @@ function AutoPlaceSystem.CreateUI()
         Callback = function(v)
             petSortAscending = (v == "Low to High")
             petCache.lastUpdate = 0
+            
+            -- Wake up from dormant if sort order changed (might expose new pets)
+            if placementState.isDormant and autoPlaceEnabled and placePetsEnabled then
+                print("[AutoPlace] Sort order changed, checking if should wake up...")
+                exitDormantMode("filter changed")
+            end
         end
     })
     if configForSettings then
@@ -2049,6 +2073,13 @@ function AutoPlaceSystem.CreateUI()
             placeEggsEnabled = set["Eggs"] == true
             placePetsEnabled = set["Pets"] == true
             petCache.lastUpdate = 0
+            eggCache.lastUpdate = 0
+            
+            -- Wake up from dormant if source changed (new items available)
+            if placementState.isDormant and autoPlaceEnabled then
+                print("[AutoPlace] Source changed, checking if should wake up...")
+                exitDormantMode("source changed")
+            end
         end
     })
     -- Register with AutoSystemsConfig for settings
