@@ -1237,8 +1237,6 @@ local function enterDormantMode(reason)
     placementState.isDormant = true
     placementState.dormantReason = reason
     placementStats.lastReason = "Dormant: " .. reason
-    
-    print("[AutoPlace] Entering dormant mode:", reason)
 end
 
 local function exitDormantMode(trigger)
@@ -1247,8 +1245,6 @@ local function exitDormantMode(trigger)
     placementState.isDormant = false
     placementState.dormantReason = ""
     placementStats.lastReason = "Reactivated by: " .. trigger
-    
-    print("[AutoPlace] Exiting dormant mode, triggered by:", trigger)
     
     -- Invalidate relevant caches immediately for instant response
     if trigger:find("eggs") or trigger:find("new eggs") then
@@ -1271,10 +1267,8 @@ local function exitDormantMode(trigger)
         if autoPlaceEnabled and not placementState.isDormant then
             -- Re-check data is still loaded before attempting placement
             if not AutoPlaceSystem.IsDataLoaded() then
-                print("[AutoPlace] Data not loaded, re-checking...")
                 local dataLoaded = AutoPlaceSystem.WaitForDataLoad(5)
                 if not dataLoaded then
-                    print("[AutoPlace] Data load failed after wake-up, staying dormant")
                     enterDormantMode("Data not available")
                     return
                 end
@@ -1798,13 +1792,11 @@ function AutoPlaceSystem.SyncLoadedValues()
     -- Sync Egg Types filter
     if AutoPlaceSystem.EggDropdown and AutoPlaceSystem.EggDropdown.Value then
         selectedEggTypes = AutoPlaceSystem.EggDropdown.Value or {}
-        print("[AutoPlace] Synced Egg Types:", #selectedEggTypes, "eggs selected")
     end
     
     -- Sync Mutations filter
     if AutoPlaceSystem.MutationDropdown and AutoPlaceSystem.MutationDropdown.Value then
         selectedMutations = AutoPlaceSystem.MutationDropdown.Value or {}
-        print("[AutoPlace] Synced Mutations:", #selectedMutations, "mutations selected")
     end
     
     -- Sync Min Speed value (now an Input field)
@@ -1816,14 +1808,12 @@ function AutoPlaceSystem.SyncLoadedValues()
         else
             minPetRateFilter = tonumber(inputValue) or 0
         end
-        print("[AutoPlace] Synced Min Speed:", minPetRateFilter, "from input:", inputValue)
     end
     
     -- Sync Sort Order value
     if AutoPlaceSystem.SortOrderDropdown and AutoPlaceSystem.SortOrderDropdown.Value then
         local sortValue = AutoPlaceSystem.SortOrderDropdown.Value
         petSortAscending = (sortValue == "Low to High")
-        print("[AutoPlace] Synced Sort Order:", sortValue, "Ascending:", petSortAscending)
     end
     
     -- Sync Sources value
@@ -1835,7 +1825,6 @@ function AutoPlaceSystem.SyncLoadedValues()
         end
         placeEggsEnabled = set["Eggs"] == true
         placePetsEnabled = set["Pets"] == true
-        print("[AutoPlace] Synced Sources - Eggs:", placeEggsEnabled, "Pets:", placePetsEnabled)
     end
     
     -- Mark config as synced
@@ -1847,8 +1836,6 @@ function AutoPlaceSystem.SyncLoadedValues()
     -- Force cache invalidation to apply new settings
     petCache.lastUpdate = 0
     eggCache.lastUpdate = 0
-    
-    print("[AutoPlace] Config synced. Data loaded:", AutoPlaceSystem.IsDataLoaded())
 end
 
 function AutoPlaceSystem.CreateUI()
@@ -1921,7 +1908,6 @@ function AutoPlaceSystem.CreateUI()
             
             -- Wake up from dormant if new eggs match filters
             if placementState.isDormant and autoPlaceEnabled then
-                print("[AutoPlace] Egg filter changed, checking if should wake up...")
                 exitDormantMode("filter changed")
             end
         end
@@ -1986,7 +1972,6 @@ function AutoPlaceSystem.CreateUI()
             
             -- Wake up from dormant if new mutations match filters
             if placementState.isDormant and autoPlaceEnabled then
-                print("[AutoPlace] Mutation filter changed, checking if should wake up...")
                 exitDormantMode("filter changed")
             end
         end
@@ -2018,7 +2003,6 @@ function AutoPlaceSystem.CreateUI()
             
             -- Wake up from dormant if new speed threshold allows more pets
             if placementState.isDormant and autoPlaceEnabled and placePetsEnabled then
-                print("[AutoPlace] Speed threshold changed, checking if should wake up...")
                 exitDormantMode("filter changed")
             end
         end
@@ -2042,7 +2026,6 @@ function AutoPlaceSystem.CreateUI()
             
             -- Wake up from dormant if sort order changed (might expose new pets)
             if placementState.isDormant and autoPlaceEnabled and placePetsEnabled then
-                print("[AutoPlace] Sort order changed, checking if should wake up...")
                 exitDormantMode("filter changed")
             end
         end
@@ -2077,7 +2060,6 @@ function AutoPlaceSystem.CreateUI()
             
             -- Wake up from dormant if source changed (new items available)
             if placementState.isDormant and autoPlaceEnabled then
-                print("[AutoPlace] Source changed, checking if should wake up...")
                 exitDormantMode("source changed")
             end
         end
