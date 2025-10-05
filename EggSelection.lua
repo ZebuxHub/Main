@@ -120,6 +120,9 @@ EggData = LoadEggDataFromGame()
 -- Load mutation data on initialization
 MutationData = LoadMutationDataFromGame()
 
+-- Flag to indicate data is loaded (for Premium_Build_A_ZOO to wait)
+EggSelection.DataLoaded = true
+
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -1145,6 +1148,28 @@ end
 -- Function to get current mutation data (for debugging)
 function EggSelection.GetMutationData()
     return MutationData
+end
+
+-- Function to check if data is loaded (for Premium_Build_A_ZOO to wait)
+function EggSelection.IsDataLoaded()
+    return EggSelection.DataLoaded and next(EggData) ~= nil and next(MutationData) ~= nil
+end
+
+-- Function to wait for data to be loaded
+function EggSelection.WaitForDataLoad(timeout)
+    local maxWait = timeout or 10
+    local waited = 0
+    
+    while waited < maxWait do
+        if EggSelection.IsDataLoaded() then
+            return true
+        end
+        task.wait(0.1)
+        waited = waited + 0.1
+    end
+    
+    warn("[EggSelection] ⚠️ Data load timeout after " .. maxWait .. " seconds")
+    return false
 end
 
 return EggSelection
