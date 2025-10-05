@@ -70,123 +70,7 @@ local MutationData = {}
 local HardcodedPetTypes = {}
 local PetCategoryData = {}
 
--- Load data from game
-local function LoadGameData()
-    -- Load Egg Data
-    local success, eggModule = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResEgg"))
-    end)
-    
-    if success and eggModule then
-        for eggId, eggInfo in pairs(eggModule) do
-            if type(eggInfo) == "table" and eggInfo.ID then
-                EggData[eggId] = {
-                    Name = eggId:gsub("Egg", " Egg"),
-                    Price = tostring(eggInfo.Price or 0),
-                    Icon = eggInfo.Icon or "",
-                    Rarity = eggInfo.Rarity or 1,
-                    Category = eggInfo.Category or ""
-                }
-            end
-        end
-    end
-    
-    -- Load Mutation Data
-    local success2, mutationModule = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResMutate"))
-    end)
-    
-    if success2 and mutationModule then
-        for mutationId, mutationInfo in pairs(mutationModule) do
-            if type(mutationInfo) == "table" and mutationInfo.ID then
-                local displayId = mutationId
-                local displayName = mutationId
-                
-                -- Handle Dino -> Jurassic mapping
-                if mutationId == "Dino" then
-                    displayId = "Dino"
-                    displayName = "Jurassic"
-                end
-                
-                MutationData[displayId] = {
-                    Name = displayName,
-                    Icon = mutationInfo.Icon or "🧬",
-                    Rarity = mutationInfo.RarityNum or 0
-                }
-            end
-        end
-    end
-    
-    -- Load Fruit Data
-    local success3, fruitModule = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResPetFood"))
-    end)
-    
-    if success3 and fruitModule then
-        for fruitId, fruitInfo in pairs(fruitModule) do
-            if type(fruitInfo) == "table" and fruitInfo.ID then
-                FruitData[fruitId] = {
-                    Name = fruitId,
-                    Price = tostring(fruitInfo.Price or 0),
-                    Icon = fruitInfo.Icon or "🍎",
-                    Rarity = fruitInfo.Rarity or 1
-                }
-            end
-        end
-    end
-    
-    -- Load Pet Types and Categories from ResPet
-    local success4, petModule = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResPet"))
-    end)
-    
-    if success4 and petModule then
-        for petId, petInfo in pairs(petModule) do
-            if type(petInfo) == "table" and petInfo.ID then
-                -- Add to pet types list
-                table.insert(HardcodedPetTypes, petId)
-                
-                -- Store category data
-                PetCategoryData[petId] = {
-                    Category = petInfo.Category or ""
-                }
-            end
-        end
-        
-        -- Sort alphabetically
-        table.sort(HardcodedPetTypes)
-    end
-end
-
-
--- Initialize game data on module load
-task.spawn(function()
-    task.wait(2) -- Wait for game to load
-    LoadGameData()
-end)
-
--- macOS Dark Theme Colors
-local colors = {
-    background = Color3.fromRGB(18, 18, 20),
-    surface = Color3.fromRGB(32, 32, 34),
-    primary = Color3.fromRGB(0, 122, 255),
-    secondary = Color3.fromRGB(88, 86, 214),
-    text = Color3.fromRGB(255, 255, 255),
-    textSecondary = Color3.fromRGB(200, 200, 200),
-    textTertiary = Color3.fromRGB(150, 150, 150),
-    border = Color3.fromRGB(50, 50, 52),
-    selected = Color3.fromRGB(0, 122, 255),
-    hover = Color3.fromRGB(45, 45, 47),
-    close = Color3.fromRGB(255, 69, 58),
-    minimize = Color3.fromRGB(255, 159, 10),
-    maximize = Color3.fromRGB(48, 209, 88),
-    success = Color3.fromRGB(48, 209, 88),
-    warning = Color3.fromRGB(255, 159, 10),
-    error = Color3.fromRGB(255, 69, 58),
-    disabled = Color3.fromRGB(100, 100, 100)
-}
-
--- Fruit Model Functions
+-- Fruit Model Functions (must be defined before LoadGameData)
 local function GetFruitModel(fruitId)
     -- Check cache first (persistent - never cleared)
     if FruitModels[fruitId] ~= nil then
@@ -263,6 +147,126 @@ local function GetFruitModel(fruitId)
         return nil
     end
 end
+
+-- Load data from game
+local function LoadGameData()
+    -- Load Egg Data
+    local success, eggModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResEgg"))
+    end)
+    
+    if success and eggModule then
+        for eggId, eggInfo in pairs(eggModule) do
+            if type(eggInfo) == "table" and eggInfo.ID then
+                EggData[eggId] = {
+                    Name = eggId:gsub("Egg", " Egg"),
+                    Price = tostring(eggInfo.Price or 0),
+                    Icon = eggInfo.Icon or "",
+                    Rarity = eggInfo.Rarity or 1,
+                    Category = eggInfo.Category or ""
+                }
+            end
+        end
+    end
+    
+    -- Load Mutation Data
+    local success2, mutationModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResMutate"))
+    end)
+    
+    if success2 and mutationModule then
+        for mutationId, mutationInfo in pairs(mutationModule) do
+            if type(mutationInfo) == "table" and mutationInfo.ID then
+                local displayId = mutationId
+                local displayName = mutationId
+                
+                -- Handle Dino -> Jurassic mapping
+                if mutationId == "Dino" then
+                    displayId = "Dino"
+                    displayName = "Jurassic"
+                end
+                
+                MutationData[displayId] = {
+                    Name = displayName,
+                    Icon = mutationInfo.Icon or "🧬",
+                    Rarity = mutationInfo.RarityNum or 0
+                }
+            end
+        end
+    end
+    
+    -- Load Fruit Data (with models pre-loaded like FruitSelection.lua)
+    local success3, fruitModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResPetFood"))
+    end)
+    
+    if success3 and fruitModule then
+        for fruitId, fruitInfo in pairs(fruitModule) do
+            if type(fruitInfo) == "table" and fruitInfo.ID then
+                -- Pre-load model during data initialization (like FruitSelection.lua)
+                local fruitModel = GetFruitModel(fruitId)
+                
+                FruitData[fruitId] = {
+                    Name = fruitId,
+                    Price = tostring(fruitInfo.Price or 0),
+                    Icon = fruitInfo.Icon or "🍎",
+                    Rarity = fruitInfo.Rarity or 1,
+                    Model = fruitModel -- Store pre-loaded model reference
+                }
+            end
+        end
+    end
+    
+    -- Load Pet Types and Categories from ResPet
+    local success4, petModule = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResPet"))
+    end)
+    
+    if success4 and petModule then
+        for petId, petInfo in pairs(petModule) do
+            if type(petInfo) == "table" and petInfo.ID then
+                -- Add to pet types list
+                table.insert(HardcodedPetTypes, petId)
+                
+                -- Store category data
+                PetCategoryData[petId] = {
+                    Category = petInfo.Category or ""
+                }
+            end
+        end
+        
+        -- Sort alphabetically
+        table.sort(HardcodedPetTypes)
+    end
+end
+
+
+-- Initialize game data on module load
+task.spawn(function()
+    task.wait(2) -- Wait for game to load
+    LoadGameData()
+end)
+
+-- macOS Dark Theme Colors
+local colors = {
+    background = Color3.fromRGB(18, 18, 20),
+    surface = Color3.fromRGB(32, 32, 34),
+    primary = Color3.fromRGB(0, 122, 255),
+    secondary = Color3.fromRGB(88, 86, 214),
+    text = Color3.fromRGB(255, 255, 255),
+    textSecondary = Color3.fromRGB(200, 200, 200),
+    textTertiary = Color3.fromRGB(150, 150, 150),
+    border = Color3.fromRGB(50, 50, 52),
+    selected = Color3.fromRGB(0, 122, 255),
+    hover = Color3.fromRGB(45, 45, 47),
+    close = Color3.fromRGB(255, 69, 58),
+    minimize = Color3.fromRGB(255, 159, 10),
+    maximize = Color3.fromRGB(48, 209, 88),
+    success = Color3.fromRGB(48, 209, 88),
+    warning = Color3.fromRGB(255, 159, 10),
+    error = Color3.fromRGB(255, 69, 58),
+    disabled = Color3.fromRGB(100, 100, 100)
+}
 
 -- Utility Functions
 local function formatNumber(num)
@@ -2116,11 +2120,11 @@ local function createItemCard(itemId, itemData, category, parent)
     if category ~= "pets" then
         if category == "eggs" then
             -- Egg icon (ImageLabel)
-            local icon = Instance.new("ImageLabel")
-            icon.Name = "Icon"
-            icon.Size = UDim2.new(0, 40, 0, 40)
-            icon.Position = UDim2.new(0, 10, 0, 10)
-            icon.BackgroundTransparency = 1
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "Icon"
+        icon.Size = UDim2.new(0, 40, 0, 40)
+        icon.Position = UDim2.new(0, 10, 0, 10)
+        icon.BackgroundTransparency = 1
             icon.Image = itemData.Icon or ""
             icon.Parent = card
         else
@@ -2133,8 +2137,8 @@ local function createItemCard(itemId, itemData, category, parent)
             iconContainer.ZIndex = 2
             iconContainer.Parent = card
             
-            -- Try to get 3D model
-            local fruitModel = GetFruitModel(itemId)
+            -- Use pre-loaded model from itemData (already cached during LoadGameData)
+            local fruitModel = itemData.Model
             
             if fruitModel and fruitModel ~= false then
                 -- Create ViewportFrame for 3D model
