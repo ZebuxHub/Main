@@ -188,39 +188,64 @@ local colors = {
 
 -- Fruit Model Functions
 local function GetFruitModel(fruitId)
-    -- Check cache first
-    if FruitModels[fruitId] then
-        return FruitModels[fruitId]
+    -- Check cache first (persistent - never cleared)
+    if FruitModels[fruitId] ~= nil then
+        return FruitModels[fruitId] -- Return cached result (could be false for not found)
     end
     
     -- Search for fruit model in ReplicatedStorage
     local success, model = pcall(function()
-        -- Try common paths for fruit models
-        local paths = {
-            ReplicatedStorage:WaitForChild("PetFood", 1),
-            ReplicatedStorage:FindFirstChild("Models") and ReplicatedStorage.Models:FindFirstChild("PetFood"),
-            ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("PetFood"),
+        -- Try direct path first (fastest)
+        local directPaths = {
+            ReplicatedStorage:FindFirstChild("PetFood"),
+            ReplicatedStorage:FindFirstChild("Models"),
+            ReplicatedStorage:FindFirstChild("Assets"),
         }
         
-        for _, path in ipairs(paths) do
-            if path then
-                local fruitModel = path:FindFirstChild(fruitId)
-                if fruitModel and fruitModel:IsA("Model") then
-                    FruitModels[fruitId] = fruitModel
+        for _, basePath in ipairs(directPaths) do
+            if basePath then
+                -- Try direct child
+                local fruitModel = basePath:FindFirstChild(fruitId)
+                if fruitModel and (fruitModel:IsA("Model") or fruitModel:IsA("MeshPart")) then
                     return fruitModel
+                end
+                
+                -- Try PetFood subfolder
+                local petFood = basePath:FindFirstChild("PetFood")
+                if petFood then
+                    fruitModel = petFood:FindFirstChild(fruitId)
+                    if fruitModel and (fruitModel:IsA("Model") or fruitModel:IsA("MeshPart")) then
+                        return fruitModel
+                    end
                 end
             end
         end
         
-        -- Try searching in all children
+        -- Deep search in all children (slower, but comprehensive)
         for _, child in ipairs(ReplicatedStorage:GetChildren()) do
-            if child:IsA("Folder") or child:IsA("Model") then
+            if child:IsA("Folder") or child:IsA("Configuration") then
+                -- Try direct child
+                local fruitModel = child:FindFirstChild(fruitId)
+                if fruitModel and (fruitModel:IsA("Model") or fruitModel:IsA("MeshPart")) then
+                    return fruitModel
+                end
+                
+                -- Try PetFood subfolder
                 local petFood = child:FindFirstChild("PetFood")
                 if petFood then
-                    local fruitModel = petFood:FindFirstChild(fruitId)
-                    if fruitModel and fruitModel:IsA("Model") then
-                        FruitModels[fruitId] = fruitModel
+                    fruitModel = petFood:FindFirstChild(fruitId)
+                    if fruitModel and (fruitModel:IsA("Model") or fruitModel:IsA("MeshPart")) then
                         return fruitModel
+                    end
+                end
+                
+                -- Try deeper nesting
+                for _, subChild in ipairs(child:GetChildren()) do
+                    if subChild:IsA("Folder") and subChild.Name == "PetFood" then
+                        fruitModel = subChild:FindFirstChild(fruitId)
+                        if fruitModel and (fruitModel:IsA("Model") or fruitModel:IsA("MeshPart")) then
+                            return fruitModel
+                        end
                     end
                 end
             end
@@ -229,11 +254,14 @@ local function GetFruitModel(fruitId)
         return nil
     end)
     
+    -- Cache result (even if nil/false) to avoid repeated searches
     if success and model then
+        FruitModels[fruitId] = model
         return model
+    else
+        FruitModels[fruitId] = false -- Cache "not found" to avoid re-searching
+        return nil
     end
-    
-    return nil
 end
 
 -- Utility Functions
@@ -2108,7 +2136,7 @@ local function createItemCard(itemId, itemData, category, parent)
             -- Try to get 3D model
             local fruitModel = GetFruitModel(itemId)
             
-            if fruitModel then
+            if fruitModel and fruitModel ~= false then
                 -- Create ViewportFrame for 3D model
                 local viewport = Instance.new("ViewportFrame")
                 viewport.Size = UDim2.new(1, 0, 1, 0)
@@ -2117,26 +2145,44 @@ local function createItemCard(itemId, itemData, category, parent)
                 viewport.ZIndex = 3
                 viewport.Parent = iconContainer
                 
-                -- Clone and setup model
-                local modelClone = fruitModel:Clone()
-                modelClone.Parent = viewport
+                -- Clone model safely
+                local modelClone = nil
+                pcall(function()
+                    modelClone = fruitModel:Clone()
+                end)
                 
-                -- Create camera
-                local camera = Instance.new("Camera")
-                camera.Parent = viewport
-                viewport.CurrentCamera = camera
-                
-                -- Position camera to view model
-                local cf, size = modelClone:GetBoundingBox()
-                local maxSize = math.max(size.X, size.Y, size.Z)
-                local distance = maxSize * 1.8
-                camera.CFrame = CFrame.new(cf.Position + Vector3.new(distance, distance * 0.4, distance), cf.Position)
-                
-                -- Add lighting
-                local light = Instance.new("PointLight")
-                light.Brightness = 2
-                light.Range = 20
-                light.Parent = modelClone
+                if modelClone then
+                    modelClone.Parent = viewport
+                    
+                    -- Create camera
+                    local camera = Instance.new("Camera")
+                    camera.Parent = viewport
+                    viewport.CurrentCamera = camera
+                    
+                    -- Position camera to view model
+                    local success, cf, size = pcall(function()
+                        return modelClone:GetBoundingBox()
+                    end)
+                    
+                    if success and cf and size then
+                        local maxSize = math.max(size.X, size.Y, size.Z)
+                        local distance = maxSize * 1.8
+                        camera.CFrame = CFrame.new(cf.Position + Vector3.new(distance, distance * 0.4, distance), cf.Position)
+                        
+                        -- Add lighting
+                        local light = Instance.new("PointLight")
+                        light.Brightness = 2
+                        light.Range = 20
+                        light.Parent = modelClone
+                    else
+                        -- Fallback camera position if GetBoundingBox fails
+                        camera.CFrame = CFrame.new(Vector3.new(0, 2, 5), Vector3.new(0, 0, 0))
+                    end
+                else
+                    -- Model clone failed, destroy viewport and use fallback
+                    viewport:Destroy()
+                    fruitModel = nil -- Force fallback to icon/emoji
+                end
             else
                 -- Fallback to emoji/icon
                 if itemData.Icon and string.match(itemData.Icon, "rbxassetid://") then
