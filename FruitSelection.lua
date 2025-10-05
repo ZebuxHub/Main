@@ -1,86 +1,100 @@
--- FruitSelection.lua - macOS Style Dark Theme UI for Fruit Selection
--- Author: Zebux
--- Version: 1.0
+-- AutoSellSystem.lua - Auto Sell functionality for Build A Zoo
+-- Scans PlayerGui.Data.Pets for unplaced pets (no "D" attribute) and sells them via PetRE
 
-local FruitSelection = {}
+local AutoSellSystem = {}
 
 -- Services
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+-- Config modules for speed calculation
+local ResPet, ResMutate, ResBigPet, ResBigFish
+pcall(function()
+	local Config = ReplicatedStorage:WaitForChild("Config", 5)
+	if Config then
+		ResPet = require(Config:WaitForChild("ResPet"))
+		ResMutate = require(Config:WaitForChild("ResMutate"))
+		ResBigPet = require(Config:WaitForChild("ResBigPetScale"))
+		ResBigFish = require(Config:WaitForChild("ResBigFishScale"))
+	end
+end)
+
+-- Dependencies (injected via Init)
+local WindUI, Tabs, MainTab, Config, AutoSystemsConfig
+
+-- Remotes (cached)
+local Remotes = ReplicatedStorage:WaitForChild("Remote", 5)
+local PetRE = Remotes and Remotes:FindFirstChild("PetRE")
 
 -- Dynamic data that will be loaded from the game
-local FruitData = {}
+local EggData = {}
+local MutationData = {}
 
--- Cache for fruit models from ReplicatedStorage
-local FruitModels = {}
-
--- Function to get fruit model from ReplicatedStorage
-local function GetFruitModel(fruitId)
-    -- Check cache first
-    if FruitModels[fruitId] then
-        return FruitModels[fruitId]
-    end
-    
-    -- Try to find the model
-    local success, model = pcall(function()
-        -- Search in ReplicatedStorage children for PetFood folder
-        for _, child in ipairs(ReplicatedStorage:GetChildren()) do
-            if child:IsA("Folder") or child:IsA("Model") then
-                -- Look for PetFood/FruitName pattern
-                local fruitModel = child:FindFirstChild("PetFood/" .. fruitId)
-                if fruitModel then
-                    return fruitModel
-                end
-                
-                -- Also try direct search
-                local petFoodFolder = child:FindFirstChild("PetFood")
-                if petFoodFolder then
-                    fruitModel = petFoodFolder:FindFirstChild(fruitId)
-                    if fruitModel then
-                        return fruitModel
-                    end
-                end
-            end
-        end
-        return nil
-    end)
-    
-    if success and model then
-        FruitModels[fruitId] = model
-        return model
-    end
-    
-    return nil
-end
-
--- Function to load fruit data from the game automatically
-local function LoadFruitDataFromGame()
+-- Function to load egg data from the game automatically
+local function LoadEggDataFromGame()
     local success, result = pcall(function()
-        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResPetFood", 10)
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResEgg", 10)
         if configModule then
-            local gameFruitData = require(configModule)
+            local gameEggData = require(configModule)
             
             -- Convert game data format to our UI format
             local convertedData = {}
             
-            for fruitId, fruitInfo in pairs(gameFruitData) do
+            for eggId, eggInfo in pairs(gameEggData) do
                 -- Skip the __index table
-                if fruitId ~= "__index" and type(fruitInfo) == "table" then
-                    -- Get model from ReplicatedStorage
-                    local fruitModel = GetFruitModel(fruitId)
+                if eggId ~= "__index" and type(eggInfo) == "table" then
+                    -- Exclude Ocean eggs
+                    local category = eggInfo.Category or ""
+                    if category ~= "Ocean" then
+                        convertedData[eggId] = {
+                            Name = eggInfo.ID or eggId,
+                            Price = eggInfo.Price or 0,
+                            Icon = eggInfo.Icon or "",
+                            Rarity = eggInfo.Rarity or 1
+                        }
+                    end
+                end
+            end
+            
+            return convertedData
+        end
+    end)
+    
+    if success and result then
+        return result
+    else
+        warn("[AutoSell] Failed to load egg data from game:", result)
+        return {}
+    end
+end
+
+-- Function to load mutation data from the game automatically
+local function LoadMutationDataFromGame()
+    local success, result = pcall(function()
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResMutate", 10)
+        if configModule then
+            local gameMutationData = require(configModule)
+            
+            -- Convert game data format to our UI format
+            local convertedData = {}
+            
+            for mutationId, mutationInfo in pairs(gameMutationData) do
+                -- Skip the __index table
+                if mutationId ~= "__index" and type(mutationInfo) == "table" then
+                    -- Special handling: "Dino" in game → "Jurassic" in UI
+                    local displayId = mutationId
+                    local displayName = mutationInfo.ID or mutationId
                     
-                    -- Convert to our format
-                    convertedData[fruitId] = {
-                        Name = fruitInfo.ID or fruitId,
-                        Price = fruitInfo.Price or "0",
-                        Icon = fruitInfo.Icon or "", -- Use game icon
-                        Model = fruitModel, -- Store model reference
-                        Rarity = fruitInfo.Rarity or 1,
-                        FeedValue = fruitInfo.FeedValue or 0,
-                        IsNew = false -- Can be customized if needed
+                    if mutationId == "Dino" then
+                        displayId = "Jurassic"
+                        displayName = "Jurassic"
+                    end
+                    
+                    convertedData[displayId] = {
+                        Name = displayName,
+                        Icon = mutationInfo.Icon or "", -- Use Icon from ResMutate
+                        Rarity = mutationInfo.RarityNum or 1,
+                        OriginalId = mutationId -- Keep original ID for matching
                     }
                 end
             end
@@ -92,961 +106,862 @@ local function LoadFruitDataFromGame()
     if success and result then
         return result
     else
-        warn("[FruitSelection] Failed to load fruit data from game:", result)
+        warn("[AutoSell] Failed to load mutation data from game:", result)
         return {}
     end
 end
 
--- Load fruit data on initialization
-FruitData = LoadFruitDataFromGame()
+-- Load data on initialization
+EggData = LoadEggDataFromGame()
+MutationData = LoadMutationDataFromGame()
 
--- Flag to indicate data is loaded (for Premium_Build_A_ZOO to wait)
-FruitSelection.DataLoaded = true
+-- Flag to indicate data is loaded
+AutoSellSystem.DataLoaded = true
 
--- OLD HARDCODED DATA REMOVED (now loaded from game)
---[[
-local FruitData = {
-    Strawberry = {
-        Name = "Strawberry",
-        Price = "5,000",
-        Icon = "🍓",
-        Rarity = 1,
-        FeedValue = 600
-    },
-    Blueberry = {
-        Name = "Blueberry",
-        Price = "20,000",
-        Icon = "🫐",
-        Rarity = 1,
-        FeedValue = 1250
-    },
-    Watermelon = {
-        Name = "Watermelon",
-        Price = "80,000",
-        Icon = "🍉",
-        Rarity = 2,
-        FeedValue = 3200
-    },
-    Apple = {
-        Name = "Apple",
-        Price = "400,000",
-        Icon = "🍎",
-        Rarity = 2,
-        FeedValue = 8000
-    },
-    Orange = {
-        Name = "Orange",
-        Price = "1,200,000",
-        Icon = "🍊",
-        Rarity = 3,
-        FeedValue = 20000
-    },
-    Corn = {
-        Name = "Corn",
-        Price = "3,500,000",
-        Icon = "🌽",
-        Rarity = 3,
-        FeedValue = 50000
-    },
-    Banana = {
-        Name = "Banana",
-        Price = "12,000,000",
-        Icon = "🍌",
-        Rarity = 4,
-        FeedValue = 120000
-    },
-    Grape = {
-        Name = "Grape",
-        Price = "50,000,000",
-        Icon = "🍇",
-        Rarity = 4,
-        FeedValue = 300000
-    },
-    Pear = {
-        Name = "Pear",
-        Price = "200,000,000",
-        Icon = "🍐",
-        Rarity = 5,
-        FeedValue = 800000
-    },
-    Pineapple = {
-        Name = "Pineapple",
-        Price = "600,000,000",
-        Icon = "🍍",
-        Rarity = 5,
-        FeedValue = 1500000
-    },
-    GoldMango = {
-        Name = "Gold Mango",
-        Price = "2,000,000,000",
-        Icon = "🥭",
-        Rarity = 6,
-        FeedValue = 4000000
-    },
-    BloodstoneCycad = {
-        Name = "Bloodstone Cycad",
-        Price = "8,000,000,000",
-        Icon = "🌿",
-        Rarity = 6,
-        FeedValue = 5000000
-    },
-    ColossalPinecone = {
-        Name = "Colossal Pinecone",
-        Price = "40,000,000,000",
-        Icon = "🌲",
-        Rarity = 6,
-        FeedValue = 8000000
-    },
-    VoltGinkgo = {
-        Name = "Volt Ginkgo",
-        Price = "80,000,000,000",
-        Icon = "⚡",
-        Rarity = 6,
-        FeedValue = 20000000
-    },
-    DeepseaPearlFruit = {
-        Name = "DeepseaPearlFruit",
-        Price = "40,000,000,000",
-        Icon = "💠",
-        Rarity = 6,
-        FeedValue = 8000000
-    },
-    Durian = {
-        Name = "Durian",
-        Price = "80,000,000,000",
-        Icon = "🥥",
-        Rarity = 6,
-        FeedValue = 20000000,
-        IsNew = true
-    },
-    DragonFruit = {
-        Name = "Dragon Fruit",
-        Price = "1,500,000,000",
-        Icon = "🐲",
-        Rarity = 6,
-        FeedValue = 3000000,
-        IsNew = true
-    }
-}
-]]--
-
--- UI Variables
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local ScreenGui = nil
-local MainFrame = nil
-local selectedItems = {}
-local isDragging = false
-local dragStart = nil
-local startPos = nil
-local isMinimized = false
-local originalSize = nil
-local minimizedSize = nil
-local searchText = ""
-
--- Callback functions
-local onSelectionChanged = nil
-local onToggleChanged = nil
-
--- macOS Dark Theme Colors
-local colors = {
-    background = Color3.fromRGB(18, 18, 20), -- Darker background for better contrast
-    surface = Color3.fromRGB(32, 32, 34), -- Lighter surface for cards
-    primary = Color3.fromRGB(0, 122, 255), -- Brighter blue accent
-    secondary = Color3.fromRGB(88, 86, 214), -- Purple accent
-    text = Color3.fromRGB(255, 255, 255), -- Pure white text
-    textSecondary = Color3.fromRGB(200, 200, 200), -- Brighter gray text
-    textTertiary = Color3.fromRGB(150, 150, 150), -- Medium gray for placeholders
-    border = Color3.fromRGB(50, 50, 52), -- Slightly darker border
-    selected = Color3.fromRGB(0, 122, 255), -- Bright blue for selected
-    hover = Color3.fromRGB(45, 45, 47), -- Lighter hover state
-    close = Color3.fromRGB(255, 69, 58), -- Red close button
-    minimize = Color3.fromRGB(255, 159, 10), -- Yellow minimize
-    maximize = Color3.fromRGB(48, 209, 88) -- Green maximize
-}
-
--- Utility Functions
-local function formatNumber(num)
-    if type(num) == "string" then
-        return num
-    end
-    
-    -- Helper function to add commas to formatted numbers
-    local function addCommas(str)
-        -- Add comma separator for thousands in the integer part
-        local parts = {}
-        for part in string.gmatch(str, "[^%.]+") do
-            table.insert(parts, part)
-        end
-        
-        if #parts > 0 then
-            local integerPart = parts[1]
-            -- Reverse, add commas every 3 digits, then reverse back
-            integerPart = integerPart:reverse():gsub("(%d%d%d)", "%1,"):reverse()
-            -- Remove leading comma if exists
-            integerPart = integerPart:gsub("^,", "")
-            parts[1] = integerPart
-        end
-        
-        return table.concat(parts, ".")
-    end
-    
-    if num >= 1e12 then
-        local formatted = string.format("%.1f", num / 1e12)
-        return addCommas(formatted) .. "T"
-    elseif num >= 1e9 then
-        local formatted = string.format("%.1f", num / 1e9)
-        return addCommas(formatted) .. "B"
-    elseif num >= 1e6 then
-        local formatted = string.format("%.1f", num / 1e6)
-        return addCommas(formatted) .. "M"
-    elseif num >= 1e3 then
-        local formatted = string.format("%.1f", num / 1e3)
-        return addCommas(formatted) .. "K"
-    else
-        return addCommas(tostring(math.floor(num)))
-    end
-end
-
-local function getRarityColor(rarity)
-    if rarity >= 6 then return Color3.fromRGB(255, 45, 85) -- Ultra pink
-    elseif rarity >= 5 then return Color3.fromRGB(255, 69, 58) -- Legendary red
-    elseif rarity >= 4 then return Color3.fromRGB(175, 82, 222) -- Epic purple
-    elseif rarity >= 3 then return Color3.fromRGB(88, 86, 214) -- Rare blue
-    elseif rarity >= 2 then return Color3.fromRGB(48, 209, 88) -- Uncommon green
-    else return Color3.fromRGB(174, 174, 178) -- Common gray
-    end
-end
-
--- Price parsing function
-local function parsePrice(priceStr)
-    if type(priceStr) == "number" then
-        return priceStr
-    end
-    -- Remove commas and convert to number
-    local cleanPrice = priceStr:gsub(",", "")
-    return tonumber(cleanPrice) or 0
-end
-
--- Sort data by price (low to high)
-local function sortDataByPrice(data)
-    local sortedData = {}
-    for id, item in pairs(data) do
-        table.insert(sortedData, {id = id, data = item})
-    end
-    
-    table.sort(sortedData, function(a, b)
-        local priceA = parsePrice(a.data.Price)
-        local priceB = parsePrice(b.data.Price)
-        return priceA < priceB
-    end)
-    
-    return sortedData
-end
-
--- Filter data by search text
-local function filterDataBySearch(data, searchText)
-    if searchText == "" then
-        return data
-    end
-    
-    local filteredData = {}
-    local searchLower = string.lower(searchText)
-    
-    for id, item in pairs(data) do
-        local nameLower = string.lower(item.Name)
-        if string.find(nameLower, searchLower, 1, true) then
-            filteredData[id] = item
-        end
-    end
-    
-    return filteredData
-end
-
--- Create macOS Style Window Controls
-local function createWindowControls(parent)
-    local controlsContainer = Instance.new("Frame")
-    controlsContainer.Name = "WindowControls"
-    controlsContainer.Size = UDim2.new(0, 70, 0, 12)
-    controlsContainer.Position = UDim2.new(0, 12, 0, 12)
-    controlsContainer.BackgroundTransparency = 1
-    controlsContainer.Parent = parent
-    
-    -- Close Button (Red)
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseBtn"
-    closeBtn.Size = UDim2.new(0, 12, 0, 12)
-    closeBtn.Position = UDim2.new(0, 0, 0, 0)
-    closeBtn.BackgroundColor3 = colors.close
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = ""
-    closeBtn.Parent = controlsContainer
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0.5, 0)
-    closeCorner.Parent = closeBtn
-    
-    -- Minimize Button (Yellow)
-    local minimizeBtn = Instance.new("TextButton")
-    minimizeBtn.Name = "MinimizeBtn"
-    minimizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    minimizeBtn.Position = UDim2.new(0, 18, 0, 0)
-    minimizeBtn.BackgroundColor3 = colors.minimize
-    minimizeBtn.BorderSizePixel = 0
-    minimizeBtn.Text = ""
-    minimizeBtn.Parent = controlsContainer
-    
-    local minimizeCorner = Instance.new("UICorner")
-    minimizeCorner.CornerRadius = UDim.new(0.5, 0)
-    minimizeCorner.Parent = minimizeBtn
-    
-    -- Maximize Button (Green)
-    local maximizeBtn = Instance.new("TextButton")
-    maximizeBtn.Name = "MaximizeBtn"
-    maximizeBtn.Size = UDim2.new(0, 12, 0, 12)
-    maximizeBtn.Position = UDim2.new(0, 36, 0, 0)
-    maximizeBtn.BackgroundColor3 = colors.maximize
-    maximizeBtn.BorderSizePixel = 0
-    maximizeBtn.Text = ""
-    maximizeBtn.Parent = controlsContainer
-    
-    local maximizeCorner = Instance.new("UICorner")
-    maximizeCorner.CornerRadius = UDim.new(0.5, 0)
-    maximizeCorner.Parent = maximizeBtn
-    
-    return controlsContainer
-end
-
--- Create Item Card (macOS style)
-local function createItemCard(itemId, itemData, parent)
-    local card = Instance.new("TextButton")
-    card.Name = itemId
-    card.Size = UDim2.new(0.33, -8, 0, 120)
-    card.BackgroundColor3 = colors.surface
-    card.BorderSizePixel = 0
-    card.Text = ""
-    card.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = card
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = card
-    
-    -- Create Icon (ViewportFrame for 3D model or ImageLabel for icon)
-    local iconContainer = Instance.new("Frame")
-    iconContainer.Name = "IconContainer"
-    iconContainer.Size = UDim2.new(0, 90, 0, 90)
-    iconContainer.Position = UDim2.new(0.5, -45, 0.1, 0)
-    iconContainer.BackgroundTransparency = 1
-    iconContainer.Parent = card
-    
-    -- Try to show model first, fallback to icon/emoji
-    if itemData.Model and itemData.Model:IsA("Model") then
-        -- Create ViewportFrame for 3D model
-        local viewport = Instance.new("ViewportFrame")
-        viewport.Name = "ModelViewport"
-        viewport.Size = UDim2.new(1, 0, 1, 0)
-        viewport.BackgroundTransparency = 1
-        viewport.Parent = iconContainer
-        
-        -- Clone the model
-        local modelClone = itemData.Model:Clone()
-        modelClone.Parent = viewport
-        
-        -- Create camera
-        local camera = Instance.new("Camera")
-        camera.Parent = viewport
-        viewport.CurrentCamera = camera
-        
-        -- Position camera to show the model (closer for better visibility)
-        local modelCF, modelSize = modelClone:GetBoundingBox()
-        local maxSize = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-        local distance = maxSize * 1.8  -- Closer camera (was 2.5)
-        camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.4, distance), modelCF.Position)
-        
-        -- Add lighting
-        local light = Instance.new("PointLight")
-        light.Brightness = 2
-        light.Range = 30
-        light.Parent = camera
-    elseif itemData.Icon and itemData.Icon ~= "" then
-        -- Use ImageLabel for rbxassetid icons
-        if string.find(itemData.Icon, "rbxassetid://") then
-            local imageLabel = Instance.new("ImageLabel")
-            imageLabel.Name = "IconImage"
-            imageLabel.Size = UDim2.new(1, 0, 1, 0)
-            imageLabel.BackgroundTransparency = 1
-            imageLabel.Image = itemData.Icon
-            imageLabel.ScaleType = Enum.ScaleType.Fit
-            imageLabel.Parent = iconContainer
-        else
-            -- Fallback to text (emoji)
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Name = "IconText"
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = itemData.Icon
-            textLabel.TextSize = 56
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.TextColor3 = getRarityColor(itemData.Rarity)
-            textLabel.Parent = iconContainer
-        end
-    else
-        -- Default emoji if nothing available
-        local textLabel = Instance.new("TextLabel")
-        textLabel.Name = "IconText"
-        textLabel.Size = UDim2.new(1, 0, 1, 0)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = "🍎"
-        textLabel.TextSize = 56
-        textLabel.Font = Enum.Font.GothamBold
-        textLabel.TextColor3 = getRarityColor(itemData.Rarity)
-        textLabel.Parent = iconContainer
-    end
-    
-    local name = Instance.new("TextLabel")
-    name.Name = "Name"
-    name.Size = UDim2.new(1, -16, 0, 20)
-    name.Position = UDim2.new(0, 8, 0.6, 0)
-    name.BackgroundTransparency = 1
-    name.Text = itemData.Name
-    name.TextSize = 12
-    name.Font = Enum.Font.GothamSemibold
-    name.TextColor3 = colors.text
-    name.TextXAlignment = Enum.TextXAlignment.Center
-    name.TextWrapped = true
-    name.Parent = card
-    
-    local price = Instance.new("TextLabel")
-    price.Name = "Price"
-    price.Size = UDim2.new(1, -16, 0, 16)
-    price.Position = UDim2.new(0, 8, 0.8, 0)
-    price.BackgroundTransparency = 1
-    -- Format price with commas
-    local priceValue = itemData.Price
-    if type(priceValue) == "string" then
-        priceValue = tonumber(priceValue:gsub(",", "")) or 0
-    end
-    price.Text = "$" .. formatNumber(priceValue)
-    price.TextSize = 10
-    price.Font = Enum.Font.Gotham
-    price.TextColor3 = colors.textSecondary
-    price.TextXAlignment = Enum.TextXAlignment.Center
-    price.TextWrapped = true
-    price.Parent = card
-    
-    local checkmark = Instance.new("TextLabel")
-    checkmark.Name = "Checkmark"
-    checkmark.Size = UDim2.new(0, 20, 0, 20)
-    checkmark.Position = UDim2.new(1, -24, 0, 4)
-    checkmark.BackgroundTransparency = 1
-    checkmark.Text = "✓"
-    checkmark.TextSize = 16
-    checkmark.Font = Enum.Font.GothamBold
-    checkmark.TextColor3 = colors.selected
-    checkmark.Visible = false
-    checkmark.Parent = card
-    
-    -- Add "New" indicator for new items
-    if itemData.IsNew then
-        local newIndicator = Instance.new("TextLabel")
-        newIndicator.Name = "NewIndicator"
-        newIndicator.Size = UDim2.new(0, 30, 0, 16)
-        newIndicator.Position = UDim2.new(1, -34, 0, 2)
-        newIndicator.BackgroundColor3 = Color3.fromRGB(255, 69, 58) -- Red background
-        newIndicator.BorderSizePixel = 0
-        newIndicator.Text = "NEW"
-        newIndicator.TextSize = 8
-        newIndicator.Font = Enum.Font.GothamBold
-        newIndicator.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
-        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
-        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
-        newIndicator.Parent = card
-        
-        local newCorner = Instance.new("UICorner")
-        newCorner.CornerRadius = UDim.new(0, 3)
-        newCorner.Parent = newIndicator
-    end
-    
-    -- Set initial selection state
-    if selectedItems[itemId] then
-        checkmark.Visible = true
-        card.BackgroundColor3 = colors.selected
-    end
-    
-    -- Hover effect
-    card.MouseEnter:Connect(function()
-        if not selectedItems[itemId] then
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
-        end
-    end)
-    
-    card.MouseLeave:Connect(function()
-        if not selectedItems[itemId] then
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-        end
-    end)
-    
-    -- Click effect
-    card.MouseButton1Click:Connect(function()
-        if selectedItems[itemId] then
-            selectedItems[itemId] = nil
-            checkmark.Visible = false
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
-        else
-            selectedItems[itemId] = true
-            checkmark.Visible = true
-            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
-        end
-        
-        if onSelectionChanged then
-            onSelectionChanged(selectedItems)
-        end
-    end)
-    
-    return card
-end
-
--- Create Search Bar (macOS style)
-local function createSearchBar(parent)
-    local searchContainer = Instance.new("Frame")
-    searchContainer.Name = "SearchContainer"
-    searchContainer.Size = UDim2.new(1, -32, 0, 32)
-    searchContainer.Position = UDim2.new(0, 16, 0, 60)
-    searchContainer.BackgroundColor3 = colors.surface
-    searchContainer.BorderSizePixel = 0
-    searchContainer.Parent = parent
-    
-    local searchCorner = Instance.new("UICorner")
-    searchCorner.CornerRadius = UDim.new(0, 8)
-    searchCorner.Parent = searchContainer
-    
-    local searchStroke = Instance.new("UIStroke")
-    searchStroke.Color = colors.border
-    searchStroke.Thickness = 1
-    searchStroke.Parent = searchContainer
-    
-    local searchIcon = Instance.new("TextLabel")
-    searchIcon.Name = "SearchIcon"
-    searchIcon.Size = UDim2.new(0, 16, 0, 16)
-    searchIcon.Position = UDim2.new(0, 12, 0.5, -8)
-    searchIcon.BackgroundTransparency = 1
-    searchIcon.Text = "🔍"
-    searchIcon.TextSize = 12
-    searchIcon.Font = Enum.Font.Gotham
-    searchIcon.TextColor3 = colors.textSecondary
-    searchIcon.Parent = searchContainer
-    
-    local searchBox = Instance.new("TextBox")
-    searchBox.Name = "SearchBox"
-    searchBox.Size = UDim2.new(1, -44, 0.8, 0)
-    searchBox.Position = UDim2.new(0, 36, 0.1, 0)
-    searchBox.BackgroundTransparency = 1
-    searchBox.Text = ""
-    searchBox.PlaceholderText = "Search fruits..."
-    searchBox.TextSize = 14
-    searchBox.Font = Enum.Font.Gotham
-    searchBox.TextColor3 = colors.text
-    searchBox.TextXAlignment = Enum.TextXAlignment.Left
-    searchBox.ClearTextOnFocus = false
-    searchBox.Parent = searchContainer
-    
-    -- Search functionality
-    searchBox.Changed:Connect(function(prop)
-        if prop == "Text" then
-            searchText = searchBox.Text
-            FruitSelection.RefreshContent()
-        end
-    end)
-    
-    return searchContainer
-end
-
--- Create UI
-function FruitSelection.CreateUI()
-    if ScreenGui then
-        ScreenGui:Destroy()
-    end
-    
-    ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "FruitSelectionUI"
-    ScreenGui.Parent = PlayerGui
-    
-    MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 600, 0, 400)
-    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    MainFrame.BackgroundColor3 = colors.background
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Parent = ScreenGui
-    
-    originalSize = MainFrame.Size
-    minimizedSize = UDim2.new(0, 600, 0, 60)
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = MainFrame
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = colors.border
-    stroke.Thickness = 1
-    stroke.Parent = MainFrame
-    
-    -- Window Controls
-    local windowControls = createWindowControls(MainFrame)
-    
-    -- Title
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, -140, 0, 20)
-    title.Position = UDim2.new(0, 100, 0, 12)
-    title.BackgroundTransparency = 1
-    title.Text = "Fruit Selection"
-    title.TextSize = 14
-    title.Font = Enum.Font.GothamSemibold
-    title.TextColor3 = colors.text
-    title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = MainFrame
-    
-    -- Search Bar
-    local searchBar = createSearchBar(MainFrame)
-    
-    -- Content Area
-    local content = Instance.new("Frame")
-    content.Name = "Content"
-    content.Size = UDim2.new(1, -32, 1, -120)
-    content.Position = UDim2.new(0, 16, 0, 120)
-    content.BackgroundTransparency = 1
-    content.Parent = MainFrame
-    
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Name = "ScrollFrame"
-    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 6
-    scrollFrame.ScrollBarImageColor3 = colors.primary
-    -- Disable AutomaticCanvasSize and handle manually for better control
-    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1000) -- Start with reasonable default
-    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    scrollFrame.ScrollingEnabled = true
-    scrollFrame.Parent = content
-    
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.33, -8, 0, 120)
-    gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-    gridLayout.Parent = scrollFrame
-    
-    -- Add UIPadding to ensure proper scrolling
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 8)
-    padding.PaddingBottom = UDim.new(0, 50)
-    padding.PaddingLeft = UDim.new(0, 8)
-    padding.PaddingRight = UDim.new(0, 8)
-    padding.Parent = scrollFrame
-    
-    -- Window Control Events
-    local closeBtn = windowControls.CloseBtn
-    local minimizeBtn = windowControls.MinimizeBtn
-    local maximizeBtn = windowControls.MaximizeBtn
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        if onToggleChanged then
-            onToggleChanged(false)
-        end
-        ScreenGui:Destroy()
-        ScreenGui = nil
-    end)
-    
-    minimizeBtn.MouseButton1Click:Connect(function()
-        if isMinimized then
-            MainFrame.Size = originalSize
-            content.Visible = true
-            searchBar.Visible = true
-            isMinimized = false
-        else
-            MainFrame.Size = minimizedSize
-            content.Visible = false
-            searchBar.Visible = false
-            isMinimized = true
-        end
-    end)
-    
-    maximizeBtn.MouseButton1Click:Connect(function()
-        -- Toggle between normal and full size
-        if MainFrame.Size == originalSize then
-            MainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
-            MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-        else
-            MainFrame.Size = originalSize
-            MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-        end
-    end)
-    
-    -- Dragging - Fixed to work properly
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundTransparency = 1
-    titleBar.Parent = MainFrame
-    
-    titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = true
-            dragStart = input.Position
-            startPos = MainFrame.Position
-            
-            local connection
-            connection = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    isDragging = false
-                    connection:Disconnect()
-                end
-            end)
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-            local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    
-    return ScreenGui
-end
-
--- Update ScrollingFrame canvas size based on content
-local function updateCanvasSize(scrollFrame)
-    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
-    if not gridLayout then return end
-    
-    -- Wait for layout to update
-    task.wait(0.2)
-    
-    -- Calculate content size based on grid layout
-    local itemCount = 0
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            itemCount = itemCount + 1
-        end
-    end
-    
-    if itemCount > 0 then
-        -- Calculate rows needed (3 items per row)
-        local rows = math.ceil(itemCount / 3)
-        local cellHeight = 120 -- Height of each cell
-        local cellPadding = 8 -- Padding between cells
-        local topPadding = 8 -- Top padding from UIPadding
-        local bottomPadding = 50 -- Bottom padding from UIPadding
-        
-        -- More accurate calculation including all padding
-        local totalHeight = topPadding + (rows * cellHeight) + ((rows - 1) * cellPadding) + bottomPadding
-        
-        -- Always update canvas size to ensure proper scrolling
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-        
-        -- Also force a canvas position reset to ensure scrollability
-        scrollFrame.CanvasPosition = Vector2.new(0, 0)
-    end
-end
-
--- Refresh Content
-function FruitSelection.RefreshContent()
-    if not ScreenGui then return end
-    
-    local scrollFrame = ScreenGui.MainFrame.Content.ScrollFrame
-    if not scrollFrame then return end
-    
-    -- Clear existing content
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    -- Filter by search
-    local filteredData = filterDataBySearch(FruitData, searchText)
-    
-    -- Sort by price (low to high)
-    local sortedData = sortDataByPrice(filteredData)
-    
-    -- Add content
-    for i, item in ipairs(sortedData) do
-        local card = createItemCard(item.id, item.data, scrollFrame)
-        card.LayoutOrder = i -- Ensure proper ordering
-        
-        -- Apply saved selection state
-        if selectedItems[item.id] then
-            local checkmark = card:FindFirstChild("Checkmark")
-            if checkmark then
-                checkmark.Visible = true
-            end
-            card.BackgroundColor3 = colors.selected
-        end
-    end
-    
-    -- Update canvas size to ensure proper scrolling
-    -- Multiple approaches to ensure it works properly
-    task.spawn(function()
-        updateCanvasSize(scrollFrame)
-    end)
-    
-    -- Also try after a longer delay as backup
-    task.spawn(function()
-        task.wait(0.5)
-        updateCanvasSize(scrollFrame)
-    end)
-    
-    -- Connect to layout changes for real-time updates
-    local gridLayout = scrollFrame:FindFirstChild("UIGridLayout")
-    if gridLayout then
-        local connection = nil
-        connection = gridLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            task.wait(0.1)
-            local itemCount = 0
-            for _, child in pairs(scrollFrame:GetChildren()) do
-                if child:IsA("TextButton") then
-                    itemCount = itemCount + 1
-                end
-            end
-            
-            if itemCount > 0 then
-                local rows = math.ceil(itemCount / 3)
-                local totalHeight = 8 + (rows * 120) + ((rows - 1) * 8) + 50
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-            end
-            
-            -- Disconnect after first successful update
-            if connection then
-                connection:Disconnect()
-                connection = nil
-            end
-        end)
-    end
-end
-
--- Public Functions
-function FruitSelection.Show(callback, toggleCallback, savedFruits)
-    onSelectionChanged = callback
-    onToggleChanged = toggleCallback
-    
-    -- Apply saved selections if provided
-    if savedFruits then
-        for fruitId, _ in pairs(savedFruits) do
-            selectedItems[fruitId] = true
-        end
-    end
-    
-    if not ScreenGui then
-        FruitSelection.CreateUI()
-    end
-    
-    -- Wait a frame to ensure UI is created
-    task.wait()
-    FruitSelection.RefreshContent()
-    ScreenGui.Enabled = true
-    ScreenGui.Parent = PlayerGui
-end
-
-function FruitSelection.Hide()
-    if ScreenGui then
-        ScreenGui.Enabled = false
-    end
-end
-
-function FruitSelection.GetSelectedItems()
-    return selectedItems
-end
-
-function FruitSelection.IsVisible()
-    return ScreenGui and ScreenGui.Enabled
-end
-
-function FruitSelection.GetCurrentSelections()
-    return selectedItems
-end
-
-function FruitSelection.UpdateSelections(fruits)
-    selectedItems = {}
-    
-    if fruits then
-        for fruitId, _ in pairs(fruits) do
-            selectedItems[fruitId] = true
-        end
-    end
-    
-    if ScreenGui then
-        FruitSelection.RefreshContent()
-    end
-end
-
--- Function to reload fruit data from the game (useful when game updates)
-function FruitSelection.ReloadFruitData()
-    local newFruitData = LoadFruitDataFromGame()
-    
-    if newFruitData and next(newFruitData) then
-        -- Preserve existing selections
-        local oldSelections = {}
-        for fruitId, _ in pairs(selectedItems) do
-            oldSelections[fruitId] = true
-        end
-        
-        -- Update fruit data
-        FruitData = newFruitData
-        
-        -- Re-apply selections that still exist in new data
-        selectedItems = {}
-        for fruitId, _ in pairs(oldSelections) do
-            if FruitData[fruitId] then
-                selectedItems[fruitId] = true
-            end
-        end
-        
-        -- Refresh UI if visible
-        if ScreenGui then
-            FruitSelection.RefreshContent()
-        end
-        
-        return true
-    end
-    
-    return false
-end
-
--- Function to get current fruit data (for debugging)
-function FruitSelection.GetFruitData()
-    return FruitData
-end
-
--- Function to check if data is loaded (for Premium_Build_A_ZOO to wait)
-function FruitSelection.IsDataLoaded()
-    return FruitSelection.DataLoaded and next(FruitData) ~= nil
+-- Function to check if data is loaded
+function AutoSellSystem.IsDataLoaded()
+    return AutoSellSystem.DataLoaded and next(EggData) ~= nil and next(MutationData) ~= nil
 end
 
 -- Function to wait for data to be loaded
-function FruitSelection.WaitForDataLoad(timeout)
+function AutoSellSystem.WaitForDataLoad(timeout)
     local maxWait = timeout or 10
     local waited = 0
     
     while waited < maxWait do
-        if FruitSelection.IsDataLoaded() then
+        if AutoSellSystem.IsDataLoaded() then
             return true
         end
         task.wait(0.1)
         waited = waited + 0.1
     end
     
-    warn("[FruitSelection] ⚠️ Data load timeout after " .. maxWait .. " seconds")
+    warn("[AutoSell] ⚠️ Data load timeout after " .. maxWait .. " seconds")
     return false
 end
 
-return FruitSelection
+-- State
+local autoSellEnabled = false
+local autoSellThread = nil
+local sellMode = "Pets Only" -- "Pets Only", "Eggs Only", "Both Pets & Eggs"
+local speedThreshold = 0 -- 0 = disabled, >0 = minimum speed required
+local sessionLimit = 0 -- 0 = unlimited
+local sessionSold = 0
+local eggsToKeep = {} -- Table of egg names to keep (don't sell)
+local mutationsToKeep = {} -- Table of mutation names to keep (don't sell)
+local configSynced = false -- Flag to prevent premature activation
+
+-- UI refs
+local statusParagraph
+local mutationKeepDropdown
+local sellModeDropdown
+local speedThresholdInput
+local autoSellToggle
+local sessionLimitInput
+local eggKeepDropdown
+
+-- Forward declaration for updateStatus
+local updateStatus
+
+-- Function to reload data and preserve selections
+function AutoSellSystem.ReloadData()
+    -- Store current selections
+    local savedEggs = {}
+    local savedMutations = {}
+    
+    for _, eggName in pairs(eggsToKeep) do
+        table.insert(savedEggs, eggName)
+    end
+    
+    for _, mutationName in pairs(mutationsToKeep) do
+        table.insert(savedMutations, mutationName)
+    end
+    
+    -- Reload data from game
+    EggData = LoadEggDataFromGame()
+    MutationData = LoadMutationDataFromGame()
+    
+    -- Restore selections that still exist in new data
+    eggsToKeep = {}
+    for _, savedEgg in pairs(savedEggs) do
+        for _, data in pairs(EggData) do
+            if data.Name == savedEgg then
+                table.insert(eggsToKeep, savedEgg)
+                break
+            end
+        end
+    end
+    
+    mutationsToKeep = {}
+    for _, savedMutation in pairs(savedMutations) do
+        for _, data in pairs(MutationData) do
+            if data.Name == savedMutation then
+                table.insert(mutationsToKeep, savedMutation)
+                break
+            end
+        end
+    end
+    
+    -- Update UI if available
+    if eggKeepDropdown and eggKeepDropdown.SetValue then
+        eggKeepDropdown:SetValue(eggsToKeep)
+    end
+    
+    if mutationKeepDropdown and mutationKeepDropdown.SetValue then
+        mutationKeepDropdown:SetValue(mutationsToKeep)
+    end
+    
+    if updateStatus then
+        updateStatus()
+    end
+end
+
+-- Helpers
+local function getPetContainer()
+	local localPlayer = Players.LocalPlayer
+	local pg = localPlayer and localPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	return data and data:FindFirstChild("Pets") or nil
+end
+
+local function getEggContainer()
+	local localPlayer = Players.LocalPlayer
+	local pg = localPlayer and localPlayer:FindFirstChild("PlayerGui")
+	local data = pg and pg:FindFirstChild("Data")
+	return data and data:FindFirstChild("Egg") or nil
+end
+
+local function isUnplacedPet(petNode)
+	if not petNode then return false end
+	local d = petNode:GetAttribute("D")
+	return d == nil or tostring(d) == ""
+end
+
+local function isAvailableEgg(eggNode)
+	if not eggNode then return false end
+	-- Eggs are available if they have no children (not being hatched) AND no "D" attribute
+	local d = eggNode:GetAttribute("D")
+	local hasChildren = #eggNode:GetChildren() > 0
+	return (d == nil or tostring(d) == "") and not hasChildren
+end
+
+local function isMutated(node)
+	if not node then return false end
+	local m = node:GetAttribute("M")
+	return m ~= nil and tostring(m) ~= ""
+end
+
+local function getMutationType(node)
+	if not node then return nil end
+	local m = node:GetAttribute("M")
+	if not m or tostring(m) == "" then return nil end
+	
+	local mutationId = tostring(m)
+	
+	-- Special handling: "Dino" in game → "Jurassic" in UI
+	if mutationId == "Dino" then
+		mutationId = "Jurassic"
+	end
+	
+	-- Try to match mutation type with our MutationData
+	for key, data in pairs(MutationData) do
+		if mutationId == key or mutationId == data.Name then
+			return data.Name
+		end
+		-- Also check OriginalId for reverse mapping
+		if data.OriginalId and tostring(m) == data.OriginalId then
+			return data.Name
+		end
+	end
+	
+	-- Return the mapped mutation ID if not found in our data
+	return mutationId
+end
+
+local function shouldKeepMutation(node)
+	if not node then return false end
+	
+	local mutationType = getMutationType(node)
+	if not mutationType then return false end -- No mutation
+	
+	-- Check if this mutation type is in the keep list
+	for _, keepMutationName in pairs(mutationsToKeep) do
+		if keepMutationName == mutationType then
+			return true
+		end
+	end
+	
+	return false -- Not in keep list
+end
+
+local function getEggType(eggNode)
+	if not eggNode then return nil end
+	-- Try to get egg type from attributes
+	local eggType = eggNode:GetAttribute("Type") or eggNode:GetAttribute("T")
+	if eggType and EggData[eggType] then
+		return EggData[eggType].Name
+	end
+	
+	-- Fallback: try to match by name pattern or other attributes
+	for key, data in pairs(EggData) do
+		if eggNode.Name:find(key) or eggNode.Name:find(data.Name) then
+			return data.Name
+		end
+	end
+	
+	return nil
+end
+
+local function shouldKeepEgg(eggNode)
+	if not eggNode then return false end
+	
+	-- Get egg type
+	local eggType = getEggType(eggNode)
+	local mutated = isMutated(eggNode)
+	
+	-- Logic priority:
+	-- 1. If egg type is in keep list AND (no mutation OR mutation is in keep list) → KEEP
+	-- 2. If egg type is not in keep list BUT mutation is in keep list → KEEP  
+	-- 3. Otherwise → SELL
+	
+	local keepForEggType = false
+	local keepForMutation = false
+	
+	-- Check egg type
+	if eggType then
+		for _, keepEggName in pairs(eggsToKeep) do
+			if keepEggName == eggType then
+				keepForEggType = true
+				break
+			end
+		end
+	end
+	
+	-- Check mutation type
+	if mutated then
+		keepForMutation = shouldKeepMutation(eggNode)
+	end
+	
+	-- Decision logic - Only keep if BOTH conditions are met when both are selected
+	if #eggsToKeep > 0 and #mutationsToKeep > 0 then
+		-- Both egg types and mutations are selected
+		-- Keep ONLY if: correct egg type AND correct mutation
+		return keepForEggType and mutated and keepForMutation
+	elseif #eggsToKeep > 0 and #mutationsToKeep == 0 then
+		-- Only egg types selected, no specific mutations
+		-- Keep if correct egg type (regardless of mutation)
+		return keepForEggType
+	elseif #eggsToKeep == 0 and #mutationsToKeep > 0 then
+		-- Only mutations selected, no specific egg types
+		-- Keep if has correct mutation (any egg type)
+		return mutated and keepForMutation
+	else
+		-- Nothing selected, sell everything
+		return false
+	end
+end
+
+local function sellPetByUid(petUid)
+	if not PetRE then return false end
+	local ok = pcall(function()
+		PetRE:FireServer("Sell", petUid)
+	end)
+	return ok == true
+end
+
+local function sellEggByUid(eggUid)
+	-- Use PetRE with correct parameters for egg selling
+	if not PetRE then return false end
+	local ok = pcall(function()
+		local args = {
+			"Sell",
+			eggUid,
+			true -- Third parameter indicates it's an egg
+		}
+		PetRE:FireServer(unpack(args))
+	end)
+	return ok == true
+end
+
+-- Speed calculation functions (based on user's formula)
+local function getBigLevel(exp, typ)
+	if not ResBigPet or not ResBigFish then return 0, nil end
+	local tbl = (typ == "Fish") and ResBigFish or ResBigPet
+	if not tbl or not tbl.__index then return 0, nil end
+	
+	local stage, def = 0, nil
+	for _, idx in pairs(tbl.__index) do
+		local row = tbl[idx]
+		if row and row.EXP and row.EXP <= exp then
+			stage, def = idx, row
+		else
+			break
+		end
+	end
+	return stage, def
+end
+
+local function calculateNormalPetSpeed(def, attrs, benefitMax, externalMult)
+	if not def or not attrs then return 0 end
+	
+	local base = tonumber(def.ProduceRate) or 0
+	local v = tonumber(attrs.V) or 0 -- 0..10000
+	local grow = ((benefitMax - 1) * ((v * 1e-4) ^ 2.24) + 1)
+	
+	local mut = 1
+	local M = attrs.M
+	if M and ResMutate and ResMutate[M] and ResMutate[M].ProduceRate then
+		mut = ResMutate[M].ProduceRate
+	end
+	
+	externalMult = externalMult or 1
+	local final = math.floor(base * grow * mut * externalMult + 1e-9)
+	return final
+end
+
+local function calculateBigPetSpeed(petNode, attrs)
+	if not petNode or not attrs then return 0 end
+	
+	local _, def = getBigLevel(tonumber(attrs.BPV) or 0, attrs.BPT or "Normal")
+	if not def then return 0 end
+	
+	local base = tonumber(def.Produce) or 0
+	local bigRate = 1
+	
+	-- Find MT_* attributes and get highest BigRate
+	for name, _ in pairs(petNode:GetAttributes()) do
+		if string.sub(name, 1, 3) == "MT_" then
+			local id = string.split(name, "_")[2]
+			if ResMutate and ResMutate[id] and ResMutate[id].BigRate then
+				bigRate = math.max(bigRate, ResMutate[id].BigRate)
+			end
+		end
+	end
+	
+	-- Big pets don't floor and don't multiply by v71
+	local final = base * bigRate
+	return final
+end
+
+local function getPetSpeed(petNode)
+	if not petNode then return 0 end
+	-- Prefer real value from UI using the pet UID
+	local uid = petNode.Name
+	local lp = Players.LocalPlayer
+	local pg = lp and lp:FindFirstChild("PlayerGui")
+	local ss = pg and pg:FindFirstChild("ScreenStorage")
+	local frame = ss and ss:FindFirstChild("Frame")
+	local content = frame and frame:FindFirstChild("ContentPet")
+	local scroll = content and content:FindFirstChild("ScrollingFrame")
+	local item = scroll and scroll:FindFirstChild(uid)
+	local btn = item and item:FindFirstChild("BTN")
+	local stat = btn and btn:FindFirstChild("Stat")
+	local price = stat and stat:FindFirstChild("Price")
+	local valueLabel = price and price:FindFirstChild("Value")
+	local txt = valueLabel and valueLabel:IsA("TextLabel") and valueLabel.Text or nil
+	if not txt and price and price:IsA("TextLabel") then
+		txt = price.Text
+	end
+	if txt then
+		local n = tonumber((txt:gsub("[^%d]", ""))) or 0
+		return n
+	end
+	return 0
+end
+
+-- Helper function to parse speed threshold with K/M/B/T suffixes
+local function parseSpeedThreshold(text)
+	if not text or type(text) ~= "string" then return 0 end
+	
+	local cleanText = text:gsub("[$€£¥₹/s,]", ""):gsub("^%s*(.-)%s*$", "%1")
+	local number, suffix = cleanText:match("^([%d%.]+)([KkMmBbTt]?)$")
+	
+	if not number then
+		number = cleanText:match("([%d%.]+)")
+	end
+	
+	local numValue = tonumber(number)
+	if not numValue then return 0 end
+	
+	if suffix then
+		local lowerSuffix = string.lower(suffix)
+		if lowerSuffix == "k" then
+			numValue = numValue * 1000
+		elseif lowerSuffix == "m" then
+			numValue = numValue * 1000000
+		elseif lowerSuffix == "b" then
+			numValue = numValue * 1000000000
+		elseif lowerSuffix == "t" then
+			numValue = numValue * 1000000000000
+		end
+	end
+	
+	return numValue
+end
+
+-- Status
+local sellStats = {
+	totalSold = 0,
+	petsSold = 0,
+	eggsSold = 0,
+	lastAction = "Idle",
+	lastSold = nil,
+	skippedMutations = 0,
+	skippedSpeed = 0,
+	skippedKeepEggs = 0,
+	scannedPets = 0,
+	scannedEggs = 0,
+}
+
+updateStatus = function()
+	if not statusParagraph then return end
+	local totalScanned = sellStats.scannedPets + sellStats.scannedEggs
+	local speedText = speedThreshold > 0 and ("Sell if speed≤" .. tostring(speedThreshold) .. " | ") or ""
+	local eggKeepText = (#eggsToKeep > 0) and ("Keep: " .. #eggsToKeep .. " eggs | ") or ""
+	local mutationKeepText = (#mutationsToKeep > 0) and ("Keep: " .. #mutationsToKeep .. " mutations | ") or ""
+	local desc = string.format(
+		"Sold: %d (P:%d E:%d) | Scanned: %d\nSkipped M: %d S: %d K: %d | %s%s%sMode: %s\nSession: %d/%s%s",
+		sellStats.totalSold,
+		sellStats.petsSold,
+		sellStats.eggsSold,
+		totalScanned,
+		sellStats.skippedMutations,
+		sellStats.skippedSpeed,
+		sellStats.skippedKeepEggs,
+		eggKeepText,
+		mutationKeepText,
+		speedText,
+		sellMode,
+		sessionSold,
+		tostring(sessionLimit == 0 and "∞" or sessionLimit),
+		sellStats.lastAction and ("\n" .. sellStats.lastAction) or ""
+	)
+	if statusParagraph.SetDesc then
+		statusParagraph:SetDesc(desc)
+	end
+end
+
+local function scanAndSell()
+	sellStats.scannedPets = 0
+	sellStats.scannedEggs = 0
+	sellStats.skippedMutations = 0
+	sellStats.skippedSpeed = 0
+	sellStats.skippedKeepEggs = 0
+
+	-- Scan pets if mode allows
+	if sellMode == "Pets Only" or sellMode == "Both Pets & Eggs" then
+		local pets = getPetContainer()
+		if not pets then
+			sellStats.lastAction = "Waiting for PlayerGui.Data.Pets"
+			updateStatus()
+			return
+		end
+
+		for _, node in ipairs(pets:GetChildren()) do
+		if not autoSellEnabled then return end
+		if sessionLimit > 0 and sessionSold >= sessionLimit then
+			sellStats.lastAction = "Session limit reached"
+			updateStatus()
+			if autoSellToggle and autoSellToggle.SetValue then
+				autoSellToggle:SetValue(false)
+			else
+				autoSellEnabled = false
+			end
+			return
+		end
+		sellStats.scannedPets += 1
+
+				local uid = node.Name
+				local unplaced = isUnplacedPet(node)
+				if unplaced then
+					local mutated = isMutated(node)
+					if mutated and shouldKeepMutation(node) then
+						sellStats.skippedMutations += 1
+						local mutationType = getMutationType(node) or "Unknown"
+						sellStats.lastAction = "Kept " .. mutationType .. " pet " .. uid
+						updateStatus()
+						continue
+					end
+
+					-- Check speed threshold if enabled
+					if speedThreshold > 0 then
+						local petSpeed = getPetSpeed(node)
+						-- We SELL if speed ≤ threshold. Skip if above threshold.
+						if petSpeed > speedThreshold then
+							sellStats.skippedSpeed += 1
+							sellStats.lastAction = "Skipped fast pet " .. uid .. " (speed: " .. tostring(petSpeed) .. ")"
+							updateStatus()
+							continue
+						end
+					end
+
+			local ok = sellPetByUid(uid)
+			if ok then
+				sellStats.totalSold += 1
+				sellStats.petsSold += 1
+				sessionSold += 1
+				sellStats.lastSold = uid
+				sellStats.lastAction = "✅ Sold pet " .. uid
+				if WindUI then
+					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Sold pet " .. uid, Duration = 2 })
+				end
+			else
+				sellStats.lastAction = "❌ Failed selling " .. uid
+			end
+			updateStatus()
+			task.wait(0.15)
+
+			-- Stop immediately if session limit reached after this sale
+			if sessionLimit > 0 and sessionSold >= sessionLimit then
+				if WindUI then
+					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Session limit reached (" .. tostring(sessionSold) .. "/" .. tostring(sessionLimit) .. ")", Duration = 3 })
+				end
+				if autoSellToggle and autoSellToggle.SetValue then
+					autoSellToggle:SetValue(false)
+				else
+					autoSellEnabled = false
+				end
+				return
+			end
+		end
+	end
+	end
+
+	-- Scan eggs if mode allows
+	if sellMode == "Eggs Only" or sellMode == "Both Pets & Eggs" then
+		local eggs = getEggContainer()
+		if eggs then
+			for _, node in ipairs(eggs:GetChildren()) do
+				if not autoSellEnabled then return end
+				if sessionLimit > 0 and sessionSold >= sessionLimit then
+					sellStats.lastAction = "Session limit reached"
+					updateStatus()
+					if autoSellToggle and autoSellToggle.SetValue then
+						autoSellToggle:SetValue(false)
+					else
+						autoSellEnabled = false
+					end
+					return
+				end
+				sellStats.scannedEggs += 1
+
+				local uid = node.Name
+				local available = isAvailableEgg(node)
+				if available then
+					-- Check if we should keep this egg (based on type and mutation settings)
+					if shouldKeepEgg(node) then
+						sellStats.skippedKeepEggs += 1
+						local eggType = getEggType(node) or "Unknown"
+						sellStats.lastAction = "Kept " .. eggType .. " egg " .. uid
+						updateStatus()
+						continue
+					end
+
+					local ok = sellEggByUid(uid)
+					if ok then
+						sellStats.totalSold += 1
+						sellStats.eggsSold += 1
+						sessionSold += 1
+						sellStats.lastSold = uid
+						sellStats.lastAction = "✅ Sold egg " .. uid
+						if WindUI then
+							WindUI:Notify({ Title = "💸 Auto Sell", Content = "Sold egg " .. uid, Duration = 2 })
+						end
+					else
+						sellStats.lastAction = "❌ Failed selling egg " .. uid
+					end
+					updateStatus()
+					-- slower for eggs
+					task.wait(0.4)
+
+					-- Check session limit
+					if sessionLimit > 0 and sessionSold >= sessionLimit then
+						if WindUI then
+							WindUI:Notify({ Title = "💸 Auto Sell", Content = "Session limit reached (" .. tostring(sessionSold) .. "/" .. tostring(sessionLimit) .. ")", Duration = 3 })
+						end
+						if autoSellToggle and autoSellToggle.SetValue then
+							autoSellToggle:SetValue(false)
+						else
+							autoSellEnabled = false
+						end
+						return
+					end
+				end
+			end
+		end
+	end
+
+	sellStats.lastAction = "Scan complete"
+	updateStatus()
+end
+
+local function runAutoSell()
+	while autoSellEnabled do
+		local ok, err = pcall(function()
+			scanAndSell()
+		end)
+		if not ok then
+			sellStats.lastAction = "Error: " .. tostring(err)
+			updateStatus()
+			task.wait(1)
+		else
+			-- Short idle before next pass
+			task.wait(1.0)
+		end
+	end
+end
+
+-- UI
+function AutoSellSystem.CreateUI()
+	-- Create Auto Sell section in MainTab
+	MainTab:Section({ Title = "Auto Sell Pets", Icon = "dollar-sign" })
+
+	sellModeDropdown = MainTab:Dropdown({
+		Title = "🎯 Sell Mode",
+		Desc = "What to sell",
+		Values = { "Pets Only", "Eggs Only", "Both Pets & Eggs" },
+		Value = "Pets Only",
+		Multi = false,
+		AllowNone = false,
+		Callback = function(selection)
+			if type(selection) == "table" then selection = selection[1] end
+			sellMode = selection or "Pets Only"
+			updateStatus()
+		end
+	})
+
+	-- Create egg selection dropdown (show right after sell mode)
+	local eggNames = {}
+	for _, data in pairs(EggData) do
+		table.insert(eggNames, data.Name)
+	end
+	table.sort(eggNames) -- Sort alphabetically
+
+	eggKeepDropdown = MainTab:Dropdown({
+		Title = "🥚 Eggs to Keep",
+		Desc = "Select eggs to keep (don't sell)",
+		Values = eggNames,
+		Value = {},
+		Multi = true,
+		AllowNone = true,
+		Callback = function(selection)
+			eggsToKeep = selection or {}
+			updateStatus()
+		end
+	})
+
+	-- Create mutation selection dropdown (use names only since Icon is rbxassetid)
+	local mutationNames = {}
+	for key, data in pairs(MutationData) do
+		table.insert(mutationNames, data.Name)
+	end
+	table.sort(mutationNames) -- Sort alphabetically
+
+	mutationKeepDropdown = MainTab:Dropdown({
+		Title = "🧬 Mutations to Keep",
+		Desc = "Select mutations to keep (don't sell)",
+		Values = mutationNames,
+		Value = {},
+		Multi = true,
+		AllowNone = true,
+		Callback = function(selection)
+			mutationsToKeep = selection or {}
+			updateStatus()
+		end
+	})
+
+	speedThresholdInput = MainTab:Input({
+		Title = "⚡ Speed Threshold",
+		Desc = "Sell if speed ≤ value",
+		Value = "0",
+		Callback = function(value)
+			local parsedValue = parseSpeedThreshold(value)
+			speedThreshold = parsedValue
+			updateStatus()
+		end
+	})
+
+	sessionLimitInput = MainTab:Input({
+		Title = "Session Sell Limit",
+		Desc = "Max sells this session",
+		Value = "0",
+		Callback = function(value)
+			local n = tonumber(value)
+			if not n then
+				local cleaned = tostring(value):gsub("[^%d%.]", "")
+				n = tonumber(cleaned) or 0
+			end
+			n = math.max(0, math.floor(n))
+			sessionLimit = n
+			updateStatus()
+		end
+	})
+
+	statusParagraph = MainTab:Paragraph({
+		Title = "Status",
+		Desc = "Auto sell status",
+		Image = "activity",
+		ImageSize = 16,
+	})
+
+	autoSellToggle = MainTab:Toggle({
+		Title = "💸 Auto Sell",
+		Desc = "Sell pets not placed",
+		Value = false,
+		Callback = function(state)
+			autoSellEnabled = state
+			if state and not autoSellThread then
+				-- Always wait for config sync to ensure correct settings
+				local function startAutoSell()
+					sessionSold = 0
+					autoSellThread = task.spawn(function()
+						runAutoSell()
+						autoSellThread = nil
+					end)
+					if WindUI then
+						WindUI:Notify({ Title = "💸 Auto Sell", Content = "Started with saved settings!", Duration = 2 })
+					end
+				end
+				
+					task.spawn(function()
+					-- CRITICAL: Wait for AutoSellSystem data to load before starting
+					if AutoSellSystem and AutoSellSystem.WaitForDataLoad then
+						WindUI:Notify({ Title = "Auto Sell", Content = "⏳ Waiting for data to load...", Duration = 2 })
+						
+						local dataLoaded = AutoSellSystem.WaitForDataLoad(10)
+						
+						if not dataLoaded then
+							WindUI:Notify({ 
+								Title = "Auto Sell Error", 
+								Content = "❌ Failed to load data! Auto Sell disabled.", 
+								Duration = 5 
+							})
+							autoSellEnabled = false
+							if autoSellToggle and autoSellToggle.SetValue then
+								autoSellToggle:SetValue(false)
+							end
+							return
+						end
+						
+						WindUI:Notify({ Title = "Auto Sell", Content = "✅ Data loaded! Starting...", Duration = 2 })
+					end
+					
+					-- Wait for config sync if needed
+					if not configSynced then
+						local maxWait = 0
+						while not configSynced and maxWait < 20 do -- Wait max 2 seconds
+							task.wait(0.1)
+							maxWait = maxWait + 1
+						end
+						end
+						
+						-- Now start if still enabled
+						if autoSellEnabled then
+							startAutoSell()
+						end
+					end)
+			elseif not state and autoSellThread then
+				if WindUI then
+					WindUI:Notify({ Title = "💸 Auto Sell", Content = "Stopped", Duration = 2 })
+				end
+			end
+		end
+	})
+
+	-- Config registration is handled externally in Premium_Build_A_ZOO.lua
+	-- via GetConfigElements() to avoid double registration
+
+	updateStatus()
+end
+
+-- Public API
+function AutoSellSystem.Init(dependencies)
+	WindUI = dependencies.WindUI
+	Tabs = dependencies.Tabs
+	MainTab = dependencies.MainTab
+	Config = dependencies.Config
+	AutoSystemsConfig = dependencies.AutoSystemsConfig or dependencies.Config
+
+	AutoSellSystem.CreateUI()
+	return AutoSellSystem
+end
+
+-- Get config elements for external registration
+function AutoSellSystem.GetConfigElements()
+	return {
+		autoSellToggle = autoSellToggle,
+		sellModeDropdown = sellModeDropdown,
+		mutationKeepDropdown = mutationKeepDropdown,
+		speedThresholdInput = speedThresholdInput,
+		sessionLimitInput = sessionLimitInput,
+		eggKeepDropdown = eggKeepDropdown
+	}
+end
+
+-- Function to mark config as ready (for manual toggles)
+function AutoSellSystem.MarkConfigReady()
+	configSynced = true
+end
+
+-- Function to sync loaded values to internal variables
+function AutoSellSystem.SyncLoadedValues()
+	-- Sync Speed Threshold value
+	if speedThresholdInput and speedThresholdInput.Value then
+		local thresholdValue = speedThresholdInput.Value
+		if type(thresholdValue) == "string" then
+			local parsedValue = parseSpeedThreshold(thresholdValue)
+			speedThreshold = parsedValue
+		end
+	end
+	
+	-- Sync Sell Mode value
+	if sellModeDropdown and sellModeDropdown.Value then
+		local modeValue = sellModeDropdown.Value
+		if type(modeValue) == "table" then
+			sellMode = modeValue[1] or "Pets Only"
+		else
+			sellMode = modeValue or "Pets Only"
+		end
+	end
+	
+	-- Sync Session Limit value
+	if sessionLimitInput and sessionLimitInput.Value then
+		local limitValue = sessionLimitInput.Value
+		local n = tonumber(limitValue)
+		if not n then
+			local cleaned = tostring(limitValue):gsub("[^%d%.]", "")
+			n = tonumber(cleaned) or 0
+		end
+		sessionLimit = math.max(0, math.floor(n))
+	end
+	
+	-- Sync Eggs to Keep dropdown
+	if eggKeepDropdown and eggKeepDropdown.Value then
+		local eggValue = eggKeepDropdown.Value
+		if type(eggValue) == "table" then
+			eggsToKeep = eggValue
+		else
+			eggsToKeep = {}
+		end
+	end
+	
+	-- Sync Mutations to Keep dropdown
+	if mutationKeepDropdown and mutationKeepDropdown.Value then
+		local mutationValue = mutationKeepDropdown.Value
+		if type(mutationValue) == "table" then
+			mutationsToKeep = mutationValue
+		else
+			mutationsToKeep = {}
+		end
+	end
+	
+	-- Update status display
+	updateStatus()
+	
+	-- Mark config as synced to allow auto-start
+	configSynced = true
+end
+
+return AutoSellSystem
+
+
