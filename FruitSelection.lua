@@ -414,7 +414,7 @@ local function createItemCard(itemId, itemData, parent)
     -- Create Icon (ViewportFrame for 3D model or ImageLabel for icon)
     local iconContainer = Instance.new("Frame")
     iconContainer.Name = "IconContainer"
-    iconContainer.Size = UDim2.new(0, 90, 0, 90)
+    iconContainer.Size = UDim2.new(0, 180, 0, 180)
     iconContainer.Position = UDim2.new(0.5, -45, 0.1, 0)
     iconContainer.BackgroundTransparency = 1
     iconContainer.Parent = card
