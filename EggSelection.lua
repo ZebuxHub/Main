@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Dynamic data that will be loaded from the game
 local EggData = {}
+local MutationData = {}
 
 -- Function to load egg data from the game automatically
 local function LoadEggDataFromGame()
@@ -54,132 +55,70 @@ local function LoadEggDataFromGame()
     end
 end
 
+-- Function to load mutation data from the game automatically
+local function LoadMutationDataFromGame()
+    local success, result = pcall(function()
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResMutate", 10)
+        if configModule then
+            local gameMutationData = require(configModule)
+            
+            -- Convert game data format to our UI format
+            local convertedData = {}
+            
+            for mutationId, mutationInfo in pairs(gameMutationData) do
+                -- Skip the __index table
+                if mutationId ~= "__index" and type(mutationInfo) == "table" then
+                    -- Special handling: "Dino" in game → "Jurassic" in UI
+                    local displayId = mutationId
+                    local displayName = mutationInfo.ID or mutationId
+                    
+                    if mutationId == "Dino" then
+                        displayId = "Jurassic"
+                        displayName = "Jurassic"
+                    end
+                    
+                    -- Convert to our format
+                    convertedData[displayId] = {
+                        ID = displayId,
+                        Name = displayName,
+                        ProduceRate = mutationInfo.ProduceRate or 1,
+                        SellRate = mutationInfo.SellRate or 1,
+                        BuyRate = mutationInfo.BuyRate or 1,
+                        BigRate = mutationInfo.BigRate or 1,
+                        TextColor = mutationInfo.TextColor or "ffffff",
+                        Color1 = mutationInfo.Color1 or "",
+                        Color2 = mutationInfo.Color2 or "",
+                        Color3 = mutationInfo.Color3 or "",
+                        Neon1 = mutationInfo.Neon1 or "",
+                        Neon2 = mutationInfo.Neon2 or "",
+                        Neon3 = mutationInfo.Neon3 or "",
+                        RarityNum = mutationInfo.RarityNum or 1,
+                        Rarity = mutationInfo.RarityNum or 1,
+                        HatchTimeScale = mutationInfo.HatchTimeScale or 1,
+                        MinHatchTime = mutationInfo.MinHatchTime or 60,
+                        Icon = mutationInfo.Icon or "",
+                        IsNew = false -- Can be customized if needed
+                    }
+                end
+            end
+            
+            return convertedData
+        end
+    end)
+    
+    if success and result then
+        return result
+    else
+        warn("[EggSelection] Failed to load mutation data from game:", result)
+        return {}
+    end
+end
+
 -- Load egg data on initialization
 EggData = LoadEggDataFromGame()
 
-local MutationData = {
-    Golden = {
-        ID = "Golden", 
-        Name = "Golden",
-        ProduceRate = 2, 
-        SellRate = 2, 
-        BuyRate = 3, 
-        BigRate = 2, 
-        TextColor = "ffc518", 
-        Color1 = "204, 180, 61", 
-        Color2 = "229, 229, 114", 
-        Color3 = "216, 209, 130", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 10, 
-        Rarity = 10,
-        HatchTimeScale = 2, 
-        MinHatchTime = 180, 
-        Icon = "rbxassetid://12924452910"
-    }, 
-    Diamond = {
-        ID = "Diamond", 
-        Name = "Diamond",
-        ProduceRate = 3, 
-        SellRate = 3, 
-        BuyRate = 10, 
-        BigRate = 3, 
-        TextColor = "07e6ff", 
-        Color1 = "76, 133, 153", 
-        Color2 = "151, 184, 216", 
-        Color3 = "153, 178, 191", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 20, 
-        Rarity = 20,
-        HatchTimeScale = 3, 
-        MinHatchTime = 240, 
-        Icon = "rbxassetid://11937098975"
-    }, 
-    Electirc = {
-        ID = "Electirc", 
-        Name = "Electirc",
-        ProduceRate = 5, 
-        SellRate = 5, 
-        BuyRate = 20, 
-        BigRate = 4, 
-        TextColor = "aa55ff", 
-        Color1 = "12, 29, 63", 
-        Color2 = "113, 57, 191", 
-        Color3 = "38, 63, 127", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 50, 
-        Rarity = 50,
-        HatchTimeScale = 4, 
-        MinHatchTime = 300, 
-        Icon = "rbxassetid://16749221391"
-    }, 
-    Fire = {
-        ID = "Fire", 
-        Name = "Fire",
-        ProduceRate = 10, 
-        SellRate = 10, 
-        BuyRate = 50, 
-        BigRate = 5, 
-        TextColor = "ff3d02", 
-        Color1 = "204, 35, 20", 
-        Color2 = "242, 86, 72", 
-        Color3 = "229, 124, 114", 
-        Neon1 = "", 
-        Neon2 = "", 
-        Neon3 = "", 
-        RarityNum = 100, 
-        Rarity = 100,
-        HatchTimeScale = 4, 
-        MinHatchTime = 360, 
-        Icon = "rbxassetid://16633305205"
-    }, 
-    Jurassic = {
-        ID = "Jurassic", 
-        Name = "Jurassic",
-        ProduceRate = 12, 
-        SellRate = 10, 
-        BuyRate = 50, 
-        BigRate = 8, 
-        TextColor = "AE75E7", 
-        Color1 = "", 
-        Color2 = "96, 77, 199", 
-        Color3 = "", 
-        Neon1 = "", 
-        Neon2 = 1, 
-        Neon3 = "", 
-        RarityNum = 100, 
-        Rarity = 100,
-        HatchTimeScale = 4, 
-        MinHatchTime = 360, 
-        Icon = "rbxassetid://93073511262401"
-    },
-    Snow = {
-        ID = "Snow", 
-        Name = "Snow",
-        ProduceRate = 12, 
-        SellRate = 10, 
-        BuyRate = 60, 
-        BigRate = 8, 
-        TextColor = "0090ff", 
-        Color1 = "105, 211, 203", 
-        Color2 = "91, 134, 186", 
-        Color3 = "179, 222, 223", 
-        Neon1 = "", 
-        Neon2 = 1, 
-        Neon3 = "", 
-        RarityNum = 150, 
-        Rarity = 150,
-        HatchTimeScale = 4, 
-        MinHatchTime = 360, 
-        Icon = "rbxassetid://12924452910",
-        IsNew = true
-    }
-}
+-- Load mutation data on initialization
+MutationData = LoadMutationDataFromGame()
 
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
@@ -1150,25 +1089,27 @@ function EggSelection.UpdateSelections(eggs, mutations, order)
     end
 end
 
--- Function to reload egg data from the game (useful when game updates)
+-- Function to reload egg and mutation data from the game (useful when game updates)
 function EggSelection.ReloadEggData()
     local newEggData = LoadEggDataFromGame()
+    local newMutationData = LoadMutationDataFromGame()
     
     if newEggData and next(newEggData) then
-        -- Preserve selections for eggs that still exist
+        -- Preserve selections for items that still exist
         local preservedSelections = {}
         local preservedOrder = {}
         
         for itemId, _ in pairs(selectedItems) do
-            -- Keep selection if it's a mutation OR if the egg still exists in new data
-            if MutationData[itemId] or newEggData[itemId] then
+            -- Keep selection if it exists in new data (egg or mutation)
+            if newEggData[itemId] or newMutationData[itemId] then
                 preservedSelections[itemId] = true
                 table.insert(preservedOrder, itemId)
             end
         end
         
-        -- Update egg data
+        -- Update data
         EggData = newEggData
+        MutationData = newMutationData
         
         -- Restore preserved selections
         selectedItems = preservedSelections
@@ -1189,10 +1130,9 @@ function EggSelection.ReloadEggData()
             EggSelection.RefreshContent()
         end
         
-        print("[EggSelection] Egg data reloaded successfully! Found " .. #newEggData .. " eggs.")
         return true
     else
-        warn("[EggSelection] Failed to reload egg data!")
+        warn("[EggSelection] Failed to reload data!")
         return false
     end
 end
@@ -1200,6 +1140,11 @@ end
 -- Function to get current egg data (for debugging)
 function EggSelection.GetEggData()
     return EggData
+end
+
+-- Function to get current mutation data (for debugging)
+function EggSelection.GetMutationData()
+    return MutationData
 end
 
 return EggSelection
