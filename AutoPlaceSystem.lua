@@ -160,6 +160,66 @@ local function isBigPet(petType)
     return false
 end
 
+-- ============ Data Loading System ============
+local dataLoadState = {
+    eggsLoaded = false,
+    mutationsLoaded = false,
+    configSynced = false
+}
+
+-- Function to check if all data is loaded
+function AutoPlaceSystem.IsDataLoaded()
+    return dataLoadState.eggsLoaded and dataLoadState.mutationsLoaded and dataLoadState.configSynced
+end
+
+-- Function to wait for data to be loaded
+function AutoPlaceSystem.WaitForDataLoad(timeout)
+    local maxWait = timeout or 10
+    local waited = 0
+    
+    while waited < maxWait do
+        if AutoPlaceSystem.IsDataLoaded() then
+            return true
+        end
+        task.wait(0.1)
+        waited = waited + 0.1
+    end
+    
+    warn("[AutoPlace] ⚠️ Data load timeout after " .. maxWait .. " seconds")
+    return false
+end
+
+-- Function to mark data as loaded
+function AutoPlaceSystem.MarkDataLoaded()
+    -- Check if egg data is available
+    local success, eggData = pcall(function()
+        local cfg = ReplicatedStorage:FindFirstChild("Config")
+        if cfg then
+            local module = cfg:FindFirstChild("ResEgg")
+            if module then
+                return require(module)
+            end
+        end
+        return nil
+    end)
+    dataLoadState.eggsLoaded = success and eggData ~= nil
+    
+    -- Check if mutation data is available
+    local success2, mutationData = pcall(function()
+        local cfg = ReplicatedStorage:FindFirstChild("Config")
+        if cfg then
+            local module = cfg:FindFirstChild("ResMutate")
+            if module then
+                return require(module)
+            end
+        end
+        return nil
+    end)
+    dataLoadState.mutationsLoaded = success2 and mutationData ~= nil
+    
+    return dataLoadState.eggsLoaded and dataLoadState.mutationsLoaded
+end
+
 -- ============ Performance Cache System ============
 local CACHE_DURATION = 8 -- Cache for 8 seconds to reduce lag
 local tileCache = {
@@ -1209,6 +1269,17 @@ local function exitDormantMode(trigger)
     -- Immediately attempt placement without delay
     task.spawn(function()
         if autoPlaceEnabled and not placementState.isDormant then
+            -- Re-check data is still loaded before attempting placement
+            if not AutoPlaceSystem.IsDataLoaded() then
+                print("[AutoPlace] Data not loaded, re-checking...")
+                local dataLoaded = AutoPlaceSystem.WaitForDataLoad(5)
+                if not dataLoaded then
+                    print("[AutoPlace] Data load failed after wake-up, staying dormant")
+                    enterDormantMode("Data not available")
+                    return
+                end
+            end
+            
             attemptPlacement()
         end
     end)
@@ -1360,6 +1431,34 @@ end
 local function runAutoPlace()
     local consecutiveFailures = 0
     local maxFailures = 2 -- Reduced from 3 for faster dormant mode entry
+    
+    -- CRITICAL: Wait for game data to load before starting
+    if not AutoPlaceSystem.IsDataLoaded() then
+        if WindUI then
+            WindUI:Notify({ Title = "Auto Place", Content = "⏳ Waiting for game data to load...", Duration = 2 })
+        end
+        
+        local dataLoaded = AutoPlaceSystem.WaitForDataLoad(10)
+        
+        if not dataLoaded then
+            if WindUI then
+                WindUI:Notify({ 
+                    Title = "Auto Place Error", 
+                    Content = "❌ Failed to load game data! Auto Place disabled.", 
+                    Duration = 5 
+                })
+            end
+            autoPlaceEnabled = false
+            if AutoPlaceSystem.Toggle and AutoPlaceSystem.Toggle.SetValue then
+                AutoPlaceSystem.Toggle:SetValue(false)
+            end
+            return
+        end
+        
+        if WindUI then
+            WindUI:Notify({ Title = "Auto Place", Content = "✅ Game data loaded!", Duration = 2 })
+        end
+    end
     
     -- CRITICAL: Sync filter values from UI before starting
     if AutoPlaceSystem.EggDropdown and AutoPlaceSystem.EggDropdown.Value then
@@ -1739,9 +1838,17 @@ function AutoPlaceSystem.SyncLoadedValues()
         print("[AutoPlace] Synced Sources - Eggs:", placeEggsEnabled, "Pets:", placePetsEnabled)
     end
     
+    -- Mark config as synced
+    dataLoadState.configSynced = true
+    
+    -- Try to mark game data as loaded
+    AutoPlaceSystem.MarkDataLoaded()
+    
     -- Force cache invalidation to apply new settings
     petCache.lastUpdate = 0
     eggCache.lastUpdate = 0
+    
+    print("[AutoPlace] Config synced. Data loaded:", AutoPlaceSystem.IsDataLoaded())
 end
 
 function AutoPlaceSystem.CreateUI()
