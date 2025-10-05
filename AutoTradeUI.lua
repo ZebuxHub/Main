@@ -2078,10 +2078,19 @@ local function createTabSection(parent)
     scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     scrollFrame.Parent = contentArea
     
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Padding = UDim.new(0, 5)
-    listLayout.Parent = scrollFrame
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0.31, 0, 0, 120)
+    gridLayout.CellPadding = UDim2.new(0.015, 0, 0, 8)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.Parent = scrollFrame
+    
+    -- Add padding for grid
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.PaddingRight = UDim.new(0, 8)
+    padding.Parent = scrollFrame
     
     return tabSection
 end
@@ -2104,35 +2113,43 @@ local function createItemCard(itemId, itemData, category, parent)
     if configuredOnly and not (itemConfigs[category][itemId] and itemConfigs[category][itemId].enabled) then return nil end
     
     
-    local card = Instance.new("Frame")
+    local card = Instance.new("TextButton")
     card.Name = itemId
-    card.Size = UDim2.new(1, 0, 0, 60)
-    card.BackgroundColor3 = colors.hover
+    card.Size = UDim2.new(0.31, 0, 0, 120)
+    card.BackgroundColor3 = colors.surface
     card.BorderSizePixel = 0
+    card.Text = ""
     card.ZIndex = 1 -- Base z-index for card
     card.Parent = parent
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
+    corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = card
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = colors.border
+    stroke.Thickness = 1
+    stroke.Parent = card
     
     -- Icon (for eggs and fruits)
     if category ~= "pets" then
         if category == "eggs" then
             -- Egg icon (ImageLabel)
-        local icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.Size = UDim2.new(0, 40, 0, 40)
-        icon.Position = UDim2.new(0, 10, 0, 10)
-        icon.BackgroundTransparency = 1
+            local icon = Instance.new("ImageLabel")
+            icon.Name = "Icon"
+            icon.Size = UDim2.new(0, 60, 0, 60)
+            icon.Position = UDim2.new(0.5, -30, 0.15, 0)
+            icon.BackgroundTransparency = 1
             icon.Image = itemData.Icon or ""
+            icon.ScaleType = Enum.ScaleType.Fit
+            icon.ZIndex = 2
             icon.Parent = card
         else
             -- Fruit icon - try 3D model first, then fallback to emoji
             local iconContainer = Instance.new("Frame")
             iconContainer.Name = "IconContainer"
-            iconContainer.Size = UDim2.new(0, 20, 0, 20)
-            iconContainer.Position = UDim2.new(0, 8, 0, 8)
+            iconContainer.Size = UDim2.new(0, 60, 0, 60)
+            iconContainer.Position = UDim2.new(0.5, -30, 0.15, 0)
             iconContainer.BackgroundTransparency = 1
             iconContainer.ZIndex = 2
             iconContainer.Parent = card
@@ -2204,7 +2221,7 @@ local function createItemCard(itemId, itemData, category, parent)
                     textLabel.Size = UDim2.new(1, 0, 1, 0)
                     textLabel.BackgroundTransparency = 1
                     textLabel.Text = itemData.Icon or "🍎"
-                    textLabel.TextSize = 32
+                    textLabel.TextSize = 42
                     textLabel.Font = Enum.Font.GothamBold
                     textLabel.TextColor3 = getRarityColor(itemData.Rarity)
                     textLabel.ZIndex = 3
@@ -2217,55 +2234,41 @@ local function createItemCard(itemId, itemData, category, parent)
     -- Name
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(0, 150, 0, 20)
-    nameLabel.Position = UDim2.new(0, category == "pets" and 10 or 60, 0, 5)
+    nameLabel.Size = UDim2.new(1, -16, 0, 20)
+    nameLabel.Position = UDim2.new(0, 8, 0.6, 0)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = itemData.Name or itemId
-    nameLabel.TextSize = 14
+    nameLabel.TextSize = 12
     nameLabel.Font = Enum.Font.GothamSemibold
-    nameLabel.TextColor3 = ownedAmount > 0 and colors.text or colors.disabled
-    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextColor3 = colors.text
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+    nameLabel.TextWrapped = true
     nameLabel.ZIndex = 2
     nameLabel.Parent = card
     
     -- Owned Amount
     local ownedLabel = Instance.new("TextLabel")
     ownedLabel.Name = "OwnedLabel"
-    ownedLabel.Size = UDim2.new(0, 80, 0, 16)
-    local ownedLabelX = category == "pets" and 10 or 60
-    ownedLabel.Position = UDim2.new(0, ownedLabelX, 0, 25)
+    ownedLabel.Size = UDim2.new(1, -16, 0, 14)
+    ownedLabel.Position = UDim2.new(0, 8, 0.75, 0)
     ownedLabel.BackgroundTransparency = 1
     ownedLabel.Text = "Own: " .. ownedAmount .. "x"
-    ownedLabel.TextSize = 12
+    ownedLabel.TextSize = 10
     ownedLabel.Font = Enum.Font.Gotham
     ownedLabel.TextColor3 = colors.textSecondary
-    ownedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ownedLabel.TextXAlignment = Enum.TextXAlignment.Center
+    ownedLabel.TextWrapped = true
     ownedLabel.ZIndex = 2
     ownedLabel.Parent = card
     
-    -- Warning icon for insufficient items (same line as owned count)
-    local warningIcon = Instance.new("TextLabel")
-    warningIcon.Name = "WarningIcon"
-    warningIcon.Size = UDim2.new(0, 70, 0, 16)
-    warningIcon.Position = UDim2.new(0, ownedLabelX + 85, 0, 25) -- Same line as owned label, positioned after it
-    warningIcon.BackgroundTransparency = 1
-    warningIcon.Text = "⚠️"
-    warningIcon.TextSize = 10
-    warningIcon.Font = Enum.Font.GothamSemibold
-    warningIcon.TextColor3 = colors.warning
-    warningIcon.TextXAlignment = Enum.TextXAlignment.Left
-    warningIcon.Visible = false
-    warningIcon.ZIndex = 10 -- Ensure it appears above other elements
-    warningIcon.Parent = card
-    
-    -- Send Until Input (not for speed mode pets)
+    -- Send Until Input (positioned at bottom of card)
     local sendInput = nil
     if not (category == "pets" and petMode == "Speed") then
         sendInput = Instance.new("TextBox")
         sendInput.Name = "SendInput"
-        sendInput.Size = UDim2.new(0, 80, 0, 25)
-        sendInput.Position = UDim2.new(1, -90, 0, 17.5)
-        sendInput.BackgroundColor3 = colors.surface
+        sendInput.Size = UDim2.new(0.8, 0, 0, 22)
+        sendInput.Position = UDim2.new(0.1, 0, 0.88, 0)
+        sendInput.BackgroundColor3 = colors.hover
         sendInput.BorderSizePixel = 0
         -- Only show value if user has actually configured this item, otherwise leave empty
         local config = itemConfigs[category][itemId]
@@ -2275,13 +2278,17 @@ local function createItemCard(itemId, itemData, category, parent)
             sendInput.Text = "" -- Empty field, shows placeholder "Keep"
         end
         sendInput.PlaceholderText = "Keep"
-        sendInput.TextSize = 12
+        sendInput.TextSize = 10
         sendInput.Font = Enum.Font.Gotham
         sendInput.TextColor3 = colors.text
         sendInput.TextXAlignment = Enum.TextXAlignment.Center
         sendInput.ClearTextOnFocus = false
         sendInput.ZIndex = 2
         sendInput.Parent = card
+        
+        local sendInputCorner = Instance.new("UICorner")
+        sendInputCorner.CornerRadius = UDim.new(0, 4)
+        sendInputCorner.Parent = sendInput
         
         -- Input validation to only allow numbers
         sendInput:GetPropertyChangedSignal("Text"):Connect(function()
@@ -2322,53 +2329,75 @@ local function createItemCard(itemId, itemData, category, parent)
                 itemConfigs[category][itemId].enabled = true
             end
             
-            -- Update warning with new format: "nX ⚠️"
-            local config = itemConfigs[category][itemId]
-            if config and config.enabled then
-                local currentValue = config.sendUntil or 0
-                if currentValue == 0 then
-                    -- When target is 0 (send all), no warning needed
-                    warningIcon.Visible = false
-                else
-                    -- When target > 0, show warning only if we don't have enough
-                    if ownedAmount < currentValue then
-                        local difference = currentValue - ownedAmount
-                        warningIcon.Text = difference .. "X ⚠️"
-                        warningIcon.Visible = true
-                    else
-                        warningIcon.Visible = false
-                    end
-                end
-            else
-                -- No config or disabled - hide warning
-                warningIcon.Visible = false
-            end
+            -- Config updated
             
             saveConfig()
             inputDebounce = false
         end)
         
-        -- Show warning initially if needed with new format
+    end
+    
+    -- Checkmark for selection
+    local checkmark = Instance.new("TextLabel")
+    checkmark.Name = "Checkmark"
+    checkmark.Size = UDim2.new(0, 20, 0, 20)
+    checkmark.Position = UDim2.new(1, -24, 0, 4)
+    checkmark.BackgroundTransparency = 1
+    checkmark.Text = "✓"
+    checkmark.TextSize = 16
+    checkmark.Font = Enum.Font.GothamBold
+    checkmark.TextColor3 = colors.selected
+    checkmark.Visible = false
+    checkmark.ZIndex = 3
+    checkmark.Parent = card
+    
+    -- Set initial selection state (if configured)
+    local config = itemConfigs[category][itemId]
+    if config and config.enabled then
+        checkmark.Visible = true
+        card.BackgroundColor3 = colors.selected
+    end
+    
+    -- Hover effect
+    card.MouseEnter:Connect(function()
+        local config = itemConfigs[category][itemId]
+        if not (config and config.enabled) then
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+        end
+    end)
+    
+    card.MouseLeave:Connect(function()
+        local config = itemConfigs[category][itemId]
+        if not (config and config.enabled) then
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+        end
+    end)
+    
+    -- Click to toggle selection
+    card.MouseButton1Click:Connect(function()
         local config = itemConfigs[category][itemId]
         if config and config.enabled then
-            local currentSendUntil = config.sendUntil or 0
-            if currentSendUntil == 0 then
-                -- When target is 0 (send all), no warning needed
-                warningIcon.Visible = false
-            else
-                -- When target > 0, show warning only if we don't have enough
-                if ownedAmount < currentSendUntil then
-                    local difference = currentSendUntil - ownedAmount
-                    warningIcon.Text = difference .. "X ⚠️"
-                    warningIcon.Visible = true
-                else
-                    warningIcon.Visible = false
-                end
-            end
+            -- Disable
+            config.enabled = false
+            checkmark.Visible = false
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
         else
-            warningIcon.Visible = false -- No warning if not configured
+            -- Enable with default value
+            if not itemConfigs[category][itemId] then
+                itemConfigs[category][itemId] = {}
+            end
+            itemConfigs[category][itemId].enabled = true
+            itemConfigs[category][itemId].sendUntil = itemConfigs[category][itemId].sendUntil or 0
+            checkmark.Visible = true
+            TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            
+            -- Update input if it exists
+            if sendInput then
+                sendInput.Text = tostring(itemConfigs[category][itemId].sendUntil)
+            end
         end
-    end
+        saveConfig()
+    end)
     
     return card
 end
@@ -2482,7 +2511,7 @@ updateOwnedAmounts = function()
     
     -- Update owned amounts for all visible item cards
     for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("Frame") and child.Name ~= "UIListLayout" then
+        if child:IsA("TextButton") then
             local ownedLabel = child:FindFirstChild("OwnedLabel")
             if ownedLabel and ownedLabel:IsA("TextLabel") then
                 -- Extract item info from the card name
@@ -2501,29 +2530,7 @@ updateOwnedAmounts = function()
                 -- Update the owned label
                 ownedLabel.Text = "Own: " .. ownedAmount .. "x"
                 
-                -- Update warning icon if needed
-                local warningIcon = child:FindFirstChild("WarningIcon")
-                if warningIcon then
-                    local sendUntil = 0
-                    local category = currentTab:lower()
-                    if itemConfigs[category] and itemConfigs[category][itemId] then
-                        sendUntil = itemConfigs[category][itemId].sendUntil or 0
-                    end
-                    
-                    if sendUntil == 0 then
-                        -- When target is 0 (send all), no warning needed
-                        warningIcon.Visible = false
-                    else
-                        -- When target > 0, show warning only if we don't have enough
-                        if ownedAmount < sendUntil then
-                            local difference = sendUntil - ownedAmount
-                            warningIcon.Text = difference .. "X ⚠️"
-                            warningIcon.Visible = true
-                        else
-                            warningIcon.Visible = false
-                        end
-                    end
-                end
+                -- Warning icon removed (grid layout)
             end
         end
     end
@@ -2598,7 +2605,7 @@ refreshContent = function()
     
     -- Clear existing content
     for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("Frame") and child.Name ~= "UIListLayout" then
+        if child:IsA("TextButton") or child:IsA("Frame") then
             child:Destroy()
         end
     end
