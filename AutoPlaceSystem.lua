@@ -1361,6 +1361,14 @@ local function runAutoPlace()
     local consecutiveFailures = 0
     local maxFailures = 2 -- Reduced from 3 for faster dormant mode entry
     
+    -- CRITICAL: Sync filter values from UI before starting
+    if AutoPlaceSystem.EggDropdown and AutoPlaceSystem.EggDropdown.Value then
+        selectedEggTypes = AutoPlaceSystem.EggDropdown.Value or {}
+    end
+    if AutoPlaceSystem.MutationDropdown and AutoPlaceSystem.MutationDropdown.Value then
+        selectedMutations = AutoPlaceSystem.MutationDropdown.Value or {}
+    end
+    
     -- Setup event monitoring
     setupEventMonitoring()
     
@@ -1688,6 +1696,18 @@ end
 
 -- Function to sync loaded values to internal variables
 function AutoPlaceSystem.SyncLoadedValues()
+    -- Sync Egg Types filter
+    if AutoPlaceSystem.EggDropdown and AutoPlaceSystem.EggDropdown.Value then
+        selectedEggTypes = AutoPlaceSystem.EggDropdown.Value or {}
+        print("[AutoPlace] Synced Egg Types:", #selectedEggTypes, "eggs selected")
+    end
+    
+    -- Sync Mutations filter
+    if AutoPlaceSystem.MutationDropdown and AutoPlaceSystem.MutationDropdown.Value then
+        selectedMutations = AutoPlaceSystem.MutationDropdown.Value or {}
+        print("[AutoPlace] Synced Mutations:", #selectedMutations, "mutations selected")
+    end
+    
     -- Sync Min Speed value (now an Input field)
     if AutoPlaceSystem.MinSpeedSlider and AutoPlaceSystem.MinSpeedSlider.Value then
         local inputValue = AutoPlaceSystem.MinSpeedSlider.Value
