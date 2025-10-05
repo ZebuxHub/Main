@@ -14,26 +14,47 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Dynamic data that will be loaded from the game
 local FruitData = {}
 
--- Emoji mapping for fruits (since game doesn't have emojis)
-local FruitEmojis = {
-    Strawberry = "🍓",
-    Blueberry = "🫐",
-    Watermelon = "🍉",
-    Apple = "🍎",
-    Orange = "🍊",
-    Corn = "🌽",
-    Banana = "🍌",
-    Grape = "🍇",
-    Pear = "🍐",
-    Pineapple = "🍍",
-    GoldMango = "🥭",
-    BloodstoneCycad = "🌿",
-    ColossalPinecone = "🌲",
-    VoltGinkgo = "⚡",
-    DeepseaPearlFruit = "💠",
-    Durian = "🥥",
-    DragonFruit = "🐲"
-}
+-- Cache for fruit models from ReplicatedStorage
+local FruitModels = {}
+
+-- Function to get fruit model from ReplicatedStorage
+local function GetFruitModel(fruitId)
+    -- Check cache first
+    if FruitModels[fruitId] then
+        return FruitModels[fruitId]
+    end
+    
+    -- Try to find the model
+    local success, model = pcall(function()
+        -- Search in ReplicatedStorage children for PetFood folder
+        for _, child in ipairs(ReplicatedStorage:GetChildren()) do
+            if child:IsA("Folder") or child:IsA("Model") then
+                -- Look for PetFood/FruitName pattern
+                local fruitModel = child:FindFirstChild("PetFood/" .. fruitId)
+                if fruitModel then
+                    return fruitModel
+                end
+                
+                -- Also try direct search
+                local petFoodFolder = child:FindFirstChild("PetFood")
+                if petFoodFolder then
+                    fruitModel = petFoodFolder:FindFirstChild(fruitId)
+                    if fruitModel then
+                        return fruitModel
+                    end
+                end
+            end
+        end
+        return nil
+    end)
+    
+    if success and model then
+        FruitModels[fruitId] = model
+        return model
+    end
+    
+    return nil
+end
 
 -- Function to load fruit data from the game automatically
 local function LoadFruitDataFromGame()
@@ -48,11 +69,15 @@ local function LoadFruitDataFromGame()
             for fruitId, fruitInfo in pairs(gameFruitData) do
                 -- Skip the __index table
                 if fruitId ~= "__index" and type(fruitInfo) == "table" then
+                    -- Get model from ReplicatedStorage
+                    local fruitModel = GetFruitModel(fruitId)
+                    
                     -- Convert to our format
                     convertedData[fruitId] = {
                         Name = fruitInfo.ID or fruitId,
                         Price = fruitInfo.Price or "0",
-                        Icon = FruitEmojis[fruitId] or "🍎", -- Use emoji mapping
+                        Icon = fruitInfo.Icon or "", -- Use game icon
+                        Model = fruitModel, -- Store model reference
                         Rarity = fruitInfo.Rarity or 1,
                         FeedValue = fruitInfo.FeedValue or 0,
                         IsNew = false -- Can be customized if needed
@@ -386,17 +411,77 @@ local function createItemCard(itemId, itemData, parent)
     stroke.Thickness = 1
     stroke.Parent = card
     
-    -- Create Icon (TextLabel for emoji)
-    local icon = Instance.new("TextLabel")
-    icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 50, 0, 50)
-    icon.Position = UDim2.new(0.5, -25, 0.2, 0)
-    icon.BackgroundTransparency = 1
-    icon.Text = itemData.Icon
-    icon.TextSize = 32
-    icon.Font = Enum.Font.GothamBold
-    icon.TextColor3 = getRarityColor(itemData.Rarity)
-    icon.Parent = card
+    -- Create Icon (ViewportFrame for 3D model or ImageLabel for icon)
+    local iconContainer = Instance.new("Frame")
+    iconContainer.Name = "IconContainer"
+    iconContainer.Size = UDim2.new(0, 50, 0, 50)
+    iconContainer.Position = UDim2.new(0.5, -25, 0.2, 0)
+    iconContainer.BackgroundTransparency = 1
+    iconContainer.Parent = card
+    
+    -- Try to show model first, fallback to icon/emoji
+    if itemData.Model and itemData.Model:IsA("Model") then
+        -- Create ViewportFrame for 3D model
+        local viewport = Instance.new("ViewportFrame")
+        viewport.Name = "ModelViewport"
+        viewport.Size = UDim2.new(1, 0, 1, 0)
+        viewport.BackgroundTransparency = 1
+        viewport.Parent = iconContainer
+        
+        -- Clone the model
+        local modelClone = itemData.Model:Clone()
+        modelClone.Parent = viewport
+        
+        -- Create camera
+        local camera = Instance.new("Camera")
+        camera.Parent = viewport
+        viewport.CurrentCamera = camera
+        
+        -- Position camera to show the model
+        local modelCF, modelSize = modelClone:GetBoundingBox()
+        local maxSize = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+        local distance = maxSize * 2.5
+        camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.5, distance), modelCF.Position)
+        
+        -- Add lighting
+        local light = Instance.new("PointLight")
+        light.Brightness = 2
+        light.Range = 30
+        light.Parent = camera
+    elseif itemData.Icon and itemData.Icon ~= "" then
+        -- Use ImageLabel for rbxassetid icons
+        if string.find(itemData.Icon, "rbxassetid://") then
+            local imageLabel = Instance.new("ImageLabel")
+            imageLabel.Name = "IconImage"
+            imageLabel.Size = UDim2.new(1, 0, 1, 0)
+            imageLabel.BackgroundTransparency = 1
+            imageLabel.Image = itemData.Icon
+            imageLabel.ScaleType = Enum.ScaleType.Fit
+            imageLabel.Parent = iconContainer
+        else
+            -- Fallback to text (emoji)
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Name = "IconText"
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = itemData.Icon
+            textLabel.TextSize = 32
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.TextColor3 = getRarityColor(itemData.Rarity)
+            textLabel.Parent = iconContainer
+        end
+    else
+        -- Default emoji if nothing available
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Name = "IconText"
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = "🍎"
+        textLabel.TextSize = 32
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.TextColor3 = getRarityColor(itemData.Rarity)
+        textLabel.Parent = iconContainer
+    end
     
     local name = Instance.new("TextLabel")
     name.Name = "Name"
