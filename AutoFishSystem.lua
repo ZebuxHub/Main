@@ -66,6 +66,41 @@ local function ensureFishRobFocus()
 	return ok == true
 end
 
+-- FishRob parts removal (for better visibility)
+local removedFishRobParts = {}
+
+local function removeFishRobParts()
+	local char = LocalPlayer.Character
+	if not char then return end
+	
+	local fishRob = char:FindFirstChild("FishRob")
+	if not fishRob then return end
+	
+	-- Parts to remove for better visibility
+	local partsToRemove = {"FR2", "FR3", "FRBody"}
+	
+	for _, partName in ipairs(partsToRemove) do
+		local part = fishRob:FindFirstChild(partName)
+		if part then
+			-- Store original parent for restoration
+			table.insert(removedFishRobParts, {part = part, parent = fishRob})
+			-- Remove from workspace
+			part.Parent = nil
+		end
+	end
+end
+
+local function restoreFishRobParts()
+	for _, data in ipairs(removedFishRobParts) do
+		if data.part and data.parent then
+			pcall(function()
+				data.part.Parent = data.parent
+			end)
+		end
+	end
+	removedFishRobParts = {}
+end
+
 -- Anchor helpers (stable while fishing)
 local freezeConn = nil
 local function anchorPlayer()
@@ -343,6 +378,9 @@ function AutoFishSystem.SetEnabled(state)
 		currentFrostSpotPos = nil
 		isAnchored = false
 		
+		-- Remove FishRob parts for better visibility
+		removeFishRobParts()
+		
 		-- Only anchor if Frost Spot ONLY Mode is NOT enabled
 		if not FishingConfig.FrostSpotOnlyMode then
 			anchorPlayer()
@@ -370,6 +408,8 @@ function AutoFishSystem.SetEnabled(state)
 			unanchorPlayer()
 			isAnchored = false
 		end
+		-- Restore FishRob parts
+		restoreFishRobParts()
 		lastCastPos = nil
 		lastCastPosAt = 0
 		currentFrostSpotPos = nil
