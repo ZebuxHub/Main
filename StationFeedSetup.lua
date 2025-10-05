@@ -1,7 +1,7 @@
 -- StationFeedSetup.lua - Station-First UI for Auto Feed (macOS Style)
 -- Author: Zebux
 -- Version: 3.0
--- Description: Redesigned UI where you select Station → Fruits instead of Fruit → Pets
+-- Description: Two-panel UI - Left: Big Pet List, Right: Fruit Grid
 -- Features: Auto-update fruit data from game, 3D model display, macOS style UI
 
 local StationFeedSetup = {}
@@ -167,7 +167,7 @@ local function getPlayerOwnedPets()
                         -- If petType is still a UID-like string (long hex), don't show it
                         local displayName = "Station " .. stationId
                         if petType and #tostring(petType) <= 20 and petType ~= "" then
-                            displayName = "Station " .. stationId .. " (" .. petType .. ")"
+                            displayName = petType
                         end
                         
                         if stationId then
@@ -245,6 +245,7 @@ local MainFrame = nil
 -- NEW DATA STRUCTURE: {StationID: {FruitID: true}}
 local stationFruitAssignments = {}
 local savedTemplates = {} -- For future template feature
+local currentSelectedStation = nil
 
 local isDragging = false
 local dragStart = nil
@@ -287,541 +288,6 @@ local function getRarityColor(rarity)
     end
 end
 
--- Create Fruit Selection Popup for a specific Station
-local function createFruitSelectionPopup(stationId, stationDisplayName, parentFrame, refreshCallback)
-    -- Initialize station's fruit assignments if not exists
-    if not stationFruitAssignments[stationId] then
-        stationFruitAssignments[stationId] = {}
-    end
-    
-    local overlay = Instance.new("Frame")
-    overlay.Name = "FruitSelectionOverlay"
-    overlay.Size = UDim2.new(1, 0, 1, 0)
-    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    overlay.BackgroundTransparency = 0.5
-    overlay.BorderSizePixel = 0
-    overlay.ZIndex = 200
-    overlay.Parent = parentFrame
-    
-    local popup = Instance.new("Frame")
-    popup.Name = "FruitSelectionPopup"
-    popup.Size = UDim2.new(0, 400, 0, 500)
-    popup.Position = UDim2.new(0.5, -200, 0.5, -250)
-    popup.BackgroundColor3 = colors.background
-    popup.BorderSizePixel = 0
-    popup.ZIndex = 201
-    popup.Parent = overlay
-    
-    local popupCorner = Instance.new("UICorner")
-    popupCorner.CornerRadius = UDim.new(0, 12)
-    popupCorner.Parent = popup
-    
-    local popupStroke = Instance.new("UIStroke")
-    popupStroke.Color = colors.primary
-    popupStroke.Thickness = 2
-    popupStroke.Parent = popup
-    
-    -- Title (แสดงเฉพาะส่วน Station X ไม่รวม UID)
-    local cleanDisplayName = stationDisplayName
-    -- ถ้ามี pattern "Station X (Type)" ให้ใช้แบบนั้น, ถ้าไม่ใช่ให้ตัดส่วนที่เป็น UID ออก
-    if not stationDisplayName:match("^Station %d+") then
-        -- ถ้าไม่ใช่รูปแบบ Station X แปลว่ามี UID ต่อท้าย ให้ใช้แค่ส่วน type
-        cleanDisplayName = stationDisplayName
-    end
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -32, 0, 30)
-    title.Position = UDim2.new(0, 16, 0, 12)
-    title.BackgroundTransparency = 1
-    title.Text = "🍎 " .. cleanDisplayName .. " → Fruits"
-    title.TextSize = 14
-    title.Font = Enum.Font.GothamBold
-    title.TextColor3 = colors.text
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.ZIndex = 202
-    title.Parent = popup
-    
-    local subtitle = Instance.new("TextLabel")
-    subtitle.Size = UDim2.new(1, -32, 0, 18)
-    subtitle.Position = UDim2.new(0, 16, 0, 42)
-    subtitle.BackgroundTransparency = 1
-    subtitle.Text = "Select fruits to feed this station"
-    subtitle.TextSize = 11
-    subtitle.Font = Enum.Font.Gotham
-    subtitle.TextColor3 = colors.textSecondary
-    subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    subtitle.ZIndex = 202
-    subtitle.Parent = popup
-    
-    -- Scroll frame (moved down to make room for action buttons)
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -32, 1, -185)
-    scroll.Position = UDim2.new(0, 16, 0, 110)
-    scroll.BackgroundColor3 = colors.surface
-    scroll.BorderSizePixel = 0
-    scroll.ScrollBarThickness = 6
-    scroll.ScrollBarImageColor3 = colors.primary
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.ZIndex = 202
-    scroll.Parent = popup
-    
-    local scrollCorner = Instance.new("UICorner")
-    scrollCorner.CornerRadius = UDim.new(0, 8)
-    scrollCorner.Parent = scroll
-    
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 4)
-    layout.Parent = scroll
-    
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 8)
-    padding.PaddingBottom = UDim.new(0, 8)
-    padding.PaddingLeft = UDim.new(0, 8)
-    padding.PaddingRight = UDim.new(0, 8)
-    padding.Parent = scroll
-    
-    local inventory = getPlayerFruitInventory()
-    
-    -- Initialize if not exists
-    if not stationFruitAssignments[stationId] then
-        stationFruitAssignments[stationId] = {}
-    end
-    
-    -- Action buttons container (above scroll)
-    local actionButtons = Instance.new("Frame")
-    actionButtons.Size = UDim2.new(1, -32, 0, 36)
-    actionButtons.Position = UDim2.new(0, 16, 0, 65)
-    actionButtons.BackgroundTransparency = 1
-    actionButtons.ZIndex = 202
-    actionButtons.Parent = popup
-    
-    local buttonLayout = Instance.new("UIListLayout")
-    buttonLayout.FillDirection = Enum.FillDirection.Horizontal
-    buttonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    buttonLayout.Padding = UDim.new(0, 8)
-    buttonLayout.Parent = actionButtons
-    
-    -- "Select All" button (macOS style - compact)
-    local selectAll = Instance.new("TextButton")
-    selectAll.Size = UDim2.new(0, 120, 0, 32)
-    selectAll.BackgroundColor3 = colors.primary
-    selectAll.BorderSizePixel = 0
-    selectAll.Text = "✔️ Select All"
-    selectAll.TextSize = 12
-    selectAll.Font = Enum.Font.GothamMedium
-    selectAll.TextColor3 = colors.text
-    selectAll.ZIndex = 203
-    selectAll.Parent = actionButtons
-    
-    local selectAllCorner = Instance.new("UICorner")
-    selectAllCorner.CornerRadius = UDim.new(0, 6)
-    selectAllCorner.Parent = selectAll
-    
-    selectAll.MouseEnter:Connect(function()
-        TweenService:Create(selectAll, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.primaryHover
-        }):Play()
-    end)
-    selectAll.MouseLeave:Connect(function()
-        TweenService:Create(selectAll, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.primary
-        }):Play()
-    end)
-    
-    selectAll.MouseButton1Click:Connect(function()
-        for fruitId in pairs(FruitData) do
-            stationFruitAssignments[stationId][fruitId] = true
-        end
-        for _, child in ipairs(scroll:GetChildren()) do
-            if child:IsA("TextButton") and child.Name:match("^Fruit_") then
-                local checkCont = child:FindFirstChild("CheckContainer")
-                local check = checkCont and checkCont:FindFirstChild("Checkmark")
-                if check then check.Visible = true end
-                if checkCont then checkCont.BackgroundColor3 = colors.success end
-                child.BackgroundColor3 = colors.selected
-                local stroke = child:FindFirstChild("UIStroke")
-                if stroke then
-                    stroke.Color = colors.selected
-                    stroke.Thickness = 2
-                end
-            end
-        end
-    end)
-    
-    -- "Clear All" button (macOS style - compact)
-    local clearAll = Instance.new("TextButton")
-    clearAll.Size = UDim2.new(0, 120, 0, 32)
-    clearAll.BackgroundColor3 = colors.close
-    clearAll.BorderSizePixel = 0
-    clearAll.Text = "❌ Clear All"
-    clearAll.TextSize = 12
-    clearAll.Font = Enum.Font.GothamMedium
-    clearAll.TextColor3 = colors.text
-    clearAll.ZIndex = 203
-    clearAll.Parent = actionButtons
-    
-    local clearAllCorner = Instance.new("UICorner")
-    clearAllCorner.CornerRadius = UDim.new(0, 6)
-    clearAllCorner.Parent = clearAll
-    
-    clearAll.MouseEnter:Connect(function()
-        TweenService:Create(clearAll, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = Color3.fromRGB(255, 59, 48)
-        }):Play()
-    end)
-    clearAll.MouseLeave:Connect(function()
-        TweenService:Create(clearAll, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.close
-        }):Play()
-    end)
-    
-    clearAll.MouseButton1Click:Connect(function()
-        stationFruitAssignments[stationId] = {}
-        for _, child in ipairs(scroll:GetChildren()) do
-            if child:IsA("TextButton") and child.Name:match("^Fruit_") then
-                local checkCont = child:FindFirstChild("CheckContainer")
-                local check = checkCont and checkCont:FindFirstChild("Checkmark")
-                if check then check.Visible = false end
-                if checkCont then checkCont.BackgroundColor3 = Color3.fromRGB(70, 70, 73) end
-                child.BackgroundColor3 = colors.surface
-                local stroke = child:FindFirstChild("UIStroke")
-                if stroke then
-                    stroke.Color = colors.border
-                    stroke.Thickness = 1
-                end
-            end
-        end
-    end)
-    
-    -- Change scroll to use grid layout instead of list
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.31, 0, 0, 140)
-    gridLayout.CellPadding = UDim2.new(0.01, 0, 0, 8)
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    gridLayout.Parent = scroll
-    
-    -- Remove old UIListLayout if exists
-    local oldLayout = scroll:FindFirstChild("UIListLayout")
-    if oldLayout then
-        oldLayout:Destroy()
-    end
-    
-    -- Create fruit items as cards
-    local sortedFruits = {}
-    for fruitId, fruitData in pairs(FruitData) do
-        table.insert(sortedFruits, {id = fruitId, data = fruitData})
-    end
-    table.sort(sortedFruits, function(a, b)
-        return (a.data.Rarity or 1) < (b.data.Rarity or 1)
-    end)
-    
-    for i, fruitInfo in ipairs(sortedFruits) do
-        local fruitId = fruitInfo.id
-        local fruitData = fruitInfo.data
-        
-        local item = Instance.new("TextButton")
-        item.Name = "Fruit_" .. fruitId
-        item.Size = UDim2.new(0.31, 0, 0, 140)
-        item.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surface
-        item.BorderSizePixel = 0
-        item.Text = ""
-        item.ZIndex = 203
-        item.LayoutOrder = i
-        item.Parent = scroll
-        
-        local itemCorner = Instance.new("UICorner")
-        itemCorner.CornerRadius = UDim.new(0, 10)
-        itemCorner.Parent = item
-        
-        local itemStroke = Instance.new("UIStroke")
-        itemStroke.Color = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.border
-        itemStroke.Thickness = stationFruitAssignments[stationId][fruitId] and 2 or 1
-        itemStroke.Transparency = 0.3
-        itemStroke.Parent = item
-        
-        -- Icon Container (for 3D model or icon) - centered and larger
-        local iconContainer = Instance.new("Frame")
-        iconContainer.Name = "IconContainer"
-        iconContainer.Size = UDim2.new(0, 70, 0, 70)
-        iconContainer.Position = UDim2.new(0.5, -35, 0.15, 0)
-        iconContainer.BackgroundTransparency = 1
-        iconContainer.ZIndex = 204
-        iconContainer.Parent = item
-        
-        -- Try to show model first, fallback to icon/emoji
-        if fruitData.Model and fruitData.Model:IsA("Model") then
-            -- Create ViewportFrame for 3D model
-            local viewport = Instance.new("ViewportFrame")
-            viewport.Name = "ModelViewport"
-            viewport.Size = UDim2.new(1, 0, 1, 0)
-            viewport.BackgroundTransparency = 1
-            viewport.ZIndex = 205
-            viewport.Parent = iconContainer
-            
-            -- Clone the model
-            local modelClone = fruitData.Model:Clone()
-            modelClone.Parent = viewport
-            
-            -- Create camera
-            local camera = Instance.new("Camera")
-            camera.Parent = viewport
-            viewport.CurrentCamera = camera
-            
-            -- Position camera to show the model
-            local modelCF, modelSize = modelClone:GetBoundingBox()
-            local maxSize = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-            local distance = maxSize * 1.8
-            camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.4, distance), modelCF.Position)
-            
-            -- Add lighting
-            local light = Instance.new("PointLight")
-            light.Brightness = 2
-            light.Range = 30
-            light.Parent = camera
-        elseif fruitData.Icon and fruitData.Icon ~= "" then
-            -- Use ImageLabel for rbxassetid icons
-            if string.find(fruitData.Icon, "rbxassetid://") then
-                local imageLabel = Instance.new("ImageLabel")
-                imageLabel.Name = "IconImage"
-                imageLabel.Size = UDim2.new(1, 0, 1, 0)
-                imageLabel.BackgroundTransparency = 1
-                imageLabel.Image = fruitData.Icon
-                imageLabel.ScaleType = Enum.ScaleType.Fit
-                imageLabel.ZIndex = 205
-                imageLabel.Parent = iconContainer
-            else
-                -- Fallback to text (emoji)
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Name = "IconText"
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.BackgroundTransparency = 1
-                textLabel.Text = fruitData.Icon
-                textLabel.TextSize = 48
-                textLabel.Font = Enum.Font.GothamBold
-                textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
-                textLabel.ZIndex = 205
-                textLabel.Parent = iconContainer
-            end
-        else
-            -- Default emoji if nothing available
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Name = "IconText"
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = "🍎"
-            textLabel.TextSize = 48
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
-            textLabel.ZIndex = 205
-            textLabel.Parent = iconContainer
-        end
-        
-        -- Name (centered below icon)
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(1, -16, 0, 20)
-        nameLabel.Position = UDim2.new(0, 8, 0.65, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = fruitData.Name
-        nameLabel.TextSize = 12
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextColor3 = colors.text
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Center
-        nameLabel.TextWrapped = true
-        nameLabel.ZIndex = 204
-        nameLabel.Parent = item
-        
-        -- Amount (centered below name)
-        local amount = inventory[fruitId] or 0
-        local amountLabel = Instance.new("TextLabel")
-        amountLabel.Size = UDim2.new(1, -16, 0, 16)
-        amountLabel.Position = UDim2.new(0, 8, 0.82, 0)
-        amountLabel.BackgroundTransparency = 1
-        amountLabel.Text = "Have: " .. formatNumber(amount)
-        amountLabel.TextSize = 10
-        amountLabel.Font = Enum.Font.Gotham
-        amountLabel.TextColor3 = amount > 0 and colors.textSecondary or colors.close
-        amountLabel.TextXAlignment = Enum.TextXAlignment.Center
-        amountLabel.ZIndex = 204
-        amountLabel.Parent = item
-        
-        -- Checkmark (top right corner)
-        local checkContainer = Instance.new("Frame")
-        checkContainer.Name = "CheckContainer"
-        checkContainer.Size = UDim2.new(0, 24, 0, 24)
-        checkContainer.Position = UDim2.new(1, -28, 0, 4)
-        checkContainer.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.success or Color3.fromRGB(70, 70, 73)
-        checkContainer.BorderSizePixel = 0
-        checkContainer.ZIndex = 204
-        checkContainer.Parent = item
-        
-        local checkCorner = Instance.new("UICorner")
-        checkCorner.CornerRadius = UDim.new(1, 0)
-        checkCorner.Parent = checkContainer
-        
-        local check = Instance.new("TextLabel")
-        check.Name = "Checkmark"
-        check.Size = UDim2.new(1, 0, 1, 0)
-        check.BackgroundTransparency = 1
-        check.Text = "✔️"
-        check.TextSize = 16
-        check.Font = Enum.Font.GothamBold
-        check.TextColor3 = colors.text
-        check.Visible = stationFruitAssignments[stationId][fruitId] == true
-        check.ZIndex = 205
-        check.Parent = checkContainer
-        
-        -- Click handler (macOS style animation)
-        item.MouseButton1Click:Connect(function()
-            if stationFruitAssignments[stationId][fruitId] then
-                stationFruitAssignments[stationId][fruitId] = nil
-                check.Visible = false
-                TweenService:Create(item, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
-                    BackgroundColor3 = colors.surfaceLight
-                }):Play()
-                TweenService:Create(itemStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
-                    Color = colors.border,
-                    Thickness = 1
-                }):Play()
-                TweenService:Create(checkContainer, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-                    BackgroundColor3 = Color3.fromRGB(70, 70, 73),
-                    Size = UDim2.new(0, 24, 0, 24)
-                }):Play()
-            else
-                stationFruitAssignments[stationId][fruitId] = true
-                check.Visible = true
-                TweenService:Create(item, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
-                    BackgroundColor3 = colors.selected
-                }):Play()
-                TweenService:Create(itemStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
-                    Color = colors.selected,
-                    Thickness = 2
-                }):Play()
-                TweenService:Create(checkContainer, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-                    BackgroundColor3 = colors.success,
-                    Size = UDim2.new(0, 28, 0, 28)
-                }):Play()
-            end
-        end)
-        
-        -- Hover (macOS style - subtle scale)
-        item.MouseEnter:Connect(function()
-            if not stationFruitAssignments[stationId][fruitId] then
-                TweenService:Create(item, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-                    BackgroundColor3 = colors.hover
-                }):Play()
-                TweenService:Create(itemStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-                    Color = colors.primary,
-                    Thickness = 2
-                }):Play()
-            end
-        end)
-        item.MouseLeave:Connect(function()
-            if not stationFruitAssignments[stationId][fruitId] then
-                TweenService:Create(item, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-                    BackgroundColor3 = colors.surface
-                }):Play()
-                TweenService:Create(itemStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-                    Color = colors.border,
-                    Thickness = 1
-                }):Play()
-            end
-        end)
-    end
-    
-    -- Bottom buttons
-    local btnsContainer = Instance.new("Frame")
-    btnsContainer.Size = UDim2.new(1, -32, 0, 60)
-    btnsContainer.Position = UDim2.new(0, 16, 1, -76)
-    btnsContainer.BackgroundTransparency = 1
-    btnsContainer.ZIndex = 202
-    btnsContainer.Parent = popup
-    
-    local btnsLayout = Instance.new("UIListLayout")
-    btnsLayout.FillDirection = Enum.FillDirection.Horizontal
-    btnsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    btnsLayout.Padding = UDim.new(0, 8)
-    btnsLayout.Parent = btnsContainer
-    
-    -- Close button (macOS style)
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 100, 0, 44)
-    closeBtn.BackgroundColor3 = colors.surfaceLight
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "Close"
-    closeBtn.TextSize = 14
-    closeBtn.Font = Enum.Font.GothamMedium
-    closeBtn.TextColor3 = colors.text
-    closeBtn.ZIndex = 203
-    closeBtn.Parent = btnsContainer
-    
-    local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0, 10)
-    closeBtnCorner.Parent = closeBtn
-    
-    -- Save button (macOS style)
-    local saveBtn = Instance.new("TextButton")
-    saveBtn.Size = UDim2.new(0, 120, 0, 44)
-    saveBtn.BackgroundColor3 = colors.primary
-    saveBtn.BorderSizePixel = 0
-    saveBtn.Text = "✔️ Save"
-    saveBtn.TextSize = 14
-    saveBtn.Font = Enum.Font.GothamBold
-    saveBtn.TextColor3 = colors.text
-    saveBtn.ZIndex = 203
-    saveBtn.Parent = btnsContainer
-    
-    local saveBtnCorner = Instance.new("UICorner")
-    saveBtnCorner.CornerRadius = UDim.new(0, 10)
-    saveBtnCorner.Parent = saveBtn
-    
-    -- Button hover effects
-    closeBtn.MouseEnter:Connect(function()
-        TweenService:Create(closeBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.hover
-        }):Play()
-    end)
-    closeBtn.MouseLeave:Connect(function()
-        TweenService:Create(closeBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.surfaceLight
-        }):Play()
-    end)
-    
-    saveBtn.MouseEnter:Connect(function()
-        TweenService:Create(saveBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.primaryHover
-        }):Play()
-    end)
-    saveBtn.MouseLeave:Connect(function()
-        TweenService:Create(saveBtn, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = colors.primary
-        }):Play()
-    end)
-    
-    local function close()
-        overlay:Destroy()
-        if refreshCallback then refreshCallback() end
-    end
-    
-    closeBtn.MouseButton1Click:Connect(close)
-    saveBtn.MouseButton1Click:Connect(function()
-        -- Trigger save callback when user clicks Save in popup
-        if onSaveCallback then
-            onSaveCallback(stationFruitAssignments)
-        end
-        close()
-    end)
-    
-    -- Click outside to close
-    overlay.MouseButton1Click:Connect(function(input)
-        local pos = input.Position
-        if pos.Y < popup.AbsolutePosition.Y or pos.Y > popup.AbsolutePosition.Y + popup.AbsoluteSize.Y or
-           pos.X < popup.AbsolutePosition.X or pos.X > popup.AbsolutePosition.X + popup.AbsoluteSize.X then
-            close()
-        end
-    end)
-end
-
 -- Create main UI
 local function createMainUI()
     ScreenGui = Instance.new("ScreenGui")
@@ -831,8 +297,8 @@ local function createMainUI()
     ScreenGui.Parent = PlayerGui
     
     MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 450, 0, 500)
-    MainFrame.Position = UDim2.new(0.5, -225, 0.5, -250)
+    MainFrame.Size = UDim2.new(0, 800, 0, 500)
+    MainFrame.Position = UDim2.new(0.5, -400, 0.5, -250)
     MainFrame.BackgroundColor3 = colors.background
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
@@ -912,36 +378,335 @@ local function createMainUI()
         end
     end)
     
-    -- Stations scroll
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -32, 1, -170)
-    scroll.Position = UDim2.new(0, 16, 0, 66)
-    scroll.BackgroundColor3 = colors.surface
-    scroll.BorderSizePixel = 0
-    scroll.ScrollBarThickness = 6
-    scroll.ScrollBarImageColor3 = colors.primary
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.Parent = MainFrame
+    -- Left Panel: Big Pet List
+    local leftPanel = Instance.new("Frame")
+    leftPanel.Size = UDim2.new(0.35, -8, 1, -120)
+    leftPanel.Position = UDim2.new(0, 16, 0, 66)
+    leftPanel.BackgroundColor3 = colors.surface
+    leftPanel.BorderSizePixel = 0
+    leftPanel.Parent = MainFrame
     
-    local scrollCorner = Instance.new("UICorner")
-    scrollCorner.CornerRadius = UDim.new(0, 8)
-    scrollCorner.Parent = scroll
+    local leftCorner = Instance.new("UICorner")
+    leftCorner.CornerRadius = UDim.new(0, 8)
+    leftCorner.Parent = leftPanel
     
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 8)
-    layout.Parent = scroll
+    local leftTitle = Instance.new("TextLabel")
+    leftTitle.Size = UDim2.new(1, -16, 0, 30)
+    leftTitle.Position = UDim2.new(0, 8, 0, 8)
+    leftTitle.BackgroundTransparency = 1
+    leftTitle.Text = "🐾 Big Pets"
+    leftTitle.TextSize = 13
+    leftTitle.Font = Enum.Font.GothamBold
+    leftTitle.TextColor3 = colors.text
+    leftTitle.TextXAlignment = Enum.TextXAlignment.Left
+    leftTitle.Parent = leftPanel
     
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 8)
-    padding.PaddingBottom = UDim.new(0, 8)
-    padding.PaddingLeft = UDim.new(0, 8)
-    padding.PaddingRight = UDim.new(0, 8)
-    padding.Parent = scroll
+    local petScroll = Instance.new("ScrollingFrame")
+    petScroll.Size = UDim2.new(1, -16, 1, -48)
+    petScroll.Position = UDim2.new(0, 8, 0, 40)
+    petScroll.BackgroundTransparency = 1
+    petScroll.ScrollBarThickness = 4
+    petScroll.ScrollBarImageColor3 = colors.primary
+    petScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    petScroll.Parent = leftPanel
     
-    -- Refresh station list
-    local function refreshStations()
-        for _, child in ipairs(scroll:GetChildren()) do
-            if child:IsA("Frame") or child:IsA("TextLabel") then
+    local petLayout = Instance.new("UIListLayout")
+    petLayout.Padding = UDim.new(0, 4)
+    petLayout.Parent = petScroll
+    
+    -- Right Panel: Fruit Grid
+    local rightPanel = Instance.new("Frame")
+    rightPanel.Size = UDim2.new(0.65, -24, 1, -120)
+    rightPanel.Position = UDim2.new(0.35, 8, 0, 66)
+    rightPanel.BackgroundColor3 = colors.surface
+    rightPanel.BorderSizePixel = 0
+    rightPanel.Parent = MainFrame
+    
+    local rightCorner = Instance.new("UICorner")
+    rightCorner.CornerRadius = UDim.new(0, 8)
+    rightCorner.Parent = rightPanel
+    
+    local rightTitle = Instance.new("TextLabel")
+    rightTitle.Size = UDim2.new(1, -16, 0, 30)
+    rightTitle.Position = UDim2.new(0, 8, 0, 8)
+    rightTitle.BackgroundTransparency = 1
+    rightTitle.Text = "🍎 Select Fruits"
+    rightTitle.TextSize = 13
+    rightTitle.Font = Enum.Font.GothamBold
+    rightTitle.TextColor3 = colors.textSecondary
+    rightTitle.TextXAlignment = Enum.TextXAlignment.Left
+    rightTitle.Parent = rightPanel
+    
+    -- Action buttons (Select All / Clear All)
+    local actionButtons = Instance.new("Frame")
+    actionButtons.Size = UDim2.new(1, -16, 0, 28)
+    actionButtons.Position = UDim2.new(0, 8, 0, 42)
+    actionButtons.BackgroundTransparency = 1
+    actionButtons.Parent = rightPanel
+    
+    local buttonLayout = Instance.new("UIListLayout")
+    buttonLayout.FillDirection = Enum.FillDirection.Horizontal
+    buttonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    buttonLayout.Padding = UDim.new(0, 6)
+    buttonLayout.Parent = actionButtons
+    
+    local selectAllBtn = Instance.new("TextButton")
+    selectAllBtn.Size = UDim2.new(0, 100, 0, 28)
+    selectAllBtn.BackgroundColor3 = colors.primary
+    selectAllBtn.BorderSizePixel = 0
+    selectAllBtn.Text = "✔️ Select All"
+    selectAllBtn.TextSize = 11
+    selectAllBtn.Font = Enum.Font.GothamMedium
+    selectAllBtn.TextColor3 = colors.text
+    selectAllBtn.Parent = actionButtons
+    
+    local selectAllCorner = Instance.new("UICorner")
+    selectAllCorner.CornerRadius = UDim.new(0, 6)
+    selectAllCorner.Parent = selectAllBtn
+    
+    local clearAllBtn = Instance.new("TextButton")
+    clearAllBtn.Size = UDim2.new(0, 100, 0, 28)
+    clearAllBtn.BackgroundColor3 = colors.close
+    clearAllBtn.BorderSizePixel = 0
+    clearAllBtn.Text = "❌ Clear All"
+    clearAllBtn.TextSize = 11
+    clearAllBtn.Font = Enum.Font.GothamMedium
+    clearAllBtn.TextColor3 = colors.text
+    clearAllBtn.Parent = actionButtons
+    
+    local clearAllCorner = Instance.new("UICorner")
+    clearAllCorner.CornerRadius = UDim.new(0, 6)
+    clearAllCorner.Parent = clearAllBtn
+    
+    local fruitScroll = Instance.new("ScrollingFrame")
+    fruitScroll.Size = UDim2.new(1, -16, 1, -82)
+    fruitScroll.Position = UDim2.new(0, 8, 0, 74)
+    fruitScroll.BackgroundTransparency = 1
+    fruitScroll.ScrollBarThickness = 4
+    fruitScroll.ScrollBarImageColor3 = colors.primary
+    fruitScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    fruitScroll.Parent = rightPanel
+    
+    local fruitGrid = Instance.new("UIGridLayout")
+    fruitGrid.CellSize = UDim2.new(0.32, 0, 0, 110)
+    fruitGrid.CellPadding = UDim2.new(0.01, 0, 0, 6)
+    fruitGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    fruitGrid.Parent = fruitScroll
+    
+    local fruitPadding = Instance.new("UIPadding")
+    fruitPadding.PaddingTop = UDim.new(0, 4)
+    fruitPadding.PaddingBottom = UDim.new(0, 4)
+    fruitPadding.Parent = fruitScroll
+    
+    -- Function to refresh fruit grid for selected station
+    local function refreshFruitGrid(stationId)
+        -- Clear existing fruits
+        for _, child in ipairs(fruitScroll:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
+        
+        if not stationId then
+            rightTitle.Text = "🍎 Select a Big Pet first"
+            rightTitle.TextColor3 = colors.textSecondary
+            return
+        end
+        
+        rightTitle.Text = "🍎 Fruits for Station " .. stationId
+        rightTitle.TextColor3 = colors.text
+        
+        -- Initialize if not exists
+        if not stationFruitAssignments[stationId] then
+            stationFruitAssignments[stationId] = {}
+        end
+        
+        local inventory = getPlayerFruitInventory()
+        
+        -- Sort fruits by rarity
+        local sortedFruits = {}
+        for fruitId, fruitData in pairs(FruitData) do
+            table.insert(sortedFruits, {id = fruitId, data = fruitData})
+        end
+        table.sort(sortedFruits, function(a, b)
+            return (a.data.Rarity or 1) < (b.data.Rarity or 1)
+        end)
+        
+        for i, fruitInfo in ipairs(sortedFruits) do
+            local fruitId = fruitInfo.id
+            local fruitData = fruitInfo.data
+            
+            local card = Instance.new("TextButton")
+            card.Name = "Fruit_" .. fruitId
+            card.Size = UDim2.new(0.32, 0, 0, 110)
+            card.BackgroundColor3 = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.surface
+            card.BorderSizePixel = 0
+            card.Text = ""
+            card.LayoutOrder = i
+            card.Parent = fruitScroll
+            
+            local cardCorner = Instance.new("UICorner")
+            cardCorner.CornerRadius = UDim.new(0, 8)
+            cardCorner.Parent = card
+            
+            local cardStroke = Instance.new("UIStroke")
+            cardStroke.Color = stationFruitAssignments[stationId][fruitId] and colors.selected or colors.border
+            cardStroke.Thickness = stationFruitAssignments[stationId][fruitId] and 2 or 1
+            cardStroke.Parent = card
+            
+            -- Icon Container
+            local iconContainer = Instance.new("Frame")
+            iconContainer.Size = UDim2.new(0, 60, 0, 60)
+            iconContainer.Position = UDim2.new(0.5, -30, 0.15, 0)
+            iconContainer.BackgroundTransparency = 1
+            iconContainer.Parent = card
+            
+            -- Try to show model first, fallback to icon/emoji
+            if fruitData.Model and fruitData.Model:IsA("Model") then
+                local viewport = Instance.new("ViewportFrame")
+                viewport.Size = UDim2.new(1, 0, 1, 0)
+                viewport.BackgroundTransparency = 1
+                viewport.Parent = iconContainer
+                
+                local modelClone = fruitData.Model:Clone()
+                modelClone.Parent = viewport
+                
+                local camera = Instance.new("Camera")
+                camera.Parent = viewport
+                viewport.CurrentCamera = camera
+                
+                local modelCF, modelSize = modelClone:GetBoundingBox()
+                local maxSize = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+                local distance = maxSize * 1.8
+                camera.CFrame = CFrame.new(modelCF.Position + Vector3.new(distance, distance * 0.4, distance), modelCF.Position)
+                
+                local light = Instance.new("PointLight")
+                light.Brightness = 2
+                light.Range = 30
+                light.Parent = camera
+            elseif fruitData.Icon and fruitData.Icon ~= "" then
+                if string.find(fruitData.Icon, "rbxassetid://") then
+                    local imageLabel = Instance.new("ImageLabel")
+                    imageLabel.Size = UDim2.new(1, 0, 1, 0)
+                    imageLabel.BackgroundTransparency = 1
+                    imageLabel.Image = fruitData.Icon
+                    imageLabel.ScaleType = Enum.ScaleType.Fit
+                    imageLabel.Parent = iconContainer
+                else
+                    local textLabel = Instance.new("TextLabel")
+                    textLabel.Size = UDim2.new(1, 0, 1, 0)
+                    textLabel.BackgroundTransparency = 1
+                    textLabel.Text = fruitData.Icon
+                    textLabel.TextSize = 40
+                    textLabel.Font = Enum.Font.GothamBold
+                    textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
+                    textLabel.Parent = iconContainer
+                end
+            else
+                local textLabel = Instance.new("TextLabel")
+                textLabel.Size = UDim2.new(1, 0, 1, 0)
+                textLabel.BackgroundTransparency = 1
+                textLabel.Text = "🍎"
+                textLabel.TextSize = 40
+                textLabel.Font = Enum.Font.GothamBold
+                textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
+                textLabel.Parent = iconContainer
+            end
+            
+            -- Name
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, -8, 0, 16)
+            nameLabel.Position = UDim2.new(0, 4, 0.65, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = fruitData.Name
+            nameLabel.TextSize = 10
+            nameLabel.Font = Enum.Font.GothamSemibold
+            nameLabel.TextColor3 = colors.text
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+            nameLabel.TextWrapped = true
+            nameLabel.Parent = card
+            
+            -- Amount
+            local amount = inventory[fruitId] or 0
+            local amountLabel = Instance.new("TextLabel")
+            amountLabel.Size = UDim2.new(1, -8, 0, 14)
+            amountLabel.Position = UDim2.new(0, 4, 0.82, 0)
+            amountLabel.BackgroundTransparency = 1
+            amountLabel.Text = formatNumber(amount)
+            amountLabel.TextSize = 9
+            amountLabel.Font = Enum.Font.Gotham
+            amountLabel.TextColor3 = amount > 0 and colors.textSecondary or colors.close
+            amountLabel.TextXAlignment = Enum.TextXAlignment.Center
+            amountLabel.Parent = card
+            
+            -- Checkmark
+            local checkmark = Instance.new("TextLabel")
+            checkmark.Size = UDim2.new(0, 20, 0, 20)
+            checkmark.Position = UDim2.new(1, -24, 0, 4)
+            checkmark.BackgroundTransparency = 1
+            checkmark.Text = "✓"
+            checkmark.TextSize = 14
+            checkmark.Font = Enum.Font.GothamBold
+            checkmark.TextColor3 = colors.text
+            checkmark.Visible = stationFruitAssignments[stationId][fruitId] == true
+            checkmark.Parent = card
+            
+            -- Click handler
+            card.MouseButton1Click:Connect(function()
+                if stationFruitAssignments[stationId][fruitId] then
+                    stationFruitAssignments[stationId][fruitId] = nil
+                    checkmark.Visible = false
+                    TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+                    TweenService:Create(cardStroke, TweenInfo.new(0.2), {
+                        Color = colors.border,
+                        Thickness = 1
+                    }):Play()
+                else
+                    stationFruitAssignments[stationId][fruitId] = true
+                    checkmark.Visible = true
+                    TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+                    TweenService:Create(cardStroke, TweenInfo.new(0.2), {
+                        Color = colors.selected,
+                        Thickness = 2
+                    }):Play()
+                end
+            end)
+            
+            -- Hover
+            card.MouseEnter:Connect(function()
+                if not stationFruitAssignments[stationId][fruitId] then
+                    TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+                end
+            end)
+            card.MouseLeave:Connect(function()
+                if not stationFruitAssignments[stationId][fruitId] then
+                    TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
+                end
+            end)
+        end
+    end
+    
+    -- Select All / Clear All handlers
+    selectAllBtn.MouseButton1Click:Connect(function()
+        if currentSelectedStation then
+            for fruitId in pairs(FruitData) do
+                stationFruitAssignments[currentSelectedStation][fruitId] = true
+            end
+            refreshFruitGrid(currentSelectedStation)
+        end
+    end)
+    
+    clearAllBtn.MouseButton1Click:Connect(function()
+        if currentSelectedStation then
+            stationFruitAssignments[currentSelectedStation] = {}
+            refreshFruitGrid(currentSelectedStation)
+        end
+    end)
+    
+    -- Function to refresh pet list
+    local function refreshPetList()
+        for _, child in ipairs(petScroll:GetChildren()) do
+            if child:IsA("TextButton") then
                 child:Destroy()
             end
         end
@@ -950,25 +715,26 @@ local function createMainUI()
         
         if #pets == 0 then
             local noStations = Instance.new("TextLabel")
-            noStations.Size = UDim2.new(1, -24, 0, 100)
+            noStations.Size = UDim2.new(1, -8, 0, 60)
             noStations.BackgroundTransparency = 1
-            noStations.Text = "No Big Pets Found\nPlease place Big Pets first"
-            noStations.TextSize = 14
+            noStations.Text = "No Big Pets Found\n\nPlace Big Pets first"
+            noStations.TextSize = 11
             noStations.Font = Enum.Font.Gotham
             noStations.TextColor3 = colors.textSecondary
-            noStations.Parent = scroll
+            noStations.Parent = petScroll
             return
         end
         
-        for _, petInfo in ipairs(pets) do
-            local card = Instance.new("Frame")
-            card.Size = UDim2.new(1, 0, 0, 70)
-            card.BackgroundColor3 = colors.background
+        for i, petInfo in ipairs(pets) do
+            local card = Instance.new("TextButton")
+            card.Size = UDim2.new(1, 0, 0, 50)
+            card.BackgroundColor3 = colors.surfaceLight
             card.BorderSizePixel = 0
-            card.Parent = scroll
+            card.Text = ""
+            card.Parent = petScroll
             
             local cardCorner = Instance.new("UICorner")
-            cardCorner.CornerRadius = UDim.new(0, 8)
+            cardCorner.CornerRadius = UDim.new(0, 6)
             cardCorner.Parent = card
             
             local cardStroke = Instance.new("UIStroke")
@@ -976,17 +742,36 @@ local function createMainUI()
             cardStroke.Thickness = 1
             cardStroke.Parent = card
             
-            local stationLabel = Instance.new("TextLabel")
-            stationLabel.Size = UDim2.new(1, -100, 0, 20)
-            stationLabel.Position = UDim2.new(0, 10, 0, 10)
-            stationLabel.BackgroundTransparency = 1
-            stationLabel.Text = petInfo.displayName
-            stationLabel.TextSize = 13
-            stationLabel.Font = Enum.Font.GothamBold
-            stationLabel.TextColor3 = colors.text
-            stationLabel.TextXAlignment = Enum.TextXAlignment.Left
-            stationLabel.Parent = card
+            -- Station number badge
+            local badge = Instance.new("TextLabel")
+            badge.Size = UDim2.new(0, 36, 0, 36)
+            badge.Position = UDim2.new(0, 8, 0.5, -18)
+            badge.BackgroundColor3 = colors.primary
+            badge.BorderSizePixel = 0
+            badge.Text = petInfo.stationId
+            badge.TextSize = 16
+            badge.Font = Enum.Font.GothamBold
+            badge.TextColor3 = colors.text
+            badge.Parent = card
             
+            local badgeCorner = Instance.new("UICorner")
+            badgeCorner.CornerRadius = UDim.new(1, 0)
+            badgeCorner.Parent = badge
+            
+            -- Pet name
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, -100, 0, 18)
+            nameLabel.Position = UDim2.new(0, 50, 0, 8)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = petInfo.displayName
+            nameLabel.TextSize = 12
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextColor3 = colors.text
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            nameLabel.Parent = card
+            
+            -- Fruit count
             local fruitCount = 0
             if stationFruitAssignments[petInfo.stationId] then
                 for _ in pairs(stationFruitAssignments[petInfo.stationId]) do
@@ -995,8 +780,8 @@ local function createMainUI()
             end
             
             local countLabel = Instance.new("TextLabel")
-            countLabel.Size = UDim2.new(1, -100, 0, 16)
-            countLabel.Position = UDim2.new(0, 10, 0, 32)
+            countLabel.Size = UDim2.new(1, -100, 0, 14)
+            countLabel.Position = UDim2.new(0, 50, 0, 28)
             countLabel.BackgroundTransparency = 1
             countLabel.Text = string.format("🍎 %d fruits", fruitCount)
             countLabel.TextSize = 10
@@ -1005,40 +790,64 @@ local function createMainUI()
             countLabel.TextXAlignment = Enum.TextXAlignment.Left
             countLabel.Parent = card
             
-            local selectBtn = Instance.new("TextButton")
-            selectBtn.Size = UDim2.new(0, 85, 0, 28)
-            selectBtn.Position = UDim2.new(1, -92, 0.5, -14)
-            selectBtn.BackgroundColor3 = colors.primary
-            selectBtn.BorderSizePixel = 0
-            selectBtn.Text = "Select"
-            selectBtn.TextSize = 11
-            selectBtn.Font = Enum.Font.GothamBold
-            selectBtn.TextColor3 = colors.text
-            selectBtn.Parent = card
+            -- Arrow indicator
+            local arrow = Instance.new("TextLabel")
+            arrow.Size = UDim2.new(0, 20, 0, 20)
+            arrow.Position = UDim2.new(1, -28, 0.5, -10)
+            arrow.BackgroundTransparency = 1
+            arrow.Text = "›"
+            arrow.TextSize = 20
+            arrow.Font = Enum.Font.GothamBold
+            arrow.TextColor3 = colors.textSecondary
+            arrow.Parent = card
             
-            local selectBtnCorner = Instance.new("UICorner")
-            selectBtnCorner.CornerRadius = UDim.new(0, 6)
-            selectBtnCorner.Parent = selectBtn
-            
-            selectBtn.MouseButton1Click:Connect(function()
-                createFruitSelectionPopup(petInfo.stationId, petInfo.displayName, ScreenGui, refreshStations)
+            -- Click handler
+            card.MouseButton1Click:Connect(function()
+                currentSelectedStation = petInfo.stationId
+                
+                -- Update all cards
+                for _, otherCard in ipairs(petScroll:GetChildren()) do
+                    if otherCard:IsA("TextButton") then
+                        local otherStroke = otherCard:FindFirstChild("UIStroke")
+                        if otherCard == card then
+                            TweenService:Create(otherCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+                            if otherStroke then
+                                otherStroke.Color = colors.selected
+                                otherStroke.Thickness = 2
+                            end
+                        else
+                            TweenService:Create(otherCard, TweenInfo.new(0.2), {BackgroundColor3 = colors.surfaceLight}):Play()
+                            if otherStroke then
+                                otherStroke.Color = colors.border
+                                otherStroke.Thickness = 1
+                            end
+                        end
+                    end
+                end
+                
+                refreshFruitGrid(petInfo.stationId)
             end)
             
-            selectBtn.MouseEnter:Connect(function()
-                TweenService:Create(selectBtn, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
+            -- Hover
+            card.MouseEnter:Connect(function()
+                if currentSelectedStation ~= petInfo.stationId then
+                    TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
+                end
             end)
-            selectBtn.MouseLeave:Connect(function()
-                TweenService:Create(selectBtn, TweenInfo.new(0.2), {BackgroundColor3 = colors.primary}):Play()
+            card.MouseLeave:Connect(function()
+                if currentSelectedStation ~= petInfo.stationId then
+                    TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surfaceLight}):Play()
+                end
             end)
         end
     end
     
-    refreshStations()
+    refreshPetList()
     
     -- Bottom buttons
     local actions = Instance.new("Frame")
-    actions.Size = UDim2.new(1, -32, 0, 80)
-    actions.Position = UDim2.new(0, 16, 1, -96)
+    actions.Size = UDim2.new(1, -32, 0, 44)
+    actions.Position = UDim2.new(0, 16, 1, -60)
     actions.BackgroundTransparency = 1
     actions.Parent = MainFrame
     
@@ -1050,7 +859,7 @@ local function createMainUI()
     
     -- Refresh
     local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Size = UDim2.new(0, 120, 0, 36)
+    refreshBtn.Size = UDim2.new(0, 110, 0, 36)
     refreshBtn.BackgroundColor3 = colors.secondary
     refreshBtn.BorderSizePixel = 0
     refreshBtn.Text = "🔄 Refresh"
@@ -1063,11 +872,16 @@ local function createMainUI()
     refreshCorner.CornerRadius = UDim.new(0, 8)
     refreshCorner.Parent = refreshBtn
     
-    refreshBtn.MouseButton1Click:Connect(refreshStations)
+    refreshBtn.MouseButton1Click:Connect(function()
+        refreshPetList()
+        if currentSelectedStation then
+            refreshFruitGrid(currentSelectedStation)
+        end
+    end)
     
     -- Copy to all
     local copyBtn = Instance.new("TextButton")
-    copyBtn.Size = UDim2.new(0, 140, 0, 36)
+    copyBtn.Size = UDim2.new(0, 130, 0, 36)
     copyBtn.BackgroundColor3 = colors.warning
     copyBtn.BorderSizePixel = 0
     copyBtn.Text = "📋 Copy to All"
@@ -1099,12 +913,15 @@ local function createMainUI()
             end
         end
         
-        refreshStations()
+        refreshPetList()
+        if currentSelectedStation then
+            refreshFruitGrid(currentSelectedStation)
+        end
     end)
     
     -- Save & Close
     local saveBtn = Instance.new("TextButton")
-    saveBtn.Size = UDim2.new(0, 150, 0, 36)
+    saveBtn.Size = UDim2.new(0, 140, 0, 36)
     saveBtn.BackgroundColor3 = colors.maximize
     saveBtn.BorderSizePixel = 0
     saveBtn.Text = "✓ Save & Close"
@@ -1229,4 +1046,3 @@ function StationFeedSetup.WaitForDataLoad(timeout)
 end
 
 return StationFeedSetup
-
