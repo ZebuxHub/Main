@@ -1226,14 +1226,57 @@ local function setupEventMonitoring()
     -- Monitor for new eggs (triggers reactivation)
     local eggContainer = getEggContainer()
     if eggContainer then
-        local function onEggChanged()
-            if not autoPlaceEnabled then return end
-            -- Minimal wait for attributes to be set
-            task.wait(0.05) -- Reduced from 0.1 for faster response
-            exitDormantMode("new eggs available")
+        local function onEggAdded(child)
+            if not autoPlaceEnabled or not placeEggsEnabled then return end
+            -- Wait for attributes to be set
+            task.wait(0.05)
+            
+            -- Check if this egg matches our filters
+            local eggType = child:GetAttribute("T")
+            if not eggType then return end
+            
+            local mutation = getEggMutation(child.Name)
+            
+            -- Check filters
+            local passesTypeFilter = false
+            local passesMutationFilter = false
+            
+            -- Check egg type filter
+            if #selectedEggTypes > 0 then
+                for _, selectedType in ipairs(selectedEggTypes) do
+                    local cleanType = selectedType:gsub("🌊 ", "")
+                    if eggType == cleanType then
+                        passesTypeFilter = true
+                        break
+                    end
+                end
+            else
+                passesTypeFilter = true -- No filter = accept all
+            end
+            
+            -- Check mutation filter
+            if #selectedMutations > 0 then
+                if mutation then
+                    for _, selectedMutation in ipairs(selectedMutations) do
+                        if mutation == selectedMutation then
+                            passesMutationFilter = true
+                            break
+                        end
+                    end
+                else
+                    passesMutationFilter = false -- Has mutation filter but egg has no mutation
+                end
+            else
+                passesMutationFilter = true -- No filter = accept all
+            end
+            
+            -- Only wake up if egg matches filters
+            if passesTypeFilter and passesMutationFilter then
+                exitDormantMode("new eggs available")
+            end
         end
         
-        table.insert(placementState.connections, eggContainer.ChildAdded:Connect(onEggChanged))
+        table.insert(placementState.connections, eggContainer.ChildAdded:Connect(onEggAdded))
         -- Also monitor removal in case we need to switch to different eggs
         table.insert(placementState.connections, eggContainer.ChildRemoved:Connect(function()
             if not autoPlaceEnabled then return end
@@ -1246,13 +1289,34 @@ local function setupEventMonitoring()
     -- Monitor for new pets (triggers reactivation)
     local petContainer = getPetContainer()
     if petContainer then
-        local function onPetChanged()
-            if not autoPlaceEnabled then return end
-            task.wait(0.05) -- Reduced from 0.1
+        local function onPetAdded(child)
+            if not autoPlaceEnabled or not placePetsEnabled then return end
+            task.wait(0.05)
+            
+            -- Check if this pet matches our filters (speed threshold)
+            local petType = child:GetAttribute("T")
+            if not petType then return end
+            
+            local mutation = child:GetAttribute("M")
+            if mutation == "Dino" then
+                mutation = "Jurassic"
+            end
+            
+            -- Check if pet is already placed
+            if isPetAlreadyPlacedByUid(child.Name) then return end
+            
+            -- Check if it's a big pet (skip big pets)
+            if isBigPet(petType) then return end
+            
+            -- Check speed threshold
+            local rate = computeEffectiveRate(petType, mutation, child)
+            if rate < minPetRateFilter then return end
+            
+            -- Pet passes all filters, wake up
             exitDormantMode("new pets available")
         end
         
-        table.insert(placementState.connections, petContainer.ChildAdded:Connect(onPetChanged))
+        table.insert(placementState.connections, petContainer.ChildAdded:Connect(onPetAdded))
         table.insert(placementState.connections, petContainer.ChildRemoved:Connect(function()
             if not autoPlaceEnabled then return end
             task.wait(0.05)
@@ -1265,8 +1329,11 @@ local function setupEventMonitoring()
     if workspacePets then
         local function onWorkspacePetChanged()
             if not autoPlaceEnabled then return end
-            task.wait(0.1) -- Reduced from 0.2
-            exitDormantMode("tile freed")
+            task.wait(0.1)
+            -- Only wake up if we were waiting for tiles
+            if placementState.isDormant and placementState.dormantReason:find("tile") then
+                exitDormantMode("tile freed")
+            end
         end
         
         table.insert(placementState.connections, workspacePets.ChildAdded:Connect(onWorkspacePetChanged))
@@ -1278,8 +1345,11 @@ local function setupEventMonitoring()
     if playerBuiltBlocks then
         local function onBlockChanged()
             if not autoPlaceEnabled then return end
-            task.wait(0.1) -- Reduced from 0.2
-            exitDormantMode("new tiles built")
+            task.wait(0.1)
+            -- Only wake up if we were waiting for tiles
+            if placementState.isDormant and placementState.dormantReason:find("tile") then
+                exitDormantMode("new tiles built")
+            end
         end
         
         table.insert(placementState.connections, playerBuiltBlocks.ChildAdded:Connect(onBlockChanged))
