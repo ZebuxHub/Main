@@ -43,16 +43,13 @@ local function LoadEggDataFromGame()
             for eggId, eggInfo in pairs(gameEggData) do
                 -- Skip the __index table
                 if eggId ~= "__index" and type(eggInfo) == "table" then
-                    -- Exclude Ocean eggs
-                    local category = eggInfo.Category or ""
-                    if category ~= "Ocean" then
-                        convertedData[eggId] = {
-                            Name = eggInfo.ID or eggId,
-                            Price = eggInfo.Price or 0,
-                            Icon = eggInfo.Icon or "",
-                            Rarity = eggInfo.Rarity or 1
-                        }
-                    end
+                    convertedData[eggId] = {
+                        Name = eggInfo.ID or eggId,
+                        Price = eggInfo.Price or 0,
+                        Icon = eggInfo.Icon or "",
+                        Rarity = eggInfo.Rarity or 1,
+                        Category = eggInfo.Category or ""
+                    }
                 end
             end
             
@@ -750,9 +747,10 @@ function AutoSellSystem.CreateUI()
 		end
 	})
 
-	-- Create mutation selection dropdown (use names only since Icon is rbxassetid)
+	-- Create mutation selection dropdown (use names only, no emoji)
 	local mutationNames = {}
 	for key, data in pairs(MutationData) do
+		-- Use Name directly (should be clean from game data)
 		table.insert(mutationNames, data.Name)
 	end
 	table.sort(mutationNames) -- Sort alphabetically
