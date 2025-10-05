@@ -1,6 +1,6 @@
 -- EggSelection.lua - macOS Style Dark Theme UI for Egg Selection
 -- Author: Zebux
--- Version: 2.0
+-- Version: 3.0 - Auto-Update from Game Data
 
 local EggSelection = {}
 
@@ -9,160 +9,62 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Hardcoded data with actual Roblox asset IDs
-local EggData = {
-    BasicEgg = {
-        Name = "Basic Egg",
-        Price = "100",
-        Icon = "rbxassetid://129248801621928",
-        Rarity = 1
-    },
-    RareEgg = {
-        Name = "Rare Egg", 
-        Price = "500",
-        Icon = "rbxassetid://71012831091414",
-        Rarity = 2
-    },
-    SuperRareEgg = {
-        Name = "Super Rare Egg",
-        Price = "2,500", 
-        Icon = "rbxassetid://93845452154351",
-        Rarity = 2
-    },
-    EpicEgg = {
-        Name = "Epic Egg",
-        Price = "15,000",
-        Icon = "rbxassetid://116395645531721", 
-        Rarity = 2
-    },
-    LegendEgg = {
-        Name = "Legend Egg",
-        Price = "100,000",
-        Icon = "rbxassetid://90834918351014",
-        Rarity = 3
-    },
-    PrismaticEgg = {
-        Name = "Prismatic Egg", 
-        Price = "1,000,000",
-        Icon = "rbxassetid://79960683434582",
-        Rarity = 4
-    },
-    HyperEgg = {
-        Name = "Hyper Egg",
-        Price = "2,500,000",
-        Icon = "rbxassetid://104958288296273",
-        Rarity = 4
-    },
-    VoidEgg = {
-        Name = "Void Egg",
-        Price = "24,000,000", 
-        Icon = "rbxassetid://122396162708984",
-        Rarity = 5
-    },
-    BowserEgg = {
-        Name = "Bowser Egg",
-        Price = "130,000,000",
-        Icon = "rbxassetid://71500536051510",
-        Rarity = 5
-    },
-    DemonEgg = {
-        Name = "Demon Egg",
-        Price = "400,000,000",
-        Icon = "rbxassetid://126412407639969",
-        Rarity = 5
-    },
-    CornEgg = {
-        Name = "Corn Egg",
-        Price = "1,000,000,000",
-        Icon = "rbxassetid://94739512852461",
-        Rarity = 5
-    },
-    BoneDragonEgg = {
-        Name = "Bone Dragon Egg",
-        Price = "2,000,000,000",
-        Icon = "rbxassetid://83209913424562",
-        Rarity = 5
-    },
-    UltraEgg = {
-        Name = "Ultra Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://83909590718799",
-        Rarity = 6
-    },
-    DinoEgg = {
-        Name = "Dino Egg",
-        Price = "10,000,000,000",
-        Icon = "rbxassetid://80783528632315",
-        Rarity = 6
-    },
-    FlyEgg = {
-        Name = "Fly Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://109240587278187",
-        Rarity = 6
-    },
-    UnicornEgg = {
-        Name = "Unicorn Egg",
-        Price = "40,000,000,000",
-        Icon = "rbxassetid://123427249205445",
-        Rarity = 6
-    },
-    AncientEgg = {
-        Name = "Ancient Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://113910587565739",
-        Rarity = 6
-    },
-    UnicornProEgg = {
-        Name = "Unicorn Pro Egg",
-        Price = "50,000,000,000",
-        Icon = "rbxassetid://140138063696377",
-        Rarity = 6
-    },
-    SnowbunnyEgg = {
-        Name = "Snowbunny Egg",
-        Price = "1,500,000",
-        Icon = "rbxassetid://136223941487914",
-        Rarity = 3,
-        IsNew = true
-    },
-    DarkGoatyEgg = {
-        Name = "Dark Goaty Egg",
-        Price = "100,000,000",
-        Icon = "rbxassetid://95956060312947",
-        Rarity = 4,
-        IsNew = true
-    },
-    RhinoRockEgg = {
-        Name = "Rhino Rock Egg",
-        Price = "3,000,000,000",
-        Icon = "rbxassetid://131221831910623",
-        Rarity = 5,
-        IsNew = true
-    },
-    SaberCubEgg = {
-        Name = "Saber Cub Egg",
-        Price = "40,000,000,000",
-        Icon = "rbxassetid://111953502835346",
-        Rarity = 6,
-        IsNew = true
-    },
-    GeneralKongEgg = {
-        Name = "General Kong Egg",
-        Price = "80,000,000,000",
-        Icon = "rbxassetid://106836613554535",
-        Rarity = 6,
-        IsNew = true
-    },
-    PegasusEgg = {
-        Name = "Pegasus Egg",
-        Price = "999,999,999,999",
-        Icon = "rbxassetid://83004379343725",
-        Rarity = 6,
-        IsNew = true
-    }
-}
+-- Function to load egg data from game (auto-updates!)
+local function LoadEggDataFromGame()
+    local EggData = {}
+    
+    -- Try to get the game's egg config
+    local success, result = pcall(function()
+        return ReplicatedStorage:WaitForChild("Config", 5):WaitForChild("ResEgg", 5)
+    end)
+    
+    if success and result then
+        print("✅ Loading eggs from game data...")
+        
+        -- Convert game data to our format
+        for eggId, eggInfo in pairs(result) do
+            -- Skip the __index array
+            if type(eggInfo) == "table" and eggInfo.ID then
+                -- Format the egg name nicely
+                local formattedName = eggInfo.ID:gsub("Egg$", ""):gsub("(%u)", " %1"):sub(2) .. " Egg"
+                
+                EggData[eggInfo.ID] = {
+                    Name = formattedName,
+                    Price = eggInfo.Price,
+                    Icon = eggInfo.Icon or "rbxassetid://0",
+                    Rarity = eggInfo.Rarity or 1,
+                    IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
+                }
+            end
+        end
+        
+        print("✅ Loaded " .. tostring(#EggData) .. " eggs from game!")
+    else
+        warn("⚠️ Could not load game data, using fallback eggs")
+        -- Fallback to basic eggs if game data fails
+        EggData = {
+            BasicEgg = {
+                Name = "Basic Egg",
+                Price = 100,
+                Icon = "rbxassetid://86783205334263",
+                Rarity = 1
+            },
+            RareEgg = {
+                Name = "Rare Egg",
+                Price = 600,
+                Icon = "rbxassetid://92360220594881",
+                Rarity = 2
+            }
+        }
+    end
+    
+    return EggData
+end
+
+-- Load egg data (this updates automatically!)
+local EggData = LoadEggDataFromGame()
 
 local MutationData = {
     Golden = {
@@ -1257,7 +1159,64 @@ function EggSelection.UpdateSelections(eggs, mutations, order)
     end
 end
 
+-- Function to refresh egg data from game (keeps your saved selections!)
+function EggSelection.RefreshEggData()
+    print("🔄 Refreshing egg data from game...")
+    
+    -- Save current selections
+    local savedSelections = {}
+    for itemId, _ in pairs(selectedItems) do
+        savedSelections[itemId] = true
+    end
+    local savedOrder = {}
+    for i, itemId in ipairs(selectionOrder) do
+        savedOrder[i] = itemId
+    end
+    
+    -- Reload egg data from game
+    EggData = LoadEggDataFromGame()
+    
+    -- Restore selections (only for eggs that still exist)
+    local newSelectedItems = {}
+    local newSelectionOrder = {}
+    
+    for _, itemId in ipairs(savedOrder) do
+        -- Check if it's an egg or mutation
+        if EggData[itemId] or MutationData[itemId] then
+            newSelectedItems[itemId] = true
+            table.insert(newSelectionOrder, itemId)
+        else
+            warn("⚠️ Egg '" .. itemId .. "' no longer exists in game, removing from selection")
+        end
+    end
+    
+    selectedItems = newSelectedItems
+    selectionOrder = newSelectionOrder
+    
+    -- Recalculate priority numbers
+    priorityNumbers = {}
+    local mutationPriority = 1
+    for _, itemId in ipairs(selectionOrder) do
+        if MutationData[itemId] then
+            priorityNumbers[itemId] = mutationPriority
+            mutationPriority = mutationPriority + 1
+        end
+    end
+    
+    -- Refresh UI if visible
+    if ScreenGui then
+        EggSelection.RefreshContent()
+    end
+    
+    print("✅ Egg data refreshed! Your selections are safe!")
+    
+    return EggData
+end
 
+-- Get current egg data (useful for debugging)
+function EggSelection.GetEggData()
+    return EggData
+end
 
 return EggSelection
 
