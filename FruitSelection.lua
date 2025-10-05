@@ -270,39 +270,41 @@ local function formatNumber(num)
     if type(num) == "string" then
         return num
     end
+    
+    -- Helper function to add commas to formatted numbers
+    local function addCommas(str)
+        -- Add comma separator for thousands in the integer part
+        local parts = {}
+        for part in string.gmatch(str, "[^%.]+") do
+            table.insert(parts, part)
+        end
+        
+        if #parts > 0 then
+            local integerPart = parts[1]
+            -- Reverse, add commas every 3 digits, then reverse back
+            integerPart = integerPart:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+            -- Remove leading comma if exists
+            integerPart = integerPart:gsub("^,", "")
+            parts[1] = integerPart
+        end
+        
+        return table.concat(parts, ".")
+    end
+    
     if num >= 1e12 then
         local formatted = string.format("%.1f", num / 1e12)
-        -- Add comma for numbers >= 1,000T
-        if num >= 1e15 then
-            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
-        end
-        return formatted .. "T"
+        return addCommas(formatted) .. "T"
     elseif num >= 1e9 then
         local formatted = string.format("%.1f", num / 1e9)
-        -- Add comma for numbers >= 1,000B
-        if num >= 1e12 then
-            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
-        end
-        return formatted .. "B"
+        return addCommas(formatted) .. "B"
     elseif num >= 1e6 then
         local formatted = string.format("%.1f", num / 1e6)
-        -- Add comma for numbers >= 1,000M
-        if num >= 1e9 then
-            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
-        end
-        return formatted .. "M"
+        return addCommas(formatted) .. "M"
     elseif num >= 1e3 then
         local formatted = string.format("%.1f", num / 1e3)
-        -- Add comma for numbers >= 1,000K
-        if num >= 1e6 then
-            formatted = string.gsub(formatted, "^(%d+)(%d%d%d)", "%1,%2")
-        end
-        return formatted .. "K"
+        return addCommas(formatted) .. "K"
     else
-        -- Add comma for numbers >= 1,000
-        local formatted = tostring(math.floor(num))
-        formatted = string.gsub(formatted, "^(%d+)(%d%d%d)$", "%1,%2")
-        return formatted
+        return addCommas(tostring(math.floor(num)))
     end
 end
 
@@ -437,7 +439,7 @@ local function createItemCard(itemId, itemData, parent)
     -- Create Icon (ViewportFrame for 3D model or ImageLabel for icon)
     local iconContainer = Instance.new("Frame")
     iconContainer.Name = "IconContainer"
-    iconContainer.Size = UDim2.new(0, 180, 0, 180)
+    iconContainer.Size = UDim2.new(0, 90, 0, 180)
     iconContainer.Position = UDim2.new(0.5, -45, 0.1, 0)
     iconContainer.BackgroundTransparency = 1
     iconContainer.Parent = card
