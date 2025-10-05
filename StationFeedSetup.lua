@@ -352,6 +352,24 @@ local function createMainUI()
     minimizeCorner.CornerRadius = UDim.new(0.5, 0)
     minimizeCorner.Parent = minimizeBtn
     
+    -- Minimize functionality
+    local isMinimized = false
+    local originalSize = UDim2.new(0, 700, 0, 450)
+    local minimizedSize = UDim2.new(0, 700, 0, 40)
+    
+    minimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        if isMinimized then
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = minimizedSize
+            }):Play()
+        else
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = originalSize
+            }):Play()
+        end
+    end)
+    
     -- Maximize Button (Green)
     local maximizeBtn = Instance.new("TextButton")
     maximizeBtn.Name = "MaximizeBtn"
@@ -365,6 +383,29 @@ local function createMainUI()
     local maximizeCorner = Instance.new("UICorner")
     maximizeCorner.CornerRadius = UDim.new(0.5, 0)
     maximizeCorner.Parent = maximizeBtn
+    
+    -- Maximize functionality
+    local isMaximized = false
+    local normalSize = UDim2.new(0, 700, 0, 450)
+    local normalPosition = UDim2.new(0.5, -350, 0.5, -225)
+    local maximizedSize = UDim2.new(0, 900, 0, 600)
+    local maximizedPosition = UDim2.new(0.5, -450, 0.5, -300)
+    
+    maximizeBtn.MouseButton1Click:Connect(function()
+        isMaximized = not isMaximized
+        if isMaximized then
+            originalSize = MainFrame.Size
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = maximizedSize,
+                Position = maximizedPosition
+            }):Play()
+        else
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = normalSize,
+                Position = normalPosition
+            }):Play()
+        end
+    end)
     
     -- Title
     local titleLabel = Instance.new("TextLabel")
@@ -529,6 +570,24 @@ local function createMainUI()
     fruitPadding.PaddingBottom = UDim.new(0, 4)
     fruitPadding.Parent = fruitScroll
     
+    -- Function to update fruit count for a specific station
+    local function updateStationFruitCount(stationId)
+        local card = petScroll:FindFirstChild("PetCard_" .. stationId)
+        if card then
+            local countLabel = card:FindFirstChild("FruitCount")
+            if countLabel then
+                local fruitCount = 0
+                if stationFruitAssignments[stationId] then
+                    for _ in pairs(stationFruitAssignments[stationId]) do
+                        fruitCount = fruitCount + 1
+                    end
+                end
+                countLabel.Text = string.format("🍎 %d fruits", fruitCount)
+                countLabel.TextColor3 = fruitCount > 0 and colors.maximize or colors.textSecondary
+            end
+        end
+    end
+    
     -- Function to refresh fruit grid for selected station
     local function refreshFruitGrid(stationId)
         -- Clear existing fruits
@@ -549,7 +608,7 @@ local function createMainUI()
         
         -- Initialize if not exists
         if not stationFruitAssignments[stationId] then
-            stationFruitAssignments[stationId] = {}
+        stationFruitAssignments[stationId] = {}
         end
         
         local inventory = getPlayerFruitInventory()
@@ -643,30 +702,30 @@ local function createMainUI()
                 textLabel.TextColor3 = getRarityColor(fruitData.Rarity)
                 textLabel.Parent = iconContainer
             end
-            
-            -- Name
-            local nameLabel = Instance.new("TextLabel")
+        
+        -- Name
+        local nameLabel = Instance.new("TextLabel")
             nameLabel.Size = UDim2.new(1, -10, 0, 18)
             nameLabel.Position = UDim2.new(0, 5, 0.65, 0)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Text = fruitData.Name
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = fruitData.Name
             nameLabel.TextSize = 10
-            nameLabel.Font = Enum.Font.GothamSemibold
-            nameLabel.TextColor3 = colors.text
+        nameLabel.Font = Enum.Font.GothamSemibold
+        nameLabel.TextColor3 = colors.text
             nameLabel.TextXAlignment = Enum.TextXAlignment.Center
             nameLabel.TextWrapped = true
             nameLabel.Parent = card
-            
-            -- Amount
-            local amount = inventory[fruitId] or 0
-            local amountLabel = Instance.new("TextLabel")
+        
+        -- Amount
+        local amount = inventory[fruitId] or 0
+        local amountLabel = Instance.new("TextLabel")
             amountLabel.Size = UDim2.new(1, -10, 0, 14)
             amountLabel.Position = UDim2.new(0, 5, 0.83, 0)
-            amountLabel.BackgroundTransparency = 1
+        amountLabel.BackgroundTransparency = 1
             amountLabel.Text = formatNumber(amount)
             amountLabel.TextSize = 9
-            amountLabel.Font = Enum.Font.Gotham
-            amountLabel.TextColor3 = amount > 0 and colors.textSecondary or colors.close
+        amountLabel.Font = Enum.Font.Gotham
+        amountLabel.TextColor3 = amount > 0 and colors.textSecondary or colors.close
             amountLabel.TextXAlignment = Enum.TextXAlignment.Center
             amountLabel.Parent = card
             
@@ -684,31 +743,34 @@ local function createMainUI()
             
             -- Click handler
             card.MouseButton1Click:Connect(function()
-                if stationFruitAssignments[stationId][fruitId] then
-                    stationFruitAssignments[stationId][fruitId] = nil
+            if stationFruitAssignments[stationId][fruitId] then
+                stationFruitAssignments[stationId][fruitId] = nil
                     checkmark.Visible = false
                     TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
                     TweenService:Create(cardStroke, TweenInfo.new(0.2), {
-                        Color = colors.border,
-                        Thickness = 1
-                    }):Play()
-                else
-                    stationFruitAssignments[stationId][fruitId] = true
+                    Color = colors.border,
+                    Thickness = 1
+                }):Play()
+            else
+                stationFruitAssignments[stationId][fruitId] = true
                     checkmark.Visible = true
                     TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.selected}):Play()
                     TweenService:Create(cardStroke, TweenInfo.new(0.2), {
-                        Color = colors.selected,
-                        Thickness = 2
-                    }):Play()
-                end
-            end)
-            
+                    Color = colors.selected,
+                    Thickness = 2
+                }):Play()
+            end
+                
+                -- Update fruit count in pet list
+                updateStationFruitCount(stationId)
+        end)
+        
             -- Hover
             card.MouseEnter:Connect(function()
-                if not stationFruitAssignments[stationId][fruitId] then
+            if not stationFruitAssignments[stationId][fruitId] then
                     TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.hover}):Play()
-                end
-            end)
+            end
+        end)
             card.MouseLeave:Connect(function()
                 if not stationFruitAssignments[stationId][fruitId] then
                     TweenService:Create(card, TweenInfo.new(0.2), {BackgroundColor3 = colors.surface}):Play()
@@ -724,6 +786,7 @@ local function createMainUI()
                 stationFruitAssignments[currentSelectedStation][fruitId] = true
             end
             refreshFruitGrid(currentSelectedStation)
+            updateStationFruitCount(currentSelectedStation)
         end
     end)
     
@@ -731,6 +794,7 @@ local function createMainUI()
         if currentSelectedStation then
             stationFruitAssignments[currentSelectedStation] = {}
             refreshFruitGrid(currentSelectedStation)
+            updateStationFruitCount(currentSelectedStation)
         end
     end)
     
@@ -758,6 +822,7 @@ local function createMainUI()
         
         for i, petInfo in ipairs(pets) do
             local card = Instance.new("TextButton")
+            card.Name = "PetCard_" .. petInfo.stationId
             card.Size = UDim2.new(1, 0, 0, 50)
             card.BackgroundColor3 = colors.surfaceLight
             card.BorderSizePixel = 0
@@ -811,6 +876,7 @@ local function createMainUI()
             end
             
             local countLabel = Instance.new("TextLabel")
+            countLabel.Name = "FruitCount"
             countLabel.Size = UDim2.new(1, -100, 0, 14)
             countLabel.Position = UDim2.new(0, 50, 0, 28)
             countLabel.BackgroundTransparency = 1
@@ -875,12 +941,24 @@ local function createMainUI()
     
     refreshPetList()
     
+    -- Bottom buttons container (inside MainFrame with background)
+    local actionsContainer = Instance.new("Frame")
+    actionsContainer.Size = UDim2.new(1, 0, 0, 60)
+    actionsContainer.Position = UDim2.new(0, 0, 1, -60)
+    actionsContainer.BackgroundColor3 = colors.surface
+    actionsContainer.BorderSizePixel = 0
+    actionsContainer.Parent = MainFrame
+    
+    local actionsCorner = Instance.new("UICorner")
+    actionsCorner.CornerRadius = UDim.new(0, 12)
+    actionsCorner.Parent = actionsContainer
+    
     -- Bottom buttons (macOS style)
     local actions = Instance.new("Frame")
     actions.Size = UDim2.new(1, -32, 0, 40)
-    actions.Position = UDim2.new(0, 16, 1, -52)
+    actions.Position = UDim2.new(0, 16, 0, 10)
     actions.BackgroundTransparency = 1
-    actions.Parent = MainFrame
+    actions.Parent = actionsContainer
     
     local actionsLayout = Instance.new("UIListLayout")
     actionsLayout.FillDirection = Enum.FillDirection.Horizontal
