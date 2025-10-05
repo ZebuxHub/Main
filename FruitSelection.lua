@@ -9,8 +9,77 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Hardcoded Fruit Data with emojis
+-- Dynamic data that will be loaded from the game
+local FruitData = {}
+
+-- Emoji mapping for fruits (since game doesn't have emojis)
+local FruitEmojis = {
+    Strawberry = "🍓",
+    Blueberry = "🫐",
+    Watermelon = "🍉",
+    Apple = "🍎",
+    Orange = "🍊",
+    Corn = "🌽",
+    Banana = "🍌",
+    Grape = "🍇",
+    Pear = "🍐",
+    Pineapple = "🍍",
+    GoldMango = "🥭",
+    BloodstoneCycad = "🌿",
+    ColossalPinecone = "🌲",
+    VoltGinkgo = "⚡",
+    DeepseaPearlFruit = "💠",
+    Durian = "🥥",
+    DragonFruit = "🐲"
+}
+
+-- Function to load fruit data from the game automatically
+local function LoadFruitDataFromGame()
+    local success, result = pcall(function()
+        local configModule = ReplicatedStorage:WaitForChild("Config", 10):WaitForChild("ResPetFood", 10)
+        if configModule then
+            local gameFruitData = require(configModule)
+            
+            -- Convert game data format to our UI format
+            local convertedData = {}
+            
+            for fruitId, fruitInfo in pairs(gameFruitData) do
+                -- Skip the __index table
+                if fruitId ~= "__index" and type(fruitInfo) == "table" then
+                    -- Convert to our format
+                    convertedData[fruitId] = {
+                        Name = fruitInfo.ID or fruitId,
+                        Price = fruitInfo.Price or "0",
+                        Icon = FruitEmojis[fruitId] or "🍎", -- Use emoji mapping
+                        Rarity = fruitInfo.Rarity or 1,
+                        FeedValue = fruitInfo.FeedValue or 0,
+                        IsNew = false -- Can be customized if needed
+                    }
+                end
+            end
+            
+            return convertedData
+        end
+    end)
+    
+    if success and result then
+        return result
+    else
+        warn("[FruitSelection] Failed to load fruit data from game:", result)
+        return {}
+    end
+end
+
+-- Load fruit data on initialization
+FruitData = LoadFruitDataFromGame()
+
+-- Flag to indicate data is loaded (for Premium_Build_A_ZOO to wait)
+FruitSelection.DataLoaded = true
+
+-- OLD HARDCODED DATA REMOVED (now loaded from game)
+--[[
 local FruitData = {
     Strawberry = {
         Name = "Strawberry",
@@ -134,6 +203,7 @@ local FruitData = {
         IsNew = true
     }
 }
+]]--
 
 -- UI Variables
 local LocalPlayer = Players.LocalPlayer
@@ -802,6 +872,66 @@ function FruitSelection.UpdateSelections(fruits)
     if ScreenGui then
         FruitSelection.RefreshContent()
     end
+end
+
+-- Function to reload fruit data from the game (useful when game updates)
+function FruitSelection.ReloadFruitData()
+    local newFruitData = LoadFruitDataFromGame()
+    
+    if newFruitData and next(newFruitData) then
+        -- Preserve existing selections
+        local oldSelections = {}
+        for fruitId, _ in pairs(selectedItems) do
+            oldSelections[fruitId] = true
+        end
+        
+        -- Update fruit data
+        FruitData = newFruitData
+        
+        -- Re-apply selections that still exist in new data
+        selectedItems = {}
+        for fruitId, _ in pairs(oldSelections) do
+            if FruitData[fruitId] then
+                selectedItems[fruitId] = true
+            end
+        end
+        
+        -- Refresh UI if visible
+        if ScreenGui then
+            FruitSelection.RefreshContent()
+        end
+        
+        return true
+    end
+    
+    return false
+end
+
+-- Function to get current fruit data (for debugging)
+function FruitSelection.GetFruitData()
+    return FruitData
+end
+
+-- Function to check if data is loaded (for Premium_Build_A_ZOO to wait)
+function FruitSelection.IsDataLoaded()
+    return FruitSelection.DataLoaded and next(FruitData) ~= nil
+end
+
+-- Function to wait for data to be loaded
+function FruitSelection.WaitForDataLoad(timeout)
+    local maxWait = timeout or 10
+    local waited = 0
+    
+    while waited < maxWait do
+        if FruitSelection.IsDataLoaded() then
+            return true
+        end
+        task.wait(0.1)
+        waited = waited + 0.1
+    end
+    
+    warn("[FruitSelection] ⚠️ Data load timeout after " .. maxWait .. " seconds")
+    return false
 end
 
 return FruitSelection
