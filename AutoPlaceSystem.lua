@@ -1645,18 +1645,44 @@ function AutoPlaceSystem.CreateUI()
         Icon = "egg"
     })
 
-    -- Egg selection dropdown
+    -- Egg selection dropdown - Auto-load from game config (no hardcode!)
+    local function getAvailableEggTypes()
+        local eggTypes = {}
+        local success, resEgg = pcall(function()
+            local cfg = ReplicatedStorage:FindFirstChild("Config")
+            if cfg then
+                local module = cfg:FindFirstChild("ResEgg")
+                if module then
+                    return require(module)
+                end
+            end
+            return nil
+        end)
+        
+        if success and resEgg then
+            for eggId, eggData in pairs(resEgg) do
+                if eggId ~= "__index" and type(eggData) == "table" then
+                    local category = eggData.Category or ""
+                    -- Skip Ocean eggs (they're filtered out)
+                    if category ~= "Ocean" then
+                        table.insert(eggTypes, eggId)
+                    end
+                end
+            end
+            -- Sort alphabetically for better UX
+            table.sort(eggTypes)
+        else
+            -- Fallback to empty list if loading fails
+            warn("[AutoPlace] Failed to load egg types from game")
+        end
+        
+        return eggTypes
+    end
+    
     local placeEggDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Egg Types",
-        Desc = "Choose eggs to place",
-        Values = {
-            "BasicEgg", "RareEgg", "SuperRareEgg", "EpicEgg", "LegendEgg", "PrismaticEgg", 
-            "HyperEgg", "VoidEgg", "BowserEgg", "DemonEgg", "CornEgg", "BoneDragonEgg", 
-            "UltraEgg", "DinoEgg", "FlyEgg", "UnicornEgg", "AncientEgg", "UnicornProEgg",
-            "DarkGoatyEgg", "SnowbunnyEgg", "RhinoRockEgg", "SaberCubEgg", "GeneralKongEgg", "PegasusEgg",
-            "🌊 SeaweedEgg", "🌊 ClownfishEgg", "🌊 LionfishEgg", "🌊 SharkEgg", 
-            "🌊 AnglerfishEgg", "🌊 OctopusEgg", "🌊 SailfishEgg", "🌊 SeaDragonEgg"
-        },
+        Desc = "Choose eggs to place (auto-loaded from game)",
+        Values = getAvailableEggTypes(),
         Value = {},
         Multi = true,
         AllowNone = true,
@@ -1672,11 +1698,50 @@ function AutoPlaceSystem.CreateUI()
         end)
     end
     
-    -- Mutation selection dropdown
+    -- Mutation selection dropdown - Auto-load from game config (no hardcode!)
+    local function getAvailableMutations()
+        local mutations = {}
+        local success, resMutate = pcall(function()
+            local cfg = ReplicatedStorage:FindFirstChild("Config")
+            if cfg then
+                local module = cfg:FindFirstChild("ResMutate")
+                if module then
+                    return require(module)
+                end
+            end
+            return nil
+        end)
+        
+        if success and resMutate then
+            for mutationId, mutationData in pairs(resMutate) do
+                if mutationId ~= "__index" and type(mutationData) == "table" then
+                    -- Convert "Dino" to "Jurassic" for display
+                    local displayId = mutationId == "Dino" and "Jurassic" or mutationId
+                    table.insert(mutations, displayId)
+                end
+            end
+            -- Sort by rarity (if available) or alphabetically
+            table.sort(mutations, function(a, b)
+                local aData = resMutate[a == "Jurassic" and "Dino" or a]
+                local bData = resMutate[b == "Jurassic" and "Dino" or b]
+                local aRarity = aData and aData.RarityNum or 0
+                local bRarity = bData and bData.RarityNum or 0
+                if aRarity == bRarity then
+                    return a < b
+                end
+                return aRarity < bRarity
+            end)
+        else
+            warn("[AutoPlace] Failed to load mutations from game")
+        end
+        
+        return mutations
+    end
+    
     local placeMutationDropdown = Tabs.PlaceTab:Dropdown({
         Title = "Mutations",
-        Desc = "Choose mutations (optional)",
-        Values = {"Golden", "Diamond", "Electirc", "Fire", "Jurassic", "Snow"},
+        Desc = "Choose mutations (optional, auto-loaded from game)",
+        Values = getAvailableMutations(),
         Value = {},
         Multi = true,
         AllowNone = true,
