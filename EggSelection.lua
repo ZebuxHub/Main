@@ -30,14 +30,17 @@ local function LoadEggDataFromGame()
                 if eggId ~= "__index" and type(eggInfo) == "table" then
                     -- Exclude eggs with Category = "Ocean"
                     local category = eggInfo.Category or ""
-                    if category ~= "Ocean" then
+                    -- Exclude eggs with Source = "Shop" (not buyable in normal game)
+                    local source = eggInfo.Source or ""
+                    
+                    if category ~= "Ocean" and source ~= "Shop" then
                         -- Convert to our format
                         convertedData[eggId] = {
                             Name = eggInfo.ID or eggId, -- Use ID or fallback to key
                             Price = eggInfo.Price or 0, -- Now a number
                             Icon = eggInfo.Icon or "", -- Already in correct format
                             Rarity = eggInfo.Rarity or 1,
-                            IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
+                            IsNew = false -- Removed the NEW indicator
                         }
                     end
                 end
@@ -371,27 +374,6 @@ local function createItemCard(itemId, itemData, parent)
     checkmark.TextColor3 = colors.selected
     checkmark.Visible = false
     checkmark.Parent = card
-    
-    -- Add "New" indicator for new items
-    if itemData.IsNew then
-        local newIndicator = Instance.new("TextLabel")
-        newIndicator.Name = "NewIndicator"
-        newIndicator.Size = UDim2.new(0, 30, 0, 16)
-        newIndicator.Position = UDim2.new(1, -34, 0, 2)
-        newIndicator.BackgroundColor3 = Color3.fromRGB(255, 69, 58) -- Red background
-        newIndicator.BorderSizePixel = 0
-        newIndicator.Text = "NEW"
-        newIndicator.TextSize = 8
-        newIndicator.Font = Enum.Font.GothamBold
-        newIndicator.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
-        newIndicator.TextXAlignment = Enum.TextXAlignment.Center
-        newIndicator.TextYAlignment = Enum.TextYAlignment.Center
-        newIndicator.Parent = card
-        
-        local newCorner = Instance.new("UICorner")
-        newCorner.CornerRadius = UDim.new(0, 3)
-        newCorner.Parent = newIndicator
-    end
     
     -- Priority number for mutations (shows selection order)
     local priorityLabel = nil
