@@ -37,7 +37,7 @@ local function LoadEggDataFromGame()
                             Price = eggInfo.Price or 0, -- Now a number
                             Icon = eggInfo.Icon or "", -- Already in correct format
                             Rarity = eggInfo.Rarity or 1,
-                            IsNew = eggInfo.Evolution or false -- Mark evolution eggs as "new"
+                            IsNew = false -- Disabled NEW indicator
                         }
                     end
                 end
