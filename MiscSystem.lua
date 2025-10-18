@@ -985,7 +985,7 @@ function MiscSystem.Init(deps)
 	
 	local likeToggle = MiscTab:Toggle({
 		Title = "Auto Like Other Zoos",
-		Desc = "Automatically like others (reads from Season2/Season1)",
+		Desc = "Automatically like others",
 		Value = false,
 		Callback = function(state)
 			autoLikeEnabled = state
