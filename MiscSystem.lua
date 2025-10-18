@@ -27,52 +27,43 @@ local potionToggleRef = nil
 local lotteryAttrConn = nil
 local lotteryPollThread = nil
 
--- Hardcoded Dino Event Task Data
+-- Hardcoded Dino Event Task Data (Halloween Event)
 local DinoEventTasks = {
     Task_1 = {
         Id = "Task_1", 
         TaskPoints = 12, 
         RepeatCount = 1, 
-        CompleteType = "HatchIceEgg", 
-        CompleteValue = 5, 
-        Desc = "K_DINO_DESC_Task_1", 
-        Icon = "rbxassetid://126382730672834"
-    }, 
-    Task_3 = {
-        Id = "Task_3", 
-        TaskPoints = 12, 
-        RepeatCount = 1, 
-        CompleteType = "SellPet", 
+        CompleteType = "HatchHalloweenEgg", 
         CompleteValue = 5, 
         Desc = "K_DINO_DESC_Task_3", 
-        Icon = "rbxassetid://126382730672834"
+        Icon = "rbxassetid://127118347569247"
     }, 
-    Task_4 = {
-        Id = "Task_4", 
+    Task_2 = {
+        Id = "Task_2", 
         TaskPoints = 12, 
         RepeatCount = 1, 
-        CompleteType = "BuyEvolutionEgg", 
-        CompleteValue = 3, 
+        CompleteType = "BuyHalloweenEgg", 
+        CompleteValue = 1, 
         Desc = "K_DINO_DESC_Task_4", 
-        Icon = "rbxassetid://126382730672834"
+        Icon = "rbxassetid://127118347569247"
     }, 
     Task_5 = {
         Id = "Task_5", 
         TaskPoints = 12, 
         RepeatCount = 1, 
-        CompleteType = "BuyIceEgg", 
-        CompleteValue = 1, 
+        CompleteType = "SellPet", 
+        CompleteValue = 5, 
         Desc = "K_DINO_DESC_Task_5", 
-        Icon = "rbxassetid://126382730672834"
+        Icon = "rbxassetid://127118347569247"
     }, 
     Task_7 = {
         Id = "Task_7", 
         TaskPoints = 12, 
         RepeatCount = 1, 
-        CompleteType = "HatchEvolutionEgg", 
-        CompleteValue = 10, 
+        CompleteType = "SendEgg", 
+        CompleteValue = 3, 
         Desc = "K_DINO_DESC_Task_7", 
-        Icon = "rbxassetid://126382730672834"
+        Icon = "rbxassetid://127118347569247"
     }, 
     Task_8 = {
         Id = "Task_8", 
@@ -81,7 +72,7 @@ local DinoEventTasks = {
         CompleteType = "OnlineTime", 
         CompleteValue = 1200, 
         Desc = "K_DINO_DESC_Task_8", 
-        Icon = "rbxassetid://126382730672834"
+        Icon = "rbxassetid://127118347569247"
     }
 }
 
@@ -389,16 +380,14 @@ local function runAutoClaimSnow(statusParagraph)
 				if taskDef then
 					-- Create readable task type name
 					local taskTypeName = taskDef.CompleteType
-					if taskTypeName == "HatchIceEgg" then
-						taskTypeName = "Hatch Ice Eggs"
+					if taskTypeName == "HatchHalloweenEgg" then
+						taskTypeName = "Hatch Halloween Eggs"
+					elseif taskTypeName == "BuyHalloweenEgg" then
+						taskTypeName = "Buy Halloween Eggs"
 					elseif taskTypeName == "SellPet" then
 						taskTypeName = "Sell Pets"
-					elseif taskTypeName == "BuyEvolutionEgg" then
-						taskTypeName = "Buy Evolution Eggs"
-					elseif taskTypeName == "BuyIceEgg" then
-						taskTypeName = "Buy Ice Eggs"
-					elseif taskTypeName == "HatchEvolutionEgg" then
-						taskTypeName = "Hatch Evolution Eggs"
+					elseif taskTypeName == "SendEgg" then
+						taskTypeName = "Send Eggs"
 					elseif taskTypeName == "OnlineTime" then
 						taskTypeName = "Online Time"
 					end
