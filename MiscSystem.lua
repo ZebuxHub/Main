@@ -14,7 +14,6 @@ local autoPotionEnabled = false
 local autoPotionThread = nil
 local autoLikeEnabled = false
 local autoLikeThread = nil
-local autoLikeIgnoreDaily = false
 local autoLikeUnlimited = false
 local selectedPotions = {}
 local likedUserIds = {} -- session memory to avoid repeating targets
@@ -558,13 +557,9 @@ local function runAutoLike(statusParagraph)
 		-- Update status display
 		if statusParagraph and statusParagraph.SetDesc then
 			local msg = string.format("Daily Like: %d/3 | Weekly Like: %d/20", likes, weeklyLikes)
-			if autoLikeIgnoreDaily then
-				msg = msg .. " (Ignore Daily)"
-			end
 			if autoLikeUnlimited then
 				msg = msg .. " (Unlimited Mode)"
-			end
-			if not autoLikeUnlimited and dailyComplete and weeklyComplete then 
+			elseif dailyComplete and weeklyComplete then 
 				msg = msg .. " (Complete)" 
 			end
 			statusParagraph:SetDesc(msg)
@@ -572,13 +567,8 @@ local function runAutoLike(statusParagraph)
 		
 		-- Check stop conditions based on mode
 		if not autoLikeUnlimited then
-			if autoLikeIgnoreDaily then
-				-- Only check weekly completion
-				if weeklyComplete then break end
-			else
-				-- Check both daily and weekly completion
-				if dailyComplete and weeklyComplete then break end
-			end
+			-- Check both daily and weekly completion
+			if dailyComplete and weeklyComplete then break end
 		end
 		-- If unlimited mode, never stop
 		
@@ -984,15 +974,6 @@ function MiscSystem.Init(deps)
 	MiscTab:Section({ Title = "Auto Like", Icon = "thumbs-up" })
 	local likeStatus = MiscTab:Paragraph({ Title = "Status", Desc = "Daily Like: 0/3 | Weekly Like: 0/20" })
 	
-	local ignoreDailyToggle = MiscTab:Toggle({
-		Title = "Ignore Daily Quest",
-		Desc = "Only focus on weekly likes, ignore daily quest",
-		Value = false,
-		Callback = function(state)
-			autoLikeIgnoreDaily = state
-		end
-	})
-	
 	local unlimitedToggle = MiscTab:Toggle({
 		Title = "Unlimited Mode",
 		Desc = "Keep liking without any limit, never stop",
@@ -1155,7 +1136,6 @@ function MiscSystem.Init(deps)
 			Config:Register("misc_potion_toggle", potionToggle)
 			Config:Register("misc_potion_dropdown", potionDropdown)
 			Config:Register("misc_like_toggle", likeToggle)
-			Config:Register("misc_like_ignore_daily", ignoreDailyToggle)
 			Config:Register("misc_like_unlimited", unlimitedToggle)
 			Config:Register("misc_halloween_toggle", halloweenToggle)
 			Config:Register("misc_event_shop_toggle", eventShopToggle)
