@@ -17,10 +17,13 @@ local autoLikeThread = nil
 local selectedPotions = {}
 local likedUserIds = {} -- session memory to avoid repeating targets
 local autoLotteryEnabled = false
-local autoClaimSnowEnabled = false
-local autoClaimSnowThread = nil
+local autoClaimHalloweenEnabled = false
+local autoClaimHalloweenThread = nil
 local autoClaimDailyLoginEnabled = false
 local autoClaimDailyLoginThread = nil
+local autoBuyEventShopEnabled = false
+local autoBuyEventShopThread = nil
+local selectedEventShopItems = {}
 -- Forward refs for UI controls that we may need to flip programmatically
 local potionToggleRef = nil
 
@@ -77,6 +80,103 @@ local DinoEventTasks = {
 }
 
 -- Helpers
+local function getEventShopUI()
+	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local screenDino = pg and pg:FindFirstChild("ScreenDino")
+	local root = screenDino and screenDino:FindFirstChild("Root")
+	return root
+end
+
+local function getEventCandyAmount()
+	local root = getEventShopUI()
+	if not root then return 0 end
+	local coin = root:FindFirstChild("Coin")
+	local textLabel = coin and coin:FindFirstChild("TextLabel")
+	if not textLabel then return 0 end
+	local text = textLabel.Text
+	-- Parse number from text (e.g., "1,234" or "1234")
+	local numStr = text:gsub(",", "")
+	return tonumber(numStr) or 0
+end
+
+local function getAllEventShopItems()
+	local root = getEventShopUI()
+	if not root then return {} end
+	local storeFrame = root:FindFirstChild("StoreFrame")
+	local frame = storeFrame and storeFrame:FindFirstChild("Frame")
+	local scrollFrame = frame and frame:FindFirstChild("ScrollingFrame")
+	if not scrollFrame then return {} end
+	
+	local items = {}
+	for _, child in ipairs(scrollFrame:GetChildren()) do
+		if child:IsA("Frame") and child.Name:match("^Reward_") then
+			local desc = child:FindFirstChild("Desc")
+			local descLabel = desc and desc:FindFirstChild("Desc")
+			local itemName = descLabel and descLabel.Text or child.Name
+			
+			local stockBtn = child:FindFirstChild("StockBtn")
+			local stockLabel = stockBtn and stockBtn:FindFirstChild("StockLabel")
+			local cost = stockLabel and tonumber(stockLabel.Text) or 0
+			
+			local limit = child:FindFirstChild("limit")
+			local nameLabel = limit and limit:FindFirstChild("NameLabel")
+			local available = nameLabel and tonumber(nameLabel.Text) or 0
+			
+			table.insert(items, {
+				id = child.Name,
+				name = itemName,
+				cost = cost,
+				available = available
+			})
+		end
+	end
+	
+	table.sort(items, function(a, b) return a.id < b.id end)
+	return items
+end
+
+local function getEventShopItemStatus(itemId)
+	local root = getEventShopUI()
+	if not root then return nil end
+	local storeFrame = root:FindFirstChild("StoreFrame")
+	local frame = storeFrame and storeFrame:FindFirstChild("Frame")
+	local scrollFrame = frame and frame:FindFirstChild("ScrollingFrame")
+	if not scrollFrame then return nil end
+	
+	local item = scrollFrame:FindFirstChild(itemId)
+	if not item then return nil end
+	
+	local limit = item:FindFirstChild("limit")
+	local nameLabel = limit and limit:FindFirstChild("NameLabel")
+	local available = nameLabel and tonumber(nameLabel.Text) or 0
+	
+	local stockBtn = item:FindFirstChild("StockBtn")
+	local stockLabel = stockBtn and stockBtn:FindFirstChild("StockLabel")
+	local cost = stockLabel and tonumber(stockLabel.Text) or 0
+	
+	return {
+		available = available,
+		cost = cost
+	}
+end
+
+local function buyEventShopItem(itemId)
+	if not itemId then return false end
+	
+	local args = {
+		{
+			event = "exchange",
+			id = itemId
+		}
+	}
+	
+	local ok, err = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+	end)
+	
+	return ok, err
+end
+
 local function getAssetFolder()
 	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
 	local data = pg and pg:FindFirstChild("Data")
@@ -356,10 +456,10 @@ local function runAutoLike(statusParagraph)
     end
 end
 
-local function runAutoClaimSnow(statusParagraph)
+local function runAutoClaimHalloween(statusParagraph)
 	local lastStatus = {}
 	
-	while autoClaimSnowEnabled do
+	while autoClaimHalloweenEnabled do
 		local claimedAny = false
 		local statusLines = {}
 		
@@ -369,7 +469,7 @@ local function runAutoClaimSnow(statusParagraph)
 			if ok then
 				claimedAny = true
 				if WindUI then
-					WindUI:Notify({ Title = "❄️ Auto Claim Snow", Content = result, Duration = 3 })
+					WindUI:Notify({ Title = "🎃 Auto Claim Halloween", Content = result, Duration = 3 })
 				end
 			end
 			
@@ -424,6 +524,60 @@ local function runAutoClaimSnow(statusParagraph)
 		
 		-- Wait longer if nothing was claimed to reduce load
 		task.wait(claimedAny and 1.0 or 3.0)
+	end
+end
+
+local function runAutoBuyEventShop(statusParagraph)
+	while autoBuyEventShopEnabled do
+		local candy = getEventCandyAmount()
+		local statusLines = {}
+		local boughtAny = false
+		
+		-- Try to buy selected items
+		for itemId, enabled in pairs(selectedEventShopItems) do
+			if enabled then
+				local itemStatus = getEventShopItemStatus(itemId)
+				if itemStatus then
+					-- Check if item is available
+					if itemStatus.available > 0 then
+						-- Check if we have enough candy
+						if candy >= itemStatus.cost then
+							local ok, err = buyEventShopItem(itemId)
+							if ok then
+								boughtAny = true
+								candy = candy - itemStatus.cost -- Update local candy count
+								if WindUI then
+									WindUI:Notify({ 
+										Title = "🎃 Auto Buy Event Shop", 
+										Content = string.format("Bought %s for %d candy!", itemId, itemStatus.cost), 
+										Duration = 3 
+									})
+								end
+								task.wait(1.0) -- Wait between purchases
+							end
+						else
+							table.insert(statusLines, string.format("%s: Not enough candy (%d/%d)", itemId, candy, itemStatus.cost))
+						end
+					else
+						table.insert(statusLines, string.format("%s: Sold out (0 available)", itemId))
+					end
+				end
+			end
+		end
+		
+		-- Update status display
+		if statusParagraph and statusParagraph.SetDesc then
+			local statusText = string.format("Candy: %d\n", candy)
+			if #statusLines > 0 then
+				statusText = statusText .. table.concat(statusLines, "\n")
+			else
+				statusText = statusText .. "Waiting for items to buy..."
+			end
+			statusParagraph:SetDesc(statusText)
+		end
+		
+		-- Wait longer if nothing was bought
+		task.wait(boughtAny and 2.0 or 5.0)
 	end
 end
 
@@ -616,26 +770,82 @@ function MiscSystem.Init(deps)
 		end
 	})
 
-	-- Auto Claim Snow section
-	MiscTab:Section({ Title = "Auto Claim Snow", Icon = "snowflake" })
-	local snowStatus = MiscTab:Paragraph({ Title = "Task Status", Desc = "Snow Tasks: Detecting..." })
-	local snowToggle = MiscTab:Toggle({
-		Title = "Auto Claim Snow Rewards",
-		Desc = "Automatically claim completed dino event tasks",
+	-- Auto Claim Halloween section
+	MiscTab:Section({ Title = "Auto Claim Halloween", Icon = "ghost" })
+	local halloweenStatus = MiscTab:Paragraph({ Title = "Task Status", Desc = "Halloween Tasks: Detecting..." })
+	local halloweenToggle = MiscTab:Toggle({
+		Title = "Auto Claim Halloween Rewards",
+		Desc = "Automatically claim completed Halloween event tasks",
 		Value = false,
 		Callback = function(state)
-			autoClaimSnowEnabled = state
-			if state and not autoClaimSnowThread then
-				autoClaimSnowThread = task.spawn(function()
-					runAutoClaimSnow(snowStatus)
-					autoClaimSnowThread = nil
+			autoClaimHalloweenEnabled = state
+			if state and not autoClaimHalloweenThread then
+				autoClaimHalloweenThread = task.spawn(function()
+					runAutoClaimHalloween(halloweenStatus)
+					autoClaimHalloweenThread = nil
 				end)
 				if WindUI then
-					WindUI:Notify({ Title = "❄️ Auto Claim Snow", Content = "Started monitoring tasks", Duration = 2 })
+					WindUI:Notify({ Title = "🎃 Auto Claim Halloween", Content = "Started monitoring tasks", Duration = 2 })
 				end
-			elseif not state and autoClaimSnowThread then
+			elseif not state and autoClaimHalloweenThread then
 				if WindUI then
-					WindUI:Notify({ Title = "❄️ Auto Claim Snow", Content = "Stopped", Duration = 2 })
+					WindUI:Notify({ Title = "🎃 Auto Claim Halloween", Content = "Stopped", Duration = 2 })
+				end
+			end
+		end
+	})
+
+	-- Auto Buy Event Shop section
+	MiscTab:Section({ Title = "Auto Buy Event Shop", Icon = "shopping-cart" })
+	local eventShopStatus = MiscTab:Paragraph({ Title = "Shop Status", Desc = "Event Shop: Detecting..." })
+	
+	-- Get available items for dropdown
+	local eventShopItems = getAllEventShopItems()
+	local itemNames = {}
+	local itemIdToName = {}
+	for _, item in ipairs(eventShopItems) do
+		local displayName = string.format("%s (%d candy, %d left)", item.name, item.cost, item.available)
+		table.insert(itemNames, displayName)
+		itemIdToName[displayName] = item.id
+	end
+	
+	local eventShopDropdown = MiscTab:Dropdown({
+		Title = "Items to Buy",
+		Desc = "Select items to auto-buy from event shop",
+		Values = itemNames,
+		Value = {},
+		Multi = true,
+		AllowNone = true,
+		Callback = function(selection)
+			selectedEventShopItems = {}
+			if type(selection) == "table" then
+				for _, displayName in ipairs(selection) do
+					local itemId = itemIdToName[displayName]
+					if itemId then
+						selectedEventShopItems[itemId] = true
+					end
+				end
+			end
+		end
+	})
+	
+	local eventShopToggle = MiscTab:Toggle({
+		Title = "Auto Buy Event Items",
+		Desc = "Automatically buy selected items when you have enough candy",
+		Value = false,
+		Callback = function(state)
+			autoBuyEventShopEnabled = state
+			if state and not autoBuyEventShopThread then
+				autoBuyEventShopThread = task.spawn(function()
+					runAutoBuyEventShop(eventShopStatus)
+					autoBuyEventShopThread = nil
+				end)
+				if WindUI then
+					WindUI:Notify({ Title = "🎃 Auto Buy Event Shop", Content = "Started monitoring shop", Duration = 2 })
+				end
+			elseif not state and autoBuyEventShopThread then
+				if WindUI then
+					WindUI:Notify({ Title = "🎃 Auto Buy Event Shop", Content = "Stopped", Duration = 2 })
 				end
 			end
 		end
@@ -673,7 +883,9 @@ function MiscSystem.Init(deps)
 			Config:Register("misc_potion_toggle", potionToggle)
 			Config:Register("misc_potion_dropdown", potionDropdown)
 			Config:Register("misc_like_toggle", likeToggle)
-			Config:Register("misc_snow_toggle", snowToggle)
+			Config:Register("misc_halloween_toggle", halloweenToggle)
+			Config:Register("misc_event_shop_toggle", eventShopToggle)
+			Config:Register("misc_event_shop_dropdown", eventShopDropdown)
 			Config:Register("misc_daily_login_toggle", dailyLoginToggle)
 		end)
 	end
