@@ -719,6 +719,10 @@ local function runAutoBuyEventShop(statusParagraph)
 								})
 							end
 							task.wait(1.0) -- Wait between purchases
+							-- Update candy display immediately after purchase
+							if statusParagraph and statusParagraph.SetDesc then
+								statusParagraph:SetDesc(string.format("Candy: %d", candy))
+							end
 						end
 					else
 						table.insert(statusLines, string.format("%s: Not enough candy (%d/%d)", itemName, candy, itemStatus.cost))
