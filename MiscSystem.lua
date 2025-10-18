@@ -100,63 +100,151 @@ local function getEventCandyAmount()
 end
 
 local function getAllEventShopItems()
-	local root = getEventShopUI()
-	if not root then return {} end
-	local storeFrame = root:FindFirstChild("StoreFrame")
-	local frame = storeFrame and storeFrame:FindFirstChild("Frame")
-	local scrollFrame = frame and frame:FindFirstChild("ScrollingFrame")
-	if not scrollFrame then return {} end
-	
 	local items = {}
-	for _, child in ipairs(scrollFrame:GetChildren()) do
-		if child:IsA("Frame") and child.Name:match("^Reward_") then
-			local desc = child:FindFirstChild("Desc")
-			local descLabel = desc and desc:FindFirstChild("Desc")
-			local itemName = descLabel and descLabel.Text or child.Name
+	local rewardConfig
+	
+	-- Get reward data from ReplicatedStorage config
+	pcall(function()
+		rewardConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResDinoEventReward"))
+	end)
+	
+	if not rewardConfig or type(rewardConfig) ~= "table" then return {} end
+	
+	-- Get UI for availability checking
+	local root = getEventShopUI()
+	local scrollFrame = nil
+	if root then
+		local storeFrame = root:FindFirstChild("StoreFrame")
+		local frame = storeFrame and storeFrame:FindFirstChild("Frame")
+		scrollFrame = frame and frame:FindFirstChild("ScrollingFrame")
+	end
+	
+	for rewardId, rewardData in pairs(rewardConfig) do
+		if type(rewardId) == "string" and rewardId:match("^Reward_") and type(rewardData) == "table" then
+			local itemName = rewardData.Thing1 or rewardId
+			local cost = rewardData.TaskPoints or 0
+			local claimNumber = rewardData.ClaimNumber or -1
 			
-			local stockBtn = child:FindFirstChild("StockBtn")
-			local stockLabel = stockBtn and stockBtn:FindFirstChild("StockLabel")
-			local cost = stockLabel and tonumber(stockLabel.Text) or 0
+			-- Check availability from UI if possible
+			local available = -1 -- -1 means unlimited
+			local hasLimit = false
 			
-			local limit = child:FindFirstChild("limit")
-			local nameLabel = limit and limit:FindFirstChild("NameLabel")
-			local available = nameLabel and tonumber(nameLabel.Text) or 0
+			if scrollFrame then
+				local itemFrame = scrollFrame:FindFirstChild(rewardId)
+				if itemFrame then
+					local limit = itemFrame:FindFirstChild("limit")
+					if limit and limit.Visible then
+						hasLimit = true
+						local nameLabel = limit:FindFirstChild("NameLabel")
+						if nameLabel then
+							local text = nameLabel.Text
+							-- Parse "Available X times" or just number
+							local num = text:match("Available (%d+) times") or text:match("(%d+)")
+							available = tonumber(num) or 0
+						end
+					end
+				end
+			end
+			
+			-- If no UI data, use ClaimNumber from config
+			if not hasLimit and claimNumber ~= -1 then
+				available = claimNumber
+			end
+			
+			-- Build display name
+			local displayName = itemName
+			if available == -1 then
+				displayName = string.format("%s (%d candy, Unlimited)", itemName, cost)
+			else
+				displayName = string.format("%s (%d candy, %d left)", itemName, cost, available)
+			end
 			
 			table.insert(items, {
-				id = child.Name,
+				id = rewardId,
 				name = itemName,
+				displayName = displayName,
 				cost = cost,
-				available = available
+				available = available,
+				claimNumber = claimNumber
 			})
 		end
 	end
 	
-	table.sort(items, function(a, b) return a.id < b.id end)
+	-- Sort by Sort field or ID
+	table.sort(items, function(a, b)
+		local sortA = rewardConfig[a.id] and rewardConfig[a.id].Sort or 999
+		local sortB = rewardConfig[b.id] and rewardConfig[b.id].Sort or 999
+		return sortA < sortB
+	end)
+	
 	return items
 end
 
 local function getEventShopItemStatus(itemId)
+	-- Get cost from config
+	local cost = 0
+	local configAvailable = -1
+	
+	pcall(function()
+		local rewardConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResDinoEventReward"))
+		if rewardConfig and rewardConfig[itemId] then
+			cost = rewardConfig[itemId].TaskPoints or 0
+			configAvailable = rewardConfig[itemId].ClaimNumber or -1
+		end
+	end)
+	
+	-- Get availability from UI
 	local root = getEventShopUI()
-	if not root then return nil end
+	if not root then 
+		return {
+			available = configAvailable,
+			cost = cost,
+			hasLimit = configAvailable ~= -1
+		}
+	end
+	
 	local storeFrame = root:FindFirstChild("StoreFrame")
 	local frame = storeFrame and storeFrame:FindFirstChild("Frame")
 	local scrollFrame = frame and frame:FindFirstChild("ScrollingFrame")
-	if not scrollFrame then return nil end
+	if not scrollFrame then 
+		return {
+			available = configAvailable,
+			cost = cost,
+			hasLimit = configAvailable ~= -1
+		}
+	end
 	
 	local item = scrollFrame:FindFirstChild(itemId)
-	if not item then return nil end
+	if not item then 
+		return {
+			available = configAvailable,
+			cost = cost,
+			hasLimit = configAvailable ~= -1
+		}
+	end
 	
+	-- Check if limit element exists and is visible
 	local limit = item:FindFirstChild("limit")
-	local nameLabel = limit and limit:FindFirstChild("NameLabel")
-	local available = nameLabel and tonumber(nameLabel.Text) or 0
+	if limit and limit.Visible then
+		local nameLabel = limit:FindFirstChild("NameLabel")
+		if nameLabel then
+			local text = nameLabel.Text
+			-- Parse "Available X times" or just number
+			local num = text:match("Available (%d+) times") or text:match("(%d+)")
+			local available = tonumber(num) or 0
+			return {
+				available = available,
+				cost = cost,
+				hasLimit = true
+			}
+		end
+	end
 	
-	local stockBtn = item:FindFirstChild("StockBtn")
-	local stockLabel = stockBtn and stockBtn:FindFirstChild("StockLabel")
-	local cost = stockLabel and tonumber(stockLabel.Text) or 0
-	
+	-- No limit visible, item is unlimited
 	return {
-		available = available,
-		cost = cost
+		available = -1,
+		cost = cost,
+		hasLimit = false
 	}
 end
 
@@ -538,8 +626,17 @@ local function runAutoBuyEventShop(statusParagraph)
 			if enabled then
 				local itemStatus = getEventShopItemStatus(itemId)
 				if itemStatus then
-					-- Check if item is available
-					if itemStatus.available > 0 then
+					-- Check if item is available (-1 means unlimited)
+					local canBuy = false
+					if itemStatus.available == -1 then
+						-- Unlimited item
+						canBuy = true
+					elseif itemStatus.available > 0 then
+						-- Limited item with stock remaining
+						canBuy = true
+					end
+					
+					if canBuy then
 						-- Check if we have enough candy
 						if candy >= itemStatus.cost then
 							local ok, err = buyEventShopItem(itemId)
@@ -559,6 +656,7 @@ local function runAutoBuyEventShop(statusParagraph)
 							table.insert(statusLines, string.format("%s: Not enough candy (%d/%d)", itemId, candy, itemStatus.cost))
 						end
 					else
+						-- Item is sold out
 						table.insert(statusLines, string.format("%s: Sold out (0 available)", itemId))
 					end
 				end
@@ -804,9 +902,8 @@ function MiscSystem.Init(deps)
 	local itemNames = {}
 	local itemIdToName = {}
 	for _, item in ipairs(eventShopItems) do
-		local displayName = string.format("%s (%d candy, %d left)", item.name, item.cost, item.available)
-		table.insert(itemNames, displayName)
-		itemIdToName[displayName] = item.id
+		table.insert(itemNames, item.displayName)
+		itemIdToName[item.displayName] = item.id
 	end
 	
 	local eventShopDropdown = MiscTab:Dropdown({
