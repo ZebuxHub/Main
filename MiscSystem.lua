@@ -24,6 +24,8 @@ local autoClaimDailyLoginThread = nil
 local autoBuyEventShopEnabled = false
 local autoBuyEventShopThread = nil
 local selectedEventShopItems = {}
+local autoClaimEggEnabled = false
+local autoClaimEggThread = nil
 -- Forward refs for UI controls that we may need to flip programmatically
 local potionToggleRef = nil
 
@@ -85,6 +87,35 @@ local function getEventShopUI()
 	local screenDino = pg and pg:FindFirstChild("ScreenDino")
 	local root = screenDino and screenDino:FindFirstChild("Root")
 	return root
+end
+
+local function getEventEggClaimCount()
+	local root = getEventShopUI()
+	if not root then return 0 end
+	local eggFrame = root:FindFirstChild("EggFrame")
+	local freeBtn = eggFrame and eggFrame:FindFirstChild("FreeBtn")
+	local frame = freeBtn and freeBtn:FindFirstChild("Frame")
+	local count = frame and frame:FindFirstChild("Count")
+	if not count then return 0 end
+	
+	local text = count.Text
+	-- Parse "Claim(x5)" or "Claim(x0)" to get number
+	local num = text:match("Claim%(x(%d+)%)")
+	return tonumber(num) or 0
+end
+
+local function claimEventEgg()
+	local args = {
+		{
+			event = "onlinepack"
+		}
+	}
+	
+	local ok, err = pcall(function()
+		ReplicatedStorage:WaitForChild("Remote"):WaitForChild("DinoEventRE"):FireServer(unpack(args))
+	end)
+	
+	return ok, err
 end
 
 local function getEventCandyAmount()
@@ -621,44 +652,80 @@ local function runAutoBuyEventShop(statusParagraph)
 		local statusLines = {}
 		local boughtAny = false
 		
-		-- Try to buy selected items
-		for itemId, enabled in pairs(selectedEventShopItems) do
-			if enabled then
-				local itemStatus = getEventShopItemStatus(itemId)
-				if itemStatus then
-					-- Check if item is available (-1 means unlimited)
-					local canBuy = false
-					if itemStatus.available == -1 then
-						-- Unlimited item
-						canBuy = true
-					elseif itemStatus.available > 0 then
-						-- Limited item with stock remaining
-						canBuy = true
+		-- Get reward config for item names
+		local rewardConfig
+		pcall(function()
+			rewardConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ResDinoEventReward"))
+		end)
+		
+		-- Determine which items to buy
+		local itemsToBuy = {}
+		local hasSelection = false
+		for _, _ in pairs(selectedEventShopItems) do
+			hasSelection = true
+			break
+		end
+		
+		if hasSelection then
+			-- Buy only selected items
+			for itemId, enabled in pairs(selectedEventShopItems) do
+				if enabled then
+					table.insert(itemsToBuy, itemId)
+				end
+			end
+		else
+			-- Buy all items if none selected
+			if rewardConfig then
+				for rewardId, _ in pairs(rewardConfig) do
+					if type(rewardId) == "string" and rewardId:match("^Reward_") then
+						table.insert(itemsToBuy, rewardId)
 					end
-					
-					if canBuy then
-						-- Check if we have enough candy
-						if candy >= itemStatus.cost then
-							local ok, err = buyEventShopItem(itemId)
-							if ok then
-								boughtAny = true
-								candy = candy - itemStatus.cost -- Update local candy count
-								if WindUI then
-									WindUI:Notify({ 
-										Title = "🎃 Auto Buy Event Shop", 
-										Content = string.format("Bought %s for %d candy!", itemId, itemStatus.cost), 
-										Duration = 3 
-									})
-								end
-								task.wait(1.0) -- Wait between purchases
+				end
+			end
+		end
+		
+		-- Try to buy items
+		for _, itemId in ipairs(itemsToBuy) do
+			local itemStatus = getEventShopItemStatus(itemId)
+			if itemStatus then
+				-- Get item name from config
+				local itemName = itemId
+				if rewardConfig and rewardConfig[itemId] then
+					itemName = rewardConfig[itemId].Thing1 or itemId
+				end
+				
+				-- Check if item is available (-1 means unlimited)
+				local canBuy = false
+				if itemStatus.available == -1 then
+					-- Unlimited item
+					canBuy = true
+				elseif itemStatus.available > 0 then
+					-- Limited item with stock remaining
+					canBuy = true
+				end
+				
+				if canBuy then
+					-- Check if we have enough candy
+					if candy >= itemStatus.cost then
+						local ok, err = buyEventShopItem(itemId)
+						if ok then
+							boughtAny = true
+							candy = candy - itemStatus.cost -- Update local candy count
+							if WindUI then
+								WindUI:Notify({ 
+									Title = "🎃 Auto Buy Event Shop", 
+									Content = string.format("Bought %s for %d candy!", itemName, itemStatus.cost), 
+									Duration = 3 
+								})
 							end
-						else
-							table.insert(statusLines, string.format("%s: Not enough candy (%d/%d)", itemId, candy, itemStatus.cost))
+							task.wait(1.0) -- Wait between purchases
 						end
 					else
-						-- Item is sold out
-						table.insert(statusLines, string.format("%s: Sold out (0 available)", itemId))
+						table.insert(statusLines, string.format("%s: Not enough candy (%d/%d)", itemName, candy, itemStatus.cost))
 					end
+				else
+					-- Item is sold out
+					table.insert(statusLines, string.format("%s: Sold out (0 available)", itemName))
 				end
 			end
 		end
@@ -676,6 +743,36 @@ local function runAutoBuyEventShop(statusParagraph)
 		
 		-- Wait longer if nothing was bought
 		task.wait(boughtAny and 2.0 or 5.0)
+	end
+end
+
+local function runAutoClaimEgg(statusParagraph)
+	while autoClaimEggEnabled do
+		local claimCount = getEventEggClaimCount()
+		
+		-- Update status display
+		if statusParagraph and statusParagraph.SetDesc then
+			statusParagraph:SetDesc(string.format("Available Eggs: %d", claimCount))
+		end
+		
+		-- Claim if eggs are available
+		if claimCount > 0 then
+			local ok, err = claimEventEgg()
+			if ok then
+				if WindUI then
+					WindUI:Notify({ 
+						Title = "🥚 Auto Claim Egg", 
+						Content = string.format("Claimed %d egg(s)!", claimCount), 
+						Duration = 3 
+					})
+				end
+				task.wait(1.0) -- Wait after claiming
+			else
+				task.wait(2.0) -- Wait longer if claim failed
+			end
+		else
+			task.wait(3.0) -- Wait longer when no eggs available
+		end
 	end
 end
 
@@ -908,7 +1005,7 @@ function MiscSystem.Init(deps)
 	
 	local eventShopDropdown = MiscTab:Dropdown({
 		Title = "Items to Buy",
-		Desc = "Select items to auto-buy from event shop",
+		Desc = "Select items to auto-buy (leave empty to buy all)",
 		Values = itemNames,
 		Value = {},
 		Multi = true,
@@ -928,7 +1025,7 @@ function MiscSystem.Init(deps)
 	
 	local eventShopToggle = MiscTab:Toggle({
 		Title = "Auto Buy Event Items",
-		Desc = "Automatically buy selected items when you have enough candy",
+		Desc = "Buy selected items or all if none selected",
 		Value = false,
 		Callback = function(state)
 			autoBuyEventShopEnabled = state
@@ -943,6 +1040,31 @@ function MiscSystem.Init(deps)
 			elseif not state and autoBuyEventShopThread then
 				if WindUI then
 					WindUI:Notify({ Title = "🎃 Auto Buy Event Shop", Content = "Stopped", Duration = 2 })
+				end
+			end
+		end
+	})
+
+	-- Auto Claim Egg section
+	MiscTab:Section({ Title = "Auto Claim Egg", Icon = "egg" })
+	local eggStatus = MiscTab:Paragraph({ Title = "Egg Status", Desc = "Available Eggs: 0" })
+	local eggToggle = MiscTab:Toggle({
+		Title = "Auto Claim Event Eggs",
+		Desc = "Automatically claim online pack eggs when available",
+		Value = false,
+		Callback = function(state)
+			autoClaimEggEnabled = state
+			if state and not autoClaimEggThread then
+				autoClaimEggThread = task.spawn(function()
+					runAutoClaimEgg(eggStatus)
+					autoClaimEggThread = nil
+				end)
+				if WindUI then
+					WindUI:Notify({ Title = "🥚 Auto Claim Egg", Content = "Started monitoring eggs", Duration = 2 })
+				end
+			elseif not state and autoClaimEggThread then
+				if WindUI then
+					WindUI:Notify({ Title = "🥚 Auto Claim Egg", Content = "Stopped", Duration = 2 })
 				end
 			end
 		end
@@ -983,6 +1105,7 @@ function MiscSystem.Init(deps)
 			Config:Register("misc_halloween_toggle", halloweenToggle)
 			Config:Register("misc_event_shop_toggle", eventShopToggle)
 			Config:Register("misc_event_shop_dropdown", eventShopDropdown)
+			Config:Register("misc_egg_toggle", eggToggle)
 			Config:Register("misc_daily_login_toggle", dailyLoginToggle)
 		end)
 	end
