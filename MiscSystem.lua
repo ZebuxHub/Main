@@ -14,6 +14,8 @@ local autoPotionEnabled = false
 local autoPotionThread = nil
 local autoLikeEnabled = false
 local autoLikeThread = nil
+local autoLikeIgnoreDaily = false
+local autoLikeUnlimited = false
 local selectedPotions = {}
 local likedUserIds = {} -- session memory to avoid repeating targets
 local autoLotteryEnabled = false
@@ -389,11 +391,14 @@ local function getLikeProgress()
 	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
 	local data = pg and pg:FindFirstChild("Data")
 	local seasonPass = data and data:FindFirstChild("SeasonPass")
-	local season1 = seasonPass and seasonPass:FindFirstChild("Season1")
-	if not season1 then return 0, false, 0, false end
-	local likes = tonumber(season1:GetAttribute("D_LikeZoo")) or 0
-	local weeklyLikes = tonumber(season1:GetAttribute("W_LikeZoo")) or 0
-	local ccDaily = tonumber(season1:GetAttribute("CC_DailyTask2")) or 0
+	
+	-- Try Season2 first, fallback to Season1
+	local season = seasonPass and (seasonPass:FindFirstChild("Season2") or seasonPass:FindFirstChild("Season1"))
+	if not season then return 0, false, 0, false end
+	
+	local likes = tonumber(season:GetAttribute("D_LikeZoo")) or 0
+	local weeklyLikes = tonumber(season:GetAttribute("W_LikeZoo")) or 0
+	local ccDaily = tonumber(season:GetAttribute("CC_DailyTask2")) or 0
 	local dailyComplete = (likes >= 3) or (ccDaily == 1)
 	local weeklyComplete = (weeklyLikes >= 20)
 	return likes, dailyComplete, weeklyLikes, weeklyComplete
@@ -549,23 +554,48 @@ local function runAutoLike(statusParagraph)
     local noTargetStreak = 0
     while autoLikeEnabled do
         local likes, dailyComplete, weeklyLikes, weeklyComplete = getLikeProgress()
+		
+		-- Update status display
 		if statusParagraph and statusParagraph.SetDesc then
 			local msg = string.format("Daily Like: %d/3 | Weekly Like: %d/20", likes, weeklyLikes)
-			if dailyComplete and weeklyComplete then msg = msg .. " (complete)" end
+			if autoLikeIgnoreDaily then
+				msg = msg .. " (Ignore Daily)"
+			end
+			if autoLikeUnlimited then
+				msg = msg .. " (Unlimited Mode)"
+			end
+			if not autoLikeUnlimited and dailyComplete and weeklyComplete then 
+				msg = msg .. " (Complete)" 
+			end
 			statusParagraph:SetDesc(msg)
 		end
-		-- Stop only when BOTH daily and weekly are complete
-		if dailyComplete and weeklyComplete then break end
+		
+		-- Check stop conditions based on mode
+		if not autoLikeUnlimited then
+			if autoLikeIgnoreDaily then
+				-- Only check weekly completion
+				if weeklyComplete then break end
+			else
+				-- Check both daily and weekly completion
+				if dailyComplete and weeklyComplete then break end
+			end
+		end
+		-- If unlimited mode, never stop
+		
         local targetId = getRandomOtherUserId()
         if not targetId then
             -- everyone liked already in this server
             noTargetStreak = noTargetStreak + 1
-            if not weeklyComplete and noTargetStreak >= 3 then
-                hopServer()
-                task.wait(3.0)
-            else
-                task.wait(2.0)
-            end
+            if autoLikeUnlimited or not weeklyComplete then
+				if noTargetStreak >= 3 then
+					hopServer()
+					task.wait(3.0)
+				else
+					task.wait(2.0)
+				end
+			else
+				task.wait(2.0)
+			end
         else
             noTargetStreak = 0
             sendLikeTo(targetId)
@@ -953,9 +983,28 @@ function MiscSystem.Init(deps)
 	-- Auto Like section
 	MiscTab:Section({ Title = "Auto Like", Icon = "thumbs-up" })
 	local likeStatus = MiscTab:Paragraph({ Title = "Status", Desc = "Daily Like: 0/3 | Weekly Like: 0/20" })
+	
+	local ignoreDailyToggle = MiscTab:Toggle({
+		Title = "Ignore Daily Quest",
+		Desc = "Only focus on weekly likes, ignore daily quest",
+		Value = false,
+		Callback = function(state)
+			autoLikeIgnoreDaily = state
+		end
+	})
+	
+	local unlimitedToggle = MiscTab:Toggle({
+		Title = "Unlimited Mode",
+		Desc = "Keep liking without any limit, never stop",
+		Value = false,
+		Callback = function(state)
+			autoLikeUnlimited = state
+		end
+	})
+	
 	local likeToggle = MiscTab:Toggle({
 		Title = "Auto Like Other Zoos",
-		Desc = "Automatically like others until complete",
+		Desc = "Automatically like others (reads from Season2/Season1)",
 		Value = false,
 		Callback = function(state)
 			autoLikeEnabled = state
@@ -1106,6 +1155,8 @@ function MiscSystem.Init(deps)
 			Config:Register("misc_potion_toggle", potionToggle)
 			Config:Register("misc_potion_dropdown", potionDropdown)
 			Config:Register("misc_like_toggle", likeToggle)
+			Config:Register("misc_like_ignore_daily", ignoreDailyToggle)
+			Config:Register("misc_like_unlimited", unlimitedToggle)
 			Config:Register("misc_halloween_toggle", halloweenToggle)
 			Config:Register("misc_event_shop_toggle", eventShopToggle)
 			Config:Register("misc_event_shop_dropdown", eventShopDropdown)
