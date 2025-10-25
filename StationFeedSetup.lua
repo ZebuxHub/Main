@@ -149,7 +149,7 @@ local function getPlayerOwnedPets()
         return pets 
     end
     
-    -- Get Data.Pets folder
+    -- Get Data.Pets folder (where BPSK/BPV attributes are)
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
     if not playerGui then 
         print("[DEBUG] No PlayerGui")
@@ -178,10 +178,12 @@ local function getPlayerOwnedPets()
     
     -- Scan each config in Data.Pets
     for _, petConfig in ipairs(petsDataFolder:GetChildren()) do
+        print("[DEBUG] Checking pet config: " .. petConfig.Name)
         local hasBPSK = petConfig:GetAttribute("BPSK") ~= nil
         local hasBPV = petConfig:GetAttribute("BPV") ~= nil
+        print("[DEBUG]   - BPSK: " .. tostring(hasBPSK) .. ", BPV: " .. tostring(hasBPV))
         if hasBPSK or hasBPV then
-            print("[DEBUG] Found big pet config: " .. petConfig.Name .. " (BPSK: " .. tostring(hasBPSK) .. ", BPV: " .. tostring(hasBPV) .. ")")
+            print("[DEBUG]   - Found big pet config: " .. petConfig.Name)
             local petName = petConfig.Name
             local petModel = petsFolder:FindFirstChild(petName)
             if petModel then
@@ -189,7 +191,7 @@ local function getPlayerOwnedPets()
                 local primaryPart = petModel.PrimaryPart or petModel:FindFirstChildWhichIsA("BasePart")
                 if primaryPart then
                     print("[DEBUG]   - Found primaryPart")
-                    local stationId = findBigPetStationForPet(primaryPart.Position) or "Unknown"
+                    local stationId = findBigPetStationForPet(primaryPart.Position)
                     print("[DEBUG]   - Station ID: " .. tostring(stationId))
                     
                     -- Get pet type - try multiple attributes on primary part
@@ -203,27 +205,36 @@ local function getPlayerOwnedPets()
                         displayName = petType
                     end
                     
-                    print("[DEBUG]   - Adding pet: " .. petName .. " to station " .. stationId)
-                    table.insert(pets, {
-                        uid = petName,
-                        stationId = stationId,
-                        type = petType or "Unknown",
-                        displayName = displayName
-                    })
+                    if stationId then
+                        print("[DEBUG]   - Adding pet: " .. petName .. " to station " .. stationId)
+                        table.insert(pets, {
+                            uid = petName,
+                            stationId = stationId,
+                            type = petType or "Unknown",
+                            displayName = displayName
+                        })
+                    else
+                        print("[DEBUG]   - No station found for " .. petName)
+                    end
                 else
                     print("[DEBUG]   - No primaryPart in model")
                 end
             else
                 print("[DEBUG]   - No matching model in workspace for " .. petName)
             end
+        else
+            print("[DEBUG]   - Not a big pet (no BPSK/BPV)")
         end
     end
     
     -- Sort by station ID
     table.sort(pets, function(a, b)
-        local numA = tonumber(a.stationId) or 999
-        local numB = tonumber(b.stationId) or 999
-        return numA < numB
+        local numA = tonumber(a.stationId)
+        local numB = tonumber(b.stationId)
+        if numA and numB then
+            return numA < numB
+        end
+        return a.stationId < b.stationId
     end)
     
     print("[DEBUG] Total big pets detected: " .. #pets)
@@ -837,7 +848,6 @@ local function createMainUI()
     
     -- Function to refresh pet list
     local function refreshPetList()
-        print("[DEBUG] Refreshing pet list...")
         for _, child in ipairs(petScroll:GetChildren()) do
             if child:IsA("TextButton") then
                 child:Destroy()
@@ -845,7 +855,6 @@ local function createMainUI()
         end
         
         local pets = getPlayerOwnedPets()
-        print("[DEBUG] getPlayerOwnedPets returned " .. #pets .. " pets")
         
         if #pets == 0 then
             local noStations = Instance.new("TextLabel")
@@ -856,12 +865,10 @@ local function createMainUI()
             noStations.Font = Enum.Font.Gotham
             noStations.TextColor3 = colors.textSecondary
             noStations.Parent = petScroll
-            print("[DEBUG] Showing 'No Big Pets Found' message")
             return
         end
         
         for i, petInfo in ipairs(pets) do
-            print("[DEBUG] Creating card for pet " .. i .. ": " .. petInfo.displayName)
             local card = Instance.new("TextButton")
             card.Name = "PetCard_" .. petInfo.stationId
             card.Size = UDim2.new(1, 0, 0, 50)
@@ -978,7 +985,6 @@ local function createMainUI()
                 end
             end)
         end
-        print("[DEBUG] Pet list refresh complete")
     end
     
     refreshPetList()
