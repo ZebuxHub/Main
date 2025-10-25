@@ -277,13 +277,18 @@ function AutoFeedSystem.getPlayerFruitInventory()
 end
 
 function AutoFeedSystem.isPetEating(petData)
-    if not petData or not petData.bigPetGUI then
-        return true -- Assume eating if we can't check
+    if not petData then
+        return true -- Assume eating if no pet data
+    end
+    
+    -- If no GUI, assume pet is ready (don't block feeding)
+    if not petData.bigPetGUI then
+        return false -- Pet is ready to feed
     end
     
     local feedGUI = petData.bigPetGUI:FindFirstChild("Feed")
     if not feedGUI then
-        return true -- Assume eating if no feed GUI
+        return false -- No feed GUI, assume ready to feed
     end
     
     -- Check if Feed frame is visible - if not visible, pet is ready to feed
@@ -293,12 +298,17 @@ function AutoFeedSystem.isPetEating(petData)
     
     local feedText = feedGUI:FindFirstChild("TXT")
     if not feedText or not feedText:IsA("TextLabel") then
-        return true -- Assume eating if no text
+        return false -- No text, assume ready to feed
     end
     
     local feedTime = feedText.Text
     if not feedTime or type(feedTime) ~= "string" then
-        return true -- Assume eating if no valid text
+        return false -- No valid text, assume ready to feed
+    end
+    
+    -- Pet is ready to eat when text is "00:00", "???", or ""
+    if feedTime == "00:00" or feedTime == "???" or feedTime == "" then
+        return false -- Pet is ready to feed
     end
     
     -- Check for stuck timer (00:01 for more than 2 seconds)
@@ -319,13 +329,9 @@ function AutoFeedSystem.isPetEating(petData)
             -- Check how long it's been stuck at 00:01
             local stuckDuration = currentTime - AutoFeedSystem.stuckTimers[petKey]
             if stuckDuration > 2 then
-                -- Been stuck for more than 2 seconds, check if Feed frame is visible
-                
-                if not feedGUI.Visible then
-                    -- Feed frame not visible, pet is ready to feed
-                    AutoFeedSystem.stuckTimers[petKey] = nil -- Reset timer
-                    return false
-                end
+                -- Been stuck for more than 2 seconds, treat as ready
+                AutoFeedSystem.stuckTimers[petKey] = nil -- Reset timer
+                return false -- Pet is ready to feed
             end
             return true -- Still eating
         end
@@ -333,10 +339,8 @@ function AutoFeedSystem.isPetEating(petData)
         -- Timer is not 00:01, reset stuck timer
         AutoFeedSystem.stuckTimers[petKey] = nil
         
-        -- Check if the pet is currently eating (not ready to eat)
-        -- Return true if eating, false if ready to eat
-        -- Pet is ready to eat when text is "00:00", "???", or ""
-        return feedTime ~= "00:00" and feedTime ~= "???" and feedTime ~= ""
+        -- If timer shows any other time, pet is eating
+        return true
     end
 end
 
