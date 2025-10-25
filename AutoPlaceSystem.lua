@@ -1697,39 +1697,44 @@ local function runAutoPickUp()
             print("[AutoPickUp] 👤 Player UserId: " .. playerUserId)
             print("[AutoPickUp] 🎯 Speed Threshold: " .. pickUpSpeedThreshold)
             print("[AutoPickUp] 🏝️ Tile Filter: " .. autoPickUpTileFilter)
-            print("[AutoPickUp] 📦 Total pets in workspace.Pets: " .. #petsFolder:GetChildren())
             
-            for _, pet in ipairs(petsFolder:GetChildren()) do
+            local allPets = petsFolder:GetChildren()
+            print("[AutoPickUp] 📦 Total pets in workspace.Pets: " .. #allPets)
+            
+            -- Debug first pet only to see structure
+            if #allPets > 0 and totalScanned == 0 then
+                local firstPet = allPets[1]
+                if firstPet:IsA("Model") then
+                    print("[AutoPickUp] 🔍 Sample Pet: " .. firstPet.Name)
+                    local attrs = firstPet:GetAttributes()
+                    for k, v in pairs(attrs) do
+                        print("  ├─ " .. k .. " = " .. tostring(v))
+                    end
+                    local rp = firstPet:FindFirstChild("RootPart")
+                    if rp then
+                        print("  ├─ RootPart found")
+                        local rpAttrs = rp:GetAttributes()
+                        for k, v in pairs(rpAttrs) do
+                            print("  │  ├─ RootPart." .. k .. " = " .. tostring(v))
+                        end
+                    end
+                end
+            end
+            
+            for _, pet in ipairs(allPets) do
                 if not autoPickUpEnabled then break end
                 
                 if pet:IsA("Model") then
                     totalScanned = totalScanned + 1
                     
-                    -- Debug: Show ALL attributes of the pet
-                    print("[AutoPickUp] 🔍 Pet: " .. pet.Name)
-                    local attributes = pet:GetAttributes()
-                    for attrName, attrValue in pairs(attributes) do
-                        print("  ├─ " .. attrName .. " = " .. tostring(attrValue))
-                    end
-                    
-                    -- Also check RootPart for UserId
-                    local rootPart = pet:FindFirstChild("RootPart")
-                    if rootPart then
-                        print("  ├─ RootPart found")
-                        local rootAttributes = rootPart:GetAttributes()
-                        for attrName, attrValue in pairs(rootAttributes) do
-                            print("  │  ├─ RootPart." .. attrName .. " = " .. tostring(attrValue))
+                    -- Get UserId from pet OR RootPart (no debug spam)
+                    local petUserId = pet:GetAttribute("UserId")
+                    if not petUserId then
+                        local rootPart = pet:FindFirstChild("RootPart")
+                        if rootPart then
+                            petUserId = rootPart:GetAttribute("UserId")
                         end
                     end
-                    
-                    -- Get UserId from pet's attributes OR RootPart
-                    local petUserId = pet:GetAttribute("UserId")
-                    if not petUserId and rootPart then
-                        petUserId = rootPart:GetAttribute("UserId")
-                        print("  └─ Using RootPart.UserId: " .. tostring(petUserId))
-                    end
-                    
-                    print("[AutoPickUp] 🆔 Pet UserId: " .. tostring(petUserId) .. " | Player UserId: " .. playerUserId .. " | Match: " .. tostring(petUserId and tonumber(petUserId) == playerUserId))
                     
                     if petUserId and tonumber(petUserId) == playerUserId then
                         print("[AutoPickUp] 🐾 Checking owned pet: " .. pet.Name)
