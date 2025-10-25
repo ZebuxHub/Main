@@ -144,86 +144,61 @@ end
 local function getPlayerOwnedPets()
     local pets = {}
     local localPlayer = Players.LocalPlayer
-    if not localPlayer then 
-        print("[DEBUG] No LocalPlayer")
-        return pets 
-    end
+    if not localPlayer then return pets end
     
-    -- Get Data.Pets folder (where BPSK/BPV attributes are)
+    -- Get pets from PlayerGui.Data.Pets (Configuration objects)
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then 
-        print("[DEBUG] No PlayerGui")
-        return pets 
-    end
+    if not playerGui then return pets end
     
     local data = playerGui:FindFirstChild("Data")
-    if not data then 
-        print("[DEBUG] No Data in PlayerGui")
-        return pets 
-    end
+    if not data then return pets end
     
-    local petsDataFolder = data:FindFirstChild("Pets")
-    if not petsDataFolder then 
-        print("[DEBUG] No Pets folder in Data")
-        return pets 
-    end
-    print("[DEBUG] Found Pets data folder with " .. #petsDataFolder:GetChildren() .. " configurations")
+    local petsFolder = data:FindFirstChild("Pets")
+    if not petsFolder then return pets end
     
-    -- Get workspace.Pets for model lookup
-    local petsFolder = workspace:FindFirstChild("Pets")
-    if not petsFolder then 
-        print("[DEBUG] No Pets folder in workspace")
-        return pets 
-    end
-    
-    -- Scan each config in Data.Pets
-    for _, petConfig in ipairs(petsDataFolder:GetChildren()) do
-        print("[DEBUG] Checking pet config: " .. petConfig.Name)
-        local hasBPSK = petConfig:GetAttribute("BPSK") ~= nil
-        local hasBPV = petConfig:GetAttribute("BPV") ~= nil
-        print("[DEBUG]   - BPSK: " .. tostring(hasBPSK) .. ", BPV: " .. tostring(hasBPV))
-        if hasBPSK or hasBPV then
-            print("[DEBUG]   - Found big pet config: " .. petConfig.Name)
-            local petName = petConfig.Name
-            local petModel = petsFolder:FindFirstChild(petName)
-            if petModel then
-                print("[DEBUG]   - Found matching model in workspace: " .. petName)
-                local primaryPart = petModel.PrimaryPart or petModel:FindFirstChildWhichIsA("BasePart")
-                if primaryPart then
-                    print("[DEBUG]   - Found primaryPart")
-                    local stationId = findBigPetStationForPet(primaryPart.Position)
-                    print("[DEBUG]   - Station ID: " .. tostring(stationId))
-                    
-                    -- Get pet type - try multiple attributes on primary part
-                    local petType = primaryPart:GetAttribute("T") 
-                                 or primaryPart:GetAttribute("Type")
-                                 or primaryPart:GetAttribute("PetType")
-                    
-                    -- If petType is still a UID-like string (long hex), don't show it
-                    local displayName = "Station " .. stationId
-                    if petType and #tostring(petType) <= 20 and petType ~= "" then
-                        displayName = petType
+    -- Scan all pet configurations
+    for _, petConfig in ipairs(petsFolder:GetChildren()) do
+        if petConfig:IsA("Configuration") then
+            -- Check if this is a Big Pet by looking for BPSK or BPV attributes
+            local bpsk = petConfig:GetAttribute("BPSK")
+            local bpv = petConfig:GetAttribute("BPV")
+            
+            if bpsk or bpv then
+                -- This is a Big Pet!
+                local petUID = petConfig.Name
+                
+                -- Try to find the pet model in workspace.Pets to get position
+                local workspacePets = workspace:FindFirstChild("Pets")
+                local petModel = workspacePets and workspacePets:FindFirstChild(petUID)
+                
+                if petModel then
+                    local rootPart = petModel:FindFirstChild("RootPart")
+                    if rootPart then
+                        local stationId = findBigPetStationForPet(rootPart.Position)
+                        
+                        -- Get pet type - try multiple attributes
+                        local petType = petConfig:GetAttribute("T") 
+                                     or petConfig:GetAttribute("Type")
+                                     or petConfig:GetAttribute("PetType")
+                                     or rootPart:GetAttribute("T")
+                        
+                        -- If petType is still a UID-like string (long hex), don't show it
+                        local displayName = "Station " .. (stationId or "?")
+                        if petType and #tostring(petType) <= 20 and petType ~= "" then
+                            displayName = petType
+                        end
+                        
+                        if stationId then
+                            table.insert(pets, {
+                                uid = petUID,
+                                stationId = stationId,
+                                type = petType or "Unknown",
+                                displayName = displayName
+                            })
+                        end
                     end
-                    
-                    if stationId then
-                        print("[DEBUG]   - Adding pet: " .. petName .. " to station " .. stationId)
-                        table.insert(pets, {
-                            uid = petName,
-                            stationId = stationId,
-                            type = petType or "Unknown",
-                            displayName = displayName
-                        })
-                    else
-                        print("[DEBUG]   - No station found for " .. petName)
-                    end
-                else
-                    print("[DEBUG]   - No primaryPart in model")
                 end
-            else
-                print("[DEBUG]   - No matching model in workspace for " .. petName)
             end
-        else
-            print("[DEBUG]   - Not a big pet (no BPSK/BPV)")
         end
     end
     
@@ -236,11 +211,6 @@ local function getPlayerOwnedPets()
         end
         return a.stationId < b.stationId
     end)
-    
-    print("[DEBUG] Total big pets detected: " .. #pets)
-    for i, pet in ipairs(pets) do
-        print("[DEBUG] Pet " .. i .. ": Station " .. pet.stationId .. " - " .. pet.displayName)
-    end
     
     return pets
 end
