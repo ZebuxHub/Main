@@ -1731,9 +1731,9 @@ local function runAutoPickUp()
                             print("[AutoPickUp] ⏭️ Skipping Big Pet: " .. petUID .. " (BigPetType: " .. tostring(bigPetType) .. ")")
                             skippedBigPets = skippedBigPets + 1
                         else
-                            -- Get speed from ProducesSpeed attribute
-                            local speedValue = pet:GetAttribute("ProducesSpeed")
-                            print("[AutoPickUp] 📊 Pet: " .. petUID .. " | ProducesSpeed: " .. tostring(speedValue) .. " | Threshold: " .. pickUpSpeedThreshold)
+                            -- Get speed from ProduceSpeed attribute
+                            local speedValue = pet:GetAttribute("ProduceSpeed")
+                            print("[AutoPickUp] 📊 Pet: " .. petUID .. " | ProduceSpeed: " .. tostring(speedValue) .. " | Threshold: " .. pickUpSpeedThreshold)
                             
                             if speedValue then
                                 -- Check tile filter (ocean vs regular)
