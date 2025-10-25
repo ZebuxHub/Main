@@ -550,7 +550,6 @@ local function hopServer()
 end
 
 local function runAutoLike(statusParagraph)
-    local noTargetStreak = 0
     while autoLikeEnabled do
         local likes, dailyComplete, weeklyLikes, weeklyComplete = getLikeProgress()
 		
@@ -574,23 +573,15 @@ local function runAutoLike(statusParagraph)
 		
         local targetId = getRandomOtherUserId()
         if not targetId then
-            -- everyone liked already in this server
-            noTargetStreak = noTargetStreak + 1
-            if autoLikeUnlimited or not weeklyComplete then
-				if noTargetStreak >= 3 then
-					hopServer()
-					task.wait(3.0)
-				else
-					task.wait(2.0)
-				end
-			else
-				task.wait(2.0)
-			end
+            -- No targets available, wait 1 minute before checking again
+            task.wait(60)
         else
-            noTargetStreak = 0
+            if not autoLikeUnlimited then
+                -- In non-unlimited mode, mark as liked
+                likedUserIds[targetId] = true
+            end
             sendLikeTo(targetId)
-            likedUserIds[targetId] = true
-            task.wait(1.0)
+            task.wait(60)
         end
     end
 end
