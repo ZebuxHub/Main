@@ -1711,14 +1711,17 @@ local function runAutoPickUp()
                     
                     if petUserId and tonumber(petUserId) == playerUserId then
                         local petUID = pet:GetAttribute("UID") or pet.Name
+                        print("[AutoPickUp] 🔍 Found owned pet: " .. petUID .. " | UserId: " .. petUserId)
                         
                         -- Skip Big Pets (check BigPetType attribute directly on pet)
                         local bigPetType = pet:GetAttribute("BigPetType")
                         if bigPetType then
+                            print("[AutoPickUp] ⏭️ Skipping Big Pet: " .. petUID .. " (BigPetType: " .. tostring(bigPetType) .. ")")
                             skippedBigPets = skippedBigPets + 1
                         else
                             -- Get speed from ProducesSpeed attribute
                             local speedValue = pet:GetAttribute("ProducesSpeed")
+                            print("[AutoPickUp] 📊 Pet: " .. petUID .. " | ProducesSpeed: " .. tostring(speedValue) .. " | Threshold: " .. pickUpSpeedThreshold)
                             
                             if speedValue then
                                 -- Check tile filter (ocean vs regular)
@@ -1729,8 +1732,10 @@ local function runAutoPickUp()
                                         local petType = conf:GetAttribute("T")
                                         if petType then
                                             local isOcean = isOceanPet(petType)
+                                            print("[AutoPickUp] 🌊 Tile Filter: " .. autoPickUpTileFilter .. " | Pet Type: " .. petType .. " | Is Ocean: " .. tostring(isOcean))
                                             if (autoPickUpTileFilter == "Regular" and isOcean) or 
                                                (autoPickUpTileFilter == "Ocean" and not isOcean) then
+                                                print("[AutoPickUp] ⏭️ Skipping due to tile filter")
                                                 skippedTileFilter = skippedTileFilter + 1
                                                 shouldSkip = true
                                             end
@@ -1741,11 +1746,15 @@ local function runAutoPickUp()
                                 -- Check speed threshold
                                 if not shouldSkip then
                                     if speedValue < pickUpSpeedThreshold then
+                                        print("[AutoPickUp] ✅ MATCH! Pet " .. petUID .. " speed " .. speedValue .. " < " .. pickUpSpeedThreshold .. " - Adding to pickup list")
                                         table.insert(petsToDelete, { name = petUID, speed = speedValue })
                                     else
+                                        print("[AutoPickUp] ⏭️ Speed OK: " .. petUID .. " (" .. speedValue .. " >= " .. pickUpSpeedThreshold .. ")")
                                         skippedSpeed = skippedSpeed + 1
                                     end
                                 end
+                            else
+                                print("[AutoPickUp] ⚠️ No ProducesSpeed attribute for: " .. petUID)
                             end
                         end
                     end
