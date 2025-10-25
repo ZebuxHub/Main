@@ -869,26 +869,10 @@ local function createMainUI()
             cardStroke.Thickness = 1
             cardStroke.Parent = card
             
-            -- Station number badge
-            local badge = Instance.new("TextLabel")
-            badge.Size = UDim2.new(0, 36, 0, 36)
-            badge.Position = UDim2.new(0, 8, 0.5, -18)
-            badge.BackgroundColor3 = colors.primary
-            badge.BorderSizePixel = 0
-            badge.Text = petInfo.stationId
-            badge.TextSize = 16
-            badge.Font = Enum.Font.GothamBold
-            badge.TextColor3 = colors.text
-            badge.Parent = card
-            
-            local badgeCorner = Instance.new("UICorner")
-            badgeCorner.CornerRadius = UDim.new(1, 0)
-            badgeCorner.Parent = badge
-            
             -- Pet name
             local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, -100, 0, 18)
-            nameLabel.Position = UDim2.new(0, 50, 0, 8)
+            nameLabel.Size = UDim2.new(1, -60, 0, 18)
+            nameLabel.Position = UDim2.new(0, 12, 0, 8)
             nameLabel.BackgroundTransparency = 1
             nameLabel.Text = petInfo.displayName
             nameLabel.TextSize = 12
@@ -908,8 +892,8 @@ local function createMainUI()
             
             local countLabel = Instance.new("TextLabel")
             countLabel.Name = "FruitCount"
-            countLabel.Size = UDim2.new(1, -100, 0, 14)
-            countLabel.Position = UDim2.new(0, 50, 0, 28)
+            countLabel.Size = UDim2.new(1, -60, 0, 14)
+            countLabel.Position = UDim2.new(0, 12, 0, 28)
             countLabel.BackgroundTransparency = 1
             countLabel.Text = string.format("🍎 %d fruits", fruitCount)
             countLabel.TextSize = 10
