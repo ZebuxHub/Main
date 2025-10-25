@@ -177,12 +177,19 @@ function AutoFeedSystem.getBigPets()
                             -- Find which station this pet is at
                             local stationId = findBigPetStationForPet(rootPart.Position)
                             
+                            -- Get BigPetGUI for feeding status
+                            local bigPetGUI = rootPart:FindFirstChild("GUI")
+                            if bigPetGUI then
+                                bigPetGUI = bigPetGUI:FindFirstChild("BigPetGUI")
+                            end
+                            
                             -- This is a Big Pet, add it to the list
                             table.insert(pets, {
                                 model = petModel,
                                 name = petName,
                                 stationId = stationId, -- The BigPet Part name like "1", "2", "3"
-                                rootPart = rootPart
+                                rootPart = rootPart,
+                                bigPetGUI = bigPetGUI -- Add GUI reference for feeding status
                             })
                         end
                     end
