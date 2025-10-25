@@ -127,6 +127,32 @@ function AutoFeedSystem.getBigPets()
         return pets
     end
     
+    -- Get player's island
+    local islandName = localPlayer:GetAttribute("AssignedIslandName")
+    if not islandName then return pets end
+    
+    local art = workspace:FindFirstChild("Art")
+    if not art then return pets end
+    
+    local island = art:FindFirstChild(islandName)
+    if not island then return pets end
+    
+    local env = island:FindFirstChild("ENV")
+    if not env then return pets end
+    
+    local bigPetFolder = env:FindFirstChild("BigPet")
+    if not bigPetFolder then return pets end
+    
+    -- Get Data.Pets folder
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return pets end
+    
+    local data = playerGui:FindFirstChild("Data")
+    if not data then return pets end
+    
+    local petsDataFolder = data:FindFirstChild("Pets")
+    if not petsDataFolder then return pets end
+    
     -- Go through all pet models in workspace.Pets
     local petsFolder = workspace:FindFirstChild("Pets")
     if not petsFolder then
@@ -141,20 +167,24 @@ function AutoFeedSystem.getBigPets()
                 -- Check if it's our pet by looking for UserId attribute
                 local petUserId = rootPart:GetAttribute("UserId")
                 if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                    -- Check if this pet has BigPetGUI
-                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
-                    if bigPetGUI then
-                        -- Find which station this pet is at
-                        local stationId = findBigPetStationForPet(rootPart.Position)
-                        
+                    -- Check the corresponding Data.Pets[petName] for BPSK or BPV attributes
+                    local petName = petModel.Name
+                    local petConfig = petsDataFolder:FindFirstChild(petName)
+                    if petConfig then
+                        local hasBPSK = petConfig:GetAttribute("BPSK") ~= nil
+                        local hasBPV = petConfig:GetAttribute("BPV") ~= nil
+                        if hasBPSK or hasBPV then
+                            -- Find which station this pet is at
+                            local stationId = findBigPetStationForPet(rootPart.Position)
+                            
                             -- This is a Big Pet, add it to the list
                             table.insert(pets, {
                                 model = petModel,
-                                name = petModel.Name,
-                            stationId = stationId, -- The BigPet Part name like "1", "2", "3"
-                                rootPart = rootPart,
-                                bigPetGUI = bigPetGUI
+                                name = petName,
+                                stationId = stationId, -- The BigPet Part name like "1", "2", "3"
+                                rootPart = rootPart
                             })
+                        end
                     end
                 end
             end
@@ -390,9 +420,9 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                 if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
                     
-                    -- Get player's fruit inventory
-                    local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
-                    
+                        -- Get player's fruit inventory
+                        local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
+                        
                     -- Get station-fruit assignments (NEW STRUCTURE)
                     local stationFruitAssignments = AutoFeedSystem.stationFruitAssignments or {}
                     
@@ -405,8 +435,8 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                         feedFruitStatus.lastAction = "⏭️ Station " .. (stationId or "?") .. " has no fruit assignments"
                         if updateFeedStatusParagraph then
                             updateFeedStatusParagraph()
-                        end
-                    else
+                                end
+                            else
                             -- Try to feed with assigned fruits only
                             for fruitName, _ in pairs(assignedFruits) do
                                 if not getAutoFeedEnabled() then break end
@@ -414,78 +444,78 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                 -- Check if player has this fruit
                                 local fruitAmount = fruitInventory[fruitName] or 0
                                 if fruitAmount <= 0 then
-                                    feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
-                                    if updateFeedStatusParagraph then
-                                        updateFeedStatusParagraph()
-                                    end
-                                    task.wait(0.5)
-                                else
+                                feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
+                                if updateFeedStatusParagraph then
+                                    updateFeedStatusParagraph()
+                                end
+                                task.wait(0.5)
+                            else
                                     -- Update status to show which pet we're trying to feed (use Station ID)
                                     local petDisplayName = petData.stationId or petData.name
                                     feedFruitStatus.lastAction = "Trying to feed Station " .. petDisplayName .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
-                                    if updateFeedStatusParagraph then
-                                        updateFeedStatusParagraph()
+                                if updateFeedStatusParagraph then
+                                    updateFeedStatusParagraph()
+                                end
+                                
+                                -- Always equip the fruit before feeding (every time) - with retry
+                                local equipSuccess = false
+                                for retry = 1, 3 do -- Try up to 3 times
+                                    if AutoFeedSystem.equipFruit(fruitName) then
+                                        equipSuccess = true
+                                        break
+                                    else
+                                        task.wait(0.2) -- Wait before retry
                                     end
+                                end
+                                
+                                if equipSuccess then
+                                    task.wait(0.2) -- Small delay between equip and feed
                                     
-                                    -- Always equip the fruit before feeding (every time) - with retry
-                                    local equipSuccess = false
+                                        -- Feed the pet - with retry (still use UID for server call)
+                                    local feedSuccess = false
                                     for retry = 1, 3 do -- Try up to 3 times
-                                        if AutoFeedSystem.equipFruit(fruitName) then
-                                            equipSuccess = true
+                                        if AutoFeedSystem.feedPet(petData.name) then
+                                            feedSuccess = true
                                             break
                                         else
                                             task.wait(0.2) -- Wait before retry
                                         end
                                     end
                                     
-                                    if equipSuccess then
-                                        task.wait(0.2) -- Small delay between equip and feed
-                                        
-                                        -- Feed the pet - with retry (still use UID for server call)
-                                        local feedSuccess = false
-                                        for retry = 1, 3 do -- Try up to 3 times
-                                            if AutoFeedSystem.feedPet(petData.name) then
-                                                feedSuccess = true
-                                                break
-                                            else
-                                                task.wait(0.2) -- Wait before retry
-                                            end
-                                        end
-                                        
-                                        if feedSuccess then
+                                    if feedSuccess then
                                             feedFruitStatus.lastFedPet = petDisplayName
-                                            feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
+                                        feedFruitStatus.totalFeeds = feedFruitStatus.totalFeeds + 1
                                             feedFruitStatus.lastAction = "✅ Fed Station " .. petDisplayName .. " with " .. fruitName
-                                            if updateFeedStatusParagraph then
-                                                updateFeedStatusParagraph()
-                                            end
-                                            
-                                            task.wait(1.5) -- Wait longer before trying next pet
-                                            break -- Move to next pet
-                                        else
-                                            feedFruitStatus.lastAction = "❌ Failed to feed Station " .. petDisplayName .. " with " .. fruitName .. " after 3 attempts"
-                                            if updateFeedStatusParagraph then
-                                                updateFeedStatusParagraph()
-                                            end
+                                        if updateFeedStatusParagraph then
+                                            updateFeedStatusParagraph()
                                         end
+                                        
+                                        task.wait(1.5) -- Wait longer before trying next pet
+                                        break -- Move to next pet
                                     else
-                                        feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for Station " .. petDisplayName .. " after 3 attempts"
+                                            feedFruitStatus.lastAction = "❌ Failed to feed Station " .. petDisplayName .. " with " .. fruitName .. " after 3 attempts"
                                         if updateFeedStatusParagraph then
                                             updateFeedStatusParagraph()
                                         end
                                     end
-                                    
-                                    task.wait(0.3) -- Small delay between fruit attempts
+                                else
+                                        feedFruitStatus.lastAction = "❌ Failed to equip " .. fruitName .. " for Station " .. petDisplayName .. " after 3 attempts"
+                                    if updateFeedStatusParagraph then
+                                        updateFeedStatusParagraph()
+                                    end
                                 end
+                                
+                                task.wait(0.3) -- Small delay between fruit attempts
                             end
+                        end
                         end -- Close if not assignedFruits
-                else
+                    else
                     -- Show which pets are currently eating (use Station ID)
                     local petDisplayName = petData.stationId or petData.name
                     feedFruitStatus.lastAction = "Station " .. petDisplayName .. " is currently eating"
-                    if updateFeedStatusParagraph then
-                        updateFeedStatusParagraph()
-                    end
+                        if updateFeedStatusParagraph then
+                            updateFeedStatusParagraph()
+                        end
                 end -- Close for _, petData
             end
             
@@ -608,9 +638,9 @@ function AutoFeedSystem.Init(windUIRef, tabsRef, autoSystemsConfigRef, customUIC
                 AutoFeedSystem.stationFruitAssignments[stationId] = {}
                 for fruitId, value in pairs(fruits) do
                     AutoFeedSystem.stationFruitAssignments[stationId][fruitId] = value
-                end
-            end
-            
+        end
+    end
+    
             -- Count loaded stations (silent)
             local stationCount = 0
             for stationId, fruits in pairs(AutoFeedSystem.stationFruitAssignments) do
