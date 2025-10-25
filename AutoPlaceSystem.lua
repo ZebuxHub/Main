@@ -1749,9 +1749,14 @@ local function runAutoPickUp()
             for _, petInfo in ipairs(petsToDelete) do
                 if not autoPickUpEnabled then break end
                 
+                local args = {
+                    "Del",
+                    petInfo.name
+                }
+                
                 local success = pcall(function()
                     if CharacterRE then
-                        CharacterRE:FireServer("Del", petInfo.name)
+                        CharacterRE:FireServer(unpack(args))
                     end
                 end)
                 
