@@ -1704,39 +1704,22 @@ local function runAutoPickUp()
             -- Debug first pet only to see structure
             if #allPets > 0 and totalScanned == 0 then
                 local firstPet = allPets[1]
-                if firstPet:IsA("Model") then
-                    print("[AutoPickUp] 🔍 Sample Pet: " .. firstPet.Name)
-                    local attrs = firstPet:GetAttributes()
-                    for k, v in pairs(attrs) do
-                        print("  ├─ " .. k .. " = " .. tostring(v))
-                    end
-                    local rp = firstPet:FindFirstChild("RootPart")
-                    if rp then
-                        print("  ├─ RootPart found")
-                        local rpAttrs = rp:GetAttributes()
-                        for k, v in pairs(rpAttrs) do
-                            print("  │  ├─ RootPart." .. k .. " = " .. tostring(v))
-                        end
-                    end
+                print("[AutoPickUp] 🔍 Sample Pet: " .. firstPet.Name .. " (Type: " .. firstPet.ClassName .. ")")
+                local attrs = firstPet:GetAttributes()
+                for k, v in pairs(attrs) do
+                    print("  ├─ " .. k .. " = " .. tostring(v))
                 end
             end
             
             for _, pet in ipairs(allPets) do
                 if not autoPickUpEnabled then break end
                 
-                if pet:IsA("Model") then
-                    totalScanned = totalScanned + 1
-                    
-                    -- Get UserId from pet OR RootPart (no debug spam)
-                    local petUserId = pet:GetAttribute("UserId")
-                    if not petUserId then
-                        local rootPart = pet:FindFirstChild("RootPart")
-                        if rootPart then
-                            petUserId = rootPart:GetAttribute("UserId")
-                        end
-                    end
-                    
-                    if petUserId and tonumber(petUserId) == playerUserId then
+                totalScanned = totalScanned + 1
+                
+                -- Get UserId directly from pet (it's a Part, not Model)
+                local petUserId = pet:GetAttribute("UserId")
+                
+                if petUserId and tonumber(petUserId) == playerUserId then
                         print("[AutoPickUp] 🐾 Checking owned pet: " .. pet.Name)
                         
                         -- Get UID attribute for deletion
