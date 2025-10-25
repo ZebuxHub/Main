@@ -1703,77 +1703,80 @@ local function runAutoPickUp()
                 
                 if pet:IsA("Model") then
                     totalScanned = totalScanned + 1
+                    
+                    -- Get UserId from pet's attributes (not from RootPart)
                     local petUserId = pet:GetAttribute("UserId")
                     
+                    print("[AutoPickUp] 🔍 Pet: " .. pet.Name .. " | UserId: " .. tostring(petUserId) .. " | Player: " .. playerUserId)
+                    
                     if petUserId and tonumber(petUserId) == playerUserId then
-                        print("[AutoPickUp] 🐾 Checking pet: " .. pet.Name)
+                        print("[AutoPickUp] 🐾 Checking owned pet: " .. pet.Name)
                         
-                        local rootPart = pet:FindFirstChild("RootPart")
-                        if rootPart then
-                            -- Classify by pet type (from Data.Pets) instead of world position
-                            local petTypeForFilter = nil
-                            local isBigPetByAttribute = false
-                            do
-                                local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-                                local data = pg and pg:FindFirstChild("Data")
-                                local invPets = data and data:FindFirstChild("Pets")
-                                local conf = invPets and invPets:FindFirstChild(pet.Name)
-                                if conf and conf:IsA("Configuration") then
-                                    petTypeForFilter = conf:GetAttribute("T")
-                                    
-                                    -- Check for BPSK/BPV (Big Pet attributes)
-                                    local bpsk = conf:GetAttribute("BPSK")
-                                    local bpv = conf:GetAttribute("BPV")
-                                    if bpsk or bpv then
-                                        isBigPetByAttribute = true
-                                    end
+                        -- Get UID attribute for deletion
+                        local petUID = pet:GetAttribute("UID")
+                        if not petUID then
+                            petUID = pet.Name -- Fallback to model name
+                        end
+                        
+                        -- Classify by pet type (from Data.Pets) instead of world position
+                        local petTypeForFilter = nil
+                        local isBigPetByAttribute = false
+                        do
+                            local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+                            local data = pg and pg:FindFirstChild("Data")
+                            local invPets = data and data:FindFirstChild("Pets")
+                            local conf = invPets and invPets:FindFirstChild(petUID)
+                            if conf and conf:IsA("Configuration") then
+                                petTypeForFilter = conf:GetAttribute("T")
+                                
+                                -- Check for BPSK/BPV (Big Pet attributes)
+                                local bpsk = conf:GetAttribute("BPSK")
+                                local bpv = conf:GetAttribute("BPV")
+                                if bpsk or bpv then
+                                    isBigPetByAttribute = true
                                 end
                             end
+                        end
+                        
+                        -- Skip big pets (check both attribute and type-based detection)
+                        if isBigPetByAttribute or (petTypeForFilter and isBigPet(petTypeForFilter)) then
+                            print("[AutoPickUp] ⏭️ Skipped (Big Pet): " .. petUID)
+                            skippedBigPets = skippedBigPets + 1
+                        else
+                            local isOcean = false
+                            if petTypeForFilter then
+                                isOcean = isOceanPet(petTypeForFilter)
+                            end
                             
-                            -- Skip big pets (check both attribute and type-based detection)
-                            if isBigPetByAttribute or (petTypeForFilter and isBigPet(petTypeForFilter)) then
-                                print("[AutoPickUp] ⏭️ Skipped (Big Pet): " .. pet.Name)
-                                skippedBigPets = skippedBigPets + 1
+                            -- Check tile filter
+                            local passesTileFilter = false
+                            if autoPickUpTileFilter == "Regular" and not isOcean then
+                                passesTileFilter = true
+                            elseif autoPickUpTileFilter == "Ocean" and isOcean then
+                                passesTileFilter = true
+                            elseif autoPickUpTileFilter == "Both" then
+                                passesTileFilter = true
+                            end
+                            
+                            if not passesTileFilter then
+                                print("[AutoPickUp] ⏭️ Skipped (Tile Filter): " .. petUID .. " (Ocean: " .. tostring(isOcean) .. ")")
+                                skippedTileFilter = skippedTileFilter + 1
                             else
-                                local isOcean = false
-                                if petTypeForFilter then
-                                    isOcean = isOceanPet(petTypeForFilter)
-                                end
+                                -- Get speed from ProducesSpeed attribute (not from GUI)
+                                local speedValue = pet:GetAttribute("ProducesSpeed")
                                 
-                                -- Check tile filter
-                                local passesTileFilter = false
-                                if autoPickUpTileFilter == "Regular" and not isOcean then
-                                    passesTileFilter = true
-                                elseif autoPickUpTileFilter == "Ocean" and isOcean then
-                                    passesTileFilter = true
-                                elseif autoPickUpTileFilter == "Both" then
-                                    passesTileFilter = true
-                                end
-                                
-                                if not passesTileFilter then
-                                    print("[AutoPickUp] ⏭️ Skipped (Tile Filter): " .. pet.Name .. " (Ocean: " .. tostring(isOcean) .. ")")
-                                    skippedTileFilter = skippedTileFilter + 1
-                                else
-                                    local idleGUI = rootPart:FindFirstChild("GUI/IdleGUI", true)
-                                    if idleGUI then
-                                        local speedText = idleGUI:FindFirstChild("Speed")
-                                        if speedText and speedText:IsA("TextLabel") then
-                                            local speedValue = parseNumberWithSuffix(speedText.Text)
-                                            print("[AutoPickUp] 📊 Pet " .. pet.Name .. " speed: " .. tostring(speedValue))
-                                            
-                                            if speedValue and speedValue < pickUpSpeedThreshold then
-                                                print("[AutoPickUp] ✅ Marked for pickup: " .. pet.Name .. " (Speed: " .. speedValue .. " < " .. pickUpSpeedThreshold .. ")")
-                                                table.insert(petsToDelete, { name = pet.Name, speed = speedValue })
-                                            else
-                                                print("[AutoPickUp] ⏭️ Skipped (Speed OK): " .. pet.Name .. " (Speed: " .. tostring(speedValue) .. ")")
-                                                skippedSpeed = skippedSpeed + 1
-                                            end
-                                        else
-                                            print("[AutoPickUp] ⚠️ No speed text found for: " .. pet.Name)
-                                        end
+                                if speedValue then
+                                    print("[AutoPickUp] 📊 Pet " .. petUID .. " speed: " .. tostring(speedValue))
+                                    
+                                    if speedValue < pickUpSpeedThreshold then
+                                        print("[AutoPickUp] ✅ Marked for pickup: " .. petUID .. " (Speed: " .. speedValue .. " < " .. pickUpSpeedThreshold .. ")")
+                                        table.insert(petsToDelete, { name = petUID, speed = speedValue })
                                     else
-                                        print("[AutoPickUp] ⚠️ No IdleGUI found for: " .. pet.Name)
+                                        print("[AutoPickUp] ⏭️ Skipped (Speed OK): " .. petUID .. " (Speed: " .. tostring(speedValue) .. ")")
+                                        skippedSpeed = skippedSpeed + 1
                                     end
+                                else
+                                    print("[AutoPickUp] ⚠️ No ProducesSpeed attribute found for: " .. petUID)
                                 end
                             end
                         end
