@@ -178,11 +178,10 @@ local function getPlayerOwnedPets()
     
     -- Scan each config in Data.Pets
     for _, petConfig in ipairs(petsDataFolder:GetChildren()) do
-        print("[DEBUG] Checking config: " .. petConfig.Name)
-        local hasBPT = petConfig:GetAttribute("BPT") ~= nil
+        local hasBPSK = petConfig:GetAttribute("BPSK") ~= nil
         local hasBPV = petConfig:GetAttribute("BPV") ~= nil
-        print("[DEBUG]   - BPT: " .. tostring(hasBPT) .. ", BPV: " .. tostring(hasBPV))
-        if hasBPT or hasBPV then
+        if hasBPSK or hasBPV then
+            print("[DEBUG] Found big pet config: " .. petConfig.Name .. " (BPSK: " .. tostring(hasBPSK) .. ", BPV: " .. tostring(hasBPV) .. ")")
             local petName = petConfig.Name
             local petModel = petsFolder:FindFirstChild(petName)
             if petModel then
@@ -221,8 +220,6 @@ local function getPlayerOwnedPets()
             else
                 print("[DEBUG]   - No matching model in workspace for " .. petName)
             end
-        else
-            print("[DEBUG]   - Not a big pet (no attributes)")
         end
     end
     
