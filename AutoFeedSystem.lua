@@ -396,6 +396,8 @@ function AutoFeedSystem.feedPet(petName)
 end
 
 function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, updateFeedStatusParagraph, getSelectedFruits)
+    print("[AutoFeed] 🚀 Starting Auto Feed system...")
+    
     -- Initialize feedFruitStatus if needed (for backward compatibility)
     local feedFruitStatus = {
         petsFound = 0,
@@ -408,13 +410,17 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
     while getAutoFeedEnabled() do
         local shouldContinue = true
         local ok, err = pcall(function()
+            print("[AutoFeed] 🔍 Scanning for Big Pets...")
             local allBigPets = AutoFeedSystem.getBigPets()
             
             feedFruitStatus.petsFound = #allBigPets
             feedFruitStatus.availablePets = 0
             
+            print("[AutoFeed] 📊 Found " .. #allBigPets .. " Big Pets")
+            
             if #allBigPets == 0 then
                 feedFruitStatus.lastAction = "No Big Pets found"
+                print("[AutoFeed] ❌ No Big Pets found")
                 if updateFeedStatusParagraph then
                     updateFeedStatusParagraph()
                 end
@@ -426,7 +432,11 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
             for _, petData in ipairs(allBigPets) do
                 if not getAutoFeedEnabled() then break end
                 
+                print("[AutoFeed] 🐾 Checking pet: " .. (petData.stationId or petData.name))
+                
                 local isEating = AutoFeedSystem.isPetEating(petData)
+                
+                print("[AutoFeed] 🍽️ Pet eating status: " .. tostring(isEating))
                 
                 if not isEating then
                     feedFruitStatus.availablePets = feedFruitStatus.availablePets + 1
@@ -441,21 +451,28 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                     local stationId = petData.stationId
                     local assignedFruits = stationFruitAssignments[stationId]
                     
+                    print("[AutoFeed] 🎯 Station " .. (stationId or "?") .. " - Checking fruit assignments...")
+                    
                     if not assignedFruits or not next(assignedFruits) then
                         -- No fruits assigned to this station = skip
                         feedFruitStatus.lastAction = "⏭️ Station " .. (stationId or "?") .. " has no fruit assignments"
+                        print("[AutoFeed] ⏭️ No fruits assigned to Station " .. (stationId or "?"))
                         if updateFeedStatusParagraph then
                             updateFeedStatusParagraph()
                                 end
                             else
                             -- Try to feed with assigned fruits only
+                            print("[AutoFeed] 🍎 Trying assigned fruits for Station " .. (stationId or "?"))
                             for fruitName, _ in pairs(assignedFruits) do
                                 if not getAutoFeedEnabled() then break end
+                                
+                                print("[AutoFeed] 🍎 Checking fruit: " .. fruitName)
                                 
                                 -- Check if player has this fruit
                                 local fruitAmount = fruitInventory[fruitName] or 0
                                 if fruitAmount <= 0 then
                                 feedFruitStatus.lastAction = "❌ No " .. fruitName .. " in inventory"
+                                print("[AutoFeed] ❌ No " .. fruitName .. " in inventory")
                                 if updateFeedStatusParagraph then
                                     updateFeedStatusParagraph()
                                 end
@@ -464,6 +481,7 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                     -- Update status to show which pet we're trying to feed (use Station ID)
                                     local petDisplayName = petData.stationId or petData.name
                                     feedFruitStatus.lastAction = "Trying to feed Station " .. petDisplayName .. " with " .. fruitName .. " (" .. fruitAmount .. " left)"
+                                    print("[AutoFeed] 🎯 Attempting to feed Station " .. petDisplayName .. " with " .. fruitName .. " (" .. fruitAmount .. " available)")
                                 if updateFeedStatusParagraph then
                                     updateFeedStatusParagraph()
                                 end
