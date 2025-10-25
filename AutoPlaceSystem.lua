@@ -1694,99 +1694,61 @@ local function runAutoPickUp()
             local skippedTileFilter = 0
             local skippedSpeed = 0
             
-            print("[AutoPickUp] 👤 Player UserId: " .. playerUserId)
-            print("[AutoPickUp] 🎯 Speed Threshold: " .. pickUpSpeedThreshold)
-            print("[AutoPickUp] 🏝️ Tile Filter: " .. autoPickUpTileFilter)
+            -- Get PlayerGui.Data.Pets once (avoid repeated lookups)
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            local data = pg and pg:FindFirstChild("Data")
+            local invPets = data and data:FindFirstChild("Pets")
             
-            local allPets = petsFolder:GetChildren()
-            print("[AutoPickUp] 📦 Total pets in workspace.Pets: " .. #allPets)
-            
-            -- Debug first pet only to see structure
-            if #allPets > 0 and totalScanned == 0 then
-                local firstPet = allPets[1]
-                print("[AutoPickUp] 🔍 Sample Pet: " .. firstPet.Name .. " (Type: " .. firstPet.ClassName .. ")")
-                local attrs = firstPet:GetAttributes()
-                for k, v in pairs(attrs) do
-                    print("  ├─ " .. k .. " = " .. tostring(v))
-                end
-            end
-            
-            for _, pet in ipairs(allPets) do
+            for _, pet in ipairs(petsFolder:GetChildren()) do
                 if not autoPickUpEnabled then break end
                 
-                totalScanned = totalScanned + 1
-                
-                -- Get UserId directly from pet (it's a Part, not Model)
-                local petUserId = pet:GetAttribute("UserId")
-                
-                if petUserId and tonumber(petUserId) == playerUserId then
-                    print("[AutoPickUp] 🐾 Checking owned pet: " .. pet.Name)
+                -- Pets are Parts, not Models
+                if pet:IsA("BasePart") then
+                    totalScanned = totalScanned + 1
                     
-                    -- Get UID attribute for deletion
-                    local petUID = pet:GetAttribute("UID")
-                    if not petUID then
-                        petUID = pet.Name -- Fallback to model name
-                    end
+                    -- Get attributes directly (efficient)
+                    local petUserId = pet:GetAttribute("UserId")
                     
-                    -- Classify by pet type (from Data.Pets) instead of world position
-                    local petTypeForFilter = nil
-                    local isBigPetByAttribute = false
-                    do
-                        local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-                        local data = pg and pg:FindFirstChild("Data")
-                        local invPets = data and data:FindFirstChild("Pets")
-                        local conf = invPets and invPets:FindFirstChild(petUID)
-                        if conf and conf:IsA("Configuration") then
-                            petTypeForFilter = conf:GetAttribute("T")
+                    if petUserId and tonumber(petUserId) == playerUserId then
+                        local petUID = pet:GetAttribute("UID") or pet.Name
+                        local speedValue = pet:GetAttribute("ProducesSpeed")
+                        
+                        if speedValue then
+                            local shouldSkip = false
                             
-                            -- Check for BPSK/BPV (Big Pet attributes)
-                            local bpsk = conf:GetAttribute("BPSK")
-                            local bpv = conf:GetAttribute("BPV")
-                            if bpsk or bpv then
-                                isBigPetByAttribute = true
+                            -- Check for Big Pet (BPSK/BPV in PlayerGui.Data.Pets)
+                            if invPets then
+                                local conf = invPets:FindFirstChild(petUID)
+                                if conf then
+                                    local bpsk = conf:GetAttribute("BPSK")
+                                    local bpv = conf:GetAttribute("BPV")
+                                    if bpsk or bpv then
+                                        skippedBigPets = skippedBigPets + 1
+                                        shouldSkip = true
+                                    end
+                                    
+                                    -- Check tile filter (ocean vs regular)
+                                    if not shouldSkip and autoPickUpTileFilter ~= "Both" then
+                                        local petType = conf:GetAttribute("T")
+                                        if petType then
+                                            local isOcean = isOceanPet(petType)
+                                            if (autoPickUpTileFilter == "Regular" and isOcean) or 
+                                               (autoPickUpTileFilter == "Ocean" and not isOcean) then
+                                                skippedTileFilter = skippedTileFilter + 1
+                                                shouldSkip = true
+                                            end
+                                        end
+                                    end
+                                end
                             end
-                        end
-                    end
-                    
-                    -- Skip big pets (check both attribute and type-based detection)
-                    if isBigPetByAttribute or (petTypeForFilter and isBigPet(petTypeForFilter)) then
-                        print("[AutoPickUp] ⏭️ Skipped (Big Pet): " .. petUID)
-                        skippedBigPets = skippedBigPets + 1
-                    else
-                        local isOcean = false
-                        if petTypeForFilter then
-                            isOcean = isOceanPet(petTypeForFilter)
-                        end
-                        
-                        -- Check tile filter
-                        local passesTileFilter = false
-                        if autoPickUpTileFilter == "Regular" and not isOcean then
-                            passesTileFilter = true
-                        elseif autoPickUpTileFilter == "Ocean" and isOcean then
-                            passesTileFilter = true
-                        elseif autoPickUpTileFilter == "Both" then
-                            passesTileFilter = true
-                        end
-                        
-                        if not passesTileFilter then
-                            print("[AutoPickUp] ⏭️ Skipped (Tile Filter): " .. petUID .. " (Ocean: " .. tostring(isOcean) .. ")")
-                            skippedTileFilter = skippedTileFilter + 1
-                        else
-                            -- Get speed from ProducesSpeed attribute (not from GUI)
-                            local speedValue = pet:GetAttribute("ProducesSpeed")
                             
-                            if speedValue then
-                                print("[AutoPickUp] 📊 Pet " .. petUID .. " speed: " .. tostring(speedValue))
-                                
+                            -- Check speed threshold
+                            if not shouldSkip then
                                 if speedValue < pickUpSpeedThreshold then
-                                    print("[AutoPickUp] ✅ Marked for pickup: " .. petUID .. " (Speed: " .. speedValue .. " < " .. pickUpSpeedThreshold .. ")")
                                     table.insert(petsToDelete, { name = petUID, speed = speedValue })
                                 else
-                                    print("[AutoPickUp] ⏭️ Skipped (Speed OK): " .. petUID .. " (Speed: " .. tostring(speedValue) .. ")")
                                     skippedSpeed = skippedSpeed + 1
                                 end
-                            else
-                                print("[AutoPickUp] ⚠️ No ProducesSpeed attribute found for: " .. petUID)
                             end
                         end
                     end
