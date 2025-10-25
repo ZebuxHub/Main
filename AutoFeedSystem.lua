@@ -127,76 +127,87 @@ function AutoFeedSystem.getBigPets()
         return pets
     end
     
-    -- Get player's island
-    local islandName = localPlayer:GetAttribute("AssignedIslandName")
-    if not islandName then return pets end
-    
-    local art = workspace:FindFirstChild("Art")
-    if not art then return pets end
-    
-    local island = art:FindFirstChild(islandName)
-    if not island then return pets end
-    
-    local env = island:FindFirstChild("ENV")
-    if not env then return pets end
-    
-    local bigPetFolder = env:FindFirstChild("BigPet")
-    if not bigPetFolder then return pets end
-    
-    -- Get Data.Pets folder
+    -- Get Data.Pets folder (PRIMARY SOURCE - same as StationFeedSetup)
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return pets end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return pets end
-    
-    local petsDataFolder = data:FindFirstChild("Pets")
-    if not petsDataFolder then return pets end
-    
-    -- Go through all pet models in workspace.Pets
-    local petsFolder = workspace:FindFirstChild("Pets")
-    if not petsFolder then
-        warn("Auto Feed: Pets folder not found")
-        return pets
+    if not playerGui then 
+        print("[AutoFeed] ❌ PlayerGui not found")
+        return pets 
     end
     
-    for _, petModel in ipairs(petsFolder:GetChildren()) do
-        if petModel:IsA("Model") then
-            local rootPart = petModel:FindFirstChild("RootPart")
-            if rootPart then
-                -- Check if it's our pet by looking for UserId attribute
-                local petUserId = rootPart:GetAttribute("UserId")
-                if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                    -- Check the corresponding Data.Pets[petName] for BPSK or BPV attributes
-                    local petName = petModel.Name
-                    local petConfig = petsDataFolder:FindFirstChild(petName)
-                    if petConfig then
-                        local hasBPSK = petConfig:GetAttribute("BPSK") ~= nil
-                        local hasBPV = petConfig:GetAttribute("BPV") ~= nil
-                        if hasBPSK or hasBPV then
-                            -- Find which station this pet is at
-                            local stationId = findBigPetStationForPet(rootPart.Position)
-                            
-                            -- Get BigPetGUI for feeding status
-                            local bigPetGUI = rootPart:FindFirstChild("GUI")
-                            if bigPetGUI then
-                                bigPetGUI = bigPetGUI:FindFirstChild("BigPetGUI")
-                            end
-                            
-                            -- This is a Big Pet, add it to the list
-                            table.insert(pets, {
-                                model = petModel,
-                                name = petName,
-                                stationId = stationId, -- The BigPet Part name like "1", "2", "3"
-                                rootPart = rootPart,
-                                bigPetGUI = bigPetGUI -- Add GUI reference for feeding status
-                            })
+    local data = playerGui:FindFirstChild("Data")
+    if not data then 
+        print("[AutoFeed] ❌ Data not found")
+        return pets 
+    end
+    
+    local petsDataFolder = data:FindFirstChild("Pets")
+    if not petsDataFolder then 
+        print("[AutoFeed] ❌ Pets folder not found in Data")
+        return pets 
+    end
+    
+    print("[AutoFeed] 🔍 Scanning Data.Pets for BPSK/BPV attributes...")
+    
+    -- Scan all pet configurations (SAME AS StationFeedSetup)
+    for _, petConfig in ipairs(petsDataFolder:GetChildren()) do
+        if petConfig:IsA("Configuration") then
+            -- Check if this is a Big Pet by looking for BPSK or BPV attributes
+            local bpsk = petConfig:GetAttribute("BPSK")
+            local bpv = petConfig:GetAttribute("BPV")
+            
+            if bpsk or bpv then
+                print("[AutoFeed] ✅ Found Big Pet: " .. petConfig.Name)
+                
+                -- This is a Big Pet!
+                local petUID = petConfig.Name
+                
+                -- Try to find the pet model in workspace.Pets to get position and GUI
+                local workspacePets = workspace:FindFirstChild("Pets")
+                local petModel = workspacePets and workspacePets:FindFirstChild(petUID)
+                
+                local stationId = nil
+                local bigPetGUI = nil
+                local rootPart = nil
+                
+                -- If pet is in workspace, get additional info
+                if petModel then
+                    rootPart = petModel:FindFirstChild("RootPart")
+                    if rootPart then
+                        stationId = findBigPetStationForPet(rootPart.Position)
+                        
+                        -- Get BigPetGUI for feeding status
+                        local gui = rootPart:FindFirstChild("GUI")
+                        if gui then
+                            bigPetGUI = gui:FindFirstChild("BigPetGUI")
                         end
                     end
                 end
+                
+                -- Use BPSK as station ID if available and no station found
+                if not stationId and bpsk then
+                    stationId = tostring(bpsk)
+                end
+                
+                -- If still no station ID, use a placeholder
+                if not stationId then
+                    stationId = "Unknown"
+                end
+                
+                print("[AutoFeed] 📍 Station ID: " .. stationId)
+                
+                -- Add to list
+                table.insert(pets, {
+                    model = petModel,
+                    name = petUID,
+                    stationId = stationId,
+                    rootPart = rootPart,
+                    bigPetGUI = bigPetGUI
+                })
             end
         end
     end
+    
+    print("[AutoFeed] 📊 Total Big Pets found: " .. #pets)
     
     return pets
 end
