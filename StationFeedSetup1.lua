@@ -171,33 +171,46 @@ local function getPlayerOwnedPets()
                 local workspacePets = workspace:FindFirstChild("Pets")
                 local petModel = workspacePets and workspacePets:FindFirstChild(petUID)
                 
+                local stationId = nil
+                local petType = petConfig:GetAttribute("T") 
+                             or petConfig:GetAttribute("Type")
+                             or petConfig:GetAttribute("PetType")
+                
+                -- If pet is in workspace, try to get station ID
                 if petModel then
                     local rootPart = petModel:FindFirstChild("RootPart")
                     if rootPart then
-                        local stationId = findBigPetStationForPet(rootPart.Position)
+                        stationId = findBigPetStationForPet(rootPart.Position)
                         
-                        -- Get pet type - try multiple attributes
-                        local petType = petConfig:GetAttribute("T") 
-                                     or petConfig:GetAttribute("Type")
-                                     or petConfig:GetAttribute("PetType")
-                                     or rootPart:GetAttribute("T")
-                        
-                        -- If petType is still a UID-like string (long hex), don't show it
-                        local displayName = "Station " .. (stationId or "?")
-                        if petType and #tostring(petType) <= 20 and petType ~= "" then
-                            displayName = petType
-                        end
-                        
-                        if stationId then
-                            table.insert(pets, {
-                                uid = petUID,
-                                stationId = stationId,
-                                type = petType or "Unknown",
-                                displayName = displayName
-                            })
+                        -- Also try to get pet type from rootPart if not found in config
+                        if not petType then
+                            petType = rootPart:GetAttribute("T")
                         end
                     end
                 end
+                
+                -- Use BPSK as station ID if available and no station found
+                if not stationId and bpsk then
+                    stationId = tostring(bpsk)
+                end
+                
+                -- If still no station ID, use a placeholder
+                if not stationId then
+                    stationId = "Unknown"
+                end
+                
+                -- If petType is still a UID-like string (long hex), don't show it
+                local displayName = "Station " .. stationId
+                if petType and #tostring(petType) <= 20 and petType ~= "" then
+                    displayName = petType
+                end
+                
+                table.insert(pets, {
+                    uid = petUID,
+                    stationId = stationId,
+                    type = petType or "Unknown",
+                    displayName = displayName
+                })
             end
         end
     end
