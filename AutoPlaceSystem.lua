@@ -1674,46 +1674,76 @@ local function parseNumberWithSuffix(text)
 end
 
 local function runAutoPickUp()
+    print("[AutoPickUp] 🚀 Starting Auto Pick Up system...")
+    
     while autoPickUpEnabled do
         local ok, err = pcall(function()
+            print("[AutoPickUp] 🔍 Scanning for pets to pick up...")
+            
             local petsFolder = workspace:FindFirstChild("Pets")
             if not petsFolder then
-                task.wait(2)
+                print("[AutoPickUp] ❌ No Pets folder in workspace")
+                task.wait(1)
                 return
             end
             
             local playerUserId = LocalPlayer.UserId
             local petsToDelete = {}
+            local totalScanned = 0
+            local skippedBigPets = 0
+            local skippedTileFilter = 0
+            local skippedSpeed = 0
+            
+            -- Get PlayerGui.Data.Pets once (avoid repeated lookups)
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            local data = pg and pg:FindFirstChild("Data")
+            local invPets = data and data:FindFirstChild("Pets")
             
             for _, pet in ipairs(petsFolder:GetChildren()) do
                 if not autoPickUpEnabled then break end
                 
+                -- Pets are Parts, not Models
                 if pet:IsA("BasePart") then
+                    totalScanned = totalScanned + 1
+                    
+                    -- Get attributes directly (efficient)
                     local petUserId = pet:GetAttribute("UserId")
                     
                     if petUserId and tonumber(petUserId) == playerUserId then
-                        -- Skip Big Pets (check BigPetType attribute)
+                        local petUID = pet:GetAttribute("UID") or pet.Name
+                        
+                        -- Skip Big Pets (check BigPetType attribute directly on pet)
                         local bigPetType = pet:GetAttribute("BigPetType")
                         if bigPetType then
-                            -- This is a big pet, skip it
+                            skippedBigPets = skippedBigPets + 1
                         else
-                            -- Check speed and tile filter
+                            -- Get speed from ProducesSpeed attribute
                             local speedValue = pet:GetAttribute("ProducesSpeed")
                             
-                            if speedValue and speedValue < pickUpSpeedThreshold then
-                                -- Check tile filter if needed
-                                if autoPickUpTileFilter == "Both" then
-                                    table.insert(petsToDelete, pet:GetAttribute("UID") or pet.Name)
-                                else
-                                    local petType = pet:GetAttribute("PetType")
-                                    if petType then
-                                        local isOcean = isOceanPet(petType)
-                                        if (autoPickUpTileFilter == "Regular" and not isOcean) or 
-                                           (autoPickUpTileFilter == "Ocean" and isOcean) then
-                                            table.insert(petsToDelete, pet:GetAttribute("UID") or pet.Name)
+                            if speedValue then
+                                -- Check tile filter (ocean vs regular)
+                                local shouldSkip = false
+                                if autoPickUpTileFilter ~= "Both" and invPets then
+                                    local conf = invPets:FindFirstChild(petUID)
+                                    if conf then
+                                        local petType = conf:GetAttribute("T")
+                                        if petType then
+                                            local isOcean = isOceanPet(petType)
+                                            if (autoPickUpTileFilter == "Regular" and isOcean) or 
+                                               (autoPickUpTileFilter == "Ocean" and not isOcean) then
+                                                skippedTileFilter = skippedTileFilter + 1
+                                                shouldSkip = true
+                                            end
                                         end
+                                    end
+                                end
+                                
+                                -- Check speed threshold
+                                if not shouldSkip then
+                                    if speedValue < pickUpSpeedThreshold then
+                                        table.insert(petsToDelete, { name = petUID, speed = speedValue })
                                     else
-                                        table.insert(petsToDelete, pet:GetAttribute("UID") or pet.Name)
+                                        skippedSpeed = skippedSpeed + 1
                                     end
                                 end
                             end
@@ -1722,26 +1752,40 @@ local function runAutoPickUp()
                 end
             end
             
-            -- Pick up pets
-            for _, petUID in ipairs(petsToDelete) do
+            print("[AutoPickUp] 📊 Scan complete: " .. totalScanned .. " pets scanned")
+            print("[AutoPickUp] 📊 Skipped - Big Pets: " .. skippedBigPets .. ", Tile Filter: " .. skippedTileFilter .. ", Speed OK: " .. skippedSpeed)
+            print("[AutoPickUp] 🎯 Pets to pick up: " .. #petsToDelete)
+            
+            for _, petInfo in ipairs(petsToDelete) do
                 if not autoPickUpEnabled then break end
                 
-                pcall(function()
+                print("[AutoPickUp] 🔥 Attempting to pick up: " .. petInfo.name .. " (Speed: " .. (petInfo.speed or "?") .. ")")
+                
+                local success = pcall(function()
                     if CharacterRE then
-                        CharacterRE:FireServer("Del", petUID)
+                        CharacterRE:FireServer("Del", petInfo.name)
                     end
                 end)
                 
-                task.wait(0.3)
+                if success then
+                    print("[AutoPickUp] ✅ Successfully picked up: " .. petInfo.name)
+                    task.wait(0.5)
+                else
+                    print("[AutoPickUp] ❌ Failed to pick up: " .. petInfo.name)
+                    task.wait(0.2)
+                end
             end
             
-            task.wait(5)
+            task.wait(3)
         end)
         
         if not ok then
-            task.wait(2)
+            warn("[AutoPickUp] ❌ Error: " .. tostring(err))
+            task.wait(1)
         end
     end
+    
+    print("[AutoPickUp] 🛑 Auto Pick Up system stopped")
 end
 
 -- ============ Public API ============
