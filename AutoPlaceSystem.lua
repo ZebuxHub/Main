@@ -1699,6 +1699,8 @@ local function runAutoPickUp()
             local data = pg and pg:FindFirstChild("Data")
             local invPets = data and data:FindFirstChild("Pets")
             
+            local debuggedFirstPet = false
+            
             for _, pet in ipairs(petsFolder:GetChildren()) do
                 if not autoPickUpEnabled then break end
                 
@@ -1712,6 +1714,16 @@ local function runAutoPickUp()
                     if petUserId and tonumber(petUserId) == playerUserId then
                         local petUID = pet:GetAttribute("UID") or pet.Name
                         print("[AutoPickUp] 🔍 Found owned pet: " .. petUID .. " | UserId: " .. petUserId)
+                        
+                        -- Debug first pet to see all attributes
+                        if not debuggedFirstPet then
+                            debuggedFirstPet = true
+                            print("[AutoPickUp] 📋 First pet ALL attributes:")
+                            local allAttrs = pet:GetAttributes()
+                            for attrName, attrValue in pairs(allAttrs) do
+                                print("  ├─ " .. attrName .. " = " .. tostring(attrValue))
+                            end
+                        end
                         
                         -- Skip Big Pets (check BigPetType attribute directly on pet)
                         local bigPetType = pet:GetAttribute("BigPetType")
