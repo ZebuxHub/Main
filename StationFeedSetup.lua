@@ -144,21 +144,32 @@ end
 local function getPlayerOwnedPets()
     local pets = {}
     local localPlayer = Players.LocalPlayer
-    if not localPlayer then return pets end
+    if not localPlayer then 
+        print("[DEBUG] No LocalPlayer")
+        return pets 
+    end
     
     local petsFolder = workspace:FindFirstChild("Pets")
-    if not petsFolder then return pets end
+    if not petsFolder then 
+        print("[DEBUG] No Pets folder in workspace")
+        return pets 
+    end
+    print("[DEBUG] Found Pets folder with " .. #petsFolder:GetChildren() .. " children")
     
     for _, petModel in ipairs(petsFolder:GetChildren()) do
         if petModel:IsA("Model") then
+            print("[DEBUG] Checking pet: " .. petModel.Name)
             -- Check for the presence of BigPetType or BigValue attributes on the pet model
             local hasBigPetType = petModel:GetAttribute("BigPetType") ~= nil
             local hasBigValue = petModel:GetAttribute("BigValue") ~= nil
+            print("[DEBUG]   - BigPetType: " .. tostring(hasBigPetType) .. ", BigValue: " .. tostring(hasBigValue))
             if hasBigPetType or hasBigValue then
                 -- Find which station this pet is at (use model's primary part or pivot)
                 local primaryPart = petModel.PrimaryPart or petModel:FindFirstChildWhichIsA("BasePart")
                 if primaryPart then
+                    print("[DEBUG]   - Found primaryPart for " .. petModel.Name)
                     local stationId = findBigPetStationForPet(primaryPart.Position)
+                    print("[DEBUG]   - Station ID: " .. tostring(stationId))
                     
                     -- Get pet type - try multiple attributes on primary part
                     local petType = primaryPart:GetAttribute("T") 
@@ -172,14 +183,21 @@ local function getPlayerOwnedPets()
                     end
                     
                     if stationId then
+                        print("[DEBUG]   - Adding pet: " .. petModel.Name .. " to station " .. stationId)
                         table.insert(pets, {
                             uid = petModel.Name,
                             stationId = stationId,
                             type = petType or "Unknown",
                             displayName = displayName
                         })
+                    else
+                        print("[DEBUG]   - No station found for " .. petModel.Name)
                     end
+                else
+                    print("[DEBUG]   - No primaryPart for " .. petModel.Name)
                 end
+            else
+                print("[DEBUG]   - Not a big pet (no attributes)")
             end
         end
     end
@@ -193,6 +211,11 @@ local function getPlayerOwnedPets()
         end
         return a.stationId < b.stationId
     end)
+    
+    print("[DEBUG] Total big pets detected: " .. #pets)
+    for i, pet in ipairs(pets) do
+        print("[DEBUG] Pet " .. i .. ": Station " .. pet.stationId .. " - " .. pet.displayName)
+    end
     
     return pets
 end
