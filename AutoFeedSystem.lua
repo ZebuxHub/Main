@@ -444,6 +444,12 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                         -- Get player's fruit inventory
                         local fruitInventory = AutoFeedSystem.getPlayerFruitInventory()
                         
+                        -- Debug: Print player's fruit inventory
+                        print("[AutoFeed] 🎒 Player fruit inventory:")
+                        for fruitName, amount in pairs(fruitInventory) do
+                            print("  - " .. tostring(fruitName) .. ": " .. tostring(amount))
+                        end
+                        
                     -- Get station-fruit assignments (NEW STRUCTURE)
                     local stationFruitAssignments = AutoFeedSystem.stationFruitAssignments or {}
                     
@@ -452,6 +458,14 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                     local assignedFruits = stationFruitAssignments[stationId]
                     
                     print("[AutoFeed] 🎯 Station " .. (stationId or "?") .. " - Checking fruit assignments...")
+                    
+                    -- Debug: Print all assigned fruits for this station
+                    if assignedFruits and next(assignedFruits) then
+                        print("[AutoFeed] 📋 Assigned fruits for Station " .. (stationId or "?") .. ":")
+                        for fruitId, _ in pairs(assignedFruits) do
+                            print("  - " .. tostring(fruitId))
+                        end
+                    end
                     
                     if not assignedFruits or not next(assignedFruits) then
                         -- No fruits assigned to this station = skip
