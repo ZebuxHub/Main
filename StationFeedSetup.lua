@@ -151,10 +151,10 @@ local function getPlayerOwnedPets()
     
     for _, petModel in ipairs(petsFolder:GetChildren()) do
         if petModel:IsA("Model") then
-            -- Check for the presence of GUI.BigPetGUI directly under the pet model
-            local guiFolder = petModel:FindFirstChild("GUI")
-            local bigPetGUI = guiFolder and guiFolder:FindFirstChild("BigPetGUI")
-            if bigPetGUI then
+            -- Check for the presence of BigPetType or BigValue attributes on the pet model
+            local hasBigPetType = petModel:GetAttribute("BigPetType") ~= nil
+            local hasBigValue = petModel:GetAttribute("BigValue") ~= nil
+            if hasBigPetType or hasBigValue then
                 -- Find which station this pet is at (use model's primary part or pivot)
                 local primaryPart = petModel.PrimaryPart or petModel:FindFirstChildWhichIsA("BasePart")
                 if primaryPart then
