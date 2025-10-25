@@ -149,50 +149,35 @@ local function getPlayerOwnedPets()
     local petsFolder = workspace:FindFirstChild("Pets")
     if not petsFolder then return pets end
     
-    -- Get Data.Pets folder
-    local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return pets end
-    
-    local data = playerGui:FindFirstChild("Data")
-    if not data then return pets end
-    
-    local petsDataFolder = data:FindFirstChild("Pets")
-    if not petsDataFolder then return pets end
-    
     for _, petModel in ipairs(petsFolder:GetChildren()) do
         if petModel:IsA("Model") then
             local rootPart = petModel:FindFirstChild("RootPart")
             if rootPart then
                 local petUserId = rootPart:GetAttribute("UserId")
                 if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                    -- Check the corresponding Data.Pets[petName] for BPSK or BPV attributes
-                    local petName = petModel.Name
-                    local petConfig = petsDataFolder:FindFirstChild(petName)
-                    if petConfig then
-                        local hasBPSK = petConfig:GetAttribute("BPSK") ~= nil
-                        local hasBPV = petConfig:GetAttribute("BPV") ~= nil
-                        if hasBPSK or hasBPV then
-                            local stationId = findBigPetStationForPet(rootPart.Position)
-                            
-                            -- Get pet type - try multiple attributes
-                            local petType = rootPart:GetAttribute("T") 
-                                         or rootPart:GetAttribute("Type")
-                                         or rootPart:GetAttribute("PetType")
-                            
-                            -- If petType is still a UID-like string (long hex), don't show it
-                            local displayName = "Station " .. stationId
-                            if petType and #tostring(petType) <= 20 and petType ~= "" then
-                                displayName = petType
-                            end
-                            
-                            if stationId then
-                                table.insert(pets, {
-                                    uid = petModel.Name,
-                                    stationId = stationId,
-                                    type = petType or "Unknown",
-                                    displayName = displayName
-                                })
-                            end
+                    -- Check for the presence of GUI/BigPetGUI under RootPart
+                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                    if bigPetGUI then
+                        local stationId = findBigPetStationForPet(rootPart.Position)
+                        
+                        -- Get pet type - try multiple attributes
+                        local petType = rootPart:GetAttribute("T") 
+                                     or rootPart:GetAttribute("Type")
+                                     or rootPart:GetAttribute("PetType")
+                        
+                        -- If petType is still a UID-like string (long hex), don't show it
+                        local displayName = "Station " .. stationId
+                        if petType and #tostring(petType) <= 20 and petType ~= "" then
+                            displayName = petType
+                        end
+                        
+                        if stationId then
+                            table.insert(pets, {
+                                uid = petModel.Name,
+                                stationId = stationId,
+                                type = petType or "Unknown",
+                                displayName = displayName
+                            })
                         end
                     end
                 end
