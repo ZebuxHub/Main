@@ -155,8 +155,8 @@ local function getPlayerOwnedPets()
             if rootPart then
                 local petUserId = rootPart:GetAttribute("UserId")
                 if petUserId and tostring(petUserId) == tostring(localPlayer.UserId) then
-                    -- Check for the presence of GUI/BigPetGUI under RootPart
-                    local bigPetGUI = rootPart:FindFirstChild("GUI/BigPetGUI")
+                    -- Check for the presence of GUI/BigPetGUI directly under the pet model
+                    local bigPetGUI = petModel:FindFirstChild("GUI/BigPetGUI")
                     if bigPetGUI then
                         local stationId = findBigPetStationForPet(rootPart.Position)
                         
