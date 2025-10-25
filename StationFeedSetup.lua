@@ -435,7 +435,7 @@ local function createMainUI()
     titleLabel.Size = UDim2.new(1, -140, 0, 20)
     titleLabel.Position = UDim2.new(0, 100, 0, 12)
     titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "Station Feed Setup"
+    titleLabel.Text = "Station Feed Setup1"
     titleLabel.TextSize = 14
     titleLabel.Font = Enum.Font.GothamSemibold
     titleLabel.TextColor3 = colors.text
