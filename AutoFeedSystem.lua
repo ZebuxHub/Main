@@ -480,7 +480,7 @@ function AutoFeedSystem.runAutoFeed(getAutoFeedEnabled, getSelectedBigPets, upda
                                 end
                                 
                                 if equipSuccess then
-                                    task.wait(0.2) -- Small delay between equip and feed
+                                    task.wait(0.5) -- Wait for equip to register before feeding
                                     
                                         -- Feed the pet - with retry (still use UID for server call)
                                     local feedSuccess = false
